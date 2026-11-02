@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(npm test *)",
+      "Bash(npx *)",
+      "Bash(pip install *)",
+      "Bash(python *)",
+      "Bash(pytest *)",
+      "Bash(make *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git checkout *)",
+      "Bash(git branch *)",
+      "Bash(git log *)",
+      "Bash(git merge *)",
+      "Bash(curl *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(cat *)",
+      "Bash(echo *)",
+      "Bash(cd *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "which terminal-notifier >/dev/null 2>&1 && terminal-notifier -title 'Claude Code' -message 'Task finished' -sound default -timeout 5 || true"
+          }
+        ]
+      }
+    ]
+  }
+}
