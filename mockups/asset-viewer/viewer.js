@@ -7,9 +7,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EYE_DESIGNS, EYES_GLSL, eyesFor } from './faces.js';
 import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
 import { mapPalette, mapColors, snapToPool } from './palette-map.js';
-import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH } from './planet-ramps.js';
+import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH, ACCENTS } from './planet-ramps.js';
 import { tangentFrame } from './cloud-frame.js';
 import { ridge } from './snoise.js';
+import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors } from './artefacts.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -280,9 +281,8 @@ const PLANET_FRAG = /* glsl */ `
     return c;
   }
 
-  void main() {
-    vec3 p = normalize(vLocal);
-    int b = band(normalize(vNormalW));
+  // The surface colour is a function so artefacts can resample it (cell centres, moshed terrain, flipped bands).
+  vec3 surface(vec3 p, int b) {
     vec3 c;
     if (uBiome == 0 || uBiome == 1 || uBiome == 7) {
       // lush / ocean / toxic: sea + land
@@ -329,7 +329,13 @@ const PLANET_FRAG = /* glsl */ `
       vec3 dp = p - sp;
       if (length(dp * vec3(0.7, 1.6, 0.7)) < 0.16) c = uB[min(b + 2, 4)];
     }
-    gl_FragColor = vec4(c, 1.0);
+    return c;
+  }
+  ${ARTEFACTS_GLSL}
+  void main() {
+    vec3 p = normalize(vLocal);
+    int b = band(normalize(vNormalW));
+    gl_FragColor = vec4(artefacts(p, b, surface(p, b)), 1.0);
   }
 `;
 
@@ -522,6 +528,7 @@ const RING_CHUNK_FRAG = /* glsl */ `
 `;
 const FLAT_FRAG = /* glsl */ `uniform vec3 uColor; void main() { gl_FragColor = vec4(uColor, 1.0); }`;
 const MOON_GEO = new THREE.SphereGeometry(1, 20, 14);
+const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size, shared by every planet surface (artefact cells)
 
 function makePlanet() {
   const group = new THREE.Group();
@@ -530,6 +537,9 @@ function makePlanet() {
     uBiome: { value: 0 }, uA: ramp5(), uB: ramp5(), uC: ramp5(), uG: { value: [0, 1, 2].map(() => new THREE.Color()) },
     uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 },
     uBands: { value: new THREE.Vector3(0.2, 0.58, 0.86) }, // lit directional terminator, crescent bands
+    // artefacts (artefacts.js): off while uArtN = 0
+    uArtN: { value: 0 }, uArtTick: { value: 0 }, uArtTeal: { value: 0 }, uArtTealC: { value: new THREE.Color(ACCENTS.reveal[3]) }, // [OIII] teal, garnish only
+    uArtSec: { value: Array.from({ length: MAX_ART }, () => new THREE.Vector4(0, 0, 1, 4)) }, uViewSize: VIEW_SIZE,
   });
   const spin = new THREE.Group(); // surface + clouds turn together
   const surface = new THREE.Mesh(PLANET_GEO, surfaceMat);
@@ -725,12 +735,16 @@ function makePlanet() {
     geo.setAttribute('aType', new THREE.Float32BufferAttribute(type, 1));
     ring.geometry.dispose();
     ring.geometry = geo;
+
+    // Artefact sectors: their own stream, so turning them on never changes the terrain.
+    artefactSectors(mulberry32(seed * 104729 + 7), MAX_ART).forEach((sec, i) => surfaceMat.uniforms.uArtSec.value[i].set(...sec.dir, sec.size));
   }
 
   /** phase in [0, 1): position in the shared loop. */
   function update(phase) {
     const turn = phase * Math.PI * 2;
     spin.rotation.y = -turn; // one turn per loop, right -> left
+    surfaceMat.uniforms.uArtTick.value = Math.floor(phase * ART_TICKS + 1e-6) % ART_TICKS; // glitches re-roll on loop-locked ticks
     ring.rotation.y = -turn / RING_SECTORS; // debris flow: one sector per loop
     for (const m of MOONS) {
       const a = turn + m.offset * Math.PI * 2; // one orbit per loop; no easing
@@ -741,9 +755,11 @@ function makePlanet() {
     cloudMat.uniforms.uCenter.value.copy(ringMat.uniforms.uCenter.value);
     ringMat.uniforms.uRadius.value = group.scale.x;
   }
-  function setExtras({ moons = false, halo: showHalo = false } = {}) {
+  function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false } = {}) {
     for (const m of MOONS) m.mesh.visible = moons;
     halo.visible = showHalo;
+    surfaceMat.uniforms.uArtN.value = Math.min(artefacts, MAX_ART);
+    surfaceMat.uniforms.uArtTeal.value = teal ? 1 : 0;
   }
 
   return { group, rebuild, update, ring, setExtras };
@@ -1122,6 +1138,7 @@ const VIEWS = {
 const state = {
   view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
   time: null, ui: true, palette: 'final', eyes: 'auto', period: 12, moons: true, halo: false,
+  artefacts: false, artCount: 3, artTeal: false, // planet artefacts (artefacts.js)
   cover: null, // cloud-cover override (0..1) for the hero planets; null = the biome's WEATHER cover
 };
 
@@ -1140,6 +1157,7 @@ function resize() {
   const h = state.pixelH;
   const w = Math.floor((h * 16) / 9); // floor so e.g. 240 tall -> 426 wide still fits x3 on 1280
   renderer.setSize(w, h, false);
+  VIEW_SIZE.value.set(w, h);
   sky.material.uniforms.uHeight.value = h;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -1152,8 +1170,9 @@ function resize() {
 
 function applyState() {
   LOOP.period = Math.max(1, state.period);
-  planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo }));
-  SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo }));
+  const art = { artefacts: state.artefacts ? state.artCount : 0, teal: state.artTeal };
+  planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
+  SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   controls.minDistance = minOrbit();
   planets.forEach((p) => {
     p.rebuild(state.seed, state.biome, state.ringMode, state.cover);
@@ -1224,6 +1243,9 @@ function bindUi() {
   $('palette').addEventListener('change', (e) => { state.palette = e.target.value; applyState(); });
   $('moons').addEventListener('change', (e) => { state.moons = e.target.checked; applyState(); });
   $('halo').addEventListener('change', (e) => { state.halo = e.target.checked; applyState(); });
+  $('artefacts').addEventListener('change', (e) => { state.artefacts = e.target.checked; applyState(); });
+  $('art-count').addEventListener('input', (e) => { state.artCount = +e.target.value; $('art-count-readout').textContent = state.artCount; applyState(); });
+  $('art-teal').addEventListener('change', (e) => { state.artTeal = e.target.checked; applyState(); });
   $('period').addEventListener('change', (e) => { state.period = +e.target.value || 12; applyState(); });
   const fill = (sel, items, label) => items.forEach((v, i) => sel.add(new Option(label(v), String(i))));
   fill($('eyes'), EYE_DESIGNS, (d) => d.name);

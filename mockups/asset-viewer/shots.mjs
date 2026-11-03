@@ -31,7 +31,7 @@ const SHOTS = {
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 12, eyes: 'auto' };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 12, eyes: 'auto', artefacts: false, artCount: 3, artTeal: false, cover: null };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
@@ -146,6 +146,26 @@ const PLANET_SET = [
 const sizeTag = (z) => (z < 0.8 ? 'S' : z < 1.2 ? 'M' : z < 1.6 ? 'L' : 'XL');
 const asUrl = (png) => `data:image/png;base64,${png.toString('base64')}`;
 
+// Planet artefacts on every biome (plus the teal accent on lush). Each tile uses the
+// loop time (every 2 s) where the artefacts change the most pixels, i.e. a sector faces the camera.
+const ART_SET = [['lush', 7], ['ocean', 5], ['ice', 19], ['desert', 3], ['lava', 11], ['gas', 5], ['moon', 2], ['toxic', 13], ['lush', 7, true]];
+const setNative = async (opts) => { await page.evaluate((o) => window.viewer.set(o), { ...BASE, ...opts }); return grabNative(); };
+if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('artefacts'))) {
+  const items = [];
+  for (const [biome, seed, teal = false] of ART_SET) {
+    const base = { view: 'planet', biome, seed, ringMode: 'off', moons: false, artCount: 3, artTeal: teal };
+    let best = { n: -1 };
+    for (let time = 0; time < 12; time += 2) {
+      const on = await setNative({ ...base, time, artefacts: true });
+      const n = (await imageStats([await setNative({ ...base, time, artefacts: false }), on])).diffs[0];
+      if (n > best.n) best = { n, time, on };
+    }
+    items.push({ label: `${biome} · seed ${seed} · t ${best.time} s${teal ? ' · teal accent' : ''}`, url: asUrl(best.on) });
+  }
+  await contactSheet(items, 3, path.join(outDir, 'artefacts.png'));
+  console.log('screenshots/artefacts.png');
+}
+
 if (PLANET_MODE) {
   const dir = path.join(outDir, 'planets');
   await rm(dir, { recursive: true, force: true });
@@ -174,27 +194,33 @@ if (PLANET_MODE) {
   const counts = await imageStats([heroPng, systemPng]);
   console.log(`unique colours: hero planet frame ${counts.uniq[0]}, system shot ${counts.uniq[1]}`);
 
-  // Hero loop: the lush planet with moons, one full 12 s period at 100/3 fps (400 frames).
-  const PERIOD = 12, FRAMES = Math.round((PERIOD * 100) / 3);
-  const loopDir = path.join(ROOT, 'frames-loop');
-  await rm(loopDir, { recursive: true, force: true });
-  await mkdir(loopDir, { recursive: true });
-  const loopPngs = [];
-  for (let i = 0; i < FRAMES; i++) {
-    await page.evaluate((o) => window.viewer.set(o), { ...BASE, view: 'planet', palette: 'final', biome: 'lush', seed: 7, ringMode: 'thin', moons: true, period: PERIOD, time: (i * PERIOD) / FRAMES });
-    const png = await grabNative();
-    loopPngs.push(png);
-    await writeFile(path.join(loopDir, `${String(i).padStart(4, '0')}.png`), png);
-  }
-  const st = await imageStats([...loopPngs, loopPngs[0]].filter((_, i) => i % 1 === 0).slice(0, FRAMES));
-  const typical = [...st.diffs].sort((a, b) => a - b)[Math.floor(st.diffs.length / 2)];
-  console.log(`loop test: last->first diff ${st.seam} px vs median frame diff ${typical} px (${st.seam <= typical * 1.5 ? 'seamless' : 'SEAM'})`);
+  // Seamless loops: one full period, rendered at internal resolution, upscaled 2x, with a seam test
+  // (the last -> first diff must be no bigger than a typical frame-to-frame diff).
+  const PERIOD = 12;
   const FFMPEG = process.env.FFMPEG ?? '/opt/homebrew/bin/ffmpeg';
-  execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-framerate', '100/3', '-i', path.join(loopDir, '%04d.png'),
-    '-vf', 'scale=iw*2:ih*2:flags=neighbor,split[a][b];[a]palettegen=max_colors=64:stats_mode=full:reserve_transparent=0[p];[b][p]paletteuse=dither=none:diff_mode=rectangle',
-    '-loop', '0', path.join(dir, 'hero-loop.gif')]);
-  await rm(loopDir, { recursive: true, force: true });
-  console.log('screenshots/planets/hero-loop.gif');
+  const loopDir = path.join(ROOT, 'frames-loop');
+  const renderLoop = async (name, opts, frames, fps) => {
+    await rm(loopDir, { recursive: true, force: true });
+    await mkdir(loopDir, { recursive: true });
+    const pngs = [];
+    for (let i = 0; i < frames; i++) {
+      const png = await setNative({ view: 'planet', palette: 'final', biome: 'lush', seed: 7, ringMode: 'thin', moons: true, period: PERIOD, ...opts, time: (i * PERIOD) / frames });
+      pngs.push(png);
+      await writeFile(path.join(loopDir, `${String(i).padStart(4, '0')}.png`), png);
+    }
+    const st = await imageStats(pngs); // diffs include last -> first as `seam`
+    const typical = [...st.diffs].sort((a, b) => a - b)[Math.floor(st.diffs.length / 2)];
+    console.log(`${name} loop test: last->first diff ${st.seam} px vs median frame diff ${typical} px (${st.seam <= typical * 1.5 ? 'seamless' : 'SEAM'})`);
+    execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-framerate', fps, '-i', path.join(loopDir, '%04d.png'),
+      '-vf', 'scale=iw*2:ih*2:flags=neighbor,split[a][b];[a]palettegen=max_colors=64:stats_mode=full:reserve_transparent=0[p];[b][p]paletteuse=dither=none:diff_mode=rectangle',
+      '-loop', '0', path.join(dir, `${name}.gif`)]);
+    await rm(loopDir, { recursive: true, force: true });
+    console.log(`screenshots/planets/${name}.gif`);
+  };
+  // Hero loop: the lush planet with moons, at 100/3 fps (400 frames).
+  await renderLoop('hero-loop', {}, Math.round((PERIOD * 100) / 3), '100/3');
+  // Artefacts loop: the same hero with artefacts on, at 15 fps (180 frames: one per glitch tick, ART_TICKS).
+  await renderLoop('artefacts-loop', { artefacts: true }, 180, '15');
 
 }
 
