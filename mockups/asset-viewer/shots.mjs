@@ -2,6 +2,7 @@
 // Playwright request interception, so no socket is opened and nothing touches the network.
 // Usage: node shots.mjs [name ...]   (no names = all shots)
 //        node shots.mjs --palettes   (25 Lospec palettes + labelled contact sheet)
+//        node shots.mjs --planets    (biome variety sheet, system shot, biome x palette matrix)
 import { chromium } from 'playwright';
 import { access, mkdir, readFile, rm } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
@@ -17,7 +18,7 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
 
 const SHOTS = {
   'planet-closeup': { view: 'planet', time: 3 },
-  'planet-no-ring': { view: 'planet', time: 3, ring: false },
+  'planet-no-ring': { view: 'planet', time: 3, ringMode: 'off' },
   'planet-seed-311': { view: 'planet', time: 3, seed: 311 },
   'crew-closeup': { view: 'crew', time: 1.2 },
   'crew-face-switch': { view: 'crew', time: 1.2, eyes: '3' }, // UI override: Binocular on everyone
@@ -27,11 +28,12 @@ const SHOTS = {
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, ring: true, depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'v2' };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'v2' };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
+const PLANET_MODE = process.argv.includes('--planets');
 const wanted = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-const names = PALETTE_MODE ? [] : wanted.length ? wanted.filter((n) => SHOTS[n]) : Object.keys(SHOTS);
+const names = PALETTE_MODE || PLANET_MODE ? [] : wanted.length ? wanted.filter((n) => SHOTS[n]) : Object.keys(SHOTS);
 const outDir = path.join(ROOT, 'screenshots');
 await mkdir(outDir, { recursive: true });
 
@@ -90,7 +92,7 @@ const capture = async (opts) => {
   return page.locator('#view').screenshot();
 };
 
-if (!PALETTE_MODE && (!wanted.length || wanted.includes('faces-sheet'))) {
+if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('faces-sheet'))) {
   // All 10 Avatar V2 eye designs on the same head close-up.
   const items = [];
   for (const [i, d] of EYE_DESIGNS.entries()) {
@@ -99,6 +101,59 @@ if (!PALETTE_MODE && (!wanted.length || wanted.includes('faces-sheet'))) {
   }
   await contactSheet(items, 5, path.join(outDir, 'faces-sheet.png'));
   console.log('screenshots/faces-sheet.png');
+}
+
+// Biome variety: each row entry is [label, base biome, [[seed, size, ring], ...]].
+// Rings are a modifier: the 'ringed' row puts a wide ring on three bases, and a few
+// other biomes carry a thin one. Sizes stand in for LOC: S < 0.8 <= M < 1.2 <= L.
+const PLANET_SET = [
+  ['lush', 'lush', [[7, 1.0, 'off'], [42, 0.7, 'off'], [311, 1.3, 'thin']]],
+  ['ocean', 'ocean', [[5, 1.0, 'off'], [23, 1.3, 'off'], [64, 0.7, 'off']]],
+  ['ice', 'ice', [[8, 0.7, 'off'], [19, 1.0, 'thin'], [77, 1.3, 'off']]],
+  ['desert', 'desert', [[3, 1.0, 'off'], [31, 0.7, 'off'], [90, 1.3, 'off']]],
+  ['lava', 'lava', [[11, 1.0, 'off'], [12, 0.7, 'off'], [58, 1.3, 'off']]],
+  ['ringed: desert', 'desert', [[3, 1.0, 'wide']]],
+  ['ringed: ice', 'ice', [[21, 1.15, 'wide']]],
+  ['ringed: lush', 'lush', [[7, 0.8, 'wide']]],
+  ['gas giant (extra)', 'gas', [[5, 1.6, 'off'], [14, 1.8, 'thin'], [33, 1.45, 'off']]],
+  ['moon (extra)', 'moon', [[9, 0.35, 'off'], [2, 0.5, 'off'], [66, 0.42, 'off']]],
+  ['toxic (extra)', 'toxic', [[13, 1.0, 'off'], [37, 0.7, 'off'], [81, 1.3, 'off']]],
+];
+const sizeTag = (z) => (z < 0.8 ? 'S' : z < 1.2 ? 'M' : z < 1.6 ? 'L' : 'XL');
+const asUrl = (png) => `data:image/png;base64,${png.toString('base64')}`;
+
+if (PLANET_MODE) {
+  const dir = path.join(outDir, 'planets');
+  await rm(dir, { recursive: true, force: true });
+  await mkdir(dir, { recursive: true });
+  const STUDIO = { view: 'studio', time: 3, palette: 'lospec:apollo' };
+  const tiles = [];
+  for (const [label, biome, variants] of PLANET_SET) {
+    for (const [seed, size, ringMode] of variants) {
+      const png = await capture({ ...STUDIO, biome, seed, size, ringMode });
+      const name = `${label.replace(/ \(extra\)/, '').replace(/[: ]+/g, '-')}-${seed}`;
+      await writeFile(path.join(dir, `${name}.png`), png);
+      tiles.push({ label: `${label} · seed ${seed} · ${sizeTag(size)}${ringMode !== 'off' ? ` · ${ringMode} ring` : ''}`, url: asUrl(png) });
+    }
+  }
+  await contactSheet(tiles, 6, path.join(dir, 'variety-sheet.png'));
+  console.log(`screenshots/planets/variety-sheet.png (${tiles.length} tiles)`);
+
+  await writeFile(path.join(dir, 'system-shot.png'), await capture({ view: 'system', time: 2, palette: 'lospec:apollo' }));
+  console.log('screenshots/planets/system-shot.png');
+
+  // 6 core biomes x the 5 shortlisted palettes.
+  const CORE = [['lush', 'lush', 7, 'off'], ['ocean', 'ocean', 5, 'off'], ['ice', 'ice', 8, 'off'], ['desert', 'desert', 3, 'off'], ['lava', 'lava', 11, 'off'], ['ringed', 'desert', 3, 'wide']];
+  const TOP5 = ['apollo', 'blk-36', 'endesga-32', 'rosy-42', 'twilioquest-76'];
+  const matrix = [];
+  for (const slug of TOP5) {
+    for (const [label, biome, seed, ringMode] of CORE) {
+      const png = await capture({ view: 'studio', time: 3, palette: `lospec:${slug}`, biome, seed, size: 1, ringMode });
+      matrix.push({ label: `${LOSPEC[slug].name} · ${label}`, url: asUrl(png) });
+    }
+  }
+  await contactSheet(matrix, 6, path.join(dir, 'biome-x-palette.png'));
+  console.log('screenshots/planets/biome-x-palette.png');
 }
 
 if (PALETTE_MODE) {
@@ -125,7 +180,7 @@ const FFMPEG = process.env.FFMPEG ?? '/opt/homebrew/bin/ffmpeg';
 const before = path.join(outDir, 'palette-v1-depth.png');
 const after = path.join(outDir, 'depth-scene.png');
 const ok = await Promise.all([FFMPEG, before, after].map((f) => access(f).then(() => true, () => false)));
-if (!PALETTE_MODE && ok.every(Boolean)) {
+if (!PALETTE_MODE && !PLANET_MODE && ok.every(Boolean)) {
   execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-i', before, '-i', after, '-filter_complex',
     '[0]scale=640:360:flags=neighbor[a];[1]scale=640:360:flags=neighbor[b];[a][b]hstack', path.join(outDir, 'palette-before-after.png')]);
   console.log('screenshots/palette-before-after.png');

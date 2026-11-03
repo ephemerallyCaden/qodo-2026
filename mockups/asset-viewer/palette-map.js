@@ -95,7 +95,12 @@ const PAIRS = [
  */
 export function mapPalette(slug, hints = {}) {
   const src = LOSPEC[slug];
-  const cols = src.colors.map(oklab);
+  return mapColors(src.colors, { name: src.name, url: src.url }, hints);
+}
+
+/** Map any list of hexes onto every role (used for Lospec palettes and to extend v1/v2). */
+export function mapColors(hexes, { name = '', url = '' } = {}, hints = {}) {
+  const cols = [...new Set(hexes.map((h) => h.replace('#', '').toLowerCase()))].map(oklab);
   const byL = [...cols].sort((a, b) => a.L - b.L);
   const hex = (r) => r.map((c) => c.hex);
   const cool = (c) => c.H > 190 && c.H < 330;
@@ -144,9 +149,39 @@ export function mapPalette(slug, hints = {}) {
   const notSpace = cols.filter((c) => c.hex !== space.hex);
   const darkPool = [...notSpace].sort((a, b) => a.L - b.L);
 
+  // Biome roles (revision 4). Same rule: only this palette's colours.
+  const warmDark = byL.filter((c) => c.hex !== space.hex && (c.H < 70 || c.H > 330)).concat(byL.filter((c) => c.hex !== space.hex))[0];
+  const ashAnchor = [...cols].filter((c) => c.hex !== space.hex).sort((a, b) => (Math.abs(a.L - 0.32) + a.C * 3) - (Math.abs(b.L - 0.32) + b.C * 3))[0];
+  // Ice: start at the lightest cool-ish colour and only walk darker, so it never drifts warm.
+  const iceTop = [...cols].filter((c) => c.L > 0.72).sort((a, b) => (b.L - Math.min(1, hueDist(b.H, hints.ice ?? 230) / 90) * 0.25 * Math.min(1, b.C * 10)) - (a.L - Math.min(1, hueDist(a.H, hints.ice ?? 230) / 90) * 0.25 * Math.min(1, a.C * 10)))[0] ?? lightest;
+  const ice = rampFrom(cols, iceTop, 5, 1);
+  // Lava crust: only the palette's darker ~45%, so the crust stays dark in every palette.
+  const darkHalf = byL.slice(0, Math.max(5, Math.ceil(byL.length * 0.45))).filter((c) => c.hex !== space.hex);
+  const toxic = rampAt(hints.toxic ?? 120, 5, 0.6, { minL: 0.5 });
+  const water = rampAt(hints.water ?? 245, 5, 0.55); // ocean worlds read as water: blue family
+  const biome = {
+    ice: hex(ice),
+    crevasse: hex(rampAt(hints.crevasse ?? 265, 4, 0.5, { maxL: 0.6 })),
+    sand: hex(rampAt(hints.sand ?? 75, 5, 0.6)),
+    rock: hex(rampAt(hints.rock ?? 40, 4, 0.45, { minL: 0.25, maxL: 0.6 })),
+    crust: hex(rampFrom(darkHalf.length ? darkHalf : cols, darkHalf.includes(warmDark) ? warmDark : darkHalf[0] ?? warmDark, 5, 0)),
+    glow: hex(rampFrom(cols, anchorFor(cols, hints.glow ?? 30, { minL: 0.45, maxL: 0.75 }).anchor, 3, 0)),
+    ash: hex(rampFrom(cols, ashAnchor, 4, 0.33)),
+    gasA: hex(rampAt(hints.gasA ?? 60, 5, 0.6)),
+    gasB: hex(rampAt(hints.gasB ?? 15, 5, 0.6)),
+    moon: hex(rampFrom(cols, midNeutral, 5, 0.6)),
+    toxic: hex(toxic),
+    water: hex(water),
+    sludge: hex(rampAt(hints.sludge ?? 180, 5, 0.4, { maxL: 0.65 })),
+    fungus: hex(rampAt(hints.fungus ?? 320, 4, 0.5)),
+    spore: hex(rampFrom(cols, toxic[3], 4, 1)),
+    haze: { ocean: water[4].hex, ice: lightest.hex, toxic: toxic[4].hex },
+  };
+
   return {
-    name: src.name,
-    url: src.url,
+    ...biome,
+    name,
+    url,
     pairing: pick.tag,
     space: space.hex,
     stars: hex(stars),

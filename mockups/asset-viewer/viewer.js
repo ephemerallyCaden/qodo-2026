@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { FACE_W, FACE_H, EYE_DESIGNS, faceBitmap, eyesFor } from './faces.js';
 import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
-import { mapPalette, snapToPool } from './palette-map.js';
+import { mapPalette, mapColors, snapToPool } from './palette-map.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -58,6 +58,9 @@ export const PALETTES = {
 };
 // Published palettes, mapped onto our roles using only their own colours.
 for (const slug of [...LOSPEC_ORDER, ...SPARES]) PALETTES[`lospec:${slug}`] = mapPalette(slug);
+// v1/v2 get the biome roles mapped from their own colours; their hand-made ramps win.
+const hexesIn = (o) => (typeof o === 'string' ? (o.startsWith('#') ? [o] : []) : o && typeof o === 'object' ? Object.values(o).flatMap(hexesIn) : []);
+for (const k of ['v1', 'v2']) PALETTES[k] = { ...mapColors(hexesIn(PALETTES[k])), ...PALETTES[k], snap: null };
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
 const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
 let paletteName = 'v2';
@@ -182,26 +185,113 @@ const CLOUD_FRAG = /* glsl */ `
   }
 `;
 
+// Biome surfaces (art-direction: biome = module health). All flat light bands from
+// palette ramps; lava fissures (and toxic veins) are emissive and ignore lighting.
+// uA/uB/uC are 5-entry ramps and uG a 3-entry glow ramp, re-keyed per biome (BIOMES).
 const PLANET_FRAG = /* glsl */ `
   ${NOISE}
   ${BANDS}
-  uniform vec3 uOcean[5];
-  uniform vec3 uLand[5];
-  uniform vec3 uCap[4];
+  uniform int uBiome;
+  uniform vec3 uA[5];
+  uniform vec3 uB[5];
+  uniform vec3 uC[5];
+  uniform vec3 uG[3];
   uniform vec3 uSeedOff;
   uniform float uSea;
   in vec3 vNormalW;
   in vec3 vLocal;
+
+  vec3 hash33(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
+  // Worley F1 distance plus a random id for the nearest cell.
+  vec2 worley(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    float d = 9.0, id = 0.0;
+    for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+      vec3 g = vec3(x, y, z);
+      vec3 r = g + hash33(i + g) - f;
+      float dd = dot(r, r);
+      if (dd < d) { d = dd; id = hash33(i + g + 7.7).x; }
+    }
+    return vec2(sqrt(d), id);
+  }
+  float ridge(vec3 p) { return 1.0 - abs(snoise(p)); } // 1.0 along a network of thin lines
+
+  // Craters: sparse cells get a dark floor and a bright rim.
+  vec3 craters(vec3 p, vec3 c, int b, float scale, float density) {
+    vec2 w = worley(p * scale + uSeedOff);
+    if (w.y < density) {
+      float r = 0.2 + 0.22 * fract(w.y * 13.1);
+      if (w.x < r * 0.72) c = uB[max(b - 1, 0)]; // floor a band darker, so craters read even on one-ramp moons
+      else if (w.x < r) c = uA[min(b + 1, 4)];
+    }
+    return c;
+  }
+
   void main() {
     vec3 p = normalize(vLocal);
     int b = band(normalize(vNormalW));
-    float h = fbm(p * 1.6 + uSeedOff) + (fbm(p * 4.1 + uSeedOff.zxy) - 0.5) * 0.22;
     vec3 c;
-    if (h < uSea) c = uOcean[min(b + (h > uSea - 0.04 ? 1 : 0), 4)];
-    else c = uLand[min(b + (h > uSea + 0.11 ? 1 : 0), 4)];
-    float lat = abs(p.y) + (fbm(p * 3.0 + uSeedOff) - 0.5) * 0.25;
-    if (lat > 0.9) c = uCap[b];
+    if (uBiome == 0 || uBiome == 1 || uBiome == 7) {
+      // lush / ocean / toxic: sea + land
+      float h = fbm(p * 1.6 + uSeedOff) + (fbm(p * 4.1 + uSeedOff.zxy) - 0.5) * 0.22;
+      if (h < uSea) c = uA[min(b + (h > uSea - 0.04 ? 1 : 0), 4)];
+      else c = uB[min(b + (h > uSea + 0.11 ? 1 : 0), 4)];
+      if (uBiome == 7) {
+        if (h >= uSea && worley(p * 6.0 + uSeedOff).x < 0.3) c = uC[min(b + 1, 4)]; // fungal blooms
+        if (h < uSea && ridge(p * 5.0 + uSeedOff) > 0.965) c = uB[4]; // glowing sludge veins
+      } else {
+        float lat = abs(p.y) + (fbm(p * 3.0 + uSeedOff) - 0.5) * 0.25;
+        if (lat > 0.9) c = uC[b];
+      }
+    } else if (uBiome == 2) {
+      // ice: bright strata and a network of crevasses
+      float h = fbm(p * 2.3 + uSeedOff);
+      float strata = sin((p.y * 5.0 + h * 2.4) * 3.14159);
+      c = uA[min(b + 1 + (strata > 0.55 ? 1 : 0), 4)];
+      if (ridge(p * 2.6 + uSeedOff) > 0.972 || ridge(p * 6.0 + uSeedOff.yzx) > 0.982) c = uB[min(b, 4)];
+    } else if (uBiome == 3 || uBiome == 6) {
+      // desert dunes / barren moon, both cratered
+      float h = fbm(p * 2.0 + uSeedOff);
+      int shift = h > 0.56 ? 1 : 0;
+      if (uBiome == 3) shift = sin((p.y * 9.0 + p.x * 2.5 + h * 4.5) * 3.14159) > 0.3 ? 1 : 0;
+      c = uA[min(b + shift, 4)];
+      c = craters(p, c, b, 2.4, uBiome == 6 ? 0.55 : 0.3);
+      c = craters(p, c, b, 5.2, uBiome == 6 ? 0.45 : 0.2);
+    } else if (uBiome == 4) {
+      // lava: dark crust, emissive fissures
+      float h = fbm(p * 2.4 + uSeedOff);
+      c = uA[min(b, 2) + (h > 0.58 ? 1 : 0)]; // crust stays in the darkest steps
+      float f = max(ridge(p * 2.0 + uSeedOff), ridge(p * 4.6 + uSeedOff.zxy) * 0.988);
+      if (f > 0.978) c = uG[2];
+      else if (f > 0.958) c = uG[1];
+      else if (f > 0.935) c = uG[0];
+    } else {
+      // gas giant: turbulent alternating bands and a storm
+      float t = fbm(p * vec3(1.4, 0.45, 1.4) + uSeedOff);
+      float lat = p.y * 4.2 + (t - 0.5) * 1.8;
+      bool alt = mod(floor(lat), 2.0) < 1.0;
+      int shift = fract(lat) > 0.72 ? 1 : 0;
+      c = alt ? uA[min(b + shift, 4)] : uB[min(b + shift, 4)];
+      vec3 sp = normalize(vec3(0.55, -0.32, 0.77));
+      vec3 dp = p - sp;
+      if (length(dp * vec3(0.7, 1.6, 0.7)) < 0.16) c = uB[min(b + 2, 4)];
+    }
     gl_FragColor = vec4(c, 1.0);
+  }
+`;
+
+// Atmosphere haze: a slightly larger shell drawn only near the lit limb, so it rims
+// the planet and breaks the silhouette without reading as an outline.
+const HAZE_FRAG = /* glsl */ `
+  uniform vec3 uHaze;
+  uniform vec3 uLight;
+  in vec3 vNormalW;
+  in vec3 vPosW;
+  void main() {
+    vec3 n = normalize(vNormalW);
+    float rim = 1.0 - abs(dot(n, normalize(cameraPosition - vPosW)));
+    if (rim < 0.72 || dot(n, uLight) < 0.3) discard; // a thin crescent on the lit limb only
+    gl_FragColor = vec4(uHaze, 1.0);
   }
 `;
 
@@ -294,7 +384,7 @@ function setDepthLevel(obj, level) {
       for (const [name, key] of Object.entries(m.userData.ramps ?? {})) {
         const hexes = resolve(key);
         const arr = m.uniforms[name].value;
-        if (Array.isArray(arr)) hexes.forEach((h, i) => arr[i].copy(depthColor(h, level)));
+        if (Array.isArray(arr)) arr.forEach((u, i) => u.copy(depthColor(hexes[Math.min(i, hexes.length - 1)], level))); // short ramps repeat their last colour
         else arr.copy(depthColor(hexes, level));
       }
     }
@@ -302,21 +392,48 @@ function setDepthLevel(obj, level) {
 }
 
 // ---------------------------------------------------------------- planet
+// Biomes: which palette ramps feed uA/uB/uC/uG, sea level, weather and haze.
+// `extra` marks the optional ones (not in the art-direction core set).
+export const BIOMES = {
+  lush: { id: 0, label: 'lush', ramps: ['ocean', 'land', 'cap', 'glow'], sea: [0.47, 0.55], weather: 'cloud', haze: null },
+  ocean: { id: 1, label: 'ocean', ramps: ['water', 'land', 'cap', 'glow'], sea: [0.7, 0.73], weather: 'thin', haze: 'haze.ocean' },
+  ice: { id: 2, label: 'ice', ramps: ['ice', 'crevasse', 'cap', 'glow'], weather: null, haze: 'haze.ice' },
+  desert: { id: 3, label: 'desert', ramps: ['sand', 'rock', 'cap', 'glow'], weather: null, haze: null },
+  lava: { id: 4, label: 'lava', ramps: ['crust', 'crust', 'ash', 'glow'], weather: 'ash', haze: null },
+  gas: { id: 5, label: 'gas giant (extra)', ramps: ['gasA', 'gasB', 'cap', 'glow'], weather: null, haze: null, extra: true },
+  moon: { id: 6, label: 'barren moon (extra)', ramps: ['moon', 'moon', 'moon', 'glow'], weather: null, haze: null, extra: true },
+  toxic: { id: 7, label: 'toxic (extra)', ramps: ['sludge', 'toxic', 'fungus', 'glow'], sea: [0.5, 0.56], weather: 'spore', haze: 'haze.toxic', extra: true },
+};
+// Weather: cloud-puff settings per biome. thr = density threshold (higher = less cover).
+const WEATHER = {
+  cloud: { ramp: 'cloud', thr: 0.635, size: 1, lift: 1, strays: 0.025 },
+  thin: { ramp: 'cloud', thr: 0.685, size: 0.7, lift: 0.5, strays: 0.012 },
+  ash: { ramp: 'ash', thr: 0.66, size: 0.85, lift: 1.7, strays: 0.04 },
+  spore: { ramp: 'spore', thr: 0.665, size: 0.7, lift: 1.1, strays: 0.05 },
+};
+
 const PLANET_GEO = new THREE.SphereGeometry(1, 72, 48);
 const PUFF_GEO = new THREE.IcosahedronGeometry(1, 3);
 const MAX_PUFFS = 1200;
+const ramp5 = () => ({ value: Array.from({ length: 5 }, () => new THREE.Color()) });
 
 function makePlanet() {
   const group = new THREE.Group();
-  const surfaceMat = paletteMaterial(PLANET_FRAG, { uOcean: 'ocean', uLand: 'land', uCap: 'cap' }, {
+  const surfaceMat = paletteMaterial(PLANET_FRAG, {}, {
+    uBiome: { value: 0 }, uA: ramp5(), uB: ramp5(), uC: ramp5(), uG: { value: [0, 1, 2].map(() => new THREE.Color()) },
     uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 },
     uBands: { value: new THREE.Vector3(0.2, 0.58, 0.86) }, // high bands curve into crescents
   });
   const surface = new THREE.Mesh(PLANET_GEO, surfaceMat);
   group.add(surface);
 
-  // Clouds: clusters of overlapping puffs sitting on the surface, so the tops bulge
-  // past the silhouette at the limb. They rotate a little faster than the ground.
+  const hazeMat = paletteMaterial(HAZE_FRAG, { uHaze: 'glint' });
+  const haze = new THREE.Mesh(PLANET_GEO, hazeMat);
+  haze.scale.setScalar(1.06);
+  group.add(haze);
+
+  // Clouds / ash / spores: clusters of overlapping puffs sitting on the surface, so
+  // the tops bulge past the silhouette at the limb. They drift faster than the ground.
   const cloudPivot = new THREE.Group();
   const cloudMat = paletteMaterial(CLOUD_FRAG, { uRamp: 'cloud' }, {
     uBands: { value: new THREE.Vector3(-0.3, 0.12, 0.42) }, uCenter: { value: new THREE.Vector3() },
@@ -325,7 +442,7 @@ function makePlanet() {
   cloudPivot.add(puffs);
   group.add(cloudPivot);
 
-  // Ring: scattered single pixels in banded lanes.
+  // Ring: scattered single pixels. A modifier on any biome: off, thin or wide.
   const ringMat = new THREE.ShaderMaterial({
     vertexShader: POINTS_VERT, fragmentShader: RING_FRAG,
     uniforms: {
@@ -341,17 +458,31 @@ function makePlanet() {
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
+  let built = '';
 
-  function rebuild(seed) {
+  function rebuild(seed, biomeKey = 'lush', ringMode = 'thin') {
+    const key = `${seed}|${biomeKey}|${ringMode}`;
+    if (key === built) return;
+    built = key;
+    const biome = BIOMES[biomeKey];
     const rnd = mulberry32(seed * 7919 + 13);
+    surfaceMat.uniforms.uBiome.value = biome.id;
     surfaceMat.uniforms.uSeedOff.value.set(rnd() * 50, rnd() * 50, rnd() * 50);
-    surfaceMat.uniforms.uSea.value = 0.47 + rnd() * 0.08;
+    const [s0, s1] = biome.sea ?? [0.5, 0.5];
+    surfaceMat.uniforms.uSea.value = s0 + rnd() * (s1 - s0);
+    const [a, b, c, g] = biome.ramps;
+    surfaceMat.userData.ramps = { uA: a, uB: b, uC: c, uG: g };
+    haze.visible = !!biome.haze;
+    if (biome.haze) hazeMat.userData.ramps = { uHaze: biome.haze };
+    const weather = WEATHER[biome.weather];
+    if (weather) cloudMat.userData.ramps = { uRamp: weather.ramp };
+    group.userData.depthLevel = -1; // re-tint with the new ramps
 
-    // Cloud heaps: a base row of puffs stretched east-west, a few stacked on top,
-    // and some small strays. Mostly in two latitude belts.
+    // Noise-driven placement, like Planetarium: one fbm field makes a few big merged
+    // masses, a latitude-stretched field makes long east-west streaks, and everything
+    // else stays clear sky. Denser sites get bigger, higher puffs, so cores merge and
+    // dome. Puffs are squashed radially so clumps hug the surface.
     let n = 0;
-    // Puffs are squashed along the radial axis so clumps hug the surface; the
-    // domed centre still pokes past the silhouette at the limb.
     const FLAT = 0.6;
     const put = (dir, size, lift) => {
       if (n >= MAX_PUFFS) return;
@@ -360,64 +491,61 @@ function makePlanet() {
       m4.compose(d.multiplyScalar(1 + size * FLAT * lift), q, new THREE.Vector3(size, size * FLAT, size));
       puffs.setMatrixAt(n++, m4);
     };
-    // Noise-driven placement, like Planetarium: one fbm field makes a few big merged
-    // masses, a latitude-stretched field makes long east-west streaks, and everything
-    // else stays clear sky. Denser sites get bigger, higher puffs, so cores merge and
-    // dome; a few small strays scatter near the edges of the weather.
-    const massField = makeFbm3(seed * 31 + 5);
-    const streakField = makeFbm3(seed * 17 + 9);
-    const SITES = 1500;
-    for (let c = 0; c < SITES; c++) {
-      const y = 1 - ((c + 0.5) / SITES) * 2;
-      const r = Math.sqrt(1 - y * y);
-      const lon = c * 2.39996;
-      const dir = new THREE.Vector3(Math.cos(lon) * r, y, Math.sin(lon) * r);
-      const mass = massField(dir.x * 1.15 + 4, dir.y * 1.15, dir.z * 1.15);
-      const streak = streakField(dir.x * 0.9, dir.y * 6.0 + 2, dir.z * 0.9);
-      const density = Math.max(mass, streak) - 0.635;
-      const jitter = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).multiplyScalar(0.05);
-      // A lone sphere reads as a white ball, so thin weather (mass edges, strays) is
-      // built as a mini-clump: a lead puff plus smaller satellites beside it.
-      const clump = (center, size, lift, satellites) => {
-        put(center, size, lift);
-        const east = new THREE.Vector3().crossVectors(up, center).normalize();
-        const north = new THREE.Vector3().crossVectors(center, east);
-        for (let k = 0; k < satellites; k++) {
-          const a = rnd() * Math.PI * 2;
-          const off = size * (0.9 + rnd() * 0.5);
-          const sDir = center.clone().addScaledVector(east, Math.cos(a) * off * 1.4).addScaledVector(north, Math.sin(a) * off * 0.7);
-          put(sDir, size * (0.5 + rnd() * 0.25), lift * 0.5);
+    // A lone sphere reads as a white ball, so thin weather is built as a mini-clump:
+    // a lead puff plus smaller satellites beside it.
+    const clump = (center, size, lift, satellites) => {
+      put(center, size, lift);
+      const east = new THREE.Vector3().crossVectors(up, center).normalize();
+      const north = new THREE.Vector3().crossVectors(center, east);
+      for (let k = 0; k < satellites; k++) {
+        const ang = rnd() * Math.PI * 2;
+        const off = size * (0.9 + rnd() * 0.5);
+        put(center.clone().addScaledVector(east, Math.cos(ang) * off * 1.4).addScaledVector(north, Math.sin(ang) * off * 0.7), size * (0.5 + rnd() * 0.25), lift * 0.5);
+      }
+    };
+    if (weather) {
+      const massField = makeFbm3(seed * 31 + 5);
+      const streakField = makeFbm3(seed * 17 + 9);
+      const SITES = 1500;
+      for (let i = 0; i < SITES; i++) {
+        const y = 1 - ((i + 0.5) / SITES) * 2;
+        const r = Math.sqrt(1 - y * y);
+        const lon = i * 2.39996;
+        const dir = new THREE.Vector3(Math.cos(lon) * r, y, Math.sin(lon) * r);
+        const mass = massField(dir.x * 1.15 + 4, dir.y * 1.15, dir.z * 1.15);
+        const streak = streakField(dir.x * 0.9, dir.y * 6.0 + 2, dir.z * 0.9);
+        const density = Math.max(mass, streak) - weather.thr;
+        const jitter = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).multiplyScalar(0.05);
+        if (density > 0.012) {
+          const core = Math.min(1, density * 7);
+          clump(dir.add(jitter), (0.032 + core * 0.05 + rnd() * 0.012) * weather.size, (0.2 + core * 0.9) * weather.lift, core < 0.35 ? 2 + Math.floor(rnd() * 2) : 1);
+        } else if (density > -0.08 && rnd() < weather.strays) {
+          clump(dir.add(jitter), (0.026 + rnd() * 0.012) * weather.size, 0.3 * weather.lift, 2 + Math.floor(rnd() * 2));
         }
-      };
-      if (density > 0.012) {
-        const core = Math.min(1, density * 7);
-        clump(dir.add(jitter), 0.032 + core * 0.05 + rnd() * 0.012, 0.2 + core * 0.9, core < 0.35 ? 2 + Math.floor(rnd() * 2) : 1);
-      } else if (density > -0.08 && rnd() < 0.025) {
-        clump(dir.add(jitter), 0.026 + rnd() * 0.012, 0.3, 2 + Math.floor(rnd() * 2));
       }
     }
     puffs.count = n;
-    group.userData.puffs = n;
     puffs.instanceMatrix.needsUpdate = true;
 
-    // ring dust
+    // Ring dust, every dot 1 internal pixel. Thin: one band. Wide (shared lib): two dense lanes.
+    ring.visible = ringMode !== 'off';
     const pts = [];
     const shade = [];
-    const sizes = [];
-    // One thin band, densest in the middle, every dot 1 internal pixel.
-    for (let k = 0; k < 1500; k++) {
-      const a = rnd() * Math.PI * 2;
-      const r = 1.8 + (rnd() + rnd() - 1) * 0.11;
-      pts.push(Math.cos(a) * r, (rnd() - 0.5) * 0.012, Math.sin(a) * r);
-      shade.push(1 + Math.floor(rnd() * 3));
-      sizes.push(1);
+    const lanes = ringMode === 'wide' ? [[1.62, 0.13, 2600], [2.12, 0.16, 2400]] : [[1.8, 0.11, 1500]];
+    for (const [r0, spread, count] of lanes) {
+      for (let k = 0; k < count; k++) {
+        const ang = rnd() * Math.PI * 2;
+        const r = r0 + (rnd() + rnd() - 1) * spread;
+        pts.push(Math.cos(ang) * r, (rnd() - 0.5) * 0.012, Math.sin(ang) * r);
+        shade.push(1 + Math.floor(rnd() * 3));
+      }
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    g.setAttribute('aShade', new THREE.Float32BufferAttribute(shade, 1));
-    g.setAttribute('aSize', new THREE.Float32BufferAttribute(sizes, 1));
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    geo.setAttribute('aShade', new THREE.Float32BufferAttribute(shade, 1));
+    geo.setAttribute('aSize', new THREE.Float32BufferAttribute(new Array(shade.length).fill(1), 1));
     ring.geometry.dispose();
-    ring.geometry = g;
+    ring.geometry = geo;
   }
 
   function update(t, spinning) {
@@ -763,16 +891,40 @@ const solos = [
   return a;
 });
 
+// System scene: mixed biomes, sizes (size ~ LOC) and depths with the crew in front.
+// Hidden unless the 'system' view is active; it previews the GIF composition.
+const SYSTEM = [
+  { biome: 'lush', seed: 7, size: 1.0, ring: 'thin', pos: [0.75, 0.15, 0] },
+  { biome: 'gas', seed: 5, size: 2.2, ring: 'off', pos: [-10.5, 2.4, -17] },
+  { biome: 'ice', seed: 21, size: 0.62, ring: 'off', pos: [5.4, 0.1, -3.2] },
+  { biome: 'lava', seed: 11, size: 0.7, ring: 'off', pos: [3.3, -0.9, 0.9] },
+  { biome: 'desert', seed: 3, size: 0.85, ring: 'wide', pos: [-1.0, 3.4, -9] },
+  { biome: 'ocean', seed: 42, size: 1.25, ring: 'off', pos: [7.2, 3.6, -19] },
+  { biome: 'moon', seed: 9, size: 0.28, ring: 'off', pos: [2.15, 1.3, -0.5] },
+  { biome: 'toxic', seed: 13, size: 1.1, ring: 'off', pos: [13, 1.2, -36] },
+].map((cfg) => {
+  const p = makePlanet();
+  p.rebuild(cfg.seed, cfg.biome, cfg.ring);
+  p.group.position.set(...cfg.pos);
+  p.group.scale.setScalar(cfg.size);
+  scene.add(p.group);
+  return p;
+});
+
 const VIEWS = {
   planet: { pos: [1.3, 0.75, 3.9], target: [0, 0, 0] },
+  studio: { pos: [1.55, 0.9, 5.4], target: [0, 0, 0], scene: 'solo' }, // hero planet alone, for biome sheets
+  system: { pos: [0.1, 1.3, 10.2], target: [-0.4, 0.4, -6], scene: 'system' },
   crew: { pos: [CREW_SPOT.x + 0.35, CREW_SPOT.y + 0.95, CREW_SPOT.z + 2.7], target: [CREW_SPOT.x, CREW_SPOT.y + 0.52, CREW_SPOT.z] },
   depth: { pos: [0.1, 1.2, 9.6], target: [-0.3, 0.3, -6] },
   face: { pos: [CREW_SPOT.x + 0.08, CREW_SPOT.y + 0.8, CREW_SPOT.z + 1.15], target: [CREW_SPOT.x, CREW_SPOT.y + 0.62, CREW_SPOT.z] }, // head close-up (mint)
 };
 
 // ---------------------------------------------------------------- state
-const state = { view: 'planet', seed: 7, ring: true, color: 'coral', pixelH: 180, depth: true, spin: true, time: null, ui: true, palette: 'v2', eyes: 'auto' };
-let lastSeed = -1;
+const state = {
+  view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
+  time: null, ui: true, palette: 'lospec:apollo', eyes: 'auto',
+};
 
 function applyView(name) {
   const v = VIEWS[name];
@@ -795,17 +947,22 @@ function resize() {
 }
 
 function applyState() {
-  if (state.seed !== lastSeed) {
-    planets.forEach((p) => p.rebuild(state.seed));
-    lastSeed = state.seed;
-  }
+  planets.forEach((p) => {
+    p.rebuild(state.seed, state.biome, state.ringMode);
+    p.group.scale.setScalar(state.size);
+  });
+  // Which objects a view shows: showcase (hero + depth copies + crew), solo planet, or the system.
+  const sceneMode = VIEWS[state.view]?.scene ?? 'showcase';
+  planets.forEach((p, i) => (p.group.visible = sceneMode === 'showcase' || (sceneMode === 'solo' && i === 0)));
+  SYSTEM.forEach((p) => (p.group.visible = sceneMode === 'system'));
+  crew.forEach((a) => (a.group.visible = sceneMode !== 'solo'));
+  solos.forEach((a) => (a.group.visible = sceneMode === 'showcase'));
   if (state.palette !== paletteName) {
     paletteName = state.palette;
     scene.traverse((o) => { if (o.userData.depthLevel !== undefined) o.userData.depthLevel = -1; }); // force a re-tint
   }
   renderer.setClearColor(resolve('space'));
   document.body.style.background = resolve('space');
-  planets.forEach((p) => (p.ring.visible = state.ring));
   solos.forEach((s) => s.setColor(state.color));
   // Faces: hashed from each contributor's handle unless the UI overrides the eye design.
   for (const a of [...crew, ...solos]) {
@@ -821,10 +978,10 @@ function frame() {
   const t = state.time ?? clock.getElapsedTime();
   controls.update();
   stars.position.copy(camera.position);
-  planets.forEach((p) => p.update(t, state.spin));
+  [...planets, ...SYSTEM].forEach((p) => p.update(t, state.spin));
   [...crew, ...solos].forEach((a) => a.update(t));
   setDepthLevel(stars, 0); // stars never fade, but still follow palette switches
-  for (const obj of [...planets.map((p) => p.group), ...crew.map((a) => a.group), ...solos.map((a) => a.group)]) {
+  for (const obj of [...planets, ...SYSTEM, ...crew, ...solos].map((o) => o.group)) {
     const d = camera.position.distanceTo(obj.getWorldPosition(tmp));
     const level = !state.depth ? 0 : DEPTH_RANGES.filter((r) => d >= r).length;
     setDepthLevel(obj, level);
@@ -837,10 +994,13 @@ renderer.setAnimationLoop(frame);
 // ---------------------------------------------------------------- UI
 function bindUi() {
   const $ = (id) => document.getElementById(id);
-  for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => { state.view = b.dataset.view; applyView(state.view); });
+  for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => { state.view = b.dataset.view; applyView(state.view); applyState(); });
   $('seed').addEventListener('input', (e) => { state.seed = +e.target.value; $('seed-readout').textContent = state.seed; applyState(); });
   $('reseed').addEventListener('click', () => { state.seed = 1 + Math.floor(Math.random() * 999); $('seed').value = state.seed; $('seed-readout').textContent = state.seed; applyState(); });
-  $('ring').addEventListener('change', (e) => { state.ring = e.target.checked; applyState(); });
+  $('ring').addEventListener('change', (e) => { state.ringMode = e.target.value; applyState(); });
+  for (const [key, b] of Object.entries(BIOMES)) $('biome').add(new Option(b.label, key));
+  $('biome').addEventListener('change', (e) => { state.biome = e.target.value; applyState(); });
+  $('size').addEventListener('input', (e) => { state.size = +e.target.value / 100; $('size-readout').textContent = state.size.toFixed(2); applyState(); });
   $('color').addEventListener('change', (e) => { state.color = e.target.value; applyState(); });
   $('pixel').addEventListener('input', (e) => { state.pixelH = +e.target.value; applyState(); });
   $('depth').addEventListener('change', (e) => { state.depth = e.target.checked; applyState(); });
@@ -862,6 +1022,7 @@ function bindUi() {
 bindUi();
 applyView(state.view);
 applyState();
+document.getElementById('palette').value = state.palette;
 
 // Hook for the screenshot script: set state, pin time, render one frame synchronously.
 window.viewer = {

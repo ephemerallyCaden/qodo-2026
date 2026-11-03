@@ -11,6 +11,7 @@ npm install
 npm run dev      # http://127.0.0.1:5180/  (loopback only; PORT=... to change)
 npm run shots    # re-capture screenshots/ in headless Chromium (no server, no network)
 npm run palettes # 25 Lospec-palette renders + labelled contact sheet in screenshots/palettes/
+npm run planets  # biome variety sheet, system shot, biome x palette matrix in screenshots/planets/
 ```
 
 `node shots.mjs depth-scene crew-closeup` captures just the named shots.
@@ -20,14 +21,17 @@ npm run palettes # 25 Lospec-palette renders + labelled contact sheet in screens
 | Control | Effect |
 |---|---|
 | planet / crew / depth | Camera presets: the planet close-up, the three-astronaut line-up, and the depth scene |
+| studio / system | The hero planet alone (for biome comparison), or a mixed system of 8 planets plus the crew |
+| biome | lush, ocean, ice, desert, lava, plus extras: gas giant, barren moon, toxic |
+| size | Planet scale, 0.25–2.2 (size stands for LOC) |
 | seed, new planet | Regenerates land, sea level, cloud heaps and ring dust. All three planet copies share the seed |
-| ring | Shows or hides the scattered-pixel ring |
+| ring | off, thin, or wide. Wide marks a shared lib; rings are a modifier on any biome |
 | contributor | Sets the backpack-stripe, shoulder-band and face colour of the solo astronauts in the depth scene. The crew line-up always shows all three |
 | eyes | One of the 10 V2 eye designs for every astronaut; `auto` hashes it from the contributor's handle |
 | pixel h | Internal height from 120 to 480. Width is 16:9, and the canvas is upscaled by the largest integer factor that fits, with nearest-neighbour filtering |
 | depth fade | Turns depth darkening on or off |
 | rotate | Pauses or resumes planet and cloud spin |
-| palette | v2, v1 (batch 1 pastels), or any of the 25 Lospec palettes (plus spares) |
+| palette | Apollo (default), v2, v1 (batch 1 pastels), or any of the 25 Lospec palettes (plus spares) |
 | drag / scroll | Orbits and zooms the camera |
 
 ## How it's built (`viewer.js`)
@@ -61,6 +65,24 @@ v2 is the current palette. v1 (the batch 1 pastels) stays selectable from the `p
 | suit (cool white, both) | `#68718f` `#a3aec8` `#d3dcea` `#f2f6fc` | |
 | gear: mitts, boots, backpack, visor rim (both) | `#4a5170` `#77819f` `#a2adc6` `#c4cee0` | |
 | visor (both) | `#0f1329` `#232f58`, glint `#f4f8ff` | |
+
+## Biomes (revision 4)
+
+Each biome is a branch of one planet shader. Its ramps are re-keyed per biome (`BIOMES` in `viewer.js`) and come only from the active palette (`palette-map.js` adds the biome roles). Shading uses the same flat light bands everywhere.
+
+| Biome | Meaning (art direction) | Surface | Silhouette break |
+|---|---|---|---|
+| lush | healthy, tested, active | sea + land + polar caps | cloud masses and streaks |
+| ocean | stable, rarely touched | blue "water" ramp, sea level ~0.7, so only a few islands | thin, small clouds + lit-limb haze |
+| ice | stable, rarely touched | white strata with networks of blue crevasses (ridged noise) | pale haze |
+| desert | stale, low coverage | wind-dune bands and sparse Worley craters (dark floor, bright rim) | none (no clouds) |
+| lava | churn / bugfix hotspot | dark crust from the palette's darkest ~45%; emissive fissures that ignore lighting | ash/smoke puffs |
+| ringed | shared lib, many dependents | any base + a wide two-lane ring | the ring |
+| gas giant *(extra)* | very large modules | turbulent alternating bands + a storm | — |
+| barren moon *(extra)* | tiny / dead modules | grey, densely cratered | — |
+| toxic *(extra)* | overgrown / risky | dark sludge sea with glowing veins, acid-lime land, fungal blooms | spore puffs + lime haze |
+
+The haze is a 1.06× shell drawn only as a thin crescent on the lit limb, so it reads as atmosphere rather than an outline. Ash and spore puffs reuse the cloud system with their own ramp, cover threshold and lift.
 
 ## Palette exploration (`palettes.js`, `palette-map.js`)
 
@@ -117,4 +139,7 @@ Every tile is the same shot: the `depth` view (crew in front, hero planet, then 
 | `screenshots/pixel-120.png` | Chunkier pixels: 213×120 ×6 |
 | `screenshots/pixel-360.png` | Finer pixels: 640×360 ×2 |
 | `screenshots/palettes/contact-sheet.png` | The 25 palettes, 5×5, numbered and labelled; `NN-<slug>.png` are the full-size frames |
+| `screenshots/planets/variety-sheet.png` | Every biome (and extra) × 3 seeds in Apollo, S/M/L/XL sizes, rings as a modifier; `planets/<biome>-<seed>.png` are the full frames |
+| `screenshots/planets/system-shot.png` | 8 mixed planets at several depths and sizes plus the crew (previews the GIF composition) |
+| `screenshots/planets/biome-x-palette.png` | 6 core biomes × Apollo, BLK 36, Endesga 32, Rosy 42, TwilioQuest 76 |
 | `screenshots/palette-before-after.png` | Depth scene, v1 palette (left) vs v2 (right). `palette-v1-depth.png` is its input |
