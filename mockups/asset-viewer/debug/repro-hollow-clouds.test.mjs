@@ -1,9 +1,10 @@
 // Reproduction tests for the "hollow ring" clouds (USER-REPORT-hollow-rings.png).
-// Run: node --test debug/repro-hollow-clouds.test.mjs        -> both FAIL on 351c05a
-//      FIX=handed node --test debug/repro-hollow-clouds.test.mjs -> test 1 PASSES
+// Run: node --test debug/repro-hollow-clouds.test.mjs        -> all three FAIL on 395c4d7
+//      FIX=handed node --test debug/repro-hollow-clouds.test.mjs -> tests 0 and 1 PASS
 //      (control: viewer.js served in memory with put()'s basis made right-handed)
 //      SHADE=scalar ...                                           -> test 2 PASSES
 //
+// Test 0 (unit-level, no pixels): every cloud instance matrix has det > 0.
 // Test 1 (primary, rings): for every weather biome x camera framing x pixel height,
 // renders the hero planet's clouds as an ID pass and measures
 //   backFacing - share of drawn cloud pixels whose OUTWARD normal faces away from the
@@ -42,6 +43,28 @@ const grabCounts = () => {
   }
   return { front, back };
 };
+
+test('every cloud instance matrix is right-handed (det > 0), all weather biomes and seeds', async () => {
+  const { browser, page } = await openViewer(process.env.FIX === 'handed' ? { patch: HANDED_FIX } : {});
+  try {
+    const rows = {};
+    for (const biome of BIOMES) for (const seed of [7, 42, 311, 999]) {
+      rows[`${biome}/${seed}`] = await page.evaluate((o) => {
+        window.viewer.set(o);
+        const { THREE, planets, puffsOf } = window.__dbg;
+        const puffs = puffsOf(planets[0]), m = new THREE.Matrix4();
+        let bad = 0;
+        for (let i = 0; i < puffs.count; i++) { puffs.getMatrixAt(i, m); if (!(m.determinant() > 1e-12)) bad++; }
+        return { count: puffs.count, nonPositiveDet: bad };
+      }, { ...BASE, biome, seed });
+    }
+    console.table(rows);
+    const bad = Object.entries(rows).filter(([, r]) => r.nonPositiveDet > 0);
+    assert.equal(bad.length, 0, `mirrored/degenerate puff matrices in ${bad.map(([k, r]) => `${k} (${r.nonPositiveDet}/${r.count})`).join(', ')}`);
+  } finally {
+    await browser.close();
+  }
+});
 
 test('cloud puffs render as solid domes, not hollow rings (all weather biomes, framings, pixel heights)', async () => {
   const { browser, page } = await openViewer(process.env.FIX === 'handed' ? { patch: HANDED_FIX } : {});
