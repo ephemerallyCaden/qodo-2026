@@ -106,10 +106,18 @@ const SHADES = {
   scalar: '(0.55 * dot(g, uLight) + 0.8 * dot(normalize(vPosW - uCenter), uLight)) / 1.35',
 };
 const SHADE = SHADES[process.env.SHADE ?? 'prod'];
+// The shipped CLOUD_FRAG already declares g (the puff normal) and n; redeclaring g made
+// this classifier fail to compile, so the test counted 0 cloud pixels and passed vacuously.
+// Reference curvature: clouds in a mass shade as ONE dome (the mass-level model, so a mass
+// reads as one body), so the shade must follow the dome's Lambert term: the direction from
+// the mass anchor (vAnchorW), minus any part that points into the puff (the model drops it
+// so undersides stay shaded). Smoke (vMass = 0) follows its own puff curvature.
+// Never inverted: the shading normal must not point into the puff.
 const CLASSIFY = `
-  vec3 g = normalize(vNormalW);
+  vec3 dome = normalize(vPosW - vAnchorW);
+  dome -= min(dot(dome, g), 0.0) * g;
+  float t = vMass > 0.5 ? dot(dome, uLight) : dot(g, uLight);
   float s = ${SHADE};
-  float t = dot(g, uLight);
   vec2 gs = vec2(dFdx(s), dFdy(s)), gt = vec2(dFdx(t), dFdy(t));
   bool reversed = length(gs) > 0.02 && length(gt) > 0.02 && dot(normalize(gs), normalize(gt)) < -0.5;
   bool inverted = ${process.env.SHADE && process.env.SHADE !== 'prod' ? 'false' : 'dot(n, g) < 0.0'};
@@ -121,7 +129,7 @@ const orbit = (az, el, d = 2.2, target = [0, 0, 0]) => {
 };
 const ANGLES = { front: orbit(18, 10, 4.1), 'az90-el20': orbit(90, 20), 'az180-el20': orbit(180, 20), 'top-down': orbit(20, 85), 'grazing-north': orbit(10, 50, 1.45, [0, 0.85, 0.2]), under: orbit(30, -40) };
 
-test('cloud puff shading agrees with puff curvature from every orbit angle', async () => {
+test('cloud shading agrees with mass-dome curvature (puff curvature for lone puffs) from every orbit angle', async () => {
   const { browser, page } = await openViewer({ patch: HANDED_FIX }); // isolate from the ring bug
   try {
     const results = {};
@@ -138,6 +146,8 @@ test('cloud puff shading agrees with puff curvature from every orbit angle', asy
       }, { o: { ...BASE, biome: 'lush', ringMode: 'off', moons: false, pixelH: 360, spin: false, time: 0, camera }, src: OUT_LINE.source, body: CLASSIFY, grab: grabCounts.toString() });
     }
     console.table(results);
+    const empty = Object.entries(results).filter(([, r]) => r.cloud < 200).map(([n]) => n);
+    assert.deepEqual(empty, [], 'classifier drew no cloud pixels (shader failed to compile?)');
     const failing = Object.entries(results).filter(([, r]) => r.badFrac > 0.001);
     assert.equal(failing.length, 0, `wrong-way cloud shading at: ${failing.map(([n, r]) => `${n} (${(r.badFrac * 100).toFixed(1)}%)`).join(', ')}`);
   } finally {

@@ -7,8 +7,8 @@ import { openViewer } from './repro-hollow-clouds.mjs';
 
 const BIOMES = process.argv.slice(2).length ? process.argv.slice(2) : ['lush', 'ocean', 'toxic', 'lava'];
 const SEEDS = [7, 42, 311, 5, 23, 13, 11, 58];
-const TIMES = [0, 1.5, 3, 4.5, 6, 7.5, 9, 10.5]; // 8 phases of the 12 s loop
-const BASE = { view: 'studio', size: 1, ringMode: 'off', moons: false, halo: false, depth: false, pixelH: 360, palette: 'final', spin: true, ui: false, period: 12 };
+const TIMES = [0, 3, 6, 9, 12, 15, 18, 21]; // 8 phases of the 24 s loop
+const BASE = { view: 'studio', size: 1, ringMode: 'off', moons: false, halo: false, depth: false, pixelH: 360, palette: 'final', spin: true, ui: false, period: 24, surfaceTurns: 2, cloudTurns: 3 };
 
 export async function measureCover(page, opts) {
   return page.evaluate((o) => {
@@ -16,7 +16,8 @@ export async function measureCover(page, opts) {
     window.viewer.set(o);
     const p = planets[0];
     const puffs = puffsOf(p);
-    const surface = puffs.parent.children.find((c) => c !== puffs);
+    let surface = null;
+    p.group.traverse((c) => { if (!surface && c.isMesh && !c.isInstancedMesh && c.material.uniforms?.uBiome) surface = c; });
     const hidden = [];
     p.group.traverse((c) => { if ((c.isMesh || c.isPoints) && c !== surface && c !== puffs && c.visible) { hidden.push(c); c.visible = false; } });
     const sky = scene.children.filter((c) => c !== p.group && c.visible);

@@ -4,7 +4,7 @@
 //        node shots.mjs --palettes   (25 Lospec palettes + labelled contact sheet)
 //        node shots.mjs --planets    (biome variety sheet, system shot, hero loop GIF, colour counts)
 import { chromium } from 'playwright';
-import { access, mkdir, readFile, rm } from 'node:fs/promises';
+import { access, mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +31,7 @@ const SHOTS = {
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 12, eyes: 'auto', artefacts: false, artCount: 3, artTeal: false, cover: null };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', artefacts: false, artCount: 3, artTeal: false, cover: null };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
@@ -196,31 +196,37 @@ if (PLANET_MODE) {
 
   // Seamless loops: one full period, rendered at internal resolution, upscaled 2x, with a seam test
   // (the last -> first diff must be no bigger than a typical frame-to-frame diff).
-  const PERIOD = 12;
   const FFMPEG = process.env.FFMPEG ?? '/opt/homebrew/bin/ffmpeg';
   const loopDir = path.join(ROOT, 'frames-loop');
-  const renderLoop = async (name, opts, frames, fps) => {
+  const renderLoop = async (name, opts, fps) => { // fps: an ffmpeg rate, e.g. '15' or '100/3'
+    const period = opts.period ?? BASE.period;
+    const [num, den = 1] = fps.split('/').map(Number);
+    const frames = Math.round((period * num) / den);
     await rm(loopDir, { recursive: true, force: true });
     await mkdir(loopDir, { recursive: true });
     const pngs = [];
     for (let i = 0; i < frames; i++) {
-      const png = await setNative({ view: 'planet', palette: 'final', biome: 'lush', seed: 7, ringMode: 'thin', moons: true, period: PERIOD, ...opts, time: (i * PERIOD) / frames });
+      const png = await setNative({ view: 'planet', palette: 'final', biome: 'lush', seed: 7, ringMode: 'thin', moons: true, ...opts, time: (i * period) / frames });
       pngs.push(png);
       await writeFile(path.join(loopDir, `${String(i).padStart(4, '0')}.png`), png);
     }
     const st = await imageStats(pngs); // diffs include last -> first as `seam`
     const typical = [...st.diffs].sort((a, b) => a - b)[Math.floor(st.diffs.length / 2)];
     console.log(`${name} loop test: last->first diff ${st.seam} px vs median frame diff ${typical} px (${st.seam <= typical * 1.5 ? 'seamless' : 'SEAM'})`);
+    const out = path.join(dir, `${name}.gif`);
     execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-framerate', fps, '-i', path.join(loopDir, '%04d.png'),
       '-vf', 'scale=iw*2:ih*2:flags=neighbor,split[a][b];[a]palettegen=max_colors=64:stats_mode=full:reserve_transparent=0[p];[b][p]paletteuse=dither=none:diff_mode=rectangle',
-      '-loop', '0', path.join(dir, `${name}.gif`)]);
+      '-loop', '0', out]);
     await rm(loopDir, { recursive: true, force: true });
-    console.log(`screenshots/planets/${name}.gif`);
+    console.log(`screenshots/planets/${name}.gif (${frames} frames, ${((await stat(out)).size / 1e6).toFixed(2)} MB)`);
   };
-  // Hero loop: the lush planet with moons, at 100/3 fps (400 frames).
-  await renderLoop('hero-loop', {}, Math.round((PERIOD * 100) / 3), '100/3');
-  // Artefacts loop: the same hero with artefacts on, at 15 fps (180 frames: one per glitch tick, ART_TICKS).
-  await renderLoop('artefacts-loop', { artefacts: true }, 180, '15');
+  // Hero loop: the lush planet with moons, the default 24 s loop (surface 2 turns, clouds 3) at 100/3 fps.
+  await renderLoop('hero-loop', {}, '100/3');
+  // Artefacts loop: the same hero with artefacts on, at 15 fps (one frame per glitch tick, ART_TICKS per surface turn).
+  await renderLoop('artefacts-loop', { artefacts: true }, '15');
+  // Cloud drift options at 15 fps: the default (24 s, 2:3, clouds 1.5x) and the alternative (36 s, 3:4, 1.33x).
+  await renderLoop('cloud-drift-24s', { period: 24, surfaceTurns: 2, cloudTurns: 3 }, '15');
+  await renderLoop('cloud-drift-36s', { period: 36, surfaceTurns: 3, cloudTurns: 4 }, '15');
 
 }
 

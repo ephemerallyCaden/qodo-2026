@@ -2,7 +2,7 @@
 //  1. off is pixel-identical to the surface shader without the artefact pass, for every
 //     biome (control: viewer.js served in memory with the artefacts() call removed)
 //  2. on changes the planet, and the same time renders byte-identical frames (deterministic)
-//  3. loop-locked: t = 0 and t = one period render the same frame
+//  3. loop-locked: t = 0 and t = one period (24 s, with drifting clouds) render the same frame
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openViewer } from '../debug/repro-hollow-clouds.mjs';
@@ -13,7 +13,7 @@ const NO_ART = (src) => {
   return src.replace(CALL, 'gl_FragColor = vec4(surface(p, b), 1.0);');
 };
 const BIOMES = { lush: 7, ocean: 5, ice: 19, desert: 3, lava: 11, gas: 5, moon: 2, toxic: 13 };
-const BASE = { view: 'planet', size: 1, ringMode: 'thin', moons: true, depth: true, pixelH: 180, palette: 'final', spin: true, ui: false, period: 12, halo: false, artCount: 5, artTeal: true };
+const BASE = { view: 'planet', size: 1, ringMode: 'thin', moons: true, depth: true, pixelH: 180, palette: 'final', spin: true, ui: false, period: 24, surfaceTurns: 2, cloudTurns: 3, halo: false, artCount: 5, artTeal: true };
 const grab = (page, o) => page.evaluate((o) => { window.viewer.set(o); return document.getElementById('view').toDataURL('image/png'); }, o);
 const FRAMES = [...Object.entries(BIOMES).map(([biome, seed]) => ({ ...BASE, biome, seed, time: 3 })), { ...BASE, view: 'system', time: 2 }];
 
@@ -54,7 +54,7 @@ test('artefacts on: visible, deterministic and loop-locked', async () => {
       const row = { biome, changed };
       if (biome === 'lush') {
         row.deterministic = (await grab(page, { ...f, time: 4.25 })) === (await grab(page, { ...f, time: 4.25 }));
-        row.loopLocked = (await grab(page, { ...f, time: 0 })) === (await grab(page, { ...f, time: 12 }));
+        row.loopLocked = (await grab(page, { ...f, time: 0 })) === (await grab(page, { ...f, time: 24 }));
       }
       rows.push(row);
     }

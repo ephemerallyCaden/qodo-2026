@@ -218,23 +218,49 @@ const TOON_FRAG = /* glsl */ `
   void main() { gl_FragColor = vec4(uRamp[band(normalize(vNormalW))], 1.0); }
 `;
 
-// Clouds: a puff's own normal blended with the radial direction from the planet
-// centre, so overlapping puffs shade as one soft mass and only the outer edge is lumpy.
+// Clouds: each puff's normal is blended with two smooth fields, so the puffs of a mass
+// shade as ONE lumpy body instead of a pile of spheres:
+//   R  the planet-radial direction (the layer as a whole)
+//   M  the mass dome: the direction from the mass's anchor (aMass.xyz, a point below the
+//      centre of the puff's connected mass) to this fragment. It is a continuous function
+//      of position, so where two puffs of a mass meet their shading agrees and the seam
+//      vanishes; the mass reads as one dome lit from the top left.
+// The puff normal N keeps a small weight for a lumpy edge. aMass.w = 1 for cloud masses,
+// 0 for lava smoke (plain puff + radial blend).
+const CLOUD_VERT = /* glsl */ `
+  in vec4 aMass;
+  out vec3 vNormalW;
+  out vec3 vPosW;
+  out vec3 vAnchorW;
+  out float vMass;
+  void main() {
+    mat4 m = modelMatrix * instanceMatrix;
+    vNormalW = normalize(transpose(inverse(mat3(m))) * normal); // correct for squashed puffs
+    vec4 wp = m * vec4(position, 1.0);
+    vPosW = wp.xyz;
+    vAnchorW = (modelMatrix * vec4(aMass.xyz, 1.0)).xyz;
+    vMass = aMass.w;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
 const CLOUD_FRAG = /* glsl */ `
   ${BANDS}
   uniform vec3 uRamp[4];
   uniform vec3 uCenter;
   in vec3 vNormalW;
   in vec3 vPosW;
+  in vec3 vAnchorW;
+  in float vMass;
   void main() {
-    // Scalar blend of the two Lambert terms: dot(n, L) = (0.55 N.L + 0.8 R.L) / 1.35, with
-    // N the puff normal and R the planet-radial direction. The vector is left unnormalised
-    // (renormalising it made shading run against the puff's curvature), and the part of R
-    // that opposes the puff surface is dropped, so undersides facing the planet stay shaded.
-    vec3 g = normalize(vNormalW), r = normalize(vPosW - uCenter);
-    float rg = dot(r, g);
+    // Scalar blend of Lambert terms: dot(n, L) is a weighted mean of N.L, R.L and M.L. The
+    // vector is left unnormalised (renormalising made shading run against the puff's
+    // curvature), and the parts of R and M that oppose the puff surface are dropped, so
+    // undersides facing the planet stay shaded and n never points into the puff.
+    vec3 g = normalize(vNormalW), r = normalize(vPosW - uCenter), m = normalize(vPosW - vAnchorW);
+    float rg = dot(r, g), mg = dot(m, g);
     if (rg < 0.0) r -= rg * g;
-    vec3 n = (g * 0.55 + r * 0.8) / 1.35;
+    if (mg < 0.0) m -= mg * g;
+    vec3 n = mix((g * 0.55 + r * 0.8) / 1.35, (g * 0.1 + r * 0.3 + m * 1.1) / 1.5, vMass);
     gl_FragColor = vec4(uRamp[band(n)], 1.0);
   }
 `;
@@ -338,6 +364,41 @@ const PLANET_FRAG = /* glsl */ `
     gl_FragColor = vec4(artefacts(p, b, surface(p, b)), 1.0);
   }
 `;
+
+// Cloud shadow: the cloud puffs projected along the light onto the planet (r = 1.003),
+// drawn as the terrain one light band darker. Shares the surface material's uniforms,
+// so it is the planet's own colours; the offset from each cloud sells its height.
+const SHADOW_VERT = /* glsl */ `
+  uniform vec3 uLight;
+  uniform vec3 uCenter;
+  uniform float uRadius;
+  uniform mat4 uToSurface; // world -> surface-local (inverse of the surface's matrixWorld)
+  out vec3 vLocal;
+  out vec3 vHitW;
+  out float vReach;
+  void main() {
+    vec3 w = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;
+    vec3 oc = w - uCenter;
+    float R = uRadius * 1.003, b = dot(oc, uLight), disc = b * b - (dot(oc, oc) - R * R);
+    if (disc < 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; } // the light ray misses the planet: no shadow
+    float t = b - sqrt(disc);
+    vec3 hit = w - uLight * t;
+    vHitW = hit - uCenter;
+    vReach = t / uRadius; // how far the shadow falls from its cloud, in planet radii
+    vLocal = (uToSurface * vec4(hit, 1.0)).xyz;
+    gl_Position = projectionMatrix * viewMatrix * vec4(hit, 1.0);
+  }
+`;
+const SHADOW_FRAG = PLANET_FRAG.replace(/void main\(\) \{[\s\S]*\}\s*$/, `in vec3 vHitW;
+  in float vReach;
+  void main() {
+    if (vReach > 0.1) discard; // near the terminator shadows would smear across the disc
+    vec3 p = normalize(vLocal);
+    int b = band(normalize(vHitW));
+    if (b == 0) discard; // the night side is already the darkest step
+    gl_FragColor = vec4(surface(p, b - 1), 1.0);
+  }
+`);
 
 // Atmosphere haze: a slightly larger shell drawn only near the lit limb, so it rims
 // the planet and breaks the silhouette without reading as an outline.
@@ -471,11 +532,12 @@ export const BIOMES = {
 //   mass    frequency of the merged-mass field (higher = more, smaller masses)
 //   size, lift, strays  puff scale, how high dense cores dome, stray mini-clumps at the edges
 //   flat, stretch       radial squash and east-west elongation
+//   float   gap between the surface and the puff bases (a separate layer hovering above the terrain)
 //   fissure lava: short smoke plumes rise only off the glowing fissures, trailing downwind
 const WEATHER = {
-  cloud: { ramp: 'cloud', cover: 0.27, gain: 0.75, mass: 2.0, size: 1, lift: 1, strays: 0.012 }, // Planetarium: ~25-30%
-  thin: { ramp: 'cloud', cover: 0.27, gain: 0.8, mass: 2.2, size: 0.7, lift: 0.5, strays: 0.012 },
-  spore: { ramp: 'spore', cover: 0.27, gain: 0.8, mass: 2.2, size: 0.7, lift: 1.1, strays: 0.05 },
+  cloud: { ramp: 'cloud', cover: 0.27, gain: 0.57, float: 0.055, mass: 2.0, size: 1, lift: 1, strays: 0.012 }, // Planetarium: ~25-30%
+  thin: { ramp: 'cloud', cover: 0.27, gain: 0.63, float: 0.05, mass: 2.2, size: 0.7, lift: 0.5, strays: 0.012 },
+  spore: { ramp: 'spore', cover: 0.27, gain: 0.62, float: 0.05, mass: 2.2, size: 0.7, lift: 1.1, strays: 0.05 },
   ash: { ramp: 'ash', cover: 0.08, gain: 0.3, size: 0.45, lift: 0.3, flat: 0.3, stretch: 3.0, fissure: true }, // light, low, streaky smoke
 };
 
@@ -485,9 +547,13 @@ const MAX_PUFFS = 3200; // enough for the densest weather (ocean) at the slider 
 const ramp5 = () => ({ value: Array.from({ length: 5 }, () => new THREE.Color()) });
 
 // Loop lock: every planet layer completes whole cycles per LOOP.period (seconds).
-// The surface (and the clouds riding on it) turns once, each moon orbits once and
-// the ring's 5-fold repeating debris pattern advances one sector (1/5 turn).
-export const LOOP = { period: 12 };
+// The surface turns surfaceTurns times and the cloud layer cloudTurns times, so the
+// clouds drift over the terrain (24 s at 2:3 = clouds 1.5x the surface; 1 turn per 12 s,
+// as before). Per surface turn (one "cycle", period / surfaceTurns), each moon orbits
+// once, the ring's 5-fold debris pattern advances one sector (1/5 turn) and the crew
+// bob and blink once.
+export const LOOP = { period: 24, surfaceTurns: 2, cloudTurns: 3 };
+const cycle = () => LOOP.period / LOOP.surfaceTurns;
 const RING_SECTORS = 5;
 
 // Ring debris: chunky points. aType 0 = 1 px, 1 = 2x2 block, 2 = 3x3 plus.
@@ -541,7 +607,7 @@ function makePlanet() {
     uArtN: { value: 0 }, uArtTick: { value: 0 }, uArtTeal: { value: 0 }, uArtTealC: { value: new THREE.Color(ACCENTS.reveal[3]) }, // [OIII] teal, garnish only
     uArtSec: { value: Array.from({ length: MAX_ART }, () => new THREE.Vector4(0, 0, 1, 4)) }, uViewSize: VIEW_SIZE,
   });
-  const spin = new THREE.Group(); // surface + clouds turn together
+  const spin = new THREE.Group(); // the surface turns surfaceTurns per loop
   const surface = new THREE.Mesh(PLANET_GEO, surfaceMat);
   spin.add(surface);
   group.add(spin);
@@ -558,13 +624,29 @@ function makePlanet() {
   halo.visible = false;
   group.add(halo);
 
-  // Clouds / ash / spores: clusters of overlapping puffs sitting on the surface, so
-  // the tops bulge past the silhouette at the limb. They ride with the surface.
+  // Clouds / ash / spores: clusters of overlapping puffs floating a little above the
+  // surface (WEATHER.float), so the tops bulge past the silhouette at the limb. They
+  // turn as their own layer (cloudTurns per loop), drifting over the terrain.
   const cloudMat = paletteMaterial(CLOUD_FRAG, { uRamp: 'cloud' }, {
     uBands: { value: new THREE.Vector3(-0.3, 0.12, 0.42) }, uCenter: { value: new THREE.Vector3() },
   });
-  const puffs = new THREE.InstancedMesh(PUFF_GEO, cloudMat, MAX_PUFFS);
-  spin.add(puffs);
+  cloudMat.vertexShader = CLOUD_VERT;
+  const puffGeo = PUFF_GEO.clone(); // own copy: carries this planet's per-puff mass anchors
+  const massAttr = new THREE.InstancedBufferAttribute(new Float32Array(MAX_PUFFS * 4), 4);
+  puffGeo.setAttribute('aMass', massAttr);
+  const puffs = new THREE.InstancedMesh(puffGeo, cloudMat, MAX_PUFFS);
+  const sky = new THREE.Group();
+  sky.add(puffs);
+  group.add(sky);
+  // Cloud shadow: same instances, projected onto the surface (shares its uniforms and ramps).
+  const shadowMat = new THREE.ShaderMaterial({
+    vertexShader: SHADOW_VERT, fragmentShader: SHADOW_FRAG, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    uniforms: { ...surfaceMat.uniforms, uCenter: { value: new THREE.Vector3() }, uRadius: { value: 1 }, uToSurface: { value: new THREE.Matrix4() } },
+  });
+  const shadow = new THREE.InstancedMesh(puffGeo, shadowMat, MAX_PUFFS);
+  shadow.instanceMatrix = puffs.instanceMatrix;
+  shadow.frustumCulled = puffs.frustumCulled = false; // instances span the whole planet
+  sky.add(shadow);
 
   // Ring: clustered chunky debris. A modifier on any biome: off, thin or wide.
   const ringMat = new THREE.ShaderMaterial({
@@ -623,12 +705,19 @@ function makePlanet() {
     // dome. Puffs are squashed radially so clumps hug the surface; `stretch` elongates
     // them east-west (streaky smoke).
     let n = 0;
+    let dirsOf = [];
+    let masses = [];
+    let mass = -1; // index of the mass the next puffs belong to (-1 = no mass shading)
+    const puffMass = [];
+    const float = weather?.float ?? 0;
+    // Bases float at about 1 + float; lift raises dense cores so they dome.
     const put = (dir, size, lift, flat = 0.6, stretch = 1) => {
       if (n >= MAX_PUFFS) return;
       const d = dir.clone().normalize();
       const { east, north } = tangentFrame(THREE, d); // right-handed: det > 0, outer shell stays front-facing
       m4.makeBasis(east.multiplyScalar(size * stretch), d.clone().multiplyScalar(size * flat), north.multiplyScalar(size));
-      m4.setPosition(d.multiplyScalar(1 + size * flat * lift));
+      m4.setPosition(d.multiplyScalar(1 + float + size * flat * (0.75 + lift * 0.5)));
+      puffMass[n] = mass;
       puffs.setMatrixAt(n++, m4);
     };
     // A lone sphere reads as a white ball, so thin weather is built as a mini-clump:
@@ -648,7 +737,7 @@ function makePlanet() {
       const stretch = weather.stretch ?? 1;
       // smaller puffs need denser sites so masses stay solid; fissures are thin, so lava samples finer
       const SITES = weather.fissure ? 4000 : Math.round(1500 / weather.size ** 2);
-      const dirs = [];
+      const dirs = (dirsOf = []);
       for (let i = 0; i < SITES; i++) {
         const y = 1 - ((i + 0.5) / SITES) * 2;
         const r = Math.sqrt(1 - y * y);
@@ -671,12 +760,32 @@ function makePlanet() {
       }
       const sorted = [...raw].sort((a, b) => b - a);
       const thr = share > 0 ? sorted[Math.min(SITES - 1, Math.round(share * SITES))] - 0.012 : Infinity;
+      // Masses: the cloudy sites joined to their neighbours (union-find), so each mass can
+      // shade as one dome. Strays and lava plumes are their own small masses.
+      const cloudy = weather.fissure ? [] : dirs.map((_, i) => i).filter((i) => raw[i] - thr > 0.012);
+      const root = new Map(cloudy.map((i) => [i, i]));
+      const find = (i) => { while (root.get(i) !== i) { root.set(i, root.get(root.get(i))); i = root.get(i); } return i; };
+      const near = Math.cos(1.8 * Math.sqrt((4 * Math.PI) / SITES)); // ~1.8 site spacings
+      for (let a = 0; a < cloudy.length; a++) for (let b = a + 1; b < cloudy.length; b++) {
+        if (dirs[cloudy[a]].dot(dirs[cloudy[b]]) > near) root.set(find(cloudy[a]), find(cloudy[b]));
+      }
+      const massOf = new Map(); // site -> mass index
+      masses = [];
+      for (const i of cloudy) {
+        const r = find(i);
+        if (!massOf.has(r)) { massOf.set(r, masses.length); masses.push([]); }
+        massOf.set(i, massOf.get(r));
+        masses[massOf.get(r)].push(i);
+      }
+      const newMass = (sites) => { masses.push(sites); return masses.length - 1; };
       for (let i = 0; i < SITES; i++) {
         const density = raw[i] - thr;
         const jitter = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).multiplyScalar(0.05);
         const dir = dirs[i];
+        mass = massOf.get(i) ?? -1;
         if (weather.fissure) {
           if (density <= 0.012) continue;
+          mass = -1; // smoke keeps plain puff shading
           // a plume: a lead puff on the fissure, then smaller, thinner puffs trailing east
           const { east } = tangentFrame(THREE, dir);
           const size = (0.022 + rnd() * 0.014) * weather.size * 2;
@@ -686,13 +795,31 @@ function makePlanet() {
           }
         } else if (density > 0.012) {
           const core = Math.min(1, density * 7);
-          clump(dir.add(jitter), (0.032 + core * 0.05 + rnd() * 0.012) * weather.size, (0.2 + core * 0.9) * weather.lift, core < 0.35 ? 2 + Math.floor(rnd() * 2) : 1, flat, stretch);
+          // radius >= ~0.06, wider than half the site spacing (~0.09 at size 1): neighbours always overlap, so a mass is one body
+          clump(dir.add(jitter), (0.058 + core * 0.04 + rnd() * 0.01) * weather.size, (0.2 + core * 0.9) * weather.lift, core < 0.35 ? 2 + Math.floor(rnd() * 2) : 1, flat, stretch);
         } else if (density > -0.08 && rnd() < weather.strays) {
+          mass = newMass([i]);
           clump(dir.add(jitter), (0.026 + rnd() * 0.012) * weather.size, 0.3 * weather.lift, 2 + Math.floor(rnd() * 2), flat, stretch);
         }
       }
     }
-    puffs.count = n;
+    // Mass anchors: below each mass's centre by about its radius (at least a puff's size),
+    // so the dome normal tilts out toward the mass edge.
+    const anchors = (weather && !weather.fissure ? masses : []).map((sites) => {
+      const c = new THREE.Vector3();
+      for (const i of sites) c.add(dirsOf[i]);
+      c.normalize();
+      const radius = Math.acos(Math.min(1, Math.min(...sites.map((i) => dirsOf[i].dot(c)))));
+      return c.multiplyScalar(1 + float - Math.min(0.5, Math.max(0.06, radius * 1.1)));
+    });
+    for (let i = 0; i < n; i++) {
+      const a = anchors[puffMass[i]];
+      if (a) massAttr.setXYZW(i, a.x, a.y, a.z, 1);
+      else massAttr.setXYZW(i, 0, 0, 0, 0);
+    }
+    massAttr.needsUpdate = true;
+    puffs.count = shadow.count = n;
+    shadow.visible = !!weather && !weather.fissure;
     puffs.instanceMatrix.needsUpdate = true;
 
     // Ring debris (Planetarium): >= 70% chunky 2x2 / plus particles grouped in
@@ -742,21 +869,27 @@ function makePlanet() {
 
   /** phase in [0, 1): position in the shared loop. */
   function update(phase) {
-    const turn = phase * Math.PI * 2;
-    spin.rotation.y = -turn; // one turn per loop, right -> left
-    surfaceMat.uniforms.uArtTick.value = Math.floor(phase * ART_TICKS + 1e-6) % ART_TICKS; // glitches re-roll on loop-locked ticks
-    ring.rotation.y = -turn / RING_SECTORS; // debris flow: one sector per loop
+    const turn = phase * Math.PI * 2 * LOOP.surfaceTurns; // whole surface turns per loop
+    spin.rotation.y = -turn; // right -> left
+    sky.rotation.y = -phase * Math.PI * 2 * LOOP.cloudTurns; // clouds drift ahead of the ground
+    const ticks = ART_TICKS * LOOP.surfaceTurns;
+    surfaceMat.uniforms.uArtTick.value = Math.floor(phase * ticks + 1e-6) % ticks; // glitches re-roll on loop-locked ticks
+    ring.rotation.y = -turn / RING_SECTORS; // debris flow: one sector per surface turn
     for (const m of MOONS) {
-      const a = turn + m.offset * Math.PI * 2; // one orbit per loop; no easing
+      const a = turn + m.offset * Math.PI * 2; // one orbit per surface turn; no easing
       const p = new THREE.Vector3(Math.cos(a) * m.orbit, -Math.sin(a) * m.orbit * Math.sin(m.incl), Math.sin(a) * m.orbit * Math.cos(m.incl));
       m.mesh.position.copy(p.applyAxisAngle(up, m.yaw));
     }
+    group.updateMatrixWorld(true);
     group.getWorldPosition(ringMat.uniforms.uCenter.value);
     cloudMat.uniforms.uCenter.value.copy(ringMat.uniforms.uCenter.value);
-    ringMat.uniforms.uRadius.value = group.scale.x;
+    shadowMat.uniforms.uCenter.value.copy(ringMat.uniforms.uCenter.value);
+    ringMat.uniforms.uRadius.value = shadowMat.uniforms.uRadius.value = group.scale.x;
+    shadowMat.uniforms.uToSurface.value.copy(surface.matrixWorld).invert();
   }
-  function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false } = {}) {
+  function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false, cloudShadow = true } = {}) {
     for (const m of MOONS) m.mesh.visible = moons;
+    shadowMat.visible = cloudShadow;
     halo.visible = showHalo;
     surfaceMat.uniforms.uArtN.value = Math.min(artefacts, MAX_ART);
     surfaceMat.uniforms.uArtTeal.value = teal ? 1 : 0;
@@ -944,7 +1077,7 @@ function makeAstronaut(colorKey) {
   const q = new THREE.Quaternion();
   // Relaxed float: elbows and knees softly bent; the bends breathe with the bob.
   function pose(t) {
-    const W = (Math.PI * 2) / LOOP.period; // loop-locked: whole cycles per loop
+    const W = (Math.PI * 2) / cycle(); // loop-locked: whole cycles per loop
     const bob = Math.sin(t * 2 * W);
     const sway = Math.sin(t * W + 0.8);
     for (const [k, s] of [[0, -1], [3, 1]]) {
@@ -965,7 +1098,7 @@ function makeAstronaut(colorKey) {
 
   function update(t) {
     const p = t + root.userData.phase;
-    const W = (Math.PI * 2) / LOOP.period;
+    const W = (Math.PI * 2) / cycle();
     body.position.y = Math.sin(p * 2 * W) * 0.05;
     body.rotation.z = Math.sin(p * W) * 0.07;
     body.rotation.x = Math.sin(p * W + 1.3) * 0.05;
@@ -986,7 +1119,7 @@ function makeAstronaut(colorKey) {
   // Blink: a quick Y-squash of the eyes once per loop, staggered per astronaut.
   const BLINK_LEN = 0.18;
   function blink(p) {
-    const P = LOOP.period;
+    const P = cycle();
     const k = ((p + root.userData.phase * 0.37) % P + P) % P;
     if (k > BLINK_LEN) return 1;
     return 1 - Math.sin((k / BLINK_LEN) * Math.PI) * 0.88;
@@ -1137,7 +1270,7 @@ const VIEWS = {
 // ---------------------------------------------------------------- state
 const state = {
   view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
-  time: null, ui: true, palette: 'final', eyes: 'auto', period: 12, moons: true, halo: false,
+  time: null, ui: true, palette: 'final', eyes: 'auto', period: 24, surfaceTurns: 2, cloudTurns: 3, moons: true, halo: false, cloudShadow: true,
   artefacts: false, artCount: 3, artTeal: false, // planet artefacts (artefacts.js)
   cover: null, // cloud-cover override (0..1) for the hero planets; null = the biome's WEATHER cover
 };
@@ -1170,7 +1303,9 @@ function resize() {
 
 function applyState() {
   LOOP.period = Math.max(1, state.period);
-  const art = { artefacts: state.artefacts ? state.artCount : 0, teal: state.artTeal };
+  LOOP.surfaceTurns = Math.max(1, Math.round(state.surfaceTurns));
+  LOOP.cloudTurns = Math.max(0, Math.round(state.cloudTurns));
+  const art = { artefacts: state.artefacts ? state.artCount : 0, teal: state.artTeal, cloudShadow: state.cloudShadow };
   planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   controls.minDistance = minOrbit();
@@ -1246,7 +1381,10 @@ function bindUi() {
   $('artefacts').addEventListener('change', (e) => { state.artefacts = e.target.checked; applyState(); });
   $('art-count').addEventListener('input', (e) => { state.artCount = +e.target.value; $('art-count-readout').textContent = state.artCount; applyState(); });
   $('art-teal').addEventListener('change', (e) => { state.artTeal = e.target.checked; applyState(); });
-  $('period').addEventListener('change', (e) => { state.period = +e.target.value || 12; applyState(); });
+  $('period').addEventListener('change', (e) => { state.period = +e.target.value || 24; applyState(); });
+  $('surface-turns').addEventListener('change', (e) => { state.surfaceTurns = +e.target.value || 1; applyState(); });
+  $('cloud-turns').addEventListener('change', (e) => { state.cloudTurns = +e.target.value; applyState(); });
+  $('cloud-shadow').addEventListener('change', (e) => { state.cloudShadow = e.target.checked; applyState(); });
   const fill = (sel, items, label) => items.forEach((v, i) => sel.add(new Option(label(v), String(i))));
   fill($('eyes'), EYE_DESIGNS, (d) => d.name);
   // Published palettes: the 25 contact-sheet picks, then the spares.

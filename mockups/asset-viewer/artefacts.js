@@ -14,11 +14,11 @@
 //   tear    the cell's rows slid around the axis by different amounts
 // Differences from the reference: everything (projection, size, cell scale) is worked
 // out in the shader, so it works for any camera and planet (sectors under 1 cell are skipped); time is a loop-locked tick
-// (ART_TICKS per loop, every re-roll rate divides it); glyphs that would vanish into
+// (ART_TICKS per surface turn, every re-roll rate divides it); glyphs that would vanish into
 // the terrain (lava's near-black crust) take inverted lightness so they stay legible.
 
 export const MAX_ART = 5;
-export const ART_TICKS = 180; // 15 ticks/s at the default 12 s loop; rates 2..6 all divide it
+export const ART_TICKS = 180; // per surface turn (15 ticks/s at 12 s per turn); rates 2..6 all divide it
 
 // 5x5 glyphs ('#' = ink), drawn in 6 px cells; from mockups/ascii-fx/glyphs.js.
 const GLYPHS = {
@@ -55,7 +55,7 @@ export const ARTEFACTS_GLSL = /* glsl */ `
   uniform mat4 modelMatrix;
   uniform mat4 projectionMatrix;
   uniform int uArtN;            // 0 = off: artefacts() returns c untouched
-  uniform int uArtTick;         // 0..${ART_TICKS - 1}, loop-locked
+  uniform int uArtTick;         // 0..ART_TICKS * surfaceTurns - 1, loop-locked
   uniform int uArtTeal;
   uniform vec3 uArtTealC;
   uniform vec4 uArtSec[${MAX_ART}]; // xyz = centre direction (planet frame), w = size in cells

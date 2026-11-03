@@ -1,15 +1,15 @@
 // Loop-frame variant of the hollow-ring render test (debug/repro-loop-rings.mjs as a
-// test): LOOP_FRAMES (default 12; LOOP_FRAMES=48 for the full sweep) frames across the 12 s hero loop that hero-loop.gif is rendered from
+// test): LOOP_FRAMES (default 12; LOOP_FRAMES=48 for the full sweep) frames across the 24 s hero loop that hero-loop.gif is rendered from
 // (planet view, lush seed 7, thin ring, moons, 180p). Every frame must draw each puff's
 // outer shell over its whole disc, so the GIF can't ship with the ring artefact.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openViewer } from '../debug/repro-hollow-clouds.mjs';
 
-const PERIOD = 12, N = Number(process.env.LOOP_FRAMES ?? 12);
-const BASE = { view: 'planet', palette: 'final', biome: 'lush', seed: 7, size: 1, ringMode: 'thin', moons: true, period: PERIOD, depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, halo: false, eyes: 'auto' };
+const PERIOD = 24, N = Number(process.env.LOOP_FRAMES ?? 12); // the default loop: 24 s, surface 2 turns, clouds 3
+const BASE = { view: 'planet', palette: 'final', biome: 'lush', seed: 7, size: 1, ringMode: 'thin', moons: true, period: PERIOD, surfaceTurns: 2, cloudTurns: 3, depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, halo: false, eyes: 'auto' };
 
-test(`hero loop: cloud puffs are solid in every sampled frame (${N} frames / 12 s)`, async () => {
+test(`hero loop: cloud puffs are solid in every sampled frame (${N} frames / ${PERIOD} s)`, async () => {
   const { browser, page } = await openViewer();
   try {
     const rows = [];
