@@ -1,0 +1,16 @@
+{
+  "name": "day1-hype",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Hype GIF for Codebase Space Explorer: three.js scene with a pixel-art post-process, rendered frame by frame in headless Chromium.",
+  "type": "module",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}
