@@ -11,7 +11,7 @@ npm install
 npm run dev      # http://127.0.0.1:5180/  (loopback only; PORT=... to change)
 npm run shots    # re-capture screenshots/ in headless Chromium (no server, no network)
 npm run palettes # 25 Lospec-palette renders + labelled contact sheet in screenshots/palettes/
-npm run planets  # biome variety sheet, system shot, biome x palette matrix in screenshots/planets/
+npm run planets  # biome variety sheet + system shot in screenshots/planets/
 ```
 
 `node shots.mjs depth-scene crew-closeup` captures just the named shots.
@@ -31,7 +31,7 @@ npm run planets  # biome variety sheet, system shot, biome x palette matrix in s
 | pixel h | Internal height from 120 to 480. Width is 16:9, and the canvas is upscaled by the largest integer factor that fits, with nearest-neighbour filtering |
 | depth fade | Turns depth darkening on or off |
 | rotate | Pauses or resumes planet and cloud spin |
-| palette | Apollo (default), v2, v1 (batch 1 pastels), or any of the 25 Lospec palettes (plus spares) |
+| palette | **final** (default: BLK 36 crew and space + Earth-like planets), v2, v1, or any of the 25 Lospec palettes (plus spares) |
 | drag / scroll | Orbits and zooms the camera |
 
 ## How it's built (`viewer.js`)
@@ -42,7 +42,7 @@ npm run planets  # biome variety sheet, system shot, biome x palette matrix in s
 - **Clouds**: instanced icosphere puffs squashed to 60% along the radial axis, so they hug the surface. Placement is noise-driven, like Planetarium. A low-frequency fbm field makes a few large merged masses, and a latitude-stretched field makes long east-west streaks. Wherever both fields are low the sky stays clear. Denser spots get bigger, higher puffs, so cores merge and dome past the silhouette, and a few small strays scatter at the edges of the weather. Every puff gets at least one smaller satellite beside it, and thin weather and strays get 2–3, so no lone sphere reads as a white ball. Each puff's normal is blended with the planet's radial direction, so a mass shades as one body with a lumpy edge. The clouds spin slightly faster than the ground.
 - **Ring**: one thin band of 1,500 points, densest in the middle. Every dot is exactly 1 internal pixel at every resolution. Points in the planet's shadow use the darkest ring colour.
 - **Astronaut**: one signed-distance body, raymarched inside a proxy box and composited with `gl_FragDepth`. It's made from primitives in chibi proportions: a helmet sphere (about the top 55%), a short torso, a rounded-box torso, a backpack wider than the torso, mitts and boots. Each arm and leg is one continuous bent tube (shoulder→elbow→wrist, hip→knee→ankle), smooth-unioned so the bend has no seam. Elbows and knees are softly bent, and they flex with the idle bob. Because it is one surface, one lighting pass shades the whole body. Cast shadows (arm on torso, helmet on shoulders) and contact occlusion come from marching the same field toward the light, then snapping to the 4-step suit ramp. The suit is a cool white. The visor is a ~4:3 rounded-rect "screen" (a superellipse in yaw and pitch) with a gear-tone bezel, in two near-black blue tones plus a fixed 3 px monitor-style glint in the screen's top-left corner, clear of the face. **Contributor colour** is on the backpack stripe and a band around each upper arm (shoulder bands), so it's readable from any angle.
-- **Faces** (`faces.js`): the ApprenticeHack Avatar V2 eye designs, eyes only. There are 10: dots, cyclops, visor slit, binocular, three eyes, happy, LED bar, heartbeat, slant and X eyes. Shapes and proportions follow `js/avatar-v2.js`: `s` is the screen box and `e = min(s.h, s.w*0.5)*1.12`. Each design is rasterised into a 32×24 texture per astronaut by testing texel centres against the exact geometry, so edges are pixel-clean with no anti-aliasing. That texture is sampled with `texelFetch` from the visor's yaw/pitch, so the eyes turn with the head. Eyes are centred on the 4:3 screen and glow, unlit, in the contributor colour; pupils (cyclops, binocular) cut back to the visor colour. One deviation: `happy` uses a thinner stroke than the source's 2.6 minimum, which read as a chunky "A" at 32 px. The design is picked from the handle with ApprenticeHack's `hashStr(handle + 'e')`: `@caden` gets visor slit, `@mira` gets dots and `@juno` gets X eyes. Each astronaut blinks every ~4.3 s with a quick, staggered Y-squash. A fixed 3 px glint sits in the screen's top-left corner, clear of the eyes.
+- **Faces** (`faces.js`): the ApprenticeHack Avatar V2 eye designs, eyes only. There are 10: dots, cyclops, visor slit, binocular, three eyes, happy, LED bar, heartbeat, slant and X eyes. They are evaluated **analytically per fragment** as 2D SDFs in visor-screen space (`EYES_GLSL`, inside the astronaut shader), so they are resolution-independent: the normal internal-resolution render pixelates them like the rest of the model. Geometry follows `js/avatar-v2.js`: `s` is a 32×24 screen box and `e = min(s.h, s.w*0.5)*1.12`, with the same offsets, radii and round-cap strokes. Eyes are centred on the 4:3 screen and glow, unlit, in the contributor colour; pupils (cyclops, binocular) cut back to the visor colour. One deviation: `happy` uses a thinner stroke (e*0.11) than the source. The design comes from ApprenticeHack's `hashStr(handle + 'e')`: `@caden` gets visor slit, `@mira` gets dots and `@juno` gets X eyes. Each astronaut blinks every ~4.3 s with a quick, staggered Y-squash (`uBlink`). A small fixed glint sits in the screen's top-left corner, clear of the eyes.
 - **Depth darkening**: each whole object picks one of four levels from its camera distance (switch points at 12, 26 and 44). Its ramps are swapped for precomputed steps: `lerp(colour, #1b1f4a, 0 / 0.38 / 0.72)`, then `lerp(colour, #17172f, 0.88)` for the last step. That gives about -35% value at mid, about -70% far, and a dark navy silhouette with a faint hint of colour furthest out. The silhouette tint sits a touch above the near-black space so it still reads. Every step is a fixed palette colour; there are no gradients.
 
 ## Palette
@@ -65,6 +65,13 @@ v2 is the current palette. v1 (the batch 1 pastels) stays selectable from the `p
 | suit (cool white, both) | `#68718f` `#a3aec8` `#d3dcea` `#f2f6fc` | |
 | gear: mitts, boots, backpack, visor rim (both) | `#4a5170` `#77819f` `#a2adc6` `#c4cee0` | |
 | visor (both) | `#0f1329` `#232f58`, glint `#f4f8ff` | |
+
+## The "final" palette (revision 4)
+
+The human's pick:
+- **Astronauts:** suit, gear, visor, contributor accents and eye glow use **BLK 36 exactly** as mapped for the contact sheet (tile `palettes/19-blk-36.png`).
+- **Space, stars and depth:** also BLK 36 exactly (true black space, depth steps snapped to BLK 36's darks).
+- **Planets, rings and atmosphere:** come from the plain data in `planet-ramps.js`. Lush, cloud, cap and ring are the v2 ramps, and the other biomes have naturalistic ramps in the same spirit. Swap that one file to retune planet colours; the ring colours are pending colour research.
 
 ## Biomes (revision 4)
 
@@ -139,7 +146,6 @@ Every tile is the same shot: the `depth` view (crew in front, hero planet, then 
 | `screenshots/pixel-120.png` | Chunkier pixels: 213×120 ×6 |
 | `screenshots/pixel-360.png` | Finer pixels: 640×360 ×2 |
 | `screenshots/palettes/contact-sheet.png` | The 25 palettes, 5×5, numbered and labelled; `NN-<slug>.png` are the full-size frames |
-| `screenshots/planets/variety-sheet.png` | Every biome (and extra) × 3 seeds in Apollo, S/M/L/XL sizes, rings as a modifier; `planets/<biome>-<seed>.png` are the full frames |
+| `screenshots/planets/variety-sheet.png` | Every biome (and extra) × 3 seeds in the final palette, S/M/L/XL sizes, rings as a modifier; `planets/<biome>-<seed>.png` are the full frames |
 | `screenshots/planets/system-shot.png` | 8 mixed planets at several depths and sizes plus the crew (previews the GIF composition) |
-| `screenshots/planets/biome-x-palette.png` | 6 core biomes × Apollo, BLK 36, Endesga 32, Rosy 42, TwilioQuest 76 |
 | `screenshots/palette-before-after.png` | Depth scene, v1 palette (left) vs v2 (right). `palette-v1-depth.png` is its input |

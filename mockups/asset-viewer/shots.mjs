@@ -2,7 +2,7 @@
 // Playwright request interception, so no socket is opened and nothing touches the network.
 // Usage: node shots.mjs [name ...]   (no names = all shots)
 //        node shots.mjs --palettes   (25 Lospec palettes + labelled contact sheet)
-//        node shots.mjs --planets    (biome variety sheet, system shot, biome x palette matrix)
+//        node shots.mjs --planets    (biome variety sheet + system shot)
 import { chromium } from 'playwright';
 import { access, mkdir, readFile, rm } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
@@ -28,7 +28,7 @@ const SHOTS = {
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'v2' };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final' };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
@@ -126,7 +126,7 @@ if (PLANET_MODE) {
   const dir = path.join(outDir, 'planets');
   await rm(dir, { recursive: true, force: true });
   await mkdir(dir, { recursive: true });
-  const STUDIO = { view: 'studio', time: 3, palette: 'lospec:apollo' };
+  const STUDIO = { view: 'studio', time: 3, palette: 'final' };
   const tiles = [];
   for (const [label, biome, variants] of PLANET_SET) {
     for (const [seed, size, ringMode] of variants) {
@@ -139,21 +139,9 @@ if (PLANET_MODE) {
   await contactSheet(tiles, 6, path.join(dir, 'variety-sheet.png'));
   console.log(`screenshots/planets/variety-sheet.png (${tiles.length} tiles)`);
 
-  await writeFile(path.join(dir, 'system-shot.png'), await capture({ view: 'system', time: 2, palette: 'lospec:apollo' }));
+  await writeFile(path.join(dir, 'system-shot.png'), await capture({ view: 'system', time: 2, palette: 'final' }));
   console.log('screenshots/planets/system-shot.png');
 
-  // 6 core biomes x the 5 shortlisted palettes.
-  const CORE = [['lush', 'lush', 7, 'off'], ['ocean', 'ocean', 5, 'off'], ['ice', 'ice', 8, 'off'], ['desert', 'desert', 3, 'off'], ['lava', 'lava', 11, 'off'], ['ringed', 'desert', 3, 'wide']];
-  const TOP5 = ['apollo', 'blk-36', 'endesga-32', 'rosy-42', 'twilioquest-76'];
-  const matrix = [];
-  for (const slug of TOP5) {
-    for (const [label, biome, seed, ringMode] of CORE) {
-      const png = await capture({ view: 'studio', time: 3, palette: `lospec:${slug}`, biome, seed, size: 1, ringMode });
-      matrix.push({ label: `${LOSPEC[slug].name} · ${label}`, url: asUrl(png) });
-    }
-  }
-  await contactSheet(matrix, 6, path.join(dir, 'biome-x-palette.png'));
-  console.log('screenshots/planets/biome-x-palette.png');
 }
 
 if (PALETTE_MODE) {

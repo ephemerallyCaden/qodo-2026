@@ -4,9 +4,10 @@
 // with nearest-neighbour, so pixels stay crisp. There's no dithering and no outline.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { FACE_W, FACE_H, EYE_DESIGNS, faceBitmap, eyesFor } from './faces.js';
+import { EYE_DESIGNS, EYES_GLSL, eyesFor } from './faces.js';
 import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
 import { mapPalette, mapColors, snapToPool } from './palette-map.js';
+import { PLANET_RAMPS } from './planet-ramps.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -61,6 +62,9 @@ for (const slug of [...LOSPEC_ORDER, ...SPARES]) PALETTES[`lospec:${slug}`] = ma
 // v1/v2 get the biome roles mapped from their own colours; their hand-made ramps win.
 const hexesIn = (o) => (typeof o === 'string' ? (o.startsWith('#') ? [o] : []) : o && typeof o === 'object' ? Object.values(o).flatMap(hexesIn) : []);
 for (const k of ['v1', 'v2']) PALETTES[k] = { ...mapColors(hexesIn(PALETTES[k])), ...PALETTES[k], snap: null };
+// "final": the human's pick. Crew, space, stars and depth exactly as BLK 36 (tile 19);
+// planets, rings and accents from the swappable PLANET_RAMPS data.
+PALETTES.final = { ...PALETTES['lospec:blk-36'], ...PLANET_RAMPS, name: 'final (BLK 36 crew + Earth-like planets)' };
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
 const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
 let paletteName = 'v2';
@@ -579,7 +583,7 @@ const ASTRO_FRAG = /* glsl */ `
   uniform vec3 uAccent[4];
   uniform vec3 uVisor[2];
   uniform vec3 uGlint;
-  uniform sampler2D uFace;
+  ${EYES_GLSL}
   in vec3 vPosW;
 
   // Chibi: the helmet is ~55% of the figure, with a short torso and stubby limbs.
@@ -707,12 +711,11 @@ const ASTRO_FRAG = /* glsl */ `
     if (r == 3) {
       vec3 refl = reflect(rd, n);
       c = (refl.y > 0.18 && b >= 2) ? uVisor[1] : uVisor[0];
-      // The face glows in the contributor colour, unlit, so it reads like a screen.
+      // Eyes: evaluated analytically at the hit point, glowing unlit in the contributor
+      // colour; the internal-resolution render is what pixelates them.
       vec2 uv = visorUV(p).xy;
-      ivec2 px = clamp(ivec2(uv * vec2(${FACE_W}.0, ${FACE_H}.0)), ivec2(0), ivec2(${FACE_W - 1}, ${FACE_H - 1}));
-      if (texelFetch(uFace, px, 0).r > 0.5) c = uAccent[2];
-      // Monitor reflection: a fixed 3 px glint in the screen's top-left corner, clear of the face.
-      if ((px.y == 3 && (px.x == 4 || px.x == 5)) || (px.y == 4 && px.x == 4)) c = uGlint;
+      if (eyeLit(uv)) c = uAccent[2];
+      if (glintLit(uv)) c = uGlint;
     } else if (r == 2) c = uAccent[b];
     else if (r == 1) c = uGear[b];
     else c = uSuit[b];
@@ -724,15 +727,8 @@ const ASTRO_FRAG = /* glsl */ `
 
 const PROXY_GEO = new THREE.BoxGeometry(1, 1.14, 0.84).translate(0, 0.49, 0);
 
-function makeFaceTexture() {
-  const tex = new THREE.DataTexture(new Uint8Array(FACE_W * FACE_H * 4), FACE_W, FACE_H);
-  tex.magFilter = tex.minFilter = THREE.NearestFilter;
-  return tex;
-}
-
 function makeAstronaut(colorKey) {
   const root = new THREE.Group();
-  const face = makeFaceTexture();
   const body = new THREE.Group();
   root.add(body);
   const joints = Array.from({ length: 12 }, () => new THREE.Vector3());
@@ -740,7 +736,7 @@ function makeAstronaut(colorKey) {
     uSuit: 'suit', uGear: 'gear', uAccent: `contributors.${colorKey}`, uVisor: 'visor', uGlint: 'glint',
   }, {
     uInvModel: { value: new THREE.Matrix4() }, uModel: { value: null }, uProj: { value: camera.projectionMatrix },
-    uLightLocal: { value: new THREE.Vector3() }, uJ: { value: joints }, uFace: { value: face },
+    uLightLocal: { value: new THREE.Vector3() }, uJ: { value: joints }, uEyes: { value: 0 }, uBlink: { value: 1 },
   }, { side: THREE.BackSide });
   const proxy = new THREE.Mesh(PROXY_GEO, mat);
   mat.uniforms.uModel.value = proxy.matrixWorld;
@@ -773,7 +769,7 @@ function makeAstronaut(colorKey) {
     body.rotation.z = Math.sin(p * 1.1) * 0.07;
     body.rotation.x = Math.sin(p * 0.9) * 0.05;
     pose(p);
-    drawFace(blink(p));
+    mat.uniforms.uBlink.value = blink(p);
     root.updateMatrixWorld(true);
     mat.uniforms.uInvModel.value.copy(proxy.matrixWorld).invert();
     proxy.matrixWorld.decompose(new THREE.Vector3(), q, new THREE.Vector3());
@@ -783,18 +779,8 @@ function makeAstronaut(colorKey) {
     mat.userData.ramps.uAccent = `contributors.${key}`;
     root.userData.depthLevel = -1; // force a re-tint
   }
-  let eyes = 0;
-  let squash = -1;
-  function drawFace(sq) {
-    if (sq === squash) return;
-    squash = sq;
-    face.image.data.set(faceBitmap(eyes, sq));
-    face.needsUpdate = true;
-  }
   function setFace(idx) {
-    eyes = idx;
-    squash = -1;
-    drawFace(1);
+    mat.uniforms.uEyes.value = idx;
   }
   // Occasional blink: a quick Y-squash of the eyes, staggered per astronaut.
   const BLINK_PERIOD = 4.3;
@@ -802,7 +788,7 @@ function makeAstronaut(colorKey) {
   function blink(p) {
     const k = ((p * 1.0 + root.userData.phase * 0.37) % BLINK_PERIOD + BLINK_PERIOD) % BLINK_PERIOD;
     if (k > BLINK_LEN) return 1;
-    return Math.round((1 - Math.sin((k / BLINK_LEN) * Math.PI) * 0.88) * 6) / 6; // a few discrete steps
+    return 1 - Math.sin((k / BLINK_LEN) * Math.PI) * 0.88;
   }
   root.userData.phase = 0; // callers stagger this so the crew doesn't bob in sync
   return { group: root, update, setColor, setFace };
@@ -923,7 +909,7 @@ const VIEWS = {
 // ---------------------------------------------------------------- state
 const state = {
   view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
-  time: null, ui: true, palette: 'lospec:apollo', eyes: 'auto',
+  time: null, ui: true, palette: 'final', eyes: 'auto',
 };
 
 function applyView(name) {
