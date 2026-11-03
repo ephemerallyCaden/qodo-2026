@@ -7,7 +7,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EYE_DESIGNS, EYES_GLSL, eyesFor } from './faces.js';
 import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
 import { mapPalette, mapColors, snapToPool } from './palette-map.js';
-import { PLANET_RAMPS, PLANET_DEPTH } from './planet-ramps.js';
+import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH } from './planet-ramps.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -71,14 +71,24 @@ for (const k of ['v1', 'v2']) PALETTES[k] = { ...mapColors(hexesIn(PALETTES[k]))
   // With navy space, BLK 36 black becomes available to the crew's far silhouettes;
   // the background colours are kept out of the snap pools so silhouettes never vanish.
   const snap = blk.snap.map((pool, i) => (pool ? [...new Set([...(i >= 2 ? ['#000000'] : []), ...pool])].filter((h) => !BANDS.includes(h)) : pool));
-  PALETTES.final = {
+  // Revision 5 mix, kept selectable: BLK 36 crew + space, research ×2 planet set.
+  PALETTES['final-blk'] = {
     ...blk,
-    ...PLANET_RAMPS,
+    ...RESEARCH_RAMPS,
     space: BANDS[0],
     spaceBands: BANDS,
     snap,
     planetDepth: PLANET_DEPTH,
-    name: 'final (BLK 36 crew + research-x2 planets)',
+    name: 'final-blk (BLK 36 crew + space, research x2 planets)',
+  };
+  // "final" (the human's call): astronauts BLK 36 exactly; space, stars, depth,
+  // planets, clouds, caps and haze back to v2; ring from v2 planet colours only.
+  const CREW = ['suit', 'gear', 'visor', 'glint', 'contributors'];
+  PALETTES.final = {
+    ...PALETTES.v2,
+    ...V2_PLANET_RAMPS,
+    ...Object.fromEntries(CREW.map((k) => [k, blk[k]])),
+    name: 'final (BLK 36 crew + v2 world)',
   };
 }
 // Other palettes keep a flat background.

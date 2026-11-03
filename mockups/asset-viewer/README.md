@@ -69,16 +69,25 @@ v2 is the current palette. v1 (the batch 1 pastels) stays selectable from the `p
 | gear: mitts, boots, backpack, visor rim (both) | `#4a5170` `#77819f` `#a2adc6` `#c4cee0` | |
 | visor (both) | `#0f1329` `#232f58`, glint `#f4f8ff` | |
 
-## The "final" palette (revisions 4–5)
+## The "final" palette
 
-- **Astronauts:** suit, gear, visor, contributor accents and eye glow use **BLK 36 exactly** (tile `palettes/19-blk-36.png`). Stars are BLK 36 too: sparse, mostly dim and fully static.
-- **Space:** BLK 36's darkest navy (not black), stepping down the screen in three hard bands: `#12173d` → `#29174c` → `#412866` (OKLCH L 0.23 → 0.26 → 0.34, H 273 → 295 → 299).
-- **Planets:** one shared 13-colour set in `planet-ramps.js`, built with the "research ×2" policy (`docs/design/planet-colour-research.md`). It takes the measured true-colour L and H from `colour-research/05-verification.md` and applies one ×2 OKLCH chroma boost. The file has a table of every colour's OKLCH value and its source. Every planet, ring, cloud, haze, moon and planet depth step uses only these colours, and each biome uses a subset. Accents are exempt: blackbody lava glow (1000/1400/2000 K) and the [OIII] teal reveal glow.
-- **Shading:** the lit directional terminator stays, and every ramp's darkest step is the shared shadow `#29272d` (lava uses crust `#16120e`), so there are no foreign dark crescents.
-- **Planet depth:** distant planets fade toward the shared shadow and snap to shared colours (`PLANET_DEPTH`), not to BLK 36 plum. The crew keeps BLK 36 depth, and its far silhouettes can use BLK 36 black against the navy space.
-- **Clouds:** two tones, cream `#f7eed9` and a warm peach `#ebceb7`, at ~25–30% cover.
-- **Rings:** clustered chunky debris, ~84% 2×2 or plus chunks. Colours are mauve-grey > the planet's own colour > taupe, all from the set.
-- **Colour budget:** measured at the internal resolution, the lush hero frame (planet, ring, moons, stars, background) uses **16** unique colours, and the system shot with the crew uses 38.
+`final` (the default, the human's call after revision 5):
+- **Astronauts:** suit, gear, visor, contributor accents and eye glow use **BLK 36 exactly** (tile `palettes/19-blk-36.png`).
+- **Everything else is v2:** space `#0d0b16`, stars, depth tints, and the planets, clouds, caps and haze (`V2_PLANET_RAMPS` in `planet-ramps.js`: the v2 lush ramps plus naturalistic biome ramps in the same spirit).
+- **Clouds:** keep the v2 tones, with the purple mid-shadow swapped for v2's warm cream `#f2d8b8`.
+- **Ring:** no pink, violet or yellow. It's built only from v2 planet-family colours: ocean darkest `#141d5c` (debris in the planet's shadow), cloud cream `#f2d8b8` (most debris), ocean step `#4ea3f7` and pale ocean `#94dcff`.
+- **Lava:** the crust is truly near-black.
+- **Toxic:** ochre sludge seas, acid-lime growth and purple fungus, so it can't be read as lush.
+
+`final-blk` keeps the revision 5 mix for comparison: BLK 36 crew, banded BLK 36 space, and the research ×2 13-colour shared planet set with its own planet depth family (`RESEARCH_RAMPS` and `PLANET_DEPTH`; the OKLCH/source table is in `planet-ramps.js`).
+
+Non-colour revision 5 work applies to both presets:
+- **Rings:** chunky 2×2/plus clustered debris, with the front arc over the disc and the back arc hidden.
+- **Hero:** ~45% of frame height in close-ups.
+- **Stars:** sparse and static.
+- **Extras:** moons and the dark-halo toggle.
+- **Lava ash:** low, streaky.
+- **Motion:** loop-locked (below).
 
 ## Motion (loop-locked)
 
