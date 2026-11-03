@@ -465,7 +465,7 @@ const ramp5 = () => ({ value: Array.from({ length: 5 }, () => new THREE.Color())
 // Loop lock: every planet layer completes whole cycles per LOOP.period (seconds).
 // The surface (and the clouds riding on it) turns once, each moon orbits once and
 // the ring's 5-fold repeating debris pattern advances one sector (1/5 turn).
-export const LOOP = { period: 6 };
+export const LOOP = { period: 12 };
 const RING_SECTORS = 5;
 
 // Ring debris: chunky points. aType 0 = 1 px, 1 = 2x2 block, 2 = 3x3 plus.
@@ -1079,7 +1079,7 @@ const VIEWS = {
 // ---------------------------------------------------------------- state
 const state = {
   view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
-  time: null, ui: true, palette: 'final', eyes: 'auto', period: 6, moons: true, halo: false,
+  time: null, ui: true, palette: 'final', eyes: 'auto', period: 12, moons: true, halo: false,
 };
 
 function applyView(name) {
@@ -1170,7 +1170,7 @@ function bindUi() {
   $('palette').addEventListener('change', (e) => { state.palette = e.target.value; applyState(); });
   $('moons').addEventListener('change', (e) => { state.moons = e.target.checked; applyState(); });
   $('halo').addEventListener('change', (e) => { state.halo = e.target.checked; applyState(); });
-  $('period').addEventListener('change', (e) => { state.period = +e.target.value || 6; applyState(); });
+  $('period').addEventListener('change', (e) => { state.period = +e.target.value || 12; applyState(); });
   const fill = (sel, items, label) => items.forEach((v, i) => sel.add(new Option(label(v), String(i))));
   fill($('eyes'), EYE_DESIGNS, (d) => d.name);
   // Published palettes: the 25 contact-sheet picks, then the spares.

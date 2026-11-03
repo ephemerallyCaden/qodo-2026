@@ -29,7 +29,7 @@ const SHOTS = {
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 6, eyes: 'auto' };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 12, eyes: 'auto' };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
@@ -172,8 +172,8 @@ if (PLANET_MODE) {
   const counts = await imageStats([heroPng, systemPng]);
   console.log(`unique colours: hero planet frame ${counts.uniq[0]}, system shot ${counts.uniq[1]}`);
 
-  // Hero loop: the lush planet with moons, one full period at 100/3 fps (200 frames).
-  const FRAMES = 200, PERIOD = 6;
+  // Hero loop: the lush planet with moons, one full 12 s period at 100/3 fps (400 frames).
+  const PERIOD = 12, FRAMES = Math.round((PERIOD * 100) / 3);
   const loopDir = path.join(ROOT, 'frames-loop');
   await rm(loopDir, { recursive: true, force: true });
   await mkdir(loopDir, { recursive: true });

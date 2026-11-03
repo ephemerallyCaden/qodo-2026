@@ -33,7 +33,7 @@ npm run planets  # variety sheet, system shot, hero-loop.gif, colour counts + lo
 | rotate | Pauses or resumes planet and cloud spin |
 | moons | Two small orbiting moons on the hero planet |
 | dark halo | Optional teal-GIF look: a ~2 px bg+1 halo around planets (off by default) |
-| loop (s) | The shared loop period (default 6 s). Every planet layer completes whole cycles per loop |
+| loop (s) | The shared loop period (default 12 s). Every planet layer completes whole cycles per loop |
 | palette | **final** (default: BLK 36 crew and space + Earth-like planets), v2, v1, or any of the 25 Lospec palettes (plus spares) |
 | drag / scroll | Orbits and zooms the camera |
 
@@ -91,13 +91,13 @@ Non-colour revision 5 work applies to both presets:
 
 ## Motion (loop-locked)
 
-Everything shares one period (`LOOP.period`, default 6 s), so a loop is seamless. `npm run planets` checks the seam: the diff from the last frame to the first must be ≤ a typical frame-to-frame diff.
+Everything shares one period (`LOOP.period`, default 12 s), so a loop is seamless. `npm run planets` checks the seam: the diff from the last frame to the first must be ≤ a typical frame-to-frame diff.
 - **Planets:** the surface turns exactly once per loop (right → left), and the clouds ride with it.
 - **Ring:** the debris pattern repeats 5 times around the ring and flows 1/5 of a turn per loop.
 - **Moons:** each orbits exactly once per loop on an inclined ellipse, passing in front at the bottom and behind the disc. The speed swing comes only from projection, with no easing.
 - **Crew:** idle bob, sway and blink use whole cycles per loop.
 
-`screenshots/planets/hero-loop.gif` is the lush hero with moons: 6 s at 100/3 fps (200 frames), rendered from the canvas at internal resolution and upscaled 2×.
+`screenshots/planets/hero-loop.gif` is the lush hero with moons: 12 s at 100/3 fps (400 frames), rendered from the canvas at internal resolution and upscaled 2×.
 
 ## Biomes (revision 4)
 
@@ -173,7 +173,7 @@ Every tile is the same shot: the `depth` view (crew in front, hero planet, then 
 | `screenshots/pixel-360.png` | Finer pixels: 640×360 ×2 |
 | `screenshots/palettes/contact-sheet.png` | The 25 palettes, 5×5, numbered and labelled; `NN-<slug>.png` are the full-size frames |
 | `screenshots/planets/variety-sheet.png` | Every biome (and extra) × 3 seeds in the final palette, S/M/L/XL sizes, rings as a modifier; `planets/<biome>-<seed>.png` are the full frames |
-| `screenshots/planets/hero-loop.gif` | 6 s seamless loop of the lush hero planet with moons and ring |
+| `screenshots/planets/hero-loop.gif` | 12 s seamless loop of the lush hero planet with moons and ring |
 | `screenshots/lush-before-after.png` | Lush planet close-up at ea84759 (v2 ramps) vs the research ×2 set |
 | `screenshots/planet-halo.png` | The optional dark-halo toggle |
 | `screenshots/planets/system-shot.png` | 8 mixed planets at several depths and sizes plus the crew (previews the GIF composition) |
