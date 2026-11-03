@@ -8,41 +8,64 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
 // ---------------------------------------------------------------- palette
-// Planetarium-style pastels on plum-grey space. Ramps run dark -> light.
-export const PALETTE = {
-  space: '#2b2535',
-  stars: ['#5d5372', '#a99cbf', '#f4ecf7'],
-  ocean: ['#2f3a62', '#3f5794', '#5a7fc0', '#80a9dc', '#acd3ee'],
-  land: ['#33504a', '#4c7a5a', '#6fa36a', '#9cc678', '#cfe39a'],
-  cap: ['#6e6a86', '#b9b3c9', '#e6e0ee', '#fbf8ff'],
-  cloud: ['#6e6274', '#b39c94', '#e3cdb0', '#fff6e4'],
-  ring: ['#5d4e72', '#8f7fae', '#d8a9b8', '#f2d6b3'],
-  suit: ['#68718f', '#a3aec8', '#d3dcea', '#f2f6fc'], // cool white
-  gear: ['#4a5170', '#77819f', '#a2adc6', '#c4cee0'], // gloves, boots, backpack
+// Ramps run dark -> light. v2 is current: punchier Planetarium-derived colours on
+// near-black blue-plum space. v1 (the batch 1 pastels) is kept for the before/after.
+// Each depth entry is [tint, amount]. Level 0 is near, 1 is mid (about -35% value),
+// 2 is far (about -70%), and 3 is a dark silhouette that keeps a faint hint of colour.
+// On near-black space the silhouette tint sits a little above the background so it still reads.
+const SUIT = {
+  suit: ['#68718f', '#a3aec8', '#d3dcea', '#f2f6fc'], // cool white (approved, unchanged)
+  gear: ['#4a5170', '#77819f', '#a2adc6', '#c4cee0'], // mitts, boots, backpack, visor rim
   visor: ['#0f1329', '#232f58'], // near-black blue, two tones
   glint: '#f4f8ff',
 };
-export const CONTRIBUTORS = {
-  coral: ['#6e3a4c', '#b85c66', '#f08e7f', '#ffc4a8'],
-  mint: ['#2c5a5a', '#3f9886', '#6fd1b0', '#bff2da'],
-  lilac: ['#433a74', '#7563bd', '#a993ec', '#dccfff'],
+export const PALETTES = {
+  v1: {
+    ...SUIT,
+    space: '#2b2535',
+    stars: ['#5d5372', '#a99cbf', '#f4ecf7'],
+    ocean: ['#2f3a62', '#3f5794', '#5a7fc0', '#80a9dc', '#acd3ee'],
+    land: ['#33504a', '#4c7a5a', '#6fa36a', '#9cc678', '#cfe39a'],
+    cap: ['#6e6a86', '#b9b3c9', '#e6e0ee', '#fbf8ff'],
+    cloud: ['#6e6274', '#b39c94', '#e3cdb0', '#fff6e4'],
+    ring: ['#5d4e72', '#8f7fae', '#d8a9b8', '#f2d6b3'],
+    contributors: {
+      coral: ['#6e3a4c', '#b85c66', '#f08e7f', '#ffc4a8'],
+      mint: ['#2c5a5a', '#3f9886', '#6fd1b0', '#bff2da'],
+      lilac: ['#433a74', '#7563bd', '#a993ec', '#dccfff'],
+    },
+    depth: [['#262a46', 0], ['#262a46', 0.35], ['#262a46', 0.7], ['#110f18', 0.88]],
+  },
+  v2: {
+    ...SUIT,
+    space: '#0d0b16',
+    stars: ['#3b3866', '#9a90e0', '#fff8ff'],
+    ocean: ['#141d5c', '#1d3fa6', '#2b6ee0', '#4ea3f7', '#94dcff'],
+    land: ['#123d33', '#1d7350', '#38a85a', '#7cd65a', '#d0f56c'],
+    cap: ['#3f4590', '#98a3e8', '#dfe5ff', '#ffffff'],
+    cloud: ['#30285a', '#8f74b0', '#f2d8b8', '#fffaf0'],
+    ring: ['#3a2a78', '#8463e6', '#ff86bf', '#ffd38a'],
+    contributors: {
+      coral: ['#5c1838', '#cc3f4f', '#ff7663', '#ffbb8c'],
+      mint: ['#0e4247', '#0fa384', '#33e6a8', '#a6ffd8'],
+      lilac: ['#2a1a74', '#6948ea', '#a27aff', '#dac9ff'],
+    },
+    depth: [['#1b1f4a', 0], ['#1b1f4a', 0.38], ['#1b1f4a', 0.72], ['#17172f', 0.88]],
+  },
 };
+export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
+let paletteName = 'v2';
+// Ramp keys are paths into the active palette, e.g. 'ocean' or 'contributors.mint'.
+const resolve = (key) => key.split('.').reduce((o, k) => o[k], PALETTES[paletteName]);
 
-// Depth darkening: each colour has fixed darker steps toward a cool space tone.
-// Level 0 is near (unchanged), level 1 is mid (about -35% value), level 2 is far (about -70%).
-// Level 3 (furthest) collapses to a near-black silhouette that keeps a faint pastel hint.
-const DEPTH_STEPS = [
-  [new THREE.Color('#262a46'), 0],
-  [new THREE.Color('#262a46'), 0.35],
-  [new THREE.Color('#262a46'), 0.7],
-  [new THREE.Color('#110f18'), 0.88],
-];
 const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object drops a level
 const depthCache = new Map();
 function depthColor(hex, level) {
-  const key = `${hex}:${level}`;
-  const [tint, t] = DEPTH_STEPS[level];
-  if (!depthCache.has(key)) depthCache.set(key, new THREE.Color(hex).lerp(tint, t));
+  const key = `${paletteName}:${hex}:${level}`;
+  if (!depthCache.has(key)) {
+    const [tint, t] = PALETTES[paletteName].depth[level];
+    depthCache.set(key, new THREE.Color(hex).lerp(new THREE.Color(tint), t));
+  }
   return depthCache.get(key);
 }
 
@@ -145,7 +168,7 @@ const CLOUD_FRAG = /* glsl */ `
   in vec3 vNormalW;
   in vec3 vPosW;
   void main() {
-    vec3 n = normalize(normalize(vNormalW) * 0.85 + normalize(vPosW - uCenter) * 0.55);
+    vec3 n = normalize(normalize(vNormalW) * 0.55 + normalize(vPosW - uCenter) * 0.8);
     gl_FragColor = vec4(uRamp[band(n)], 1.0);
   }
 `;
@@ -217,10 +240,35 @@ const mulberry32 = (a) => () => {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 
+// Seeded 3D value-noise fbm for CPU-side placement (cloud masses), roughly 0..1.
+function makeFbm3(seed) {
+  const h = (x, y, z) => {
+    let n = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1440662683) ^ Math.imul(seed, 2246822519);
+    n = Math.imul(n ^ (n >>> 13), 1274126177);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+  };
+  const fade = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+  const noise = (x, y, z) => {
+    const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+    const u = fade(x - xi), v = fade(y - yi), w = fade(z - zi);
+    const l = (a, b, t) => a + (b - a) * t;
+    return l(
+      l(l(h(xi, yi, zi), h(xi + 1, yi, zi), u), l(h(xi, yi + 1, zi), h(xi + 1, yi + 1, zi), u), v),
+      l(l(h(xi, yi, zi + 1), h(xi + 1, yi, zi + 1), u), l(h(xi, yi + 1, zi + 1), h(xi + 1, yi + 1, zi + 1), u), v),
+      w);
+  };
+  return (x, y, z) => {
+    let sum = 0, amp = 0.5, f = 1;
+    for (let i = 0; i < 4; i++) { sum += amp * noise(x * f + 31.7 * i, y * f, z * f); f *= 2.03; amp *= 0.5; }
+    return sum / 0.9375;
+  };
+}
+
 // A material whose colour ramps can be re-tinted for depth. `ramps` maps uniform -> hex list.
 function paletteMaterial(frag, ramps, extra = {}, opts = {}) {
   const uniforms = { uLight: { value: LIGHT_DIR }, uBands: { value: new THREE.Vector3(-0.08, 0.28, 0.62) }, ...extra };
-  for (const [name, hexes] of Object.entries(ramps)) {
+  for (const [name, key] of Object.entries(ramps)) {
+    const hexes = resolve(key);
     uniforms[name] = { value: Array.isArray(hexes) ? hexes.map((h) => new THREE.Color(h)) : new THREE.Color(hexes) };
   }
   const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: frag, uniforms, ...opts });
@@ -234,7 +282,8 @@ function setDepthLevel(obj, level) {
   obj.traverse((o) => {
     const mats = o.material ? [o.material].flat() : [];
     for (const m of mats) {
-      for (const [name, hexes] of Object.entries(m.userData.ramps ?? {})) {
+      for (const [name, key] of Object.entries(m.userData.ramps ?? {})) {
+        const hexes = resolve(key);
         const arr = m.uniforms[name].value;
         if (Array.isArray(arr)) hexes.forEach((h, i) => arr[i].copy(depthColor(h, level)));
         else arr.copy(depthColor(hexes, level));
@@ -246,11 +295,11 @@ function setDepthLevel(obj, level) {
 // ---------------------------------------------------------------- planet
 const PLANET_GEO = new THREE.SphereGeometry(1, 72, 48);
 const PUFF_GEO = new THREE.IcosahedronGeometry(1, 3);
-const MAX_PUFFS = 700;
+const MAX_PUFFS = 1200;
 
 function makePlanet() {
   const group = new THREE.Group();
-  const surfaceMat = paletteMaterial(PLANET_FRAG, { uOcean: PALETTE.ocean, uLand: PALETTE.land, uCap: PALETTE.cap }, {
+  const surfaceMat = paletteMaterial(PLANET_FRAG, { uOcean: 'ocean', uLand: 'land', uCap: 'cap' }, {
     uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 },
     uBands: { value: new THREE.Vector3(0.2, 0.58, 0.86) }, // high bands curve into crescents
   });
@@ -260,7 +309,7 @@ function makePlanet() {
   // Clouds: clusters of overlapping puffs sitting on the surface, so the tops bulge
   // past the silhouette at the limb. They rotate a little faster than the ground.
   const cloudPivot = new THREE.Group();
-  const cloudMat = paletteMaterial(CLOUD_FRAG, { uRamp: PALETTE.cloud }, {
+  const cloudMat = paletteMaterial(CLOUD_FRAG, { uRamp: 'cloud' }, {
     uBands: { value: new THREE.Vector3(-0.3, 0.12, 0.42) }, uCenter: { value: new THREE.Vector3() },
   });
   const puffs = new THREE.InstancedMesh(PUFF_GEO, cloudMat, MAX_PUFFS);
@@ -271,11 +320,11 @@ function makePlanet() {
   const ringMat = new THREE.ShaderMaterial({
     vertexShader: POINTS_VERT, fragmentShader: RING_FRAG,
     uniforms: {
-      uRamp: { value: PALETTE.ring.map((h) => new THREE.Color(h)) }, uLight: { value: LIGHT_DIR },
+      uRamp: { value: resolve('ring').map((h) => new THREE.Color(h)) }, uLight: { value: LIGHT_DIR },
       uCenter: { value: new THREE.Vector3() }, uRadius: { value: 1 },
     },
   });
-  ringMat.userData.ramps = { uRamp: PALETTE.ring };
+  ringMat.userData.ramps = { uRamp: 'ring' };
   const ring = new THREE.Points(new THREE.BufferGeometry(), ringMat);
   ring.rotation.set(0.2, 0, -0.32); // shallow tilt so the front lane crosses the disc
   group.add(ring);
@@ -292,7 +341,6 @@ function makePlanet() {
     // Cloud heaps: a base row of puffs stretched east-west, a few stacked on top,
     // and some small strays. Mostly in two latitude belts.
     let n = 0;
-    const gauss = () => (rnd() + rnd() + rnd() - 1.5) / 1.5; // roughly -1..1, centre-weighted
     // Puffs are squashed along the radial axis so clumps hug the surface; the
     // domed centre still pokes past the silhouette at the limb.
     const FLAT = 0.6;
@@ -303,30 +351,31 @@ function makePlanet() {
       m4.compose(d.multiplyScalar(1 + size * FLAT * lift), q, new THREE.Vector3(size, size * FLAT, size));
       puffs.setMatrixAt(n++, m4);
     };
-    // Stratified placement: jittered golden-spiral sites, kept more often in two
-    // latitude belts, so every face of the planet gets weather.
-    const SITES = 150;
+    // Noise-driven placement, like Planetarium: one fbm field makes a few big merged
+    // masses, a latitude-stretched field makes long east-west streaks, and everything
+    // else stays clear sky. Denser sites get bigger, higher puffs, so cores merge and
+    // dome; a few small strays scatter near the edges of the weather.
+    const massField = makeFbm3(seed * 31 + 5);
+    const streakField = makeFbm3(seed * 17 + 9);
+    const SITES = 1500;
     for (let c = 0; c < SITES; c++) {
       const y = 1 - ((c + 0.5) / SITES) * 2;
-      const lon = c * 2.39996 + rnd() * 0.4;
-      const lat = Math.asin(y) + (rnd() - 0.5) * 0.15;
-      const belt = Math.exp(-(((Math.abs(lat) - 0.5) / 0.3) ** 2));
-      if (rnd() > 0.2 + belt * 0.45) continue;
-      const center = new THREE.Vector3(Math.cos(lon) * Math.cos(lat), Math.sin(lat), Math.sin(lon) * Math.cos(lat));
-      const east = new THREE.Vector3().crossVectors(up, center).normalize();
-      const north = new THREE.Vector3().crossVectors(center, east);
-      const len = 0.05 + rnd() * 0.14; // east-west half-length
-      const wid = len * (0.5 + rnd() * 0.3);
-      const count = 3 + Math.floor(rnd() * 4 + len * 25);
-      for (let k = 0; k < count; k++) {
-        const ex = gauss();
-        const nx = gauss();
-        const centrality = 1 - Math.min(1, Math.hypot(ex, nx));
-        const size = 0.034 + rnd() * 0.024 + centrality * 0.034;
-        put(center.clone().addScaledVector(east, ex * len).addScaledVector(north, nx * wid), size, 0.2 + centrality * 0.8);
+      const r = Math.sqrt(1 - y * y);
+      const lon = c * 2.39996;
+      const dir = new THREE.Vector3(Math.cos(lon) * r, y, Math.sin(lon) * r);
+      const mass = massField(dir.x * 1.15 + 4, dir.y * 1.15, dir.z * 1.15);
+      const streak = streakField(dir.x * 0.9, dir.y * 6.0 + 2, dir.z * 0.9);
+      const density = Math.max(mass, streak) - 0.635;
+      const jitter = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).multiplyScalar(0.05);
+      if (density > 0.012) {
+        const core = Math.min(1, density * 7);
+        put(dir.add(jitter), 0.032 + core * 0.05 + rnd() * 0.012, 0.2 + core * 0.9);
+      } else if (density > -0.08 && rnd() < 0.025) {
+        put(dir.add(jitter), 0.022 + rnd() * 0.014, 0.25);
       }
     }
     puffs.count = n;
+    group.userData.puffs = n;
     puffs.instanceMatrix.needsUpdate = true;
 
     // ring dust
@@ -453,8 +502,13 @@ const ASTRO_FRAG = /* glsl */ `
       d = dBoot(p, i + 6); if (d < best) { best = d; part = 6; }
     }
     if (part == 0) {
-      float c = dot(normalize(p - HEAD), normalize(vec3(0.0, -0.08, 1.0)));
-      return c > 0.64 ? 3 : c > 0.56 ? 1 : 0; // visor, then a gear-tone rim
+      // Letterbox visor: a rounded rectangle in yaw/pitch, wider than tall, with a gear-tone rim.
+      vec3 d = normalize(p - HEAD);
+      float yaw = atan(d.x, d.z);
+      float pitch = asin(clamp(d.y, -1.0, 1.0)) + 0.03;
+      float visor = pow(abs(yaw / 0.92), 4.0) + pow(abs(pitch / 0.29), 4.0);
+      float rim = pow(abs(yaw / 1.05), 4.0) + pow(abs(pitch / 0.4), 4.0);
+      return visor < 1.0 ? 3 : rim < 1.0 ? 1 : 0;
     }
     if (part == 1) return (p.z > 0.1 && abs(p.x) < 0.07 && abs(p.y - 0.5) < 0.04) ? 1 : 0; // chest panel
     if (part == 2) return abs(p.y - 0.6) < 0.036 ? 2 : 1; // backpack + contributor stripe
@@ -495,7 +549,7 @@ const ASTRO_FRAG = /* glsl */ `
     if (r == 3) {
       vec3 refl = reflect(rd, n);
       c = (refl.y > 0.18 && b >= 2) ? uVisor[1] : uVisor[0];
-      if (dot(refl, L) > 0.955 && b >= 1) c = uGlint;
+      if (dot(refl, L) > 0.9 && b >= 1) c = uGlint;
     } else if (r == 2) c = uAccent[b];
     else if (r == 1) c = uGear[b];
     else c = uSuit[b];
@@ -513,7 +567,7 @@ function makeAstronaut(colorKey) {
   root.add(body);
   const joints = Array.from({ length: 12 }, () => new THREE.Vector3());
   const mat = paletteMaterial(ASTRO_FRAG, {
-    uSuit: PALETTE.suit, uGear: PALETTE.gear, uAccent: CONTRIBUTORS[colorKey], uVisor: PALETTE.visor, uGlint: PALETTE.glint,
+    uSuit: 'suit', uGear: 'gear', uAccent: `contributors.${colorKey}`, uVisor: 'visor', uGlint: 'glint',
   }, {
     uInvModel: { value: new THREE.Matrix4() }, uModel: { value: null }, uProj: { value: camera.projectionMatrix },
     uLightLocal: { value: new THREE.Vector3() }, uJ: { value: joints },
@@ -553,7 +607,7 @@ function makeAstronaut(colorKey) {
     mat.uniforms.uLightLocal.value.copy(LIGHT_DIR).applyQuaternion(q.invert());
   }
   function setColor(key) {
-    mat.userData.ramps.uAccent = CONTRIBUTORS[key];
+    mat.userData.ramps.uAccent = `contributors.${key}`;
     root.userData.depthLevel = -1; // force a re-tint
   }
   root.userData.phase = 0; // callers stagger this so the crew doesn't bob in sync
@@ -581,8 +635,9 @@ function makeStars() {
   g.setAttribute('aSize', new THREE.Float32BufferAttribute(sizes, 1));
   const mat = new THREE.ShaderMaterial({
     vertexShader: POINTS_VERT, fragmentShader: STAR_FRAG, depthWrite: false,
-    uniforms: { uRamp: { value: PALETTE.stars.map((h) => new THREE.Color(h)) } },
+    uniforms: { uRamp: { value: resolve('stars').map((h) => new THREE.Color(h)) } },
   });
+  mat.userData.ramps = { uRamp: 'stars' };
   const stars = new THREE.Points(g, mat);
   stars.renderOrder = -1;
   return stars;
@@ -593,7 +648,6 @@ const canvas = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-renderer.setClearColor(PALETTE.space);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 16 / 9, 0.05, 1200);
@@ -618,7 +672,7 @@ const planets = [
 
 // Crew line-up for the close-up, off to the side of the hero planet.
 const CREW_SPOT = new THREE.Vector3(14, 0, 0);
-const crew = Object.keys(CONTRIBUTORS).map((key, i) => {
+const crew = CONTRIBUTOR_KEYS.map((key, i) => {
   const a = makeAstronaut(key);
   a.group.position.set(CREW_SPOT.x + (i - 1) * 0.72, CREW_SPOT.y, CREW_SPOT.z);
   a.group.rotation.y = [0.6, 0.2, -0.55][i];
@@ -629,7 +683,7 @@ const crew = Object.keys(CONTRIBUTORS).map((key, i) => {
 
 // Solo astronauts at each depth step; they wear the selected contributor colour.
 const solos = [
-  { pos: [-0.95, 0.55, 5.0], ry: 0.6 },
+  { pos: [-0.7, 0.55, 5.0], ry: 0.6 },
   { pos: [4.6, -0.4, -8], ry: -0.3 },
   { pos: [-1.5, 2.6, -21], ry: 0.4 },
   { pos: [6.5, 4.2, -38], ry: -0.5 },
@@ -649,7 +703,7 @@ const VIEWS = {
 };
 
 // ---------------------------------------------------------------- state
-const state = { view: 'planet', seed: 7, ring: true, color: 'coral', pixelH: 180, depth: true, spin: true, time: null, ui: true };
+const state = { view: 'planet', seed: 7, ring: true, color: 'coral', pixelH: 180, depth: true, spin: true, time: null, ui: true, palette: 'v2' };
 let lastSeed = -1;
 
 function applyView(name) {
@@ -677,6 +731,12 @@ function applyState() {
     planets.forEach((p) => p.rebuild(state.seed));
     lastSeed = state.seed;
   }
+  if (state.palette !== paletteName) {
+    paletteName = state.palette;
+    scene.traverse((o) => { if (o.userData.depthLevel !== undefined) o.userData.depthLevel = -1; }); // force a re-tint
+  }
+  renderer.setClearColor(resolve('space'));
+  document.body.style.background = resolve('space');
   planets.forEach((p) => (p.ring.visible = state.ring));
   solos.forEach((s) => s.setColor(state.color));
   document.getElementById('ui').hidden = !state.ui;
@@ -691,6 +751,7 @@ function frame() {
   stars.position.copy(camera.position);
   planets.forEach((p) => p.update(t, state.spin));
   [...crew, ...solos].forEach((a) => a.update(t));
+  setDepthLevel(stars, 0); // stars never fade, but still follow palette switches
   for (const obj of [...planets.map((p) => p.group), ...crew.map((a) => a.group), ...solos.map((a) => a.group)]) {
     const d = camera.position.distanceTo(obj.getWorldPosition(tmp));
     const level = !state.depth ? 0 : DEPTH_RANGES.filter((r) => d >= r).length;
@@ -712,6 +773,7 @@ function bindUi() {
   $('pixel').addEventListener('input', (e) => { state.pixelH = +e.target.value; applyState(); });
   $('depth').addEventListener('change', (e) => { state.depth = e.target.checked; applyState(); });
   $('spin').addEventListener('change', (e) => { state.spin = e.target.checked; });
+  $('palette').addEventListener('change', (e) => { state.palette = e.target.value; applyState(); });
   addEventListener('resize', resize);
 }
 

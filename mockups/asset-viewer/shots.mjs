@@ -2,7 +2,8 @@
 // Playwright request interception, so no socket is opened and nothing touches the network.
 // Usage: node shots.mjs [name ...]   (no names = all shots)
 import { chromium } from 'playwright';
-import { mkdir, readFile } from 'node:fs/promises';
+import { access, mkdir, readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,8 +20,9 @@ const SHOTS = {
   'depth-scene-off': { view: 'depth', time: 2, depth: false },
   'pixel-120': { view: 'planet', time: 3, pixelH: 120 },
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
+  'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, ring: true, depth: true, pixelH: 180, color: 'coral', spin: true, ui: false };
+const BASE = { seed: 7, ring: true, depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'v2' };
 
 const wanted = process.argv.slice(2);
 const names = wanted.length ? wanted : Object.keys(SHOTS);
@@ -52,3 +54,14 @@ for (const name of names) {
 }
 await browser.close();
 if (errors.length) throw errors[0];
+
+// Before/after palette strip (v1 left, v2 right), if ffmpeg is around.
+const FFMPEG = process.env.FFMPEG ?? '/opt/homebrew/bin/ffmpeg';
+const before = path.join(outDir, 'palette-v1-depth.png');
+const after = path.join(outDir, 'depth-scene.png');
+const ok = await Promise.all([FFMPEG, before, after].map((f) => access(f).then(() => true, () => false)));
+if (ok.every(Boolean)) {
+  execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-i', before, '-i', after, '-filter_complex',
+    '[0]scale=640:360:flags=neighbor[a];[1]scale=640:360:flags=neighbor[b];[a][b]hstack', path.join(outDir, 'palette-before-after.png')]);
+  console.log('screenshots/palette-before-after.png');
+}

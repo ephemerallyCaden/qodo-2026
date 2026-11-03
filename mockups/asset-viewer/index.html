@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <title>asset viewer · codebase space explorer</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #2b2535; overflow: hidden; }
+    html, body { margin: 0; height: 100%; background: #0d0b16; overflow: hidden; }
     body { display: grid; place-items: center; font: 12px/1.4 ui-monospace, Menlo, monospace; color: #e6e0ee; }
     #view { image-rendering: pixelated; display: block; }
-    #ui { position: fixed; top: 10px; left: 10px; width: 210px; padding: 10px 12px; background: #1f1a29e6; border: 1px solid #5d5372; }
+    #ui { position: fixed; top: 10px; left: 10px; width: 210px; padding: 10px 12px; background: #1a1626e6; border: 1px solid #3b3866; }
     #ui h1 { font-size: 12px; margin: 0 0 8px; color: #fff6e4; font-weight: 600; }
     #ui label { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 6px 0; }
     #ui input[type=range] { width: 110px; accent-color: #a993ec; }
@@ -33,6 +33,7 @@
     <div class="hint" id="pixel-readout"></div>
     <label>depth fade <input id="depth" type="checkbox" checked></label>
     <label>rotate <input id="spin" type="checkbox" checked></label>
+    <label>palette <select id="palette"><option value="v2">v2 (current)</option><option value="v1">v1 (batch 1)</option></select></label>
     <div class="hint">drag to orbit · scroll to zoom</div>
   </div>
   <script type="module" src="./viewer.js"></script>
