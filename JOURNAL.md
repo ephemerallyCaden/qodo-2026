@@ -2,7 +2,7 @@
 
 ## Project State
 - Phase: Day 1 ideation (Qodo "Build a Software Factory in 30 Days", started 2026-11-02).
-- Idea: research complete → `docs/research/day1-landscape-report.md`. POLYGRAPH shelved by the human (2026-11-03). Human's strength: frontend art and visualisation. Brainstorm 2 (pixel-art games, since the human does pixel-art frontends, metroidvanias and rhythm games) is in `docs/ideas/day1-brainstorm-2-pixel.md`. Top 3: The Growing Castle, Sprite Synth, Beatsmith. Awaiting a pick.
+- Idea: research complete → `docs/research/day1-landscape-report.md`. POLYGRAPH shelved by the human (2026-11-03). Human's strength: frontend art and visualisation. Brainstorm 2 (pixel-art games, since the human does pixel-art frontends, metroidvanias and rhythm games) is in `docs/ideas/day1-brainstorm-2-pixel.md`. Top 3: The Growing Castle, Sprite Synth, Beatsmith. **DECIDED (human, 2026-11-03): Codebase Space Explorer.** A gamified GitHub repo explorer: three.js with a pixel post-process, procedural planets, astronauts per contributor, exploration gated by PR quality. Feature doc: `docs/features/codebase-space-explorer.md`. USP still open, pending a friction audit.
 
 ## Architecture Decisions
 
@@ -18,6 +18,8 @@
 - [2026-11-03] Brainstorm 2: 10 pixel-art game ideas. Factory thesis: "the factory can't see or play the game, so we teach it to" (pixel-art linter + bot playtester + visual evidence; game feel always goes to the human).
 
 - [2026-11-03] Risk scout reported. Wrote `docs/research/qodo-opportunities-risks.md`: 7 opportunities × 5 risks + mitigations, 5 cross-cutting risks, top-3 wow features (Skills as art director, ticket → verified spec, closed-loop Toolbox gate; Figma design-gaps as a wildcard).
+
+- [2026-11-03] Human chose the Codebase Space Explorer. Spawned 4 scouts for a meticulous friction audit: quantitative evidence, competitive landscape and graveyard, practitioner voice, PR-quality measurement and data.
 
 ## Known Issues and Caveats
 - Qodo trial ends around Nov 17 (14 days left on Nov 3). Need to confirm the hackathon license or an extension.
