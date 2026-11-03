@@ -13,7 +13,7 @@ const fix = process.argv.includes('--fix=handed');
 // candidate fix used as a CONTROL only: north = east x d (right-handed east, up, north basis)
 export const HANDED_FIX = (src) => {
   const a = 'const north = new THREE.Vector3().crossVectors(d, east);';
-  if (!src.includes(a)) throw new Error('put() basis line not found');
+  if (!src.includes(a)) return src; // already right-handed (fixed build): nothing to patch
   return src.replace(a, 'const north = new THREE.Vector3().crossVectors(east, d);');
 };
 if (process.argv[1] === new URL(import.meta.url).pathname) {

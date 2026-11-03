@@ -8,6 +8,7 @@ import { EYE_DESIGNS, EYES_GLSL, eyesFor } from './faces.js';
 import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
 import { mapPalette, mapColors, snapToPool } from './palette-map.js';
 import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH } from './planet-ramps.js';
+import { tangentFrame } from './cloud-frame.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -224,7 +225,14 @@ const CLOUD_FRAG = /* glsl */ `
   in vec3 vNormalW;
   in vec3 vPosW;
   void main() {
-    vec3 n = normalize(normalize(vNormalW) * 0.55 + normalize(vPosW - uCenter) * 0.8);
+    // Scalar blend of the two Lambert terms: dot(n, L) = (0.55 N.L + 0.8 R.L) / 1.35, with
+    // N the puff normal and R the planet-radial direction. The vector is left unnormalised
+    // (renormalising it made shading run against the puff's curvature), and the part of R
+    // that opposes the puff surface is dropped, so undersides facing the planet stay shaded.
+    vec3 g = normalize(vNormalW), r = normalize(vPosW - uCenter);
+    float rg = dot(r, g);
+    if (rg < 0.0) r -= rg * g;
+    vec3 n = (g * 0.55 + r * 0.8) / 1.35;
     gl_FragColor = vec4(uRamp[band(n)], 1.0);
   }
 `;
@@ -599,8 +607,7 @@ function makePlanet() {
     const put = (dir, size, lift, flat = 0.6, stretch = 1) => {
       if (n >= MAX_PUFFS) return;
       const d = dir.clone().normalize();
-      const east = new THREE.Vector3().crossVectors(up, d).normalize();
-      const north = new THREE.Vector3().crossVectors(d, east);
+      const { east, north } = tangentFrame(THREE, d); // right-handed: det > 0, outer shell stays front-facing
       m4.makeBasis(east.multiplyScalar(size * stretch), d.clone().multiplyScalar(size * flat), north.multiplyScalar(size));
       m4.setPosition(d.multiplyScalar(1 + size * flat * lift));
       puffs.setMatrixAt(n++, m4);
@@ -609,8 +616,7 @@ function makePlanet() {
     // a lead puff plus smaller satellites beside it.
     const clump = (center, size, lift, satellites, flat, stretch) => {
       put(center, size, lift, flat, stretch);
-      const east = new THREE.Vector3().crossVectors(up, center).normalize();
-      const north = new THREE.Vector3().crossVectors(center, east);
+      const { east, north } = tangentFrame(THREE, center.clone().normalize());
       for (let k = 0; k < satellites; k++) {
         const ang = rnd() * Math.PI * 2;
         const off = size * (0.9 + rnd() * 0.5);
@@ -1082,8 +1088,12 @@ const state = {
   time: null, ui: true, palette: 'final', eyes: 'auto', period: 12, moons: true, halo: false,
 };
 
+// Keep the orbit camera out of the cloud layer in planet views (clouds reach ~1.1 R).
+const minOrbit = () => ((VIEWS[state.view]?.scene ?? 'showcase') === 'solo' ? 1.35 * state.size : 0.5);
+
 function applyView(name) {
   const v = VIEWS[name];
+  controls.minDistance = minOrbit();
   camera.position.set(...v.pos);
   controls.target.set(...v.target);
   controls.update();
@@ -1107,6 +1117,7 @@ function applyState() {
   LOOP.period = Math.max(1, state.period);
   planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo }));
   SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo }));
+  controls.minDistance = minOrbit();
   planets.forEach((p) => {
     p.rebuild(state.seed, state.biome, state.ringMode);
     p.group.scale.setScalar(state.size);

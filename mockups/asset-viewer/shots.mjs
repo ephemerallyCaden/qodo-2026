@@ -25,6 +25,8 @@ const SHOTS = {
   'depth-scene': { view: 'depth', time: 2 },
   'depth-scene-off': { view: 'depth', time: 2, depth: false },
   'planet-halo': { view: 'planet', time: 3, halo: true }, // optional teal-GIF dark halo toggle
+  'clouds-topdown': { view: 'planet', time: 3, camera: { pos: [0.1, 3.4, 0.4], target: [0, 0, 0] } }, // hollow-cloud regression framings
+  'clouds-zoom': { view: 'planet', time: 3, camera: { pos: [0.95, 0.55, 3.3], target: [0, -0.1, 0] } }, // the user's report framing
   'pixel-120': { view: 'planet', time: 3, pixelH: 120 },
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
