@@ -382,6 +382,7 @@ const SHADOW_VERT = /* glsl */ `
     float R = uRadius * 1.003, b = dot(oc, uLight), disc = b * b - (dot(oc, oc) - R * R);
     if (disc < 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; } // the light ray misses the planet: no shadow
     float t = b - sqrt(disc);
+    if (t <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; } // both roots behind the cloud (it faces away from the light): no shadow, not its mirror image on the lit side
     vec3 hit = w - uLight * t;
     vHitW = hit - uCenter;
     vReach = t / uRadius; // how far the shadow falls from its cloud, in planet radii
@@ -392,7 +393,7 @@ const SHADOW_VERT = /* glsl */ `
 const SHADOW_FRAG = PLANET_FRAG.replace(/void main\(\) \{[\s\S]*\}\s*$/, `in vec3 vHitW;
   in float vReach;
   void main() {
-    if (vReach > 0.1) discard; // near the terminator shadows would smear across the disc
+    if (vReach < 0.0 || vReach > 0.1) discard; // straddling-triangle residue of culled vertices; near the terminator shadows would smear across the disc
     vec3 p = normalize(vLocal);
     int b = band(normalize(vHitW));
     if (b == 0) discard; // the night side is already the darkest step
