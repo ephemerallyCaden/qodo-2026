@@ -17,8 +17,12 @@
 
 - [2026-11-03] Brainstorm 2: 10 pixel-art game ideas. Factory thesis: "the factory can't see or play the game, so we teach it to" (pixel-art linter + bot playtester + visual evidence; game feel always goes to the human).
 
+- [2026-11-03] Risk scout reported. Wrote `docs/research/qodo-opportunities-risks.md`: 7 opportunities × 5 risks + mitigations, 5 cross-cutting risks, top-3 wow features (Skills as art director, ticket → verified spec, closed-loop Toolbox gate; Figma design-gaps as a wildcard).
+
 ## Known Issues and Caveats
 - Qodo trial ends around Nov 17 (14 days left on Nov 3). Need to confirm the hackathon license or an extension.
+- Qodo can't see binary assets (PNG/audio). Keep game data as text (JSON levels/palettes/charts) and post the CI linter output as a text PR comment.
+- A failed or skipped Qodo review looks like a clean one. The gate must require a completed review on the head SHA; no review means escalate.
 - Qodo `ignore_bot_pr` defaults to true, so agent-opened PRs aren't auto-reviewed unless it's set to false.
 - CLAUDE.md is still the unfilled hackathon template; fill once idea + stack are chosen. No CONSTITUTION.md yet (draft after idea is chosen).
 
