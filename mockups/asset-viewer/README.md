@@ -12,7 +12,7 @@ npm run dev      # http://127.0.0.1:5180/  (loopback only; PORT=... to change)
 npm run shots    # re-capture screenshots/ in headless Chromium (no server, no network)
 npm run palettes # 25 Lospec-palette renders + labelled contact sheet in screenshots/palettes/
 npm run planets  # variety sheet, system shot, hero-loop.gif, colour counts + loop-seam test
-npm test         # cloud regression tests: puff handedness (det > 0) + hollow-ring and shading render tests
+npm test         # cloud regression tests: puff handedness (det > 0), hollow-ring renders (32 framings + 48 hero-loop frames), shading direction
 ```
 
 `node shots.mjs depth-scene crew-closeup` captures just the named shots.
