@@ -70,7 +70,7 @@ v2 is the current palette. v1 (the batch 1 pastels) stays selectable from the `p
 
 The human's pick:
 - **Astronauts:** suit, gear, visor, contributor accents and eye glow use **BLK 36 exactly** as mapped for the contact sheet (tile `palettes/19-blk-36.png`).
-- **Space, stars and depth:** also BLK 36 exactly (true black space, depth steps snapped to BLK 36's darks).
+- **Space, stars and depth:** also BLK 36 exactly (true black space, depth steps snapped to BLK 36's darks). The background is a subtle vertical gradient in three hard screen-space bands of BLK 36 colours: `#000000` (top 66%), `#12173d` navy, then `#29174c` violet (bottom 12%). Other palettes keep a flat background.
 - **Planets, rings and atmosphere:** come from the plain data in `planet-ramps.js`. Lush, cloud, cap and ring are the v2 ramps, and the other biomes have naturalistic ramps in the same spirit. Swap that one file to retune planet colours; the ring colours are pending colour research.
 
 ## Biomes (revision 4)

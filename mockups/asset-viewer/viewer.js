@@ -64,7 +64,15 @@ const hexesIn = (o) => (typeof o === 'string' ? (o.startsWith('#') ? [o] : []) :
 for (const k of ['v1', 'v2']) PALETTES[k] = { ...mapColors(hexesIn(PALETTES[k])), ...PALETTES[k], snap: null };
 // "final": the human's pick. Crew, space, stars and depth exactly as BLK 36 (tile 19);
 // planets, rings and accents from the swappable PLANET_RAMPS data.
-PALETTES.final = { ...PALETTES['lospec:blk-36'], ...PLANET_RAMPS, name: 'final (BLK 36 crew + Earth-like planets)' };
+PALETTES.final = {
+  ...PALETTES['lospec:blk-36'],
+  ...PLANET_RAMPS,
+  // Space: hard bands from BLK 36's near-black at the top to its deep navy and violet at the bottom.
+  spaceBands: ['#000000', '#12173d', '#29174c'],
+  name: 'final (BLK 36 crew + Earth-like planets)',
+};
+// Other palettes keep a flat background.
+for (const pal of Object.values(PALETTES)) pal.spaceBands ??= [pal.space, pal.space, pal.space];
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
 const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
 let paletteName = 'v2';
@@ -794,6 +802,30 @@ function makeAstronaut(colorKey) {
   return { group: root, update, setColor, setFace };
 }
 
+// ---------------------------------------------------------------- sky
+// Screen-space background bands (top -> bottom), drawn behind everything. Hard
+// steps, no smooth gradient; stars and the scene draw over it.
+const SKY_VERT = /* glsl */ `void main() { gl_Position = vec4(position.xy, 0.9999, 1.0); }`;
+const SKY_FRAG = /* glsl */ `
+  uniform vec3 uBands[3];
+  uniform float uHeight;
+  void main() {
+    float y = 1.0 - gl_FragCoord.y / uHeight; // 0 at the top
+    gl_FragColor = vec4(uBands[y < 0.66 ? 0 : y < 0.88 ? 1 : 2], 1.0); // low bands keep it subtle, not a horizon
+  }
+`;
+function makeSky() {
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, depthTest: false, depthWrite: false,
+    uniforms: { uBands: { value: resolve('spaceBands').map((h) => new THREE.Color(h)) }, uHeight: { value: 180 } },
+  });
+  mat.userData.ramps = { uBands: 'spaceBands' };
+  const sky = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+  sky.frustumCulled = false;
+  sky.renderOrder = -2;
+  return sky;
+}
+
 // ---------------------------------------------------------------- stars
 function makeStars() {
   const rnd = mulberry32(4242);
@@ -834,6 +866,8 @@ const camera = new THREE.PerspectiveCamera(35, 16 / 9, 0.05, 1200);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 
+const sky = makeSky();
+scene.add(sky);
 const stars = makeStars();
 scene.add(stars);
 
@@ -923,6 +957,7 @@ function resize() {
   const h = state.pixelH;
   const w = Math.floor((h * 16) / 9); // floor so e.g. 240 tall -> 426 wide still fits x3 on 1280
   renderer.setSize(w, h, false);
+  sky.material.uniforms.uHeight.value = h;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   const scale = Math.max(1, Math.floor(Math.min(innerWidth / w, innerHeight / h)));
@@ -966,7 +1001,8 @@ function frame() {
   stars.position.copy(camera.position);
   [...planets, ...SYSTEM].forEach((p) => p.update(t, state.spin));
   [...crew, ...solos].forEach((a) => a.update(t));
-  setDepthLevel(stars, 0); // stars never fade, but still follow palette switches
+  setDepthLevel(stars, 0); // stars and sky never fade, but still follow palette switches
+  setDepthLevel(sky, 0);
   for (const obj of [...planets, ...SYSTEM, ...crew, ...solos].map((o) => o.group)) {
     const d = camera.position.distanceTo(obj.getWorldPosition(tmp));
     const level = !state.depth ? 0 : DEPTH_RANGES.filter((r) => d >= r).length;
