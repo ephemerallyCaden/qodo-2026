@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFile } from 'node:fs/promises';
 import { LOSPEC, LOSPEC_ORDER } from './palettes.js';
+import { EYE_DESIGNS } from './faces.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const ORIGIN = 'http://viewer.local';
@@ -19,7 +20,7 @@ const SHOTS = {
   'planet-no-ring': { view: 'planet', time: 3, ring: false },
   'planet-seed-311': { view: 'planet', time: 3, seed: 311 },
   'crew-closeup': { view: 'crew', time: 1.2 },
-  'crew-face-switch': { view: 'crew', time: 1.2, eyes: '1', mouth: '6' }, // UI override: ◉ ◉ / ◡ on everyone
+  'crew-face-switch': { view: 'crew', time: 1.2, eyes: '3' }, // UI override: Binocular on everyone
   'depth-scene': { view: 'depth', time: 2 },
   'depth-scene-off': { view: 'depth', time: 2, depth: false },
   'pixel-120': { view: 'planet', time: 3, pixelH: 120 },
@@ -30,7 +31,7 @@ const BASE = { seed: 7, ring: true, depth: true, pixelH: 180, color: 'coral', sp
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const wanted = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-const names = PALETTE_MODE ? [] : wanted.length ? wanted : Object.keys(SHOTS);
+const names = PALETTE_MODE ? [] : wanted.length ? wanted.filter((n) => SHOTS[n]) : Object.keys(SHOTS);
 const outDir = path.join(ROOT, 'screenshots');
 await mkdir(outDir, { recursive: true });
 
@@ -58,6 +59,48 @@ for (const name of names) {
   console.log(`screenshots/${name}.png`);
 }
 
+// Labelled grid of captured frames, each scaled to its internal 320x180 (exact 1/4 nearest).
+async function contactSheet(items, cols, file) {
+  const url = await page.evaluate(async ({ items, cols }) => {
+    const TW = 320, TH = 180, LAB = 18, GAP = 8, rows = Math.ceil(items.length / cols);
+    const c = document.createElement('canvas');
+    c.width = GAP + cols * (TW + GAP);
+    c.height = GAP + rows * (TH + LAB + GAP);
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.font = '12px ui-monospace, Menlo, monospace';
+    ctx.textBaseline = 'top';
+    for (const [i, it] of items.entries()) {
+      const img = new Image();
+      img.src = it.url;
+      await img.decode();
+      const x = GAP + (i % cols) * (TW + GAP), y = GAP + Math.floor(i / cols) * (TH + LAB + GAP);
+      ctx.drawImage(img, x, y, TW, TH);
+      ctx.fillStyle = '#e6e0ee';
+      ctx.fillText(it.label, x + 2, y + TH + 3);
+    }
+    return c.toDataURL('image/png');
+  }, { items, cols });
+  await writeFile(file, Buffer.from(url.split(',')[1], 'base64'));
+}
+const capture = async (opts) => {
+  await page.evaluate((o) => window.viewer.set(o), { ...BASE, ...opts });
+  return page.locator('#view').screenshot();
+};
+
+if (!PALETTE_MODE && (!wanted.length || wanted.includes('faces-sheet'))) {
+  // All 10 Avatar V2 eye designs on the same head close-up.
+  const items = [];
+  for (const [i, d] of EYE_DESIGNS.entries()) {
+    const png = await capture({ view: 'face', time: 1.2, eyes: String(i) });
+    items.push({ label: `${i + 1} ${d.name}`, url: `data:image/png;base64,${png.toString('base64')}` });
+  }
+  await contactSheet(items, 5, path.join(outDir, 'faces-sheet.png'));
+  console.log('screenshots/faces-sheet.png');
+}
+
 if (PALETTE_MODE) {
   // Same seed, camera and time for every palette: the depth scene with the crew in front.
   const palDir = path.join(outDir, 'palettes');
@@ -71,30 +114,7 @@ if (PALETTE_MODE) {
     tiles.push({ label, url: `data:image/png;base64,${png.toString('base64')}` });
     console.log(`screenshots/palettes/${String(i + 1).padStart(2, '0')}-${slug}.png`);
   }
-  // Contact sheet: 5x5 tiles at the 320x180 internal resolution (exact 1/4 nearest), labelled.
-  const sheet = await page.evaluate(async (items) => {
-    const TW = 320, TH = 180, LAB = 18, GAP = 8;
-    const c = document.createElement('canvas');
-    c.width = GAP + 5 * (TW + GAP);
-    c.height = GAP + 5 * (TH + LAB + GAP);
-    const ctx = c.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#111';
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.font = '12px ui-monospace, Menlo, monospace';
-    ctx.textBaseline = 'top';
-    for (const [i, it] of items.entries()) {
-      const img = new Image();
-      img.src = it.url;
-      await img.decode();
-      const x = GAP + (i % 5) * (TW + GAP), y = GAP + Math.floor(i / 5) * (TH + LAB + GAP);
-      ctx.drawImage(img, x, y, TW, TH);
-      ctx.fillStyle = '#e6e0ee';
-      ctx.fillText(it.label, x + 2, y + TH + 3);
-    }
-    return c.toDataURL('image/png');
-  }, tiles);
-  await writeFile(path.join(palDir, 'contact-sheet.png'), Buffer.from(sheet.split(',')[1], 'base64'));
+  await contactSheet(tiles, 5, path.join(palDir, 'contact-sheet.png'));
   console.log('screenshots/palettes/contact-sheet.png');
 }
 await browser.close();

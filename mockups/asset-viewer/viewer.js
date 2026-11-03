@@ -4,7 +4,7 @@
 // with nearest-neighbour, so pixels stay crisp. There's no dithering and no outline.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { FACE_W, FACE_H, EYES, MOUTHS, faceBitmap, faceFor } from './faces.js';
+import { FACE_W, FACE_H, EYE_DESIGNS, faceBitmap, eyesFor } from './faces.js';
 import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
 import { mapPalette, snapToPool } from './palette-map.js';
 
@@ -60,7 +60,6 @@ export const PALETTES = {
 for (const slug of [...LOSPEC_ORDER, ...SPARES]) PALETTES[`lospec:${slug}`] = mapPalette(slug);
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
 const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
-const SHOW_MOUTHS = false; // faces on hold pending the ApprenticeHack V2 eye designs; mouth code kept
 let paletteName = 'v2';
 // Ramp keys are paths into the active palette, e.g. 'ocean' or 'contributors.mint'.
 const resolve = (key) => key.split('.').reduce((o, k) => o[k], PALETTES[paletteName]);
@@ -455,8 +454,9 @@ const ASTRO_FRAG = /* glsl */ `
   uniform sampler2D uFace;
   in vec3 vPosW;
 
-  const vec3 HEAD = vec3(0.0, 0.76, 0.0);
-  const float HEAD_R = 0.24; // helmet = top 48% of the 1-unit figure
+  // Chibi: the helmet is ~55% of the figure, with a short torso and stubby limbs.
+  const vec3 HEAD = vec3(0.0, 0.71, 0.0);
+  const float HEAD_R = 0.27;
   const vec3 BMIN = vec3(-0.5, -0.08, -0.42);
   const vec3 BMAX = vec3(0.5, 1.06, 0.42);
 
@@ -466,12 +466,12 @@ const ASTRO_FRAG = /* glsl */ `
   float limb(vec3 p, vec3 a, vec3 b, vec3 c, float r0, float r1) { return smin(sdCapsule(p, a, b, r0), sdCapsule(p, b, c, r1), 0.035); }
 
   float dHelmet(vec3 p) { return length(p - HEAD) - HEAD_R; }
-  float dTorso(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.43, 0.0), vec3(0.155, 0.135, 0.12), 0.07); }
-  float dPack(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.49, -0.19), vec3(0.19, 0.17, 0.08), 0.042); }
-  float dArm(vec3 p, int i) { return limb(p, uJ[i], uJ[i + 1], uJ[i + 2], 0.062, 0.056); }
-  float dHand(vec3 p, int i) { return length(p - (uJ[i + 2] + normalize(uJ[i + 2] - uJ[i + 1]) * 0.035)) - 0.066; }
-  float dLeg(vec3 p, int i) { return limb(p, uJ[i], uJ[i + 1], uJ[i + 2], 0.078, 0.07); }
-  float dBoot(vec3 p, int i) { return sdRoundBox(p - (uJ[i + 2] + vec3(0.0, -0.03, 0.025)), vec3(0.066, 0.045, 0.088), 0.036); }
+  float dTorso(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.36, 0.0), vec3(0.145, 0.1, 0.115), 0.065); }
+  float dPack(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.38, -0.18), vec3(0.175, 0.13, 0.075), 0.04); }
+  float dArm(vec3 p, int i) { return limb(p, uJ[i], uJ[i + 1], uJ[i + 2], 0.058, 0.054); }
+  float dHand(vec3 p, int i) { return length(p - (uJ[i + 2] + normalize(uJ[i + 2] - uJ[i + 1]) * 0.03)) - 0.06; }
+  float dLeg(vec3 p, int i) { return limb(p, uJ[i], uJ[i + 1], uJ[i + 2], 0.072, 0.066); }
+  float dBoot(vec3 p, int i) { return sdRoundBox(p - (uJ[i + 2] + vec3(0.0, -0.03, 0.025)), vec3(0.062, 0.04, 0.08), 0.034); }
 
   float map(vec3 p) {
     float d = smin(dHelmet(p), dTorso(p), 0.04);
@@ -540,8 +540,8 @@ const ASTRO_FRAG = /* glsl */ `
       float e = visorUV(p).z;
       return e < 1.0 ? 3 : e < 1.75 ? 1 : 0; // screen, then a gear-tone bezel
     }
-    if (part == 1) return (p.z > 0.09 && abs(p.x) < 0.065 && abs(p.y - 0.44) < 0.036) ? 1 : 0; // chest panel
-    if (part == 2) return abs(p.y - 0.55) < 0.034 ? 2 : 1; // backpack + contributor stripe
+    if (part == 1) return (p.z > 0.085 && abs(p.x) < 0.06 && abs(p.y - 0.36) < 0.032) ? 1 : 0; // chest panel
+    if (part == 2) return abs(p.y - 0.43) < 0.032 ? 2 : 1; // backpack + contributor stripe
     if (part == 3) {
       // contributor shoulder band around the upper arm
       vec3 a = uJ[armI], b = uJ[armI + 1];
@@ -625,15 +625,17 @@ function makeAstronaut(colorKey) {
     const sway = Math.sin(t * 1.1 + 0.8);
     for (const [k, s] of [[0, -1], [3, 1]]) {
       const lift = 0.02 * Math.sin(t * 1.5 + 0.6 + s * 0.4);
-      joints[k].set(s * 0.185, 0.535, 0);
-      joints[k + 1].set(s * (0.28 + 0.012 * bob), 0.425 + lift, 0.035);
-      joints[k + 2].set(s * (0.305 + 0.015 * bob), 0.33 + lift * 2, 0.11 + 0.01 * sway);
+      // stubby arms: the hands hang at about hip height
+      joints[k].set(s * 0.165, 0.42, 0);
+      joints[k + 1].set(s * (0.225 + 0.008 * bob), 0.36 + lift * 0.6, 0.03);
+      joints[k + 2].set(s * (0.24 + 0.01 * bob), 0.29 + lift * 1.2, 0.08 + 0.008 * sway);
     }
     for (const [k, s, bend] of [[6, -1, 1], [9, 1, 0.6]]) {
-      const kb = bend * (0.05 + 0.02 * Math.sin(t * 1.5 + s));
-      joints[k].set(s * 0.085, 0.32, 0);
-      joints[k + 1].set(s * 0.1, 0.19, 0.03 + kb);
-      joints[k + 2].set(s * 0.095, 0.07 + kb * 0.4, -0.02 + kb * 0.2);
+      // short legs, about a fifth of the height; knee bend scaled to the shorter tube
+      const kb = bend * (0.025 + 0.01 * Math.sin(t * 1.5 + s));
+      joints[k].set(s * 0.075, 0.25, 0);
+      joints[k + 1].set(s * 0.085, 0.17, 0.02 + kb);
+      joints[k + 2].set(s * 0.08, 0.1 + kb * 0.3, -0.01 + kb * 0.15);
     }
   }
 
@@ -643,6 +645,7 @@ function makeAstronaut(colorKey) {
     body.rotation.z = Math.sin(p * 1.1) * 0.07;
     body.rotation.x = Math.sin(p * 0.9) * 0.05;
     pose(p);
+    drawFace(blink(p));
     root.updateMatrixWorld(true);
     mat.uniforms.uInvModel.value.copy(proxy.matrixWorld).invert();
     proxy.matrixWorld.decompose(new THREE.Vector3(), q, new THREE.Vector3());
@@ -652,9 +655,26 @@ function makeAstronaut(colorKey) {
     mat.userData.ramps.uAccent = `contributors.${key}`;
     root.userData.depthLevel = -1; // force a re-tint
   }
-  function setFace(eyes, mouth) {
-    face.image.data.set(faceBitmap(eyes, mouth));
+  let eyes = 0;
+  let squash = -1;
+  function drawFace(sq) {
+    if (sq === squash) return;
+    squash = sq;
+    face.image.data.set(faceBitmap(eyes, sq));
     face.needsUpdate = true;
+  }
+  function setFace(idx) {
+    eyes = idx;
+    squash = -1;
+    drawFace(1);
+  }
+  // Occasional blink: a quick Y-squash of the eyes, staggered per astronaut.
+  const BLINK_PERIOD = 4.3;
+  const BLINK_LEN = 0.18;
+  function blink(p) {
+    const k = ((p * 1.0 + root.userData.phase * 0.37) % BLINK_PERIOD + BLINK_PERIOD) % BLINK_PERIOD;
+    if (k > BLINK_LEN) return 1;
+    return Math.round((1 - Math.sin((k / BLINK_LEN) * Math.PI) * 0.88) * 6) / 6; // a few discrete steps
   }
   root.userData.phase = 0; // callers stagger this so the crew doesn't bob in sync
   return { group: root, update, setColor, setFace };
@@ -747,10 +767,11 @@ const VIEWS = {
   planet: { pos: [1.3, 0.75, 3.9], target: [0, 0, 0] },
   crew: { pos: [CREW_SPOT.x + 0.35, CREW_SPOT.y + 0.95, CREW_SPOT.z + 2.7], target: [CREW_SPOT.x, CREW_SPOT.y + 0.52, CREW_SPOT.z] },
   depth: { pos: [0.1, 1.2, 9.6], target: [-0.3, 0.3, -6] },
+  face: { pos: [CREW_SPOT.x + 0.08, CREW_SPOT.y + 0.8, CREW_SPOT.z + 1.15], target: [CREW_SPOT.x, CREW_SPOT.y + 0.62, CREW_SPOT.z] }, // head close-up (mint)
 };
 
 // ---------------------------------------------------------------- state
-const state = { view: 'planet', seed: 7, ring: true, color: 'coral', pixelH: 180, depth: true, spin: true, time: null, ui: true, palette: 'v2', eyes: 'auto', mouth: 'auto' };
+const state = { view: 'planet', seed: 7, ring: true, color: 'coral', pixelH: 180, depth: true, spin: true, time: null, ui: true, palette: 'v2', eyes: 'auto' };
 let lastSeed = -1;
 
 function applyView(name) {
@@ -786,11 +807,9 @@ function applyState() {
   document.body.style.background = resolve('space');
   planets.forEach((p) => (p.ring.visible = state.ring));
   solos.forEach((s) => s.setColor(state.color));
-  // Faces: hashed from each contributor's handle unless the UI overrides eyes or mouth.
+  // Faces: hashed from each contributor's handle unless the UI overrides the eye design.
   for (const a of [...crew, ...solos]) {
-    const auto = faceFor(HANDLES[a.userData.color ?? state.color]);
-    const mouth = !SHOW_MOUTHS ? -1 : state.mouth === 'auto' ? auto.mouth : +state.mouth;
-    a.setFace(state.eyes === 'auto' ? auto.eyes : +state.eyes, mouth);
+    a.setFace(state.eyes === 'auto' ? eyesFor(HANDLES[a.userData.color ?? state.color]) : +state.eyes);
   }
   document.getElementById('ui').hidden = !state.ui;
   resize();
@@ -828,8 +847,7 @@ function bindUi() {
   $('spin').addEventListener('change', (e) => { state.spin = e.target.checked; });
   $('palette').addEventListener('change', (e) => { state.palette = e.target.value; applyState(); });
   const fill = (sel, items, label) => items.forEach((v, i) => sel.add(new Option(label(v), String(i))));
-  fill($('eyes'), EYES, (v) => v);
-  fill($('mouth'), MOUTHS, (v) => v || 'none');
+  fill($('eyes'), EYE_DESIGNS, (d) => d.name);
   // Published palettes: the 25 contact-sheet picks, then the spares.
   for (const [label, slugs] of [['lospec (contact sheet)', LOSPEC_ORDER], ['lospec (spares)', SPARES]]) {
     const group = document.createElement('optgroup');
@@ -838,7 +856,6 @@ function bindUi() {
     $('palette').append(group);
   }
   $('eyes').addEventListener('change', (e) => { state.eyes = e.target.value; applyState(); });
-  $('mouth').addEventListener('change', (e) => { state.mouth = e.target.value; applyState(); });
   addEventListener('resize', resize);
 }
 
