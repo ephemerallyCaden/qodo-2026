@@ -369,11 +369,24 @@ function makePlanet() {
       const streak = streakField(dir.x * 0.9, dir.y * 6.0 + 2, dir.z * 0.9);
       const density = Math.max(mass, streak) - 0.635;
       const jitter = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).multiplyScalar(0.05);
+      // A lone sphere reads as a white ball, so thin weather (mass edges, strays) is
+      // built as a mini-clump: a lead puff plus smaller satellites beside it.
+      const clump = (center, size, lift, satellites) => {
+        put(center, size, lift);
+        const east = new THREE.Vector3().crossVectors(up, center).normalize();
+        const north = new THREE.Vector3().crossVectors(center, east);
+        for (let k = 0; k < satellites; k++) {
+          const a = rnd() * Math.PI * 2;
+          const off = size * (0.9 + rnd() * 0.5);
+          const sDir = center.clone().addScaledVector(east, Math.cos(a) * off * 1.4).addScaledVector(north, Math.sin(a) * off * 0.7);
+          put(sDir, size * (0.5 + rnd() * 0.25), lift * 0.5);
+        }
+      };
       if (density > 0.012) {
         const core = Math.min(1, density * 7);
-        put(dir.add(jitter), 0.032 + core * 0.05 + rnd() * 0.012, 0.2 + core * 0.9);
+        clump(dir.add(jitter), 0.032 + core * 0.05 + rnd() * 0.012, 0.2 + core * 0.9, core < 0.35 ? 2 + Math.floor(rnd() * 2) : 1);
       } else if (density > -0.08 && rnd() < 0.025) {
-        put(dir.add(jitter), 0.022 + rnd() * 0.014, 0.25);
+        clump(dir.add(jitter), 0.026 + rnd() * 0.012, 0.3, 2 + Math.floor(rnd() * 2));
       }
     }
     puffs.count = n;
