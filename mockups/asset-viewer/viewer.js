@@ -4,6 +4,7 @@
 // with nearest-neighbour, so pixels stay crisp. There's no dithering and no outline.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { FACE_W, FACE_H, EYES, MOUTHS, faceBitmap, faceFor } from './faces.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -54,6 +55,7 @@ export const PALETTES = {
   },
 };
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
+const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
 let paletteName = 'v2';
 // Ramp keys are paths into the active palette, e.g. 'ocean' or 'contributors.mint'.
 const resolve = (key) => key.split('.').reduce((o, k) => o[k], PALETTES[paletteName]);
@@ -429,9 +431,11 @@ const ASTRO_FRAG = /* glsl */ `
   uniform vec3 uAccent[4];
   uniform vec3 uVisor[2];
   uniform vec3 uGlint;
+  uniform sampler2D uFace;
   in vec3 vPosW;
 
-  const vec3 HEAD = vec3(0.0, 0.79, 0.0);
+  const vec3 HEAD = vec3(0.0, 0.76, 0.0);
+  const float HEAD_R = 0.24; // helmet = top 48% of the 1-unit figure
   const vec3 BMIN = vec3(-0.5, -0.08, -0.42);
   const vec3 BMAX = vec3(0.5, 1.06, 0.42);
 
@@ -440,9 +444,9 @@ const ASTRO_FRAG = /* glsl */ `
   float sdCapsule(vec3 p, vec3 a, vec3 b, float r) { vec3 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h) - r; }
   float limb(vec3 p, vec3 a, vec3 b, vec3 c, float r0, float r1) { return smin(sdCapsule(p, a, b, r0), sdCapsule(p, b, c, r1), 0.035); }
 
-  float dHelmet(vec3 p) { return length(p - HEAD) - 0.21; }
-  float dTorso(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.47, 0.0), vec3(0.17, 0.155, 0.13), 0.075); }
-  float dPack(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.53, -0.2), vec3(0.205, 0.19, 0.085), 0.045); }
+  float dHelmet(vec3 p) { return length(p - HEAD) - HEAD_R; }
+  float dTorso(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.43, 0.0), vec3(0.155, 0.135, 0.12), 0.07); }
+  float dPack(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.49, -0.19), vec3(0.19, 0.17, 0.08), 0.042); }
   float dArm(vec3 p, int i) { return limb(p, uJ[i], uJ[i + 1], uJ[i + 2], 0.062, 0.056); }
   float dHand(vec3 p, int i) { return length(p - (uJ[i + 2] + normalize(uJ[i + 2] - uJ[i + 1]) * 0.035)) - 0.066; }
   float dLeg(vec3 p, int i) { return limb(p, uJ[i], uJ[i + 1], uJ[i + 2], 0.078, 0.07); }
@@ -486,6 +490,16 @@ const ASTRO_FRAG = /* glsl */ `
     return clamp(1.0 - o * 0.3, 0.0, 1.0);
   }
 
+  // Visor screen: a rounded rectangle in yaw/pitch about the helmet centre, ~4:3 once
+  // projected onto the sphere. xy = screen uv (0..1, y down), z = superellipse value.
+  vec3 visorUV(vec3 p) {
+    vec3 d = normalize(p - HEAD);
+    float yaw = atan(d.x, d.z);
+    float pitch = asin(clamp(d.y, -1.0, 1.0)) + 0.02;
+    vec2 q = vec2(yaw / 0.74, pitch / 0.54);
+    return vec3(q.x * 0.5 + 0.5, 0.5 - q.y * 0.5, pow(abs(q.x), 5.0) + pow(abs(q.y), 5.0));
+  }
+
   // 0 suit, 1 gear, 2 accent, 3 visor
   int region(vec3 p) {
     float best = dHelmet(p);
@@ -502,16 +516,11 @@ const ASTRO_FRAG = /* glsl */ `
       d = dBoot(p, i + 6); if (d < best) { best = d; part = 6; }
     }
     if (part == 0) {
-      // Letterbox visor: a rounded rectangle in yaw/pitch, wider than tall, with a gear-tone rim.
-      vec3 d = normalize(p - HEAD);
-      float yaw = atan(d.x, d.z);
-      float pitch = asin(clamp(d.y, -1.0, 1.0)) + 0.03;
-      float visor = pow(abs(yaw / 0.92), 4.0) + pow(abs(pitch / 0.29), 4.0);
-      float rim = pow(abs(yaw / 1.05), 4.0) + pow(abs(pitch / 0.4), 4.0);
-      return visor < 1.0 ? 3 : rim < 1.0 ? 1 : 0;
+      float e = visorUV(p).z;
+      return e < 1.0 ? 3 : e < 1.75 ? 1 : 0; // screen, then a gear-tone bezel
     }
-    if (part == 1) return (p.z > 0.1 && abs(p.x) < 0.07 && abs(p.y - 0.5) < 0.04) ? 1 : 0; // chest panel
-    if (part == 2) return abs(p.y - 0.6) < 0.036 ? 2 : 1; // backpack + contributor stripe
+    if (part == 1) return (p.z > 0.09 && abs(p.x) < 0.065 && abs(p.y - 0.44) < 0.036) ? 1 : 0; // chest panel
+    if (part == 2) return abs(p.y - 0.55) < 0.034 ? 2 : 1; // backpack + contributor stripe
     if (part == 3) {
       // contributor shoulder band around the upper arm
       vec3 a = uJ[armI], b = uJ[armI + 1];
@@ -549,7 +558,11 @@ const ASTRO_FRAG = /* glsl */ `
     if (r == 3) {
       vec3 refl = reflect(rd, n);
       c = (refl.y > 0.18 && b >= 2) ? uVisor[1] : uVisor[0];
-      if (dot(refl, L) > 0.9 && b >= 1) c = uGlint;
+      // The face glows in the contributor colour, unlit, so it reads like a screen.
+      vec2 uv = visorUV(p).xy;
+      ivec2 px = clamp(ivec2(uv * vec2(${FACE_W}.0, ${FACE_H}.0)), ivec2(0), ivec2(${FACE_W - 1}, ${FACE_H - 1}));
+      if (texelFetch(uFace, px, 0).r > 0.5) c = uAccent[2];
+      if (dot(refl, L) > 0.975 && b >= 1) c = uGlint; // small specular glint over the face
     } else if (r == 2) c = uAccent[b];
     else if (r == 1) c = uGear[b];
     else c = uSuit[b];
@@ -561,8 +574,15 @@ const ASTRO_FRAG = /* glsl */ `
 
 const PROXY_GEO = new THREE.BoxGeometry(1, 1.14, 0.84).translate(0, 0.49, 0);
 
+function makeFaceTexture() {
+  const tex = new THREE.DataTexture(new Uint8Array(FACE_W * FACE_H * 4), FACE_W, FACE_H);
+  tex.magFilter = tex.minFilter = THREE.NearestFilter;
+  return tex;
+}
+
 function makeAstronaut(colorKey) {
   const root = new THREE.Group();
+  const face = makeFaceTexture();
   const body = new THREE.Group();
   root.add(body);
   const joints = Array.from({ length: 12 }, () => new THREE.Vector3());
@@ -570,7 +590,7 @@ function makeAstronaut(colorKey) {
     uSuit: 'suit', uGear: 'gear', uAccent: `contributors.${colorKey}`, uVisor: 'visor', uGlint: 'glint',
   }, {
     uInvModel: { value: new THREE.Matrix4() }, uModel: { value: null }, uProj: { value: camera.projectionMatrix },
-    uLightLocal: { value: new THREE.Vector3() }, uJ: { value: joints },
+    uLightLocal: { value: new THREE.Vector3() }, uJ: { value: joints }, uFace: { value: face },
   }, { side: THREE.BackSide });
   const proxy = new THREE.Mesh(PROXY_GEO, mat);
   mat.uniforms.uModel.value = proxy.matrixWorld;
@@ -583,9 +603,9 @@ function makeAstronaut(colorKey) {
     const sway = Math.sin(t * 1.1 + 0.8);
     for (const [k, s] of [[0, -1], [3, 1]]) {
       const lift = 0.02 * Math.sin(t * 1.5 + 0.6 + s * 0.4);
-      joints[k].set(s * 0.2, 0.585, 0);
-      joints[k + 1].set(s * (0.3 + 0.012 * bob), 0.47 + lift, 0.035);
-      joints[k + 2].set(s * (0.325 + 0.015 * bob), 0.37 + lift * 2, 0.11 + 0.01 * sway);
+      joints[k].set(s * 0.185, 0.535, 0);
+      joints[k + 1].set(s * (0.28 + 0.012 * bob), 0.425 + lift, 0.035);
+      joints[k + 2].set(s * (0.305 + 0.015 * bob), 0.33 + lift * 2, 0.11 + 0.01 * sway);
     }
     for (const [k, s, bend] of [[6, -1, 1], [9, 1, 0.6]]) {
       const kb = bend * (0.05 + 0.02 * Math.sin(t * 1.5 + s));
@@ -610,8 +630,12 @@ function makeAstronaut(colorKey) {
     mat.userData.ramps.uAccent = `contributors.${key}`;
     root.userData.depthLevel = -1; // force a re-tint
   }
+  function setFace(eyes, mouth) {
+    face.image.data.set(faceBitmap(eyes, mouth));
+    face.needsUpdate = true;
+  }
   root.userData.phase = 0; // callers stagger this so the crew doesn't bob in sync
-  return { group: root, update, setColor };
+  return { group: root, update, setColor, setFace };
 }
 
 // ---------------------------------------------------------------- stars
@@ -675,7 +699,8 @@ const CREW_SPOT = new THREE.Vector3(14, 0, 0);
 const crew = CONTRIBUTOR_KEYS.map((key, i) => {
   const a = makeAstronaut(key);
   a.group.position.set(CREW_SPOT.x + (i - 1) * 0.72, CREW_SPOT.y, CREW_SPOT.z);
-  a.group.rotation.y = [0.6, 0.2, -0.55][i];
+  a.group.rotation.y = [0.4, 0.05, -0.4][i];
+  a.userData = { color: key };
   a.group.userData.phase = i * 1.7;
   scene.add(a.group);
   return a;
@@ -689,6 +714,7 @@ const solos = [
   { pos: [6.5, 4.2, -38], ry: -0.5 },
 ].map(({ pos, ry }, i) => {
   const a = makeAstronaut('coral');
+  a.userData = { color: null }; // follows state.color
   a.group.position.set(...pos);
   a.group.rotation.y = ry;
   a.group.userData.phase = 0.6 + i * 2.3;
@@ -703,7 +729,7 @@ const VIEWS = {
 };
 
 // ---------------------------------------------------------------- state
-const state = { view: 'planet', seed: 7, ring: true, color: 'coral', pixelH: 180, depth: true, spin: true, time: null, ui: true, palette: 'v2' };
+const state = { view: 'planet', seed: 7, ring: true, color: 'coral', pixelH: 180, depth: true, spin: true, time: null, ui: true, palette: 'v2', eyes: 'auto', mouth: 'auto' };
 let lastSeed = -1;
 
 function applyView(name) {
@@ -739,6 +765,11 @@ function applyState() {
   document.body.style.background = resolve('space');
   planets.forEach((p) => (p.ring.visible = state.ring));
   solos.forEach((s) => s.setColor(state.color));
+  // Faces: hashed from each contributor's handle unless the UI overrides eyes or mouth.
+  for (const a of [...crew, ...solos]) {
+    const auto = faceFor(HANDLES[a.userData.color ?? state.color]);
+    a.setFace(state.eyes === 'auto' ? auto.eyes : +state.eyes, state.mouth === 'auto' ? auto.mouth : +state.mouth);
+  }
   document.getElementById('ui').hidden = !state.ui;
   resize();
 }
@@ -774,6 +805,11 @@ function bindUi() {
   $('depth').addEventListener('change', (e) => { state.depth = e.target.checked; applyState(); });
   $('spin').addEventListener('change', (e) => { state.spin = e.target.checked; });
   $('palette').addEventListener('change', (e) => { state.palette = e.target.value; applyState(); });
+  const fill = (sel, items, label) => items.forEach((v, i) => sel.add(new Option(label(v), String(i))));
+  fill($('eyes'), EYES, (v) => v);
+  fill($('mouth'), MOUTHS, (v) => v || 'none');
+  $('eyes').addEventListener('change', (e) => { state.eyes = e.target.value; applyState(); });
+  $('mouth').addEventListener('change', (e) => { state.mouth = e.target.value; applyState(); });
   addEventListener('resize', resize);
 }
 

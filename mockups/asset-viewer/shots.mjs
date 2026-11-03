@@ -16,6 +16,7 @@ const SHOTS = {
   'planet-no-ring': { view: 'planet', time: 3, ring: false },
   'planet-seed-311': { view: 'planet', time: 3, seed: 311 },
   'crew-closeup': { view: 'crew', time: 1.2 },
+  'crew-face-switch': { view: 'crew', time: 1.2, eyes: '1', mouth: '6' }, // UI override: ◉ ◉ / ◡ on everyone
   'depth-scene': { view: 'depth', time: 2 },
   'depth-scene-off': { view: 'depth', time: 2, depth: false },
   'pixel-120': { view: 'planet', time: 3, pixelH: 120 },
