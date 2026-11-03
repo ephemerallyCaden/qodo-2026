@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <title>asset viewer · codebase space explorer</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #0d0b16; overflow: hidden; }
+    html, body { margin: 0; height: 100%; background: #12173d; overflow: hidden; }
     body { display: grid; place-items: center; font: 12px/1.4 ui-monospace, Menlo, monospace; color: #e6e0ee; }
     #view { image-rendering: pixelated; display: block; }
     #ui { position: fixed; top: 10px; left: 10px; width: 210px; padding: 10px 12px; background: #1a1626e6; border: 1px solid #3b3866; }
@@ -37,6 +37,9 @@
     <div class="hint" id="pixel-readout"></div>
     <label>depth fade <input id="depth" type="checkbox" checked></label>
     <label>rotate <input id="spin" type="checkbox" checked></label>
+    <label>moons <input id="moons" type="checkbox" checked></label>
+    <label>dark halo <input id="halo" type="checkbox"></label>
+    <label>loop (s) <input id="period" type="number" min="1" max="30" step="0.5" value="6" style="width:54px"></label>
     <label>palette <select id="palette"><option value="final">final (BLK 36 crew + Earth planets)</option><option value="v2">v2</option><option value="v1">v1 (batch 1)</option></select></label>
     <div class="hint">drag to orbit · scroll to zoom</div>
   </div>

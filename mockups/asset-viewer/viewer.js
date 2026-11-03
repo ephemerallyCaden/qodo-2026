@@ -7,7 +7,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EYE_DESIGNS, EYES_GLSL, eyesFor } from './faces.js';
 import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
 import { mapPalette, mapColors, snapToPool } from './palette-map.js';
-import { PLANET_RAMPS } from './planet-ramps.js';
+import { PLANET_RAMPS, PLANET_DEPTH } from './planet-ramps.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -64,27 +64,49 @@ const hexesIn = (o) => (typeof o === 'string' ? (o.startsWith('#') ? [o] : []) :
 for (const k of ['v1', 'v2']) PALETTES[k] = { ...mapColors(hexesIn(PALETTES[k])), ...PALETTES[k], snap: null };
 // "final": the human's pick. Crew, space, stars and depth exactly as BLK 36 (tile 19);
 // planets, rings and accents from the swappable PLANET_RAMPS data.
-PALETTES.final = {
-  ...PALETTES['lospec:blk-36'],
-  ...PLANET_RAMPS,
-  // Space: hard bands from BLK 36's near-black at the top to its deep navy and violet at the bottom.
-  spaceBands: ['#000000', '#12173d', '#29174c'],
-  name: 'final (BLK 36 crew + Earth-like planets)',
-};
+{
+  const blk = PALETTES['lospec:blk-36'];
+  // Space is BLK 36's darkest navy (not black), banding down to a lighter navy-violet.
+  const BANDS = ['#12173d', '#29174c', '#412866']; // OKLCH L .23 -> .26 -> .34, H 273 -> 295 -> 299: monotonic, no hue reversal
+  // With navy space, BLK 36 black becomes available to the crew's far silhouettes;
+  // the background colours are kept out of the snap pools so silhouettes never vanish.
+  const snap = blk.snap.map((pool, i) => (pool ? [...new Set([...(i >= 2 ? ['#000000'] : []), ...pool])].filter((h) => !BANDS.includes(h)) : pool));
+  PALETTES.final = {
+    ...blk,
+    ...PLANET_RAMPS,
+    space: BANDS[0],
+    spaceBands: BANDS,
+    snap,
+    planetDepth: PLANET_DEPTH,
+    name: 'final (BLK 36 crew + research-x2 planets)',
+  };
+}
 // Other palettes keep a flat background.
-for (const pal of Object.values(PALETTES)) pal.spaceBands ??= [pal.space, pal.space, pal.space];
+for (const pal of Object.values(PALETTES)) {
+  pal.spaceBands ??= [pal.space, pal.space, pal.space];
+  // Roles added in revision 5 get stand-ins from each palette's own ramps.
+  pal.moonBody ??= pal.moon.slice(1, 5);
+  pal.halo ??= pal.stars[0];
+}
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
 const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
 let paletteName = 'v2';
 // Ramp keys are paths into the active palette, e.g. 'ocean' or 'contributors.mint'.
-const resolve = (key) => key.split('.').reduce((o, k) => o[k], PALETTES[paletteName]);
+// A missing sub-key falls back to its parent (e.g. 'ring.lush' -> 'ring' on palettes
+// that have one ring ramp for every biome).
+const resolve = (key) => {
+  const v = key.split('.').reduce((o, k) => o?.[k], PALETTES[paletteName]);
+  return v !== undefined || !key.includes('.') ? v : resolve(key.split('.').slice(0, -1).join('.'));
+};
 
 const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object drops a level
 const depthCache = new Map();
-function depthColor(hex, level) {
-  const key = `${paletteName}:${hex}:${level}`;
+// `family` lets planets fade through their own shared set (palette.planetDepth)
+// while the crew keeps the palette's depth steps.
+function depthColor(hex, level, family = 'crew') {
+  const key = `${paletteName}:${family}:${hex}:${level}`;
   if (!depthCache.has(key)) {
-    const pal = PALETTES[paletteName];
+    const pal = family === 'planet' && PALETTES[paletteName].planetDepth ? PALETTES[paletteName].planetDepth : PALETTES[paletteName];
     const [tint, t] = pal.depth[level];
     const c = new THREE.Color(hex).lerp(new THREE.Color(tint), t);
     // Published palettes snap each depth step back onto their own (darker) colours.
@@ -390,14 +412,15 @@ function paletteMaterial(frag, ramps, extra = {}, opts = {}) {
 function setDepthLevel(obj, level) {
   if (obj.userData.depthLevel === level) return;
   obj.userData.depthLevel = level;
+  const family = obj.userData.depthFamily ?? 'crew';
   obj.traverse((o) => {
     const mats = o.material ? [o.material].flat() : [];
     for (const m of mats) {
       for (const [name, key] of Object.entries(m.userData.ramps ?? {})) {
         const hexes = resolve(key);
         const arr = m.uniforms[name].value;
-        if (Array.isArray(arr)) arr.forEach((u, i) => u.copy(depthColor(hexes[Math.min(i, hexes.length - 1)], level))); // short ramps repeat their last colour
-        else arr.copy(depthColor(hexes, level));
+        if (Array.isArray(arr)) arr.forEach((u, i) => u.copy(depthColor(hexes[Math.min(i, hexes.length - 1)], level, family))); // short ramps repeat their last colour
+        else arr.copy(depthColor(hexes, level, family));
       }
     }
   });
@@ -418,9 +441,9 @@ export const BIOMES = {
 };
 // Weather: cloud-puff settings per biome. thr = density threshold (higher = less cover).
 const WEATHER = {
-  cloud: { ramp: 'cloud', thr: 0.635, size: 1, lift: 1, strays: 0.025 },
+  cloud: { ramp: 'cloud', thr: 0.655, size: 1, lift: 1, strays: 0.012 }, // ~25-30% cover (Planetarium)
   thin: { ramp: 'cloud', thr: 0.685, size: 0.7, lift: 0.5, strays: 0.012 },
-  ash: { ramp: 'ash', thr: 0.66, size: 0.85, lift: 1.7, strays: 0.04 },
+  ash: { ramp: 'ash', thr: 0.62, size: 0.8, lift: 0.35, strays: 0.02, flat: 0.35, stretch: 2.4, streaksOnly: true }, // low, streaky smoke
   spore: { ramp: 'spore', thr: 0.665, size: 0.7, lift: 1.1, strays: 0.05 },
 };
 
@@ -429,46 +452,112 @@ const PUFF_GEO = new THREE.IcosahedronGeometry(1, 3);
 const MAX_PUFFS = 1200;
 const ramp5 = () => ({ value: Array.from({ length: 5 }, () => new THREE.Color()) });
 
+// Loop lock: every planet layer completes whole cycles per LOOP.period (seconds).
+// The surface (and the clouds riding on it) turns once, each moon orbits once and
+// the ring's 5-fold repeating debris pattern advances one sector (1/5 turn).
+export const LOOP = { period: 6 };
+const RING_SECTORS = 5;
+
+// Ring debris: chunky points. aType 0 = 1 px, 1 = 2x2 block, 2 = 3x3 plus.
+const RING_VERT = /* glsl */ `
+  in float aShade;
+  in float aType;
+  out float vShade;
+  out float vType;
+  out vec3 vPosW;
+  void main() {
+    vShade = aShade;
+    vType = aType;
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vPosW = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+    gl_PointSize = aType < 0.5 ? 1.0 : aType < 1.5 ? 2.0 : 3.0;
+  }
+`;
+const RING_CHUNK_FRAG = /* glsl */ `
+  uniform vec3 uRamp[4];
+  uniform vec3 uLight;
+  uniform vec3 uCenter;
+  uniform float uRadius;
+  in float vShade;
+  in float vType;
+  in vec3 vPosW;
+  void main() {
+    if (vType > 1.5) { // plus shape: drop the 3x3 corners
+      vec2 cell = floor(gl_PointCoord * 3.0);
+      if (cell.x != 1.0 && cell.y != 1.0) discard;
+    }
+    int i = int(vShade);
+    vec3 oc = vPosW - uCenter;
+    float bq = dot(oc, uLight);
+    if (bq < 0.0 && dot(oc, oc) - bq * bq < uRadius * uRadius) i = 0; // in the planet's shadow
+    gl_FragColor = vec4(uRamp[i], 1.0);
+  }
+`;
+const FLAT_FRAG = /* glsl */ `uniform vec3 uColor; void main() { gl_FragColor = vec4(uColor, 1.0); }`;
+const MOON_GEO = new THREE.SphereGeometry(1, 20, 14);
+
 function makePlanet() {
   const group = new THREE.Group();
+  group.userData.depthFamily = 'planet'; // fades through the planet set, not the crew's
   const surfaceMat = paletteMaterial(PLANET_FRAG, {}, {
     uBiome: { value: 0 }, uA: ramp5(), uB: ramp5(), uC: ramp5(), uG: { value: [0, 1, 2].map(() => new THREE.Color()) },
     uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 },
-    uBands: { value: new THREE.Vector3(0.2, 0.58, 0.86) }, // high bands curve into crescents
+    uBands: { value: new THREE.Vector3(0.2, 0.58, 0.86) }, // lit directional terminator, crescent bands
   });
+  const spin = new THREE.Group(); // surface + clouds turn together
   const surface = new THREE.Mesh(PLANET_GEO, surfaceMat);
-  group.add(surface);
+  spin.add(surface);
+  group.add(spin);
 
   const hazeMat = paletteMaterial(HAZE_FRAG, { uHaze: 'glint' });
   const haze = new THREE.Mesh(PLANET_GEO, hazeMat);
   haze.scale.setScalar(1.06);
   group.add(haze);
 
+  // Optional dark halo (teal-GIF look): a back-face shell in the bg+1 colour, ~2 px at hero size.
+  const haloMat = paletteMaterial(FLAT_FRAG, { uColor: 'halo' }, {}, { side: THREE.BackSide });
+  const halo = new THREE.Mesh(PLANET_GEO, haloMat);
+  halo.scale.setScalar(1.055);
+  halo.visible = false;
+  group.add(halo);
+
   // Clouds / ash / spores: clusters of overlapping puffs sitting on the surface, so
-  // the tops bulge past the silhouette at the limb. They drift faster than the ground.
-  const cloudPivot = new THREE.Group();
+  // the tops bulge past the silhouette at the limb. They ride with the surface.
   const cloudMat = paletteMaterial(CLOUD_FRAG, { uRamp: 'cloud' }, {
     uBands: { value: new THREE.Vector3(-0.3, 0.12, 0.42) }, uCenter: { value: new THREE.Vector3() },
   });
   const puffs = new THREE.InstancedMesh(PUFF_GEO, cloudMat, MAX_PUFFS);
-  cloudPivot.add(puffs);
-  group.add(cloudPivot);
+  spin.add(puffs);
 
-  // Ring: scattered single pixels. A modifier on any biome: off, thin or wide.
+  // Ring: clustered chunky debris. A modifier on any biome: off, thin or wide.
   const ringMat = new THREE.ShaderMaterial({
-    vertexShader: POINTS_VERT, fragmentShader: RING_FRAG,
+    vertexShader: RING_VERT, fragmentShader: RING_CHUNK_FRAG,
     uniforms: {
-      uRamp: { value: resolve('ring').map((h) => new THREE.Color(h)) }, uLight: { value: LIGHT_DIR },
+      uRamp: { value: [0, 1, 2, 3].map(() => new THREE.Color()) }, uLight: { value: LIGHT_DIR },
       uCenter: { value: new THREE.Vector3() }, uRadius: { value: 1 },
     },
   });
   ringMat.userData.ramps = { uRamp: 'ring' };
+  const ringTilt = new THREE.Group();
+  ringTilt.rotation.set(0.2, 0, -0.32); // shallow tilt so the front arc crosses the disc
   const ring = new THREE.Points(new THREE.BufferGeometry(), ringMat);
-  ring.rotation.set(0.2, 0, -0.32); // shallow tilt so the front lane crosses the disc
-  group.add(ring);
+  ringTilt.add(ring);
+  group.add(ringTilt);
+
+  // Moons: a big (~9 px) and a small (~5 px) warm sphere on inclined orbits that pass
+  // in front at the bottom and fully behind the disc (depth-sorted by the z-buffer).
+  const moonMat = paletteMaterial(TOON_FRAG, { uRamp: 'moonBody' }, { uBands: { value: new THREE.Vector3(-0.15, 0.35, 0.7) } });
+  const MOONS = [
+    { size: 0.11, orbit: 1.75, incl: 0.34, yaw: 0.25, offset: 0.15 },
+    { size: 0.062, orbit: 1.36, incl: 0.5, yaw: -0.4, offset: 0.62 },
+  ].map((m) => ({ ...m, mesh: Object.assign(new THREE.Mesh(MOON_GEO, moonMat), { visible: false }) }));
+  for (const m of MOONS) {
+    m.mesh.scale.setScalar(m.size);
+    group.add(m.mesh);
+  }
 
   const m4 = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   let built = '';
 
@@ -486,6 +575,7 @@ function makePlanet() {
     surfaceMat.userData.ramps = { uA: a, uB: b, uC: c, uG: g };
     haze.visible = !!biome.haze;
     if (biome.haze) hazeMat.userData.ramps = { uHaze: biome.haze };
+    ringMat.userData.ramps = { uRamp: `ring.${biomeKey}` };
     const weather = WEATHER[biome.weather];
     if (weather) cloudMat.userData.ramps = { uRamp: weather.ramp };
     group.userData.depthLevel = -1; // re-tint with the new ramps
@@ -493,26 +583,28 @@ function makePlanet() {
     // Noise-driven placement, like Planetarium: one fbm field makes a few big merged
     // masses, a latitude-stretched field makes long east-west streaks, and everything
     // else stays clear sky. Denser sites get bigger, higher puffs, so cores merge and
-    // dome. Puffs are squashed radially so clumps hug the surface.
+    // dome. Puffs are squashed radially so clumps hug the surface; `stretch` elongates
+    // them east-west (streaky smoke).
     let n = 0;
-    const FLAT = 0.6;
-    const put = (dir, size, lift) => {
+    const put = (dir, size, lift, flat = 0.6, stretch = 1) => {
       if (n >= MAX_PUFFS) return;
       const d = dir.clone().normalize();
-      q.setFromUnitVectors(up, d);
-      m4.compose(d.multiplyScalar(1 + size * FLAT * lift), q, new THREE.Vector3(size, size * FLAT, size));
+      const east = new THREE.Vector3().crossVectors(up, d).normalize();
+      const north = new THREE.Vector3().crossVectors(d, east);
+      m4.makeBasis(east.multiplyScalar(size * stretch), d.clone().multiplyScalar(size * flat), north.multiplyScalar(size));
+      m4.setPosition(d.multiplyScalar(1 + size * flat * lift));
       puffs.setMatrixAt(n++, m4);
     };
     // A lone sphere reads as a white ball, so thin weather is built as a mini-clump:
     // a lead puff plus smaller satellites beside it.
-    const clump = (center, size, lift, satellites) => {
-      put(center, size, lift);
+    const clump = (center, size, lift, satellites, flat, stretch) => {
+      put(center, size, lift, flat, stretch);
       const east = new THREE.Vector3().crossVectors(up, center).normalize();
       const north = new THREE.Vector3().crossVectors(center, east);
       for (let k = 0; k < satellites; k++) {
         const ang = rnd() * Math.PI * 2;
         const off = size * (0.9 + rnd() * 0.5);
-        put(center.clone().addScaledVector(east, Math.cos(ang) * off * 1.4).addScaledVector(north, Math.sin(ang) * off * 0.7), size * (0.5 + rnd() * 0.25), lift * 0.5);
+        put(center.clone().addScaledVector(east, Math.cos(ang) * off * 1.4 * stretch).addScaledVector(north, Math.sin(ang) * off * 0.7), size * (0.5 + rnd() * 0.25), lift * 0.5, flat, stretch);
       }
     };
     if (weather) {
@@ -524,54 +616,85 @@ function makePlanet() {
         const r = Math.sqrt(1 - y * y);
         const lon = i * 2.39996;
         const dir = new THREE.Vector3(Math.cos(lon) * r, y, Math.sin(lon) * r);
-        const mass = massField(dir.x * 1.15 + 4, dir.y * 1.15, dir.z * 1.15);
+        const mass = weather.streaksOnly ? 0 : massField(dir.x * 1.15 + 4, dir.y * 1.15, dir.z * 1.15);
         const streak = streakField(dir.x * 0.9, dir.y * 6.0 + 2, dir.z * 0.9);
         const density = Math.max(mass, streak) - weather.thr;
         const jitter = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).multiplyScalar(0.05);
+        const flat = weather.flat ?? 0.6;
+        const stretch = weather.stretch ?? 1;
         if (density > 0.012) {
           const core = Math.min(1, density * 7);
-          clump(dir.add(jitter), (0.032 + core * 0.05 + rnd() * 0.012) * weather.size, (0.2 + core * 0.9) * weather.lift, core < 0.35 ? 2 + Math.floor(rnd() * 2) : 1);
+          clump(dir.add(jitter), (0.032 + core * 0.05 + rnd() * 0.012) * weather.size, (0.2 + core * 0.9) * weather.lift, core < 0.35 ? 2 + Math.floor(rnd() * 2) : 1, flat, stretch);
         } else if (density > -0.08 && rnd() < weather.strays) {
-          clump(dir.add(jitter), (0.026 + rnd() * 0.012) * weather.size, 0.3 * weather.lift, 2 + Math.floor(rnd() * 2));
+          clump(dir.add(jitter), (0.026 + rnd() * 0.012) * weather.size, 0.3 * weather.lift, 2 + Math.floor(rnd() * 2), flat, stretch);
         }
       }
     }
     puffs.count = n;
     puffs.instanceMatrix.needsUpdate = true;
 
-    // Ring dust, every dot 1 internal pixel. Thin: one band. Wide (shared lib): two dense lanes.
+    // Ring debris (Planetarium): >= 70% chunky 2x2 / plus particles grouped in
+    // clusters, plus sparse 1 px dust. One sector is generated and repeated
+    // RING_SECTORS times, so flowing it 1/RING_SECTORS of a turn per loop is seamless.
+    // Colour mix: mauve-grey > the planet's own colour > taupe specks.
     ring.visible = ringMode !== 'off';
     const pts = [];
     const shade = [];
-    const lanes = ringMode === 'wide' ? [[1.62, 0.13, 2600], [2.12, 0.16, 2400]] : [[1.8, 0.11, 1500]];
-    for (const [r0, spread, count] of lanes) {
-      for (let k = 0; k < count; k++) {
-        const ang = rnd() * Math.PI * 2;
-        const r = r0 + (rnd() + rnd() - 1) * spread;
-        pts.push(Math.cos(ang) * r, (rnd() - 0.5) * 0.012, Math.sin(ang) * r);
-        shade.push(1 + Math.floor(rnd() * 3));
+    const type = [];
+    const bands = ringMode === 'wide' ? [[1.66, 0.12, 22], [2.12, 0.14, 18]] : [[1.8, 0.11, 15]];
+    const sector = (Math.PI * 2) / RING_SECTORS;
+    const pick = () => { const v = rnd(); return v < 0.5 ? 1 : v < 0.8 ? 2 : 3; };
+    const one = [];
+    for (const [r0, spread, clusters] of bands) {
+      for (let c = 0; c < clusters; c++) {
+        const ca = rnd() * sector;
+        const cr = r0 + (rnd() * 2 - 1) * spread * 0.7;
+        const count = 5 + Math.floor(rnd() * 12);
+        const tone = pick();
+        for (let k = 0; k < count; k++) {
+          const ang = ca + (rnd() - 0.5) * 0.11;
+          const rr = cr + (rnd() - 0.5) * spread * 0.5;
+          one.push([ang, rr, rnd() < 0.7 ? tone : pick(), rnd() < 0.55 ? 1 : 2]);
+        }
+      }
+      for (let k = 0; k < clusters * 2; k++) one.push([rnd() * sector, r0 + (rnd() * 2 - 1) * spread, pick(), 0]); // loose 1 px dust
+    }
+    for (let s = 0; s < RING_SECTORS; s++) {
+      for (const [ang, rr, tone, t] of one) {
+        const a2 = ang + s * sector;
+        pts.push(Math.cos(a2) * rr, 0, Math.sin(a2) * rr);
+        shade.push(tone);
+        type.push(t);
       }
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     geo.setAttribute('aShade', new THREE.Float32BufferAttribute(shade, 1));
-    geo.setAttribute('aSize', new THREE.Float32BufferAttribute(new Array(shade.length).fill(1), 1));
+    geo.setAttribute('aType', new THREE.Float32BufferAttribute(type, 1));
     ring.geometry.dispose();
     ring.geometry = geo;
   }
 
-  function update(t, spinning) {
-    if (spinning) {
-      surface.rotation.y = t * 0.18;
-      cloudPivot.rotation.y = t * 0.24;
-      ring.rotation.y = t * 0.05;
+  /** phase in [0, 1): position in the shared loop. */
+  function update(phase) {
+    const turn = phase * Math.PI * 2;
+    spin.rotation.y = -turn; // one turn per loop, right -> left
+    ring.rotation.y = -turn / RING_SECTORS; // debris flow: one sector per loop
+    for (const m of MOONS) {
+      const a = turn + m.offset * Math.PI * 2; // one orbit per loop; no easing
+      const p = new THREE.Vector3(Math.cos(a) * m.orbit, -Math.sin(a) * m.orbit * Math.sin(m.incl), Math.sin(a) * m.orbit * Math.cos(m.incl));
+      m.mesh.position.copy(p.applyAxisAngle(up, m.yaw));
     }
     group.getWorldPosition(ringMat.uniforms.uCenter.value);
     cloudMat.uniforms.uCenter.value.copy(ringMat.uniforms.uCenter.value);
     ringMat.uniforms.uRadius.value = group.scale.x;
   }
+  function setExtras({ moons = false, halo: showHalo = false } = {}) {
+    for (const m of MOONS) m.mesh.visible = moons;
+    halo.visible = showHalo;
+  }
 
-  return { group, rebuild, update, ring };
+  return { group, rebuild, update, ring, setExtras };
 }
 
 // ---------------------------------------------------------------- astronaut
@@ -753,10 +876,11 @@ function makeAstronaut(colorKey) {
   const q = new THREE.Quaternion();
   // Relaxed float: elbows and knees softly bent; the bends breathe with the bob.
   function pose(t) {
-    const bob = Math.sin(t * 1.5);
-    const sway = Math.sin(t * 1.1 + 0.8);
+    const W = (Math.PI * 2) / LOOP.period; // loop-locked: whole cycles per loop
+    const bob = Math.sin(t * 2 * W);
+    const sway = Math.sin(t * W + 0.8);
     for (const [k, s] of [[0, -1], [3, 1]]) {
-      const lift = 0.02 * Math.sin(t * 1.5 + 0.6 + s * 0.4);
+      const lift = 0.02 * Math.sin(t * 2 * W + 0.6 + s * 0.4);
       // stubby arms: the hands hang at about hip height
       joints[k].set(s * 0.165, 0.42, 0);
       joints[k + 1].set(s * (0.225 + 0.008 * bob), 0.36 + lift * 0.6, 0.03);
@@ -764,7 +888,7 @@ function makeAstronaut(colorKey) {
     }
     for (const [k, s, bend] of [[6, -1, 1], [9, 1, 0.6]]) {
       // short legs, about a fifth of the height; knee bend scaled to the shorter tube
-      const kb = bend * (0.025 + 0.01 * Math.sin(t * 1.5 + s));
+      const kb = bend * (0.025 + 0.01 * Math.sin(t * 2 * W + s));
       joints[k].set(s * 0.075, 0.25, 0);
       joints[k + 1].set(s * 0.085, 0.17, 0.02 + kb);
       joints[k + 2].set(s * 0.08, 0.1 + kb * 0.3, -0.01 + kb * 0.15);
@@ -773,9 +897,10 @@ function makeAstronaut(colorKey) {
 
   function update(t) {
     const p = t + root.userData.phase;
-    body.position.y = Math.sin(p * 1.5) * 0.05;
-    body.rotation.z = Math.sin(p * 1.1) * 0.07;
-    body.rotation.x = Math.sin(p * 0.9) * 0.05;
+    const W = (Math.PI * 2) / LOOP.period;
+    body.position.y = Math.sin(p * 2 * W) * 0.05;
+    body.rotation.z = Math.sin(p * W) * 0.07;
+    body.rotation.x = Math.sin(p * W + 1.3) * 0.05;
     pose(p);
     mat.uniforms.uBlink.value = blink(p);
     root.updateMatrixWorld(true);
@@ -790,11 +915,11 @@ function makeAstronaut(colorKey) {
   function setFace(idx) {
     mat.uniforms.uEyes.value = idx;
   }
-  // Occasional blink: a quick Y-squash of the eyes, staggered per astronaut.
-  const BLINK_PERIOD = 4.3;
+  // Blink: a quick Y-squash of the eyes once per loop, staggered per astronaut.
   const BLINK_LEN = 0.18;
   function blink(p) {
-    const k = ((p * 1.0 + root.userData.phase * 0.37) % BLINK_PERIOD + BLINK_PERIOD) % BLINK_PERIOD;
+    const P = LOOP.period;
+    const k = ((p + root.userData.phase * 0.37) % P + P) % P;
     if (k > BLINK_LEN) return 1;
     return 1 - Math.sin((k / BLINK_LEN) * Math.PI) * 0.88;
   }
@@ -811,7 +936,7 @@ const SKY_FRAG = /* glsl */ `
   uniform float uHeight;
   void main() {
     float y = 1.0 - gl_FragCoord.y / uHeight; // 0 at the top
-    gl_FragColor = vec4(uBands[y < 0.66 ? 0 : y < 0.88 ? 1 : 2], 1.0); // low bands keep it subtle, not a horizon
+    gl_FragColor = vec4(uBands[y < 0.6 ? 0 : y < 0.84 ? 1 : 2], 1.0);
   }
 `;
 function makeSky() {
@@ -832,13 +957,13 @@ function makeStars() {
   const pts = [];
   const shade = [];
   const sizes = [];
-  for (let i = 0; i < 1400; i++) {
+  for (let i = 0; i < 900; i++) { // sparse: ~0.5-1.5 visible per 1000 px²
     const u = rnd() * 2 - 1;
     const a = rnd() * Math.PI * 2;
     const s = Math.sqrt(1 - u * u);
     pts.push(Math.cos(a) * s * 500, u * 500, Math.sin(a) * s * 500);
     const r = rnd();
-    shade.push(r < 0.62 ? 0 : r < 0.9 ? 1 : 2);
+    shade.push(r < 0.8 ? 0 : r < 0.96 ? 1 : 2); // mostly dim, static
     sizes.push(1);
   }
   const g = new THREE.BufferGeometry();
@@ -932,8 +1057,9 @@ const SYSTEM = [
 });
 
 const VIEWS = {
-  planet: { pos: [1.3, 0.75, 3.9], target: [0, 0, 0] },
-  studio: { pos: [1.55, 0.9, 5.4], target: [0, 0, 0], scene: 'solo' }, // hero planet alone, for biome sheets
+  // Hero close-ups: distance 7 puts a size-1 planet at ~45% of frame height (Planetarium 42-50%).
+  planet: { pos: [1.92, 1.12, 6.69], target: [0, 0, 0], scene: 'solo' },
+  studio: { pos: [1.92, 1.12, 6.69], target: [0, 0, 0], scene: 'solo' }, // same framing, for biome sheets
   system: { pos: [0.1, 1.3, 10.2], target: [-0.4, 0.4, -6], scene: 'system' },
   crew: { pos: [CREW_SPOT.x + 0.35, CREW_SPOT.y + 0.95, CREW_SPOT.z + 2.7], target: [CREW_SPOT.x, CREW_SPOT.y + 0.52, CREW_SPOT.z] },
   depth: { pos: [0.1, 1.2, 9.6], target: [-0.3, 0.3, -6] },
@@ -943,7 +1069,7 @@ const VIEWS = {
 // ---------------------------------------------------------------- state
 const state = {
   view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
-  time: null, ui: true, palette: 'final', eyes: 'auto',
+  time: null, ui: true, palette: 'final', eyes: 'auto', period: 6, moons: true, halo: false,
 };
 
 function applyView(name) {
@@ -968,6 +1094,9 @@ function resize() {
 }
 
 function applyState() {
+  LOOP.period = Math.max(1, state.period);
+  planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo }));
+  SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo }));
   planets.forEach((p) => {
     p.rebuild(state.seed, state.biome, state.ringMode);
     p.group.scale.setScalar(state.size);
@@ -999,7 +1128,8 @@ function frame() {
   const t = state.time ?? clock.getElapsedTime();
   controls.update();
   stars.position.copy(camera.position);
-  [...planets, ...SYSTEM].forEach((p) => p.update(t, state.spin));
+  const phase = (((t / LOOP.period) % 1) + 1) % 1;
+  [...planets, ...SYSTEM].forEach((p) => p.update(state.spin ? phase : 0));
   [...crew, ...solos].forEach((a) => a.update(t));
   setDepthLevel(stars, 0); // stars and sky never fade, but still follow palette switches
   setDepthLevel(sky, 0);
@@ -1028,6 +1158,9 @@ function bindUi() {
   $('depth').addEventListener('change', (e) => { state.depth = e.target.checked; applyState(); });
   $('spin').addEventListener('change', (e) => { state.spin = e.target.checked; });
   $('palette').addEventListener('change', (e) => { state.palette = e.target.value; applyState(); });
+  $('moons').addEventListener('change', (e) => { state.moons = e.target.checked; applyState(); });
+  $('halo').addEventListener('change', (e) => { state.halo = e.target.checked; applyState(); });
+  $('period').addEventListener('change', (e) => { state.period = +e.target.value || 6; applyState(); });
   const fill = (sel, items, label) => items.forEach((v, i) => sel.add(new Option(label(v), String(i))));
   fill($('eyes'), EYE_DESIGNS, (d) => d.name);
   // Published palettes: the 25 contact-sheet picks, then the spares.

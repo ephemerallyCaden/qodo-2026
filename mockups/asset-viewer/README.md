@@ -11,7 +11,7 @@ npm install
 npm run dev      # http://127.0.0.1:5180/  (loopback only; PORT=... to change)
 npm run shots    # re-capture screenshots/ in headless Chromium (no server, no network)
 npm run palettes # 25 Lospec-palette renders + labelled contact sheet in screenshots/palettes/
-npm run planets  # biome variety sheet + system shot in screenshots/planets/
+npm run planets  # variety sheet, system shot, hero-loop.gif, colour counts + loop-seam test
 ```
 
 `node shots.mjs depth-scene crew-closeup` captures just the named shots.
@@ -31,6 +31,9 @@ npm run planets  # biome variety sheet + system shot in screenshots/planets/
 | pixel h | Internal height from 120 to 480. Width is 16:9, and the canvas is upscaled by the largest integer factor that fits, with nearest-neighbour filtering |
 | depth fade | Turns depth darkening on or off |
 | rotate | Pauses or resumes planet and cloud spin |
+| moons | Two small orbiting moons on the hero planet |
+| dark halo | Optional teal-GIF look: a ~2 px bg+1 halo around planets (off by default) |
+| loop (s) | The shared loop period (default 6 s). Every planet layer completes whole cycles per loop |
 | palette | **final** (default: BLK 36 crew and space + Earth-like planets), v2, v1, or any of the 25 Lospec palettes (plus spares) |
 | drag / scroll | Orbits and zooms the camera |
 
@@ -66,12 +69,26 @@ v2 is the current palette. v1 (the batch 1 pastels) stays selectable from the `p
 | gear: mitts, boots, backpack, visor rim (both) | `#4a5170` `#77819f` `#a2adc6` `#c4cee0` | |
 | visor (both) | `#0f1329` `#232f58`, glint `#f4f8ff` | |
 
-## The "final" palette (revision 4)
+## The "final" palette (revisions 4–5)
 
-The human's pick:
-- **Astronauts:** suit, gear, visor, contributor accents and eye glow use **BLK 36 exactly** as mapped for the contact sheet (tile `palettes/19-blk-36.png`).
-- **Space, stars and depth:** also BLK 36 exactly (true black space, depth steps snapped to BLK 36's darks). The background is a subtle vertical gradient in three hard screen-space bands of BLK 36 colours: `#000000` (top 66%), `#12173d` navy, then `#29174c` violet (bottom 12%). Other palettes keep a flat background.
-- **Planets, rings and atmosphere:** come from the plain data in `planet-ramps.js`. Lush, cloud, cap and ring are the v2 ramps, and the other biomes have naturalistic ramps in the same spirit. Swap that one file to retune planet colours; the ring colours are pending colour research.
+- **Astronauts:** suit, gear, visor, contributor accents and eye glow use **BLK 36 exactly** (tile `palettes/19-blk-36.png`). Stars are BLK 36 too: sparse, mostly dim and fully static.
+- **Space:** BLK 36's darkest navy (not black), stepping down the screen in three hard bands: `#12173d` → `#29174c` → `#412866` (OKLCH L 0.23 → 0.26 → 0.34, H 273 → 295 → 299).
+- **Planets:** one shared 13-colour set in `planet-ramps.js`, built with the "research ×2" policy (`docs/design/planet-colour-research.md`). It takes the measured true-colour L and H from `colour-research/05-verification.md` and applies one ×2 OKLCH chroma boost. The file has a table of every colour's OKLCH value and its source. Every planet, ring, cloud, haze, moon and planet depth step uses only these colours, and each biome uses a subset. Accents are exempt: blackbody lava glow (1000/1400/2000 K) and the [OIII] teal reveal glow.
+- **Shading:** the lit directional terminator stays, and every ramp's darkest step is the shared shadow `#29272d` (lava uses crust `#16120e`), so there are no foreign dark crescents.
+- **Planet depth:** distant planets fade toward the shared shadow and snap to shared colours (`PLANET_DEPTH`), not to BLK 36 plum. The crew keeps BLK 36 depth, and its far silhouettes can use BLK 36 black against the navy space.
+- **Clouds:** two tones, cream `#f7eed9` and a warm peach `#ebceb7`, at ~25–30% cover.
+- **Rings:** clustered chunky debris, ~84% 2×2 or plus chunks. Colours are mauve-grey > the planet's own colour > taupe, all from the set.
+- **Colour budget:** measured at the internal resolution, the lush hero frame (planet, ring, moons, stars, background) uses **16** unique colours, and the system shot with the crew uses 38.
+
+## Motion (loop-locked)
+
+Everything shares one period (`LOOP.period`, default 6 s), so a loop is seamless. `npm run planets` checks the seam: the diff from the last frame to the first must be ≤ a typical frame-to-frame diff.
+- **Planets:** the surface turns exactly once per loop (right → left), and the clouds ride with it.
+- **Ring:** the debris pattern repeats 5 times around the ring and flows 1/5 of a turn per loop.
+- **Moons:** each orbits exactly once per loop on an inclined ellipse, passing in front at the bottom and behind the disc. The speed swing comes only from projection, with no easing.
+- **Crew:** idle bob, sway and blink use whole cycles per loop.
+
+`screenshots/planets/hero-loop.gif` is the lush hero with moons: 6 s at 100/3 fps (200 frames), rendered from the canvas at internal resolution and upscaled 2×.
 
 ## Biomes (revision 4)
 
@@ -147,5 +164,8 @@ Every tile is the same shot: the `depth` view (crew in front, hero planet, then 
 | `screenshots/pixel-360.png` | Finer pixels: 640×360 ×2 |
 | `screenshots/palettes/contact-sheet.png` | The 25 palettes, 5×5, numbered and labelled; `NN-<slug>.png` are the full-size frames |
 | `screenshots/planets/variety-sheet.png` | Every biome (and extra) × 3 seeds in the final palette, S/M/L/XL sizes, rings as a modifier; `planets/<biome>-<seed>.png` are the full frames |
+| `screenshots/planets/hero-loop.gif` | 6 s seamless loop of the lush hero planet with moons and ring |
+| `screenshots/lush-before-after.png` | Lush planet close-up at ea84759 (v2 ramps) vs the research ×2 set |
+| `screenshots/planet-halo.png` | The optional dark-halo toggle |
 | `screenshots/planets/system-shot.png` | 8 mixed planets at several depths and sizes plus the crew (previews the GIF composition) |
 | `screenshots/palette-before-after.png` | Depth scene, v1 palette (left) vs v2 (right). `palette-v1-depth.png` is its input |

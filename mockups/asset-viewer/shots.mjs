@@ -2,7 +2,7 @@
 // Playwright request interception, so no socket is opened and nothing touches the network.
 // Usage: node shots.mjs [name ...]   (no names = all shots)
 //        node shots.mjs --palettes   (25 Lospec palettes + labelled contact sheet)
-//        node shots.mjs --planets    (biome variety sheet + system shot)
+//        node shots.mjs --planets    (biome variety sheet, system shot, hero loop GIF, colour counts)
 import { chromium } from 'playwright';
 import { access, mkdir, readFile, rm } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
@@ -24,11 +24,12 @@ const SHOTS = {
   'crew-face-switch': { view: 'crew', time: 1.2, eyes: '3' }, // UI override: Binocular on everyone
   'depth-scene': { view: 'depth', time: 2 },
   'depth-scene-off': { view: 'depth', time: 2, depth: false },
+  'planet-halo': { view: 'planet', time: 3, halo: true }, // optional teal-GIF dark halo toggle
   'pixel-120': { view: 'planet', time: 3, pixelH: 120 },
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final' };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 6, eyes: 'auto' };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
@@ -87,6 +88,27 @@ async function contactSheet(items, cols, file) {
   }, { items, cols });
   await writeFile(file, Buffer.from(url.split(',')[1], 'base64'));
 }
+// The canvas at its internal resolution (no upscale), as a PNG buffer.
+const grabNative = async () => Buffer.from((await page.evaluate(() => document.getElementById('view').toDataURL('image/png'))).split(',')[1], 'base64');
+// Unique colours and a pixel diff, measured in the page from PNG buffers.
+const imageStats = (pngs) => page.evaluate(async (urls) => {
+  const datas = [];
+  for (const u of urls) {
+    const img = new Image();
+    img.src = u;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0);
+    datas.push(x.getImageData(0, 0, c.width, c.height).data);
+  }
+  const uniq = datas.map((d) => { const set = new Set(); for (let i = 0; i < d.length; i += 4) set.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]); return set.size; });
+  const diff = (a, b) => { let n = 0; for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) n++; return n; };
+  const diffs = datas.slice(1).map((d, i) => diff(datas[i], d));
+  return { uniq, diffs, seam: datas.length > 1 ? diff(datas[datas.length - 1], datas[0]) : 0 };
+}, pngs.map((p) => `data:image/png;base64,${p.toString('base64')}`));
 const capture = async (opts) => {
   await page.evaluate((o) => window.viewer.set(o), { ...BASE, ...opts });
   return page.locator('#view').screenshot();
@@ -107,7 +129,7 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('faces-s
 // Rings are a modifier: the 'ringed' row puts a wide ring on three bases, and a few
 // other biomes carry a thin one. Sizes stand in for LOC: S < 0.8 <= M < 1.2 <= L.
 const PLANET_SET = [
-  ['lush', 'lush', [[7, 1.0, 'off'], [42, 0.7, 'off'], [311, 1.3, 'thin']]],
+  ['lush', 'lush', [[7, 1.0, 'off', true], [42, 0.7, 'off'], [311, 1.3, 'thin']]],
   ['ocean', 'ocean', [[5, 1.0, 'off'], [23, 1.3, 'off'], [64, 0.7, 'off']]],
   ['ice', 'ice', [[8, 0.7, 'off'], [19, 1.0, 'thin'], [77, 1.3, 'off']]],
   ['desert', 'desert', [[3, 1.0, 'off'], [31, 0.7, 'off'], [90, 1.3, 'off']]],
@@ -115,7 +137,7 @@ const PLANET_SET = [
   ['ringed: desert', 'desert', [[3, 1.0, 'wide']]],
   ['ringed: ice', 'ice', [[21, 1.15, 'wide']]],
   ['ringed: lush', 'lush', [[7, 0.8, 'wide']]],
-  ['gas giant (extra)', 'gas', [[5, 1.6, 'off'], [14, 1.8, 'thin'], [33, 1.45, 'off']]],
+  ['gas giant (extra)', 'gas', [[5, 1.6, 'off', true], [14, 1.8, 'thin'], [33, 1.45, 'off']]],
   ['moon (extra)', 'moon', [[9, 0.35, 'off'], [2, 0.5, 'off'], [66, 0.42, 'off']]],
   ['toxic (extra)', 'toxic', [[13, 1.0, 'off'], [37, 0.7, 'off'], [81, 1.3, 'off']]],
 ];
@@ -129,8 +151,8 @@ if (PLANET_MODE) {
   const STUDIO = { view: 'studio', time: 3, palette: 'final' };
   const tiles = [];
   for (const [label, biome, variants] of PLANET_SET) {
-    for (const [seed, size, ringMode] of variants) {
-      const png = await capture({ ...STUDIO, biome, seed, size, ringMode });
+    for (const [seed, size, ringMode, moons = false] of variants) {
+      const png = await capture({ ...STUDIO, biome, seed, size, ringMode, moons });
       const name = `${label.replace(/ \(extra\)/, '').replace(/[: ]+/g, '-')}-${seed}`;
       await writeFile(path.join(dir, `${name}.png`), png);
       tiles.push({ label: `${label} · seed ${seed} · ${sizeTag(size)}${ringMode !== 'off' ? ` · ${ringMode} ring` : ''}`, url: asUrl(png) });
@@ -141,6 +163,36 @@ if (PLANET_MODE) {
 
   await writeFile(path.join(dir, 'system-shot.png'), await capture({ view: 'system', time: 2, palette: 'final' }));
   console.log('screenshots/planets/system-shot.png');
+
+  // Unique-colour counts at the internal resolution (no upscale, no AA anywhere).
+  await capture({ view: 'planet', time: 2, palette: 'final', biome: 'lush', seed: 7, ringMode: 'thin', moons: true });
+  const heroPng = await grabNative();
+  await capture({ view: 'system', time: 2, palette: 'final' });
+  const systemPng = await grabNative();
+  const counts = await imageStats([heroPng, systemPng]);
+  console.log(`unique colours: hero planet frame ${counts.uniq[0]}, system shot ${counts.uniq[1]}`);
+
+  // Hero loop: the lush planet with moons, one full period at 100/3 fps (200 frames).
+  const FRAMES = 200, PERIOD = 6;
+  const loopDir = path.join(ROOT, 'frames-loop');
+  await rm(loopDir, { recursive: true, force: true });
+  await mkdir(loopDir, { recursive: true });
+  const loopPngs = [];
+  for (let i = 0; i < FRAMES; i++) {
+    await page.evaluate((o) => window.viewer.set(o), { ...BASE, view: 'planet', palette: 'final', biome: 'lush', seed: 7, ringMode: 'thin', moons: true, period: PERIOD, time: (i * PERIOD) / FRAMES });
+    const png = await grabNative();
+    loopPngs.push(png);
+    await writeFile(path.join(loopDir, `${String(i).padStart(4, '0')}.png`), png);
+  }
+  const st = await imageStats([...loopPngs, loopPngs[0]].filter((_, i) => i % 1 === 0).slice(0, FRAMES));
+  const typical = [...st.diffs].sort((a, b) => a - b)[Math.floor(st.diffs.length / 2)];
+  console.log(`loop test: last->first diff ${st.seam} px vs median frame diff ${typical} px (${st.seam <= typical * 1.5 ? 'seamless' : 'SEAM'})`);
+  const FFMPEG = process.env.FFMPEG ?? '/opt/homebrew/bin/ffmpeg';
+  execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-framerate', '100/3', '-i', path.join(loopDir, '%04d.png'),
+    '-vf', 'scale=iw*2:ih*2:flags=neighbor,split[a][b];[a]palettegen=max_colors=64:stats_mode=full:reserve_transparent=0[p];[b][p]paletteuse=dither=none:diff_mode=rectangle',
+    '-loop', '0', path.join(dir, 'hero-loop.gif')]);
+  await rm(loopDir, { recursive: true, force: true });
+  console.log('screenshots/planets/hero-loop.gif');
 
 }
 
