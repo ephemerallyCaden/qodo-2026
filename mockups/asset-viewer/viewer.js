@@ -9,6 +9,7 @@ import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
 import { mapPalette, mapColors, snapToPool } from './palette-map.js';
 import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH } from './planet-ramps.js';
 import { tangentFrame } from './cloud-frame.js';
+import { ridge } from './snoise.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -457,17 +458,24 @@ export const BIOMES = {
   moon: { id: 6, label: 'barren moon (extra)', ramps: ['moon', 'moon', 'moon', 'glow'], weather: null, haze: null, extra: true },
   toxic: { id: 7, label: 'toxic (extra)', ramps: ['sludge', 'toxic', 'fungus', 'glow'], sea: [0.5, 0.56], weather: 'spore', haze: 'haze.toxic', extra: true },
 };
-// Weather: cloud-puff settings per biome. thr = density threshold (higher = less cover).
+// Weather: cloud-puff settings per biome; the one place to tune cover.
+//   cover   share of the visible disc the weather hides (measure: debug/measure-cloud-cover.mjs).
+//           The densest `cover * gain` of the sky sites get weather, so cover holds per seed;
+//           `gain` converts site share to disc share for that weather's puff sizes
+//   mass    frequency of the merged-mass field (higher = more, smaller masses)
+//   size, lift, strays  puff scale, how high dense cores dome, stray mini-clumps at the edges
+//   flat, stretch       radial squash and east-west elongation
+//   fissure lava: short smoke plumes rise only off the glowing fissures, trailing downwind
 const WEATHER = {
-  cloud: { ramp: 'cloud', thr: 0.655, size: 1, lift: 1, strays: 0.012 }, // ~25-30% cover (Planetarium)
-  thin: { ramp: 'cloud', thr: 0.685, size: 0.7, lift: 0.5, strays: 0.012 },
-  ash: { ramp: 'ash', thr: 0.62, size: 0.8, lift: 0.35, strays: 0.02, flat: 0.35, stretch: 2.4, streaksOnly: true }, // low, streaky smoke
-  spore: { ramp: 'spore', thr: 0.665, size: 0.7, lift: 1.1, strays: 0.05 },
+  cloud: { ramp: 'cloud', cover: 0.27, gain: 0.75, mass: 2.0, size: 1, lift: 1, strays: 0.012 }, // Planetarium: ~25-30%
+  thin: { ramp: 'cloud', cover: 0.27, gain: 0.8, mass: 2.2, size: 0.7, lift: 0.5, strays: 0.012 },
+  spore: { ramp: 'spore', cover: 0.27, gain: 0.8, mass: 2.2, size: 0.7, lift: 1.1, strays: 0.05 },
+  ash: { ramp: 'ash', cover: 0.08, gain: 0.3, size: 0.45, lift: 0.3, flat: 0.3, stretch: 3.0, fissure: true }, // light, low, streaky smoke
 };
 
 const PLANET_GEO = new THREE.SphereGeometry(1, 72, 48);
 const PUFF_GEO = new THREE.IcosahedronGeometry(1, 3);
-const MAX_PUFFS = 1200;
+const MAX_PUFFS = 3200; // enough for the densest weather (ocean) at the slider maximum, 45%
 const ramp5 = () => ({ value: Array.from({ length: 5 }, () => new THREE.Color()) });
 
 // Loop lock: every planet layer completes whole cycles per LOOP.period (seconds).
@@ -579,8 +587,9 @@ function makePlanet() {
   const up = new THREE.Vector3(0, 1, 0);
   let built = '';
 
-  function rebuild(seed, biomeKey = 'lush', ringMode = 'thin') {
-    const key = `${seed}|${biomeKey}|${ringMode}`;
+  // cover: optional override of the biome's WEATHER cover (the viewer's cloud slider).
+  function rebuild(seed, biomeKey = 'lush', ringMode = 'thin', cover = null) {
+    const key = `${seed}|${biomeKey}|${ringMode}|${cover}`;
     if (key === built) return;
     built = key;
     const biome = BIOMES[biomeKey];
@@ -624,21 +633,48 @@ function makePlanet() {
       }
     };
     if (weather) {
-      const massField = makeFbm3(seed * 31 + 5);
-      const streakField = makeFbm3(seed * 17 + 9);
-      const SITES = 1500;
+      const share = Math.min(1, (cover ?? weather.cover) * weather.gain);
+      const flat = weather.flat ?? 0.6;
+      const stretch = weather.stretch ?? 1;
+      // smaller puffs need denser sites so masses stay solid; fissures are thin, so lava samples finer
+      const SITES = weather.fissure ? 4000 : Math.round(1500 / weather.size ** 2);
+      const dirs = [];
       for (let i = 0; i < SITES; i++) {
         const y = 1 - ((i + 0.5) / SITES) * 2;
         const r = Math.sqrt(1 - y * y);
         const lon = i * 2.39996;
-        const dir = new THREE.Vector3(Math.cos(lon) * r, y, Math.sin(lon) * r);
-        const mass = weather.streaksOnly ? 0 : massField(dir.x * 1.15 + 4, dir.y * 1.15, dir.z * 1.15);
-        const streak = streakField(dir.x * 0.9, dir.y * 6.0 + 2, dir.z * 0.9);
-        const density = Math.max(mass, streak) - weather.thr;
+        dirs.push(new THREE.Vector3(Math.cos(lon) * r, y, Math.sin(lon) * r));
+      }
+      // Raw weather density per site, then a threshold at the (1 - share) quantile.
+      let raw;
+      if (weather.fissure) {
+        // the surface shader's fissure field (PLANET_FRAG lava branch), plus a patch field so only some fissures smoke
+        const o = surfaceMat.uniforms.uSeedOff.value;
+        const patch = makeFbm3(seed * 23 + 3);
+        raw = dirs.map((d) => Math.max(ridge(d.x * 2 + o.x, d.y * 2 + o.y, d.z * 2 + o.z), ridge(d.x * 4.6 + o.z, d.y * 4.6 + o.x, d.z * 4.6 + o.y) * 0.988)
+          + (patch(d.x * 1.6, d.y * 1.6, d.z * 1.6) - 0.5) * 0.25);
+      } else {
+        const massField = makeFbm3(seed * 31 + 5);
+        const streakField = makeFbm3(seed * 17 + 9);
+        const k = weather.mass;
+        raw = dirs.map((d) => Math.max(massField(d.x * k + 4, d.y * k, d.z * k), streakField(d.x * 0.9, d.y * 6.0 + 2, d.z * 0.9)));
+      }
+      const sorted = [...raw].sort((a, b) => b - a);
+      const thr = share > 0 ? sorted[Math.min(SITES - 1, Math.round(share * SITES))] - 0.012 : Infinity;
+      for (let i = 0; i < SITES; i++) {
+        const density = raw[i] - thr;
         const jitter = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).multiplyScalar(0.05);
-        const flat = weather.flat ?? 0.6;
-        const stretch = weather.stretch ?? 1;
-        if (density > 0.012) {
+        const dir = dirs[i];
+        if (weather.fissure) {
+          if (density <= 0.012) continue;
+          // a plume: a lead puff on the fissure, then smaller, thinner puffs trailing east
+          const { east } = tangentFrame(THREE, dir);
+          const size = (0.022 + rnd() * 0.014) * weather.size * 2;
+          const trail = 2 + Math.floor(rnd() * 3);
+          for (let k = 0; k <= trail; k++) {
+            put(dir.clone().addScaledVector(east, k * size * stretch * 1.1), size * (1 - k * 0.22), weather.lift * (1 + k * 0.4), flat, stretch);
+          }
+        } else if (density > 0.012) {
           const core = Math.min(1, density * 7);
           clump(dir.add(jitter), (0.032 + core * 0.05 + rnd() * 0.012) * weather.size, (0.2 + core * 0.9) * weather.lift, core < 0.35 ? 2 + Math.floor(rnd() * 2) : 1, flat, stretch);
         } else if (density > -0.08 && rnd() < weather.strays) {
@@ -1086,6 +1122,7 @@ const VIEWS = {
 const state = {
   view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
   time: null, ui: true, palette: 'final', eyes: 'auto', period: 12, moons: true, halo: false,
+  cover: null, // cloud-cover override (0..1) for the hero planets; null = the biome's WEATHER cover
 };
 
 // Keep the orbit camera out of the cloud layer in planet views (clouds reach ~1.1 R).
@@ -1119,7 +1156,7 @@ function applyState() {
   SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo }));
   controls.minDistance = minOrbit();
   planets.forEach((p) => {
-    p.rebuild(state.seed, state.biome, state.ringMode);
+    p.rebuild(state.seed, state.biome, state.ringMode, state.cover);
     p.group.scale.setScalar(state.size);
   });
   // Which objects a view shows: showcase (hero + depth copies + crew), solo planet, or the system.
@@ -1140,6 +1177,11 @@ function applyState() {
     a.setFace(state.eyes === 'auto' ? eyesFor(HANDLES[a.userData.color ?? state.color]) : +state.eyes);
   }
   document.getElementById('ui').hidden = !state.ui;
+  const weather = WEATHER[BIOMES[state.biome].weather];
+  const cov = document.getElementById('cover');
+  cov.disabled = !weather;
+  cov.value = Math.round((state.cover ?? weather?.cover ?? 0) * 100);
+  document.getElementById('cover-readout').textContent = weather ? `${cov.value}%` : '—';
   resize();
 }
 
@@ -1172,7 +1214,8 @@ function bindUi() {
   $('reseed').addEventListener('click', () => { state.seed = 1 + Math.floor(Math.random() * 999); $('seed').value = state.seed; $('seed-readout').textContent = state.seed; applyState(); });
   $('ring').addEventListener('change', (e) => { state.ringMode = e.target.value; applyState(); });
   for (const [key, b] of Object.entries(BIOMES)) $('biome').add(new Option(b.label, key));
-  $('biome').addEventListener('change', (e) => { state.biome = e.target.value; applyState(); });
+  $('biome').addEventListener('change', (e) => { state.biome = e.target.value; state.cover = null; applyState(); });
+  $('cover').addEventListener('input', (e) => { state.cover = +e.target.value / 100; applyState(); });
   $('size').addEventListener('input', (e) => { state.size = +e.target.value / 100; $('size-readout').textContent = state.size.toFixed(2); applyState(); });
   $('color').addEventListener('change', (e) => { state.color = e.target.value; applyState(); });
   $('pixel').addEventListener('input', (e) => { state.pixelH = +e.target.value; applyState(); });

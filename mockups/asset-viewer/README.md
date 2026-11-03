@@ -12,7 +12,7 @@ npm run dev      # http://127.0.0.1:5180/  (loopback only; PORT=... to change)
 npm run shots    # re-capture screenshots/ in headless Chromium (no server, no network)
 npm run palettes # 25 Lospec-palette renders + labelled contact sheet in screenshots/palettes/
 npm run planets  # variety sheet, system shot, hero-loop.gif, colour counts + loop-seam test
-npm test         # cloud regression tests: puff handedness (det > 0), hollow-ring renders (32 framings + 12 hero-loop frames; LOOP_FRAMES=48 for all), shading direction
+npm test         # cloud regression tests: puff handedness (det > 0), hollow-ring renders (32 framings + 12 hero-loop frames; LOOP_FRAMES=48 for all), shading direction, CPU/GPU simplex parity
 ```
 
 `node shots.mjs depth-scene crew-closeup` captures just the named shots.
@@ -26,6 +26,7 @@ npm test         # cloud regression tests: puff handedness (det > 0), hollow-rin
 | biome | lush, ocean, ice, desert, lava, plus extras: gas giant, barren moon, toxic |
 | size | Planet scale, 0.25–2.2 (size stands for LOC) |
 | seed, new planet | Regenerates land, sea level, cloud heaps and ring dust. All three planet copies share the seed |
+| clouds | Cloud cover (share of the visible disc, 0–45%) for the hero planets. Defaults to the biome's `WEATHER.cover` and resets when the biome changes |
 | ring | off, thin, or wide. Wide marks a shared lib; rings are a modifier on any biome |
 | contributor | Sets the backpack-stripe, shoulder-band and face colour of the solo astronauts in the depth scene. The crew line-up always shows all three |
 | eyes | One of the 10 V2 eye designs for every astronaut; `auto` hashes it from the contributor's handle |
@@ -43,7 +44,7 @@ npm test         # cloud regression tests: puff handedness (det > 0), hollow-rin
 - **Pixels**: the WebGL canvas *is* the internal resolution (320×180 by default, `antialias: false`). CSS scales it by an integer with `image-rendering: pixelated`. There's no post pass, because every shader already outputs exact palette colours. There's no dithering and no outline.
 - **Shading**: toon bands. `dot(normal, light)` picks one of four ramp entries, so each surface is made of flat colour bands. The key light comes from the top left, about 40° off the default view, which gives Planetarium's concentric crescents.
 - **Planet**: a sphere whose shader uses 3D simplex fbm for land and ocean, with shallow-water and highland steps and noisy polar caps.
-- **Clouds**: each puff instance is built on a right-handed tangent frame (`cloud-frame.js`, det > 0, with a pole fallback). A mirrored instance gets back-face culled into a hollow ring; `npm test` guards this. Shading is a scalar blend of the puff and planet-radial Lambert terms. Instanced icosphere puffs squashed to 60% along the radial axis, so they hug the surface. Placement is noise-driven, like Planetarium. A low-frequency fbm field makes a few large merged masses, and a latitude-stretched field makes long east-west streaks. Wherever both fields are low the sky stays clear. Denser spots get bigger, higher puffs, so cores merge and dome past the silhouette, and a few small strays scatter at the edges of the weather. Every puff gets at least one smaller satellite beside it, and thin weather and strays get 2–3, so no lone sphere reads as a white ball. Each puff's normal is blended with the planet's radial direction, so a mass shades as one body with a lumpy edge. The clouds spin slightly faster than the ground.
+- **Clouds**: each puff instance is built on a right-handed tangent frame (`cloud-frame.js`, det > 0, with a pole fallback). A mirrored instance gets back-face culled into a hollow ring; `npm test` guards this. Shading is a scalar blend of the puff and planet-radial Lambert terms. Instanced icosphere puffs squashed to 60% along the radial axis, so they hug the surface. Placement is noise-driven, like Planetarium. A mid-frequency fbm field makes several merged masses, and a latitude-stretched field makes long east-west streaks. Wherever both fields are low the sky stays clear. Cover is a **quantile**, not a fixed threshold: the densest `cover × gain` share of the sky sites get weather, so every seed lands near the same cover. `WEATHER` in `viewer.js` is the one place to tune it per biome (`gain` converts site share to disc share for that weather's puff size; smaller puffs get denser sites so masses stay solid). Denser spots get bigger, higher puffs, so cores merge and dome past the silhouette, and a few small strays scatter at the edges of the weather. Every puff gets at least one smaller satellite beside it, and thin weather and strays get 2–3, so no lone sphere reads as a white ball. Each puff's normal is blended with the planet's radial direction, so a mass shades as one body with a lumpy edge. The clouds spin slightly faster than the ground.
 - **Ring**: one thin band of 1,500 points, densest in the middle. Every dot is exactly 1 internal pixel at every resolution. Points in the planet's shadow use the darkest ring colour.
 - **Astronaut**: one signed-distance body, raymarched inside a proxy box and composited with `gl_FragDepth`. It's made from primitives in chibi proportions: a helmet sphere (about the top 55%), a short torso, a rounded-box torso, a backpack wider than the torso, mitts and boots. Each arm and leg is one continuous bent tube (shoulder→elbow→wrist, hip→knee→ankle), smooth-unioned so the bend has no seam. Elbows and knees are softly bent, and they flex with the idle bob. Because it is one surface, one lighting pass shades the whole body. Cast shadows (arm on torso, helmet on shoulders) and contact occlusion come from marching the same field toward the light, then snapping to the 4-step suit ramp. The suit is a cool white. The visor is a ~4:3 rounded-rect "screen" (a superellipse in yaw and pitch) with a gear-tone bezel, in two near-black blue tones plus a fixed 3 px monitor-style glint in the screen's top-left corner, clear of the face. **Contributor colour** is on the backpack stripe and a band around each upper arm (shoulder bands), so it's readable from any angle.
 - **Faces** (`faces.js`): the ApprenticeHack Avatar V2 eye designs, eyes only. There are 10: dots, cyclops, visor slit, binocular, three eyes, happy, LED bar, heartbeat, slant and X eyes. They are evaluated **analytically per fragment** as 2D SDFs in visor-screen space (`EYES_GLSL`, inside the astronaut shader), so they are resolution-independent: the normal internal-resolution render pixelates them like the rest of the model. Geometry follows `js/avatar-v2.js`: `s` is a 32×24 screen box and `e = min(s.h, s.w*0.5)*1.12`, with the same offsets, radii and round-cap strokes. Eyes are centred on the 4:3 screen and glow, unlit, in the contributor colour; pupils (cyclops, binocular) cut back to the visor colour. One deviation: `happy` uses a thinner stroke (e*0.11) than the source. The design comes from ApprenticeHack's `hashStr(handle + 'e')`: `@caden` gets visor slit, `@mira` gets dots and `@juno` gets X eyes. Each astronaut blinks every ~4.3 s with a quick, staggered Y-squash (`uBlink`). A small fixed glint sits in the screen's top-left corner, clear of the eyes.
@@ -87,7 +88,7 @@ Non-colour revision 5 work applies to both presets:
 - **Hero:** ~45% of frame height in close-ups.
 - **Stars:** sparse and static.
 - **Extras:** moons and the dark-halo toggle.
-- **Lava ash:** low, streaky.
+- **Lava ash:** light, low, streaky smoke plumes off the fissures (below).
 - **Motion:** loop-locked (below).
 
 ## Motion (loop-locked)
@@ -116,7 +117,20 @@ Each biome is a branch of one planet shader. Its ramps are re-keyed per biome (`
 | barren moon *(extra)* | tiny / dead modules | grey, densely cratered | — |
 | toxic *(extra)* | overgrown / risky | dark sludge sea with glowing veins, acid-lime land, fungal blooms | spore puffs + lime haze |
 
-The haze is a 1.06× shell drawn only as a thin crescent on the lit limb, so it reads as atmosphere rather than an outline. Ash and spore puffs reuse the cloud system with their own ramp, cover threshold and lift.
+The haze is a 1.06× shell drawn only as a thin crescent on the lit limb, so it reads as atmosphere rather than an outline. Ash and spore puffs reuse the cloud system with their own ramp, cover and lift. Lava ash reads the surface shader's own fissure field on the CPU (`snoise.js`, a float32-exact port of the GLSL simplex noise; `npm test` checks it against the GPU), so smoke only rises from the glowing fissures of a few active regions, as short, flat plumes trailing east.
+
+### Measured cloud cover
+
+`node debug/measure-cloud-cover.mjs` renders flat ID passes of the studio view (8 seeds × 8 loop phases, 360p) and reports the share of the visible disc hidden by weather, plus how much weather bulges past the silhouette (as a share of the disc area):
+
+| Weather (biome) | `WEATHER.cover` | Measured mean | Per-seed range | Bulge |
+|---|---|---|---|---|
+| cloud (lush) | 0.27 | 27.6% | 21.7–33.0% | 5.8% |
+| thin (ocean) | 0.27 | 27.2% | 21.9–32.1% | 2.9% |
+| spore (toxic) | 0.27 | 28.1% | 22.7–33.4% | 4.3% |
+| ash (lava) | 0.08 | 7.9% | 6.0–9.1% | 0.3% |
+
+Before this tuning (fixed thresholds, solid puffs) lush averaged 22% but swung from 14% to 39% between seeds, and the hero (seed 7) hit 47% at t = 3 s, because one big mass faced the camera.
 
 ## Palette exploration (`palettes.js`, `palette-map.js`)
 
