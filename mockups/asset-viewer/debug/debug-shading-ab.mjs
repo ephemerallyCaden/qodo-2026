@@ -33,7 +33,7 @@ const base = { view: 'studio', seed: 7, biome: 'lush', ringMode: 'off', pixelH: 
 const tiles = [];
 for (const [mode, body] of Object.entries(MODES)) {
   await page.evaluate(({ src, body }) => {
-    const puffs = window.__dbg.planets[0].group.children.find((c) => c.children?.[0]?.isInstancedMesh).children[0];
+    const puffs = window.__dbg.puffsOf(window.__dbg.planets[0]);
     const mat = puffs.material;
     mat.userData.orig ??= mat.fragmentShader;
     mat.fragmentShader = body ? mat.userData.orig.replace(new RegExp(src), body) : mat.userData.orig;

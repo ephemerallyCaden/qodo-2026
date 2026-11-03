@@ -9,7 +9,7 @@ await page.evaluate((o) => window.viewer.set(o), base);
 // pick the biggest puff on the camera-facing hemisphere
 const info = await page.evaluate(() => {
   const { THREE, planets } = window.__dbg;
-  const puffs = planets[0].group.children.find((c) => c.children?.[0]?.isInstancedMesh).children[0];
+  const puffs = window.__dbg.puffsOf(window.__dbg.planets[0]);
   const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
   let best = null;
   for (let i = 0; i < puffs.count; i++) {
@@ -27,7 +27,7 @@ const modes = ['shaded', 'puffNormal', 'frontFacing'];
 for (const mode of modes) {
   await page.evaluate((mode) => {
     const { planets } = window.__dbg;
-    const puffs = planets[0].group.children.find((c) => c.children?.[0]?.isInstancedMesh).children[0];
+    const puffs = window.__dbg.puffsOf(window.__dbg.planets[0]);
     const mat = puffs.material;
     mat.userData.orig ??= mat.fragmentShader;
     const body = {

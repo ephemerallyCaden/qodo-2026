@@ -11,9 +11,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'debug');
 const ORIGIN = 'http://viewer.local';
 const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
-const HOOK = '\nwindow.__dbg = { THREE, scene, camera, renderer, planets, controls };\n';
+const HOOK = `
+window.__dbg = { THREE, scene, camera, renderer, planets, controls,
+  // cloud InstancedMesh of a planet, wherever it sits in the group tree
+  puffsOf: (p) => { let m = null; p.group.traverse((o) => { if (!m && o.isInstancedMesh) m = o; }); return m; } };
+`;
 
-export async function openViewer() {
+// patch(src) may rewrite viewer.js text in memory (controls / candidate fixes only).
+export async function openViewer({ patch } = {}) {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   await page.route('**/*', async (route) => {
@@ -22,7 +27,7 @@ export async function openViewer() {
     if (url.origin !== ORIGIN || !file.startsWith(ROOT + path.sep)) return route.abort();
     try {
       let body = await readFile(file);
-      if (url.pathname === '/viewer.js') body = body.toString() + HOOK;
+      if (url.pathname === '/viewer.js') body = (patch ? patch(body.toString()) : body.toString()) + HOOK;
       await route.fulfill({ body, contentType: MIME[path.extname(file)] ?? 'application/octet-stream' });
     } catch { await route.fulfill({ status: 404, body: 'not found' }); }
   });

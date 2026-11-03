@@ -16,7 +16,7 @@ const shots = [];
 for (const el of [10, 45, 80]) for (const az of [18, 90, 160, 250]) shots.push({ name: `az${az}-el${el}`, camera: { pos: pos(az, el), target: [0, 0, 0] } });
 const { browser, page } = await openViewer();
 if (BODY) await page.evaluate((body) => {
-  const mat = window.__dbg.planets[0].group.children.find((c) => c.children?.[0]?.isInstancedMesh).children[0].material;
+  const mat = window.__dbg.puffsOf(window.__dbg.planets[0]).material;
   mat.fragmentShader = mat.fragmentShader.replace(/gl_FragColor = vec4\(uRamp\[band\(n\)\], 1\.0\);/, body);
   mat.needsUpdate = true;
 }, BODY);

@@ -23,7 +23,7 @@ for (const [biome, seed] of [['lush', 7], ['lush', 311], ['lush', 42], ['ocean',
   const r = await page.evaluate(({ biome, seed }) => {
     window.viewer.set({ view: 'studio', seed, biome, ui: false });
     const { THREE, planets } = window.__dbg;
-    const puffs = planets[0].group.children.find((c) => c.children?.[0]?.isInstancedMesh).children[0];
+    const puffs = window.__dbg.puffsOf(window.__dbg.planets[0]);
     const m = new THREE.Matrix4(), p = new THREE.Vector3();
     let y1200 = null, below = 0;
     if (puffs.count > 1200) { puffs.getMatrixAt(1199, m); p.setFromMatrixPosition(m); y1200 = p.y / p.length(); }
