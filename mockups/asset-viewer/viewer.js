@@ -4,7 +4,6 @@
 // with nearest-neighbour, so pixels stay crisp. There's no dithering and no outline.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -18,8 +17,10 @@ export const PALETTE = {
   cap: ['#6e6a86', '#b9b3c9', '#e6e0ee', '#fbf8ff'],
   cloud: ['#6e6274', '#b39c94', '#e3cdb0', '#fff6e4'],
   ring: ['#5d4e72', '#8f7fae', '#d8a9b8', '#f2d6b3'],
-  suit: ['#8f8087', '#cdb9a6', '#eadcc6', '#fbf3e4'],
-  glint: '#fffaf0',
+  suit: ['#68718f', '#a3aec8', '#d3dcea', '#f2f6fc'], // cool white
+  gear: ['#4a5170', '#77819f', '#a2adc6', '#c4cee0'], // gloves, boots, backpack
+  visor: ['#0f1329', '#232f58'], // near-black blue, two tones
+  glint: '#f4f8ff',
 };
 export const CONTRIBUTORS = {
   coral: ['#6e3a4c', '#b85c66', '#f08e7f', '#ffc4a8'],
@@ -28,14 +29,20 @@ export const CONTRIBUTORS = {
 };
 
 // Depth darkening: each colour has fixed darker steps toward a cool space tone.
-// Level 0 is near (unchanged), level 1 is mid (about -35% value) and level 2 is far (about -70%, near silhouette).
-const DEPTH_TINT = new THREE.Color('#262a46');
-const DEPTH_STEPS = [0, 0.35, 0.7];
-const DEPTH_RANGES = [12, 26]; // camera distance at which an object drops a level
+// Level 0 is near (unchanged), level 1 is mid (about -35% value), level 2 is far (about -70%).
+// Level 3 (furthest) collapses to a near-black silhouette that keeps a faint pastel hint.
+const DEPTH_STEPS = [
+  [new THREE.Color('#262a46'), 0],
+  [new THREE.Color('#262a46'), 0.35],
+  [new THREE.Color('#262a46'), 0.7],
+  [new THREE.Color('#110f18'), 0.88],
+];
+const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object drops a level
 const depthCache = new Map();
 function depthColor(hex, level) {
   const key = `${hex}:${level}`;
-  if (!depthCache.has(key)) depthCache.set(key, new THREE.Color(hex).lerp(DEPTH_TINT, DEPTH_STEPS[level]));
+  const [tint, t] = DEPTH_STEPS[level];
+  if (!depthCache.has(key)) depthCache.set(key, new THREE.Color(hex).lerp(tint, t));
   return depthCache.get(key);
 }
 
@@ -115,7 +122,7 @@ const VERT = /* glsl */ `
       mat4 m = modelMatrix;
     #endif
     vLocal = position;
-    vNormalW = normalize(mat3(m) * normal);
+    vNormalW = normalize(transpose(inverse(mat3(m))) * normal); // correct for squashed cloud puffs
     vec4 wp = m * vec4(position, 1.0);
     vPosW = wp.xyz;
     gl_Position = projectionMatrix * viewMatrix * wp;
@@ -138,7 +145,7 @@ const CLOUD_FRAG = /* glsl */ `
   in vec3 vNormalW;
   in vec3 vPosW;
   void main() {
-    vec3 n = normalize(normalize(vNormalW) * 0.6 + normalize(vPosW - uCenter) * 0.7);
+    vec3 n = normalize(normalize(vNormalW) * 0.85 + normalize(vPosW - uCenter) * 0.55);
     gl_FragColor = vec4(uRamp[band(n)], 1.0);
   }
 `;
@@ -162,26 +169,6 @@ const PLANET_FRAG = /* glsl */ `
     else c = uLand[min(b + (h > uSea + 0.11 ? 1 : 0), 4)];
     float lat = abs(p.y) + (fbm(p * 3.0 + uSeedOff) - 0.5) * 0.25;
     if (lat > 0.9) c = uCap[b];
-    gl_FragColor = vec4(c, 1.0);
-  }
-`;
-
-// Visor: a fake environment reflection, banded. The reflected ray's height picks the band,
-// and a tight highlight lobe gives the glint. It moves as the camera orbits.
-const VISOR_FRAG = /* glsl */ `
-  uniform vec3 uRamp[4];
-  uniform vec3 uGlint;
-  uniform vec3 uLight;
-  in vec3 vNormalW;
-  in vec3 vPosW;
-  void main() {
-    vec3 n = normalize(vNormalW);
-    vec3 v = normalize(vPosW - cameraPosition);
-    vec3 r = reflect(v, n);
-    float y = r.y + dot(n, uLight) * 0.35;
-    int i = y > 0.45 ? 3 : y > 0.05 ? 2 : y > -0.35 ? 1 : 0;
-    vec3 c = uRamp[i];
-    if (dot(r, uLight) > 0.93) c = uGlint;
     gl_FragColor = vec4(c, 1.0);
   }
 `;
@@ -259,7 +246,7 @@ function setDepthLevel(obj, level) {
 // ---------------------------------------------------------------- planet
 const PLANET_GEO = new THREE.SphereGeometry(1, 72, 48);
 const PUFF_GEO = new THREE.IcosahedronGeometry(1, 3);
-const MAX_PUFFS = 220;
+const MAX_PUFFS = 700;
 
 function makePlanet() {
   const group = new THREE.Group();
@@ -305,34 +292,38 @@ function makePlanet() {
     // Cloud heaps: a base row of puffs stretched east-west, a few stacked on top,
     // and some small strays. Mostly in two latitude belts.
     let n = 0;
+    const gauss = () => (rnd() + rnd() + rnd() - 1.5) / 1.5; // roughly -1..1, centre-weighted
+    // Puffs are squashed along the radial axis so clumps hug the surface; the
+    // domed centre still pokes past the silhouette at the limb.
+    const FLAT = 0.6;
     const put = (dir, size, lift) => {
       if (n >= MAX_PUFFS) return;
-      m4.compose(dir.clone().normalize().multiplyScalar(1 + size * lift), q, new THREE.Vector3(size, size, size));
+      const d = dir.clone().normalize();
+      q.setFromUnitVectors(up, d);
+      m4.compose(d.multiplyScalar(1 + size * FLAT * lift), q, new THREE.Vector3(size, size * FLAT, size));
       puffs.setMatrixAt(n++, m4);
     };
-    const gauss = () => (rnd() + rnd() + rnd() - 1.5) / 1.5; // roughly -1..1, centre-weighted
     // Stratified placement: jittered golden-spiral sites, kept more often in two
     // latitude belts, so every face of the planet gets weather.
-    const SITES = 64;
+    const SITES = 150;
     for (let c = 0; c < SITES; c++) {
       const y = 1 - ((c + 0.5) / SITES) * 2;
-      const lon = c * 2.39996 + rnd() * 0.5;
-      const lat = Math.asin(y) + (rnd() - 0.5) * 0.2;
-      const belt = Math.exp(-(((Math.abs(lat) - 0.5) / 0.28) ** 2));
-      if (rnd() > 0.18 + belt * 0.5) continue;
+      const lon = c * 2.39996 + rnd() * 0.4;
+      const lat = Math.asin(y) + (rnd() - 0.5) * 0.15;
+      const belt = Math.exp(-(((Math.abs(lat) - 0.5) / 0.3) ** 2));
+      if (rnd() > 0.2 + belt * 0.45) continue;
       const center = new THREE.Vector3(Math.cos(lon) * Math.cos(lat), Math.sin(lat), Math.sin(lon) * Math.cos(lat));
       const east = new THREE.Vector3().crossVectors(up, center).normalize();
       const north = new THREE.Vector3().crossVectors(center, east);
-      const len = 0.08 + rnd() * 0.22; // east-west half-length
-      const wid = len * (0.45 + rnd() * 0.3);
-      const count = 3 + Math.floor(rnd() * 6 + len * 20);
+      const len = 0.05 + rnd() * 0.14; // east-west half-length
+      const wid = len * (0.5 + rnd() * 0.3);
+      const count = 3 + Math.floor(rnd() * 4 + len * 25);
       for (let k = 0; k < count; k++) {
         const ex = gauss();
         const nx = gauss();
         const centrality = 1 - Math.min(1, Math.hypot(ex, nx));
-        const size = (0.04 + rnd() * 0.035 + centrality * 0.05) * (0.75 + len * 1.6);
-        // central puffs sit higher, so each heap domes like a cauliflower
-        put(center.clone().addScaledVector(east, ex * len).addScaledVector(north, nx * wid), size, 0.1 + centrality * 0.9);
+        const size = 0.034 + rnd() * 0.024 + centrality * 0.034;
+        put(center.clone().addScaledVector(east, ex * len).addScaledVector(north, nx * wid), size, 0.2 + centrality * 0.8);
       }
     }
     puffs.count = n;
@@ -342,16 +333,13 @@ function makePlanet() {
     const pts = [];
     const shade = [];
     const sizes = [];
-    const lanes = [[1.45, 1.64, 0.5], [1.72, 1.98, 1.0], [2.06, 2.18, 0.4]];
-    for (const [r0, r1, density] of lanes) {
-      const count = Math.floor(900 * density * (r1 - r0) * 4);
-      for (let k = 0; k < count; k++) {
-        const a = rnd() * Math.PI * 2;
-        const r = r0 + (r1 - r0) * rnd();
-        pts.push(Math.cos(a) * r, (rnd() - 0.5) * 0.02, Math.sin(a) * r);
-        shade.push(1 + Math.floor(rnd() * 3));
-        sizes.push(rnd() < 0.12 ? 2 : 1);
-      }
+    // One thin band, densest in the middle, every dot 1 internal pixel.
+    for (let k = 0; k < 1500; k++) {
+      const a = rnd() * Math.PI * 2;
+      const r = 1.8 + (rnd() + rnd() - 1) * 0.11;
+      pts.push(Math.cos(a) * r, (rnd() - 0.5) * 0.012, Math.sin(a) * r);
+      shade.push(1 + Math.floor(rnd() * 3));
+      sizes.push(1);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
@@ -376,50 +364,181 @@ function makePlanet() {
 }
 
 // ---------------------------------------------------------------- astronaut
-// Toy proportions, 1 unit tall: the helmet is the top 40%.
+// One signed-distance body, raymarched inside a proxy box. Every part joins one
+// surface (smooth unions), so a single lighting pass shades the whole figure. Cast
+// shadows and contact occlusion come from marching the same field toward the light.
+// Limbs are continuous bent tubes: shoulder->elbow->wrist and hip->knee->ankle,
+// smooth-unioned so the bend has no seam. Local units: 1 tall, facing +z.
+const ASTRO_FRAG = /* glsl */ `
+  uniform mat4 uInvModel;
+  uniform mat4 uModel;
+  uniform mat4 uProj;
+  uniform vec3 uLightLocal;
+  uniform vec3 uJ[12]; // lS lE lW rS rE rW lH lK lA rH rK rA
+  uniform vec3 uSuit[4];
+  uniform vec3 uGear[4];
+  uniform vec3 uAccent[4];
+  uniform vec3 uVisor[2];
+  uniform vec3 uGlint;
+  in vec3 vPosW;
+
+  const vec3 HEAD = vec3(0.0, 0.79, 0.0);
+  const vec3 BMIN = vec3(-0.5, -0.08, -0.42);
+  const vec3 BMAX = vec3(0.5, 1.06, 0.42);
+
+  float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
+  float sdRoundBox(vec3 p, vec3 b, float r) { vec3 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r; }
+  float sdCapsule(vec3 p, vec3 a, vec3 b, float r) { vec3 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h) - r; }
+  float limb(vec3 p, vec3 a, vec3 b, vec3 c, float r0, float r1) { return smin(sdCapsule(p, a, b, r0), sdCapsule(p, b, c, r1), 0.035); }
+
+  float dHelmet(vec3 p) { return length(p - HEAD) - 0.21; }
+  float dTorso(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.47, 0.0), vec3(0.17, 0.155, 0.13), 0.075); }
+  float dPack(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.53, -0.2), vec3(0.205, 0.19, 0.085), 0.045); }
+  float dArm(vec3 p, int i) { return limb(p, uJ[i], uJ[i + 1], uJ[i + 2], 0.062, 0.056); }
+  float dHand(vec3 p, int i) { return length(p - (uJ[i + 2] + normalize(uJ[i + 2] - uJ[i + 1]) * 0.035)) - 0.066; }
+  float dLeg(vec3 p, int i) { return limb(p, uJ[i], uJ[i + 1], uJ[i + 2], 0.078, 0.07); }
+  float dBoot(vec3 p, int i) { return sdRoundBox(p - (uJ[i + 2] + vec3(0.0, -0.03, 0.025)), vec3(0.066, 0.045, 0.088), 0.036); }
+
+  float map(vec3 p) {
+    float d = smin(dHelmet(p), dTorso(p), 0.04);
+    d = smin(d, dPack(p), 0.015);
+    for (int i = 0; i < 6; i += 3) {
+      d = smin(d, dArm(p, i), 0.04);
+      d = smin(d, dHand(p, i), 0.02);
+      d = smin(d, dLeg(p, i + 6), 0.04);
+      d = smin(d, dBoot(p, i + 6), 0.02);
+    }
+    return d;
+  }
+
+  vec3 calcNormal(vec3 p) {
+    const vec2 k = vec2(1.0, -1.0);
+    const float e = 0.0015;
+    return normalize(k.xyy * map(p + k.xyy * e) + k.yyx * map(p + k.yyx * e) + k.yxy * map(p + k.yxy * e) + k.xxx * map(p + k.xxx * e));
+  }
+
+  float shadow(vec3 ro, vec3 rd) {
+    float t = 0.02;
+    for (int i = 0; i < 40; i++) {
+      float h = map(ro + rd * t);
+      if (h < 0.002) return 0.0;
+      t += max(h, 0.01);
+      if (t > 1.4) break;
+    }
+    return 1.0;
+  }
+
+  float occlusion(vec3 p, vec3 n) {
+    float o = 0.0;
+    for (int i = 1; i <= 4; i++) {
+      float h = 0.025 * float(i);
+      o += (h - map(p + n * h)) / h;
+    }
+    return clamp(1.0 - o * 0.3, 0.0, 1.0);
+  }
+
+  // 0 suit, 1 gear, 2 accent, 3 visor
+  int region(vec3 p) {
+    float best = dHelmet(p);
+    int id = 0;
+    int part = 0; // 0 helmet 1 torso 2 pack 3 arm 4 hand 5 leg 6 boot
+    float d;
+    d = dTorso(p); if (d < best) { best = d; part = 1; }
+    d = dPack(p); if (d < best) { best = d; part = 2; }
+    int armI = 0;
+    for (int i = 0; i < 6; i += 3) {
+      d = dArm(p, i); if (d < best) { best = d; part = 3; armI = i; }
+      d = dHand(p, i); if (d < best) { best = d; part = 4; }
+      d = dLeg(p, i + 6); if (d < best) { best = d; part = 5; }
+      d = dBoot(p, i + 6); if (d < best) { best = d; part = 6; }
+    }
+    if (part == 0) {
+      float c = dot(normalize(p - HEAD), normalize(vec3(0.0, -0.08, 1.0)));
+      return c > 0.64 ? 3 : c > 0.56 ? 1 : 0; // visor, then a gear-tone rim
+    }
+    if (part == 1) return (p.z > 0.1 && abs(p.x) < 0.07 && abs(p.y - 0.5) < 0.04) ? 1 : 0; // chest panel
+    if (part == 2) return abs(p.y - 0.6) < 0.036 ? 2 : 1; // backpack + contributor stripe
+    if (part == 3) {
+      // contributor shoulder band around the upper arm
+      vec3 a = uJ[armI], b = uJ[armI + 1];
+      float h = dot(p - a, b - a) / dot(b - a, b - a);
+      return (h > 0.22 && h < 0.42) ? 2 : 0;
+    }
+    return part == 4 || part == 6 ? 1 : 0;
+  }
+
+  void main() {
+    vec3 ro = (uInvModel * vec4(cameraPosition, 1.0)).xyz;
+    vec3 rd = normalize((uInvModel * vec4(vPosW, 1.0)).xyz - ro);
+    vec3 t0 = (BMIN - ro) / rd, t1 = (BMAX - ro) / rd;
+    vec3 tmin = min(t0, t1), tmax = max(t0, t1);
+    float tn = max(max(max(tmin.x, tmin.y), tmin.z), 0.0);
+    float tf = min(min(tmax.x, tmax.y), tmax.z);
+    float t = tn;
+    bool hit = false;
+    for (int i = 0; i < 96; i++) {
+      float h = map(ro + rd * t);
+      if (h < 0.0012 * (1.0 + t)) { hit = true; break; }
+      t += h;
+      if (t > tf) break;
+    }
+    if (!hit) discard;
+    vec3 p = ro + rd * t;
+    vec3 n = calcNormal(p);
+    vec3 L = normalize(uLightLocal);
+    float lit = dot(n, L);
+    if (shadow(p + n * 0.006, L) < 0.5) lit = min(lit, 0.1) - 0.3;
+    lit -= (1.0 - occlusion(p, n)) * 0.6;
+    int b = lit > 0.7 ? 3 : lit > 0.32 ? 2 : lit > -0.12 ? 1 : 0;
+    int r = region(p);
+    vec3 c;
+    if (r == 3) {
+      vec3 refl = reflect(rd, n);
+      c = (refl.y > 0.18 && b >= 2) ? uVisor[1] : uVisor[0];
+      if (dot(refl, L) > 0.955 && b >= 1) c = uGlint;
+    } else if (r == 2) c = uAccent[b];
+    else if (r == 1) c = uGear[b];
+    else c = uSuit[b];
+    gl_FragColor = vec4(c, 1.0);
+    vec4 clip = uProj * viewMatrix * uModel * vec4(p, 1.0);
+    gl_FragDepth = clip.z / clip.w * 0.5 + 0.5;
+  }
+`;
+
+const PROXY_GEO = new THREE.BoxGeometry(1, 1.14, 0.84).translate(0, 0.49, 0);
+
 function makeAstronaut(colorKey) {
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const bands = () => ({ uBands: { value: new THREE.Vector3(0.28, 0.66, 0.9) } }); // more shade so the forms read
-  const suit = paletteMaterial(TOON_FRAG, { uRamp: PALETTE.suit }, bands());
-  const suitDark = paletteMaterial(TOON_FRAG, { uRamp: [PALETTE.suit[0], PALETTE.suit[0], PALETTE.suit[1], PALETTE.suit[2]] }, bands());
-  const accent = paletteMaterial(TOON_FRAG, { uRamp: CONTRIBUTORS[colorKey] }, bands());
-  const visor = paletteMaterial(VISOR_FRAG, { uRamp: CONTRIBUTORS[colorKey], uGlint: PALETTE.glint });
-  const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    m.rotation.set(rx, ry, rz);
-    body.add(m);
-    return m;
-  };
+  const joints = Array.from({ length: 12 }, () => new THREE.Vector3());
+  const mat = paletteMaterial(ASTRO_FRAG, {
+    uSuit: PALETTE.suit, uGear: PALETTE.gear, uAccent: CONTRIBUTORS[colorKey], uVisor: PALETTE.visor, uGlint: PALETTE.glint,
+  }, {
+    uInvModel: { value: new THREE.Matrix4() }, uModel: { value: null }, uProj: { value: camera.projectionMatrix },
+    uLightLocal: { value: new THREE.Vector3() }, uJ: { value: joints },
+  }, { side: THREE.BackSide });
+  const proxy = new THREE.Mesh(PROXY_GEO, mat);
+  mat.uniforms.uModel.value = proxy.matrixWorld;
+  body.add(proxy);
 
-  add(new THREE.SphereGeometry(0.21, 32, 24), suit, 0, 0.79, 0); // helmet
-  add(new THREE.SphereGeometry(0.21, 32, 24, Math.PI / 2 - 0.95, 1.9, Math.PI / 2 - 0.62, 1.05), visor, 0, 0.79, 0.012)
-    .scale.setScalar(1.03);
-  add(new RoundedBoxGeometry(0.36, 0.3, 0.27, 3, 0.08), suit, 0, 0.47, 0); // torso
-  add(new RoundedBoxGeometry(0.14, 0.08, 0.04, 2, 0.015), suitDark, 0, 0.5, 0.135); // chest panel
-  add(new RoundedBoxGeometry(0.42, 0.38, 0.17, 2, 0.05), suitDark, 0, 0.53, -0.2); // backpack, wider than the torso so it peeks out
-  add(new RoundedBoxGeometry(0.43, 0.07, 0.18, 2, 0.02), accent, 0, 0.6, -0.2); // backpack stripe
-  const arm = new THREE.CapsuleGeometry(0.062, 0.1, 4, 12);
-  const hand = new THREE.SphereGeometry(0.07, 16, 12);
-  const arms = [-1, 1].map((s) => {
-    const pivot = new THREE.Group();
-    pivot.position.set(s * 0.19, 0.55, 0);
-    const armMesh = new THREE.Mesh(arm, suit);
-    armMesh.position.set(s * 0.04, -0.08, 0);
-    const handMesh = new THREE.Mesh(hand, suitDark);
-    handMesh.position.set(s * 0.07, -0.17, 0.01);
-    pivot.add(armMesh, handMesh);
-    pivot.rotation.z = s * 0.55;
-    body.add(pivot);
-    return pivot;
-  });
-  const leg = new THREE.CapsuleGeometry(0.075, 0.05, 4, 12);
-  const boot = new RoundedBoxGeometry(0.13, 0.08, 0.17, 2, 0.03);
-  for (const s of [-1, 1]) {
-    add(leg, suit, s * 0.09, 0.22, 0);
-    add(boot, suitDark, s * 0.09, 0.1, 0.02);
+  const q = new THREE.Quaternion();
+  // Relaxed float: elbows and knees softly bent; the bends breathe with the bob.
+  function pose(t) {
+    const bob = Math.sin(t * 1.5);
+    const sway = Math.sin(t * 1.1 + 0.8);
+    for (const [k, s] of [[0, -1], [3, 1]]) {
+      const lift = 0.02 * Math.sin(t * 1.5 + 0.6 + s * 0.4);
+      joints[k].set(s * 0.2, 0.585, 0);
+      joints[k + 1].set(s * (0.3 + 0.012 * bob), 0.47 + lift, 0.035);
+      joints[k + 2].set(s * (0.325 + 0.015 * bob), 0.37 + lift * 2, 0.11 + 0.01 * sway);
+    }
+    for (const [k, s, bend] of [[6, -1, 1], [9, 1, 0.6]]) {
+      const kb = bend * (0.05 + 0.02 * Math.sin(t * 1.5 + s));
+      joints[k].set(s * 0.085, 0.32, 0);
+      joints[k + 1].set(s * 0.1, 0.19, 0.03 + kb);
+      joints[k + 2].set(s * 0.095, 0.07 + kb * 0.4, -0.02 + kb * 0.2);
+    }
   }
 
   function update(t) {
@@ -427,11 +546,14 @@ function makeAstronaut(colorKey) {
     body.position.y = Math.sin(p * 1.5) * 0.05;
     body.rotation.z = Math.sin(p * 1.1) * 0.07;
     body.rotation.x = Math.sin(p * 0.9) * 0.05;
-    arms[0].rotation.z = -0.55 - Math.sin(p * 1.5 + 0.6) * 0.12;
-    arms[1].rotation.z = 0.55 + Math.sin(p * 1.5 + 0.6) * 0.12;
+    pose(p);
+    root.updateMatrixWorld(true);
+    mat.uniforms.uInvModel.value.copy(proxy.matrixWorld).invert();
+    proxy.matrixWorld.decompose(new THREE.Vector3(), q, new THREE.Vector3());
+    mat.uniforms.uLightLocal.value.copy(LIGHT_DIR).applyQuaternion(q.invert());
   }
   function setColor(key) {
-    for (const m of [accent, visor]) m.userData.ramps.uRamp = CONTRIBUTORS[key];
+    mat.userData.ramps.uAccent = CONTRIBUTORS[key];
     root.userData.depthLevel = -1; // force a re-tint
   }
   root.userData.phase = 0; // callers stagger this so the crew doesn't bob in sync
@@ -481,11 +603,12 @@ controls.enableDamping = true;
 const stars = makeStars();
 scene.add(stars);
 
-// Hero planet at the origin, plus a mid and a far copy (same seed) to prove depth.
+// Hero planet at the origin, plus mid, far and silhouette copies (same seed) to prove depth.
 const planets = [
   { pos: [0, 0, 0] },
   { pos: [-6.5, 1.2, -13] },
   { pos: [9, 2.2, -27] },
+  { pos: [-13, 5, -40] },
 ].map(({ pos }) => {
   const p = makePlanet();
   p.group.position.set(...pos);
@@ -504,11 +627,12 @@ const crew = Object.keys(CONTRIBUTORS).map((key, i) => {
   return a;
 });
 
-// Solo astronauts at near, mid and far depth; they wear the selected contributor colour.
+// Solo astronauts at each depth step; they wear the selected contributor colour.
 const solos = [
-  { pos: [-1.1, 0.45, 4.8], ry: 0.6 },
-  { pos: [3.2, -0.6, -7], ry: -0.3 },
+  { pos: [-0.95, 0.55, 5.0], ry: 0.6 },
+  { pos: [4.6, -0.4, -8], ry: -0.3 },
   { pos: [-1.5, 2.6, -21], ry: 0.4 },
+  { pos: [6.5, 4.2, -38], ry: -0.5 },
 ].map(({ pos, ry }, i) => {
   const a = makeAstronaut('coral');
   a.group.position.set(...pos);
@@ -569,7 +693,7 @@ function frame() {
   [...crew, ...solos].forEach((a) => a.update(t));
   for (const obj of [...planets.map((p) => p.group), ...crew.map((a) => a.group), ...solos.map((a) => a.group)]) {
     const d = camera.position.distanceTo(obj.getWorldPosition(tmp));
-    const level = !state.depth ? 0 : d < DEPTH_RANGES[0] ? 0 : d < DEPTH_RANGES[1] ? 1 : 2;
+    const level = !state.depth ? 0 : DEPTH_RANGES.filter((r) => d >= r).length;
     setDepthLevel(obj, level);
   }
   renderer.render(scene, camera);
