@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>asset viewer · codebase space explorer</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #2b2535; overflow: hidden; }
+    body { display: grid; place-items: center; font: 12px/1.4 ui-monospace, Menlo, monospace; color: #e6e0ee; }
+    #view { image-rendering: pixelated; display: block; }
+    #ui { position: fixed; top: 10px; left: 10px; width: 210px; padding: 10px 12px; background: #1f1a29e6; border: 1px solid #5d5372; }
+    #ui h1 { font-size: 12px; margin: 0 0 8px; color: #fff6e4; font-weight: 600; }
+    #ui label { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 6px 0; }
+    #ui input[type=range] { width: 110px; accent-color: #a993ec; }
+    #ui .row { display: flex; gap: 4px; margin: 6px 0; }
+    #ui button, #ui select { font: inherit; background: #3b3349; color: #e6e0ee; border: 1px solid #5d5372; padding: 2px 6px; cursor: pointer; }
+    #ui .hint { color: #a99cbf; margin-top: 8px; }
+  </style>
+  <script type="importmap">{ "imports": {
+    "three": "./node_modules/three/build/three.module.js",
+    "three/addons/": "./node_modules/three/examples/jsm/"
+  } }</script>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="ui">
+    <h1>asset viewer · batch 1</h1>
+    <div class="row"><button data-view="planet">planet</button><button data-view="crew">crew</button><button data-view="depth">depth</button></div>
+    <label>seed <span id="seed-readout">7</span><input id="seed" type="range" min="1" max="999" value="7"></label>
+    <div class="row"><button id="reseed">new planet</button></div>
+    <label>ring <input id="ring" type="checkbox" checked></label>
+    <label>contributor <select id="color"><option value="coral">coral</option><option value="mint">mint</option><option value="lilac">lilac</option></select></label>
+    <label>pixel h <input id="pixel" type="range" min="120" max="480" value="180"></label>
+    <div class="hint" id="pixel-readout"></div>
+    <label>depth fade <input id="depth" type="checkbox" checked></label>
+    <label>rotate <input id="spin" type="checkbox" checked></label>
+    <div class="hint">drag to orbit · scroll to zoom</div>
+  </div>
+  <script type="module" src="./viewer.js"></script>
+</body>
+</html>

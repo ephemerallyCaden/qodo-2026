@@ -1,0 +1,17 @@
+{
+  "name": "asset-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Live 3D asset viewer for Codebase Space Explorer (batch 1: lush planet + astronaut), with a pixel post-process and depth darkening.",
+  "type": "module",
+  "scripts": {
+    "dev": "node serve.mjs",
+    "shots": "node shots.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}
