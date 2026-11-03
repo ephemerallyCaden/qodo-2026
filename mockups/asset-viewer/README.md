@@ -10,6 +10,7 @@ Everything is real-time 3D. Nothing in the viewer is a sprite or pre-rendered im
 npm install
 npm run dev      # http://127.0.0.1:5180/  (loopback only; PORT=... to change)
 npm run shots    # re-capture screenshots/ in headless Chromium (no server, no network)
+npm run palettes # 25 Lospec-palette renders + labelled contact sheet in screenshots/palettes/
 ```
 
 `node shots.mjs depth-scene crew-closeup` captures just the named shots.
@@ -22,11 +23,11 @@ npm run shots    # re-capture screenshots/ in headless Chromium (no server, no n
 | seed, new planet | Regenerates land, sea level, cloud heaps and ring dust. All three planet copies share the seed |
 | ring | Shows or hides the scattered-pixel ring |
 | contributor | Sets the backpack-stripe, shoulder-band and face colour of the solo astronauts in the depth scene. The crew line-up always shows all three |
-| eyes, mouth | Face override for every astronaut; `auto` hashes the face from the contributor's handle |
+| eyes | Face override for every astronaut; `auto` hashes the face from the contributor's handle. Mouths are hidden while faces are on hold (code kept, `SHOW_MOUTHS`) |
 | pixel h | Internal height from 120 to 480. Width is 16:9, and the canvas is upscaled by the largest integer factor that fits, with nearest-neighbour filtering |
 | depth fade | Turns depth darkening on or off |
 | rotate | Pauses or resumes planet and cloud spin |
-| palette | v2 (current) or v1 (batch 1 pastels), for comparison |
+| palette | v2, v1 (batch 1 pastels), or any of the 25 Lospec palettes (plus spares) |
 | drag / scroll | Orbits and zooms the camera |
 
 ## How it's built (`viewer.js`)
@@ -36,7 +37,7 @@ npm run shots    # re-capture screenshots/ in headless Chromium (no server, no n
 - **Planet**: a sphere whose shader uses 3D simplex fbm for land and ocean, with shallow-water and highland steps and noisy polar caps.
 - **Clouds**: instanced icosphere puffs squashed to 60% along the radial axis, so they hug the surface. Placement is noise-driven, like Planetarium. A low-frequency fbm field makes a few large merged masses, and a latitude-stretched field makes long east-west streaks. Wherever both fields are low the sky stays clear. Denser spots get bigger, higher puffs, so cores merge and dome past the silhouette, and a few small strays scatter at the edges of the weather. Every puff gets at least one smaller satellite beside it, and thin weather and strays get 2–3, so no lone sphere reads as a white ball. Each puff's normal is blended with the planet's radial direction, so a mass shades as one body with a lumpy edge. The clouds spin slightly faster than the ground.
 - **Ring**: one thin band of 1,500 points, densest in the middle. Every dot is exactly 1 internal pixel at every resolution. Points in the planet's shadow use the darkest ring colour.
-- **Astronaut**: one signed-distance body, raymarched inside a proxy box and composited with `gl_FragDepth`. It's made from primitives: a helmet sphere (the top 48%, so the head is big and the body small), a rounded-box torso, a backpack wider than the torso, mitts and boots. Each arm and leg is one continuous bent tube (shoulder→elbow→wrist, hip→knee→ankle), smooth-unioned so the bend has no seam. Elbows and knees are softly bent, and they flex with the idle bob. Because it is one surface, one lighting pass shades the whole body. Cast shadows (arm on torso, helmet on shoulders) and contact occlusion come from marching the same field toward the light, then snapping to the 4-step suit ramp. The suit is a cool white. The visor is a ~4:3 rounded-rect "screen" (a superellipse in yaw and pitch) with a gear-tone bezel, in two near-black blue tones plus a small white glint. **Contributor colour** is on the backpack stripe and a band around each upper arm (shoulder bands), so it's readable from any angle.
+- **Astronaut**: one signed-distance body, raymarched inside a proxy box and composited with `gl_FragDepth`. It's made from primitives: a helmet sphere (the top 48%, so the head is big and the body small), a rounded-box torso, a backpack wider than the torso, mitts and boots. Each arm and leg is one continuous bent tube (shoulder→elbow→wrist, hip→knee→ankle), smooth-unioned so the bend has no seam. Elbows and knees are softly bent, and they flex with the idle bob. Because it is one surface, one lighting pass shades the whole body. Cast shadows (arm on torso, helmet on shoulders) and contact occlusion come from marching the same field toward the light, then snapping to the 4-step suit ramp. The suit is a cool white. The visor is a ~4:3 rounded-rect "screen" (a superellipse in yaw and pitch) with a gear-tone bezel, in two near-black blue tones plus a fixed 3 px monitor-style glint in the screen's top-left corner, clear of the face. **Contributor colour** is on the backpack stripe and a band around each upper arm (shoulder bands), so it's readable from any angle.
 - **Faces** (`faces.js`): ASCII faces after the ApprenticeHack avatars. There are 13 eye sets and 9 mouths, with eye glyphs spaced evenly about the centre and an optional mouth below. Each is a hand-drawn pixel bitmap, because font text turns to mush at this resolution. They're stamped into a 32×24 texture per astronaut and sampled with `texelFetch` from the visor's yaw/pitch coordinates, so they turn with the head and one texel is about one pixel in the crew close-up. Faces glow in the contributor colour and ignore scene lighting. Eyes and mouth are picked from the contributor's handle with ApprenticeHack's `hashStr(handle + 'e' / 'm')`: `@caden` (coral) gets `⌐■_■` + `ᴗ`, `@mira` (mint) gets `■■■■` + `▽`, and `@juno` (lilac) gets `◕   ↼` + `—`.
 - **Depth darkening**: each whole object picks one of four levels from its camera distance (switch points at 12, 26 and 44). Its ramps are swapped for precomputed steps: `lerp(colour, #1b1f4a, 0 / 0.38 / 0.72)`, then `lerp(colour, #17172f, 0.88)` for the last step. That gives about -35% value at mid, about -70% far, and a dark navy silhouette with a faint hint of colour furthest out. The silhouette tint sits a touch above the near-black space so it still reads. Every step is a fixed palette colour; there are no gradients.
 
@@ -61,6 +62,45 @@ v2 is the current palette. v1 (the batch 1 pastels) stays selectable from the `p
 | gear: mitts, boots, backpack, visor rim (both) | `#4a5170` `#77819f` `#a2adc6` `#c4cee0` | |
 | visor (both) | `#0f1329` `#232f58`, glint `#f4f8ff` | |
 
+## Palette exploration (`palettes.js`, `palette-map.js`)
+
+The 25 published palettes are hardcoded from lospec.com, with each one's source URL. They were fetched once at authoring time and are never fetched at runtime. `palette-map.js` maps each one onto the viewer's roles using **only that palette's colours**:
+- **Ramps:** each ramp starts from an anchor picked by hue, then walks darker and lighter by nearest chroma (OKLab a/b), so it follows the palette's own hand-made ramps and hue shifts. Chromatic ramps never climb into the palette's white.
+- **Space:** the palette's darkest colour, preferring a cool one if it's within a hair.
+- **Ocean and land:** chosen from stylised pairings (teal + lime, violet + mint, blue + ochre, purple + lime, cyan + pink). Earth blue + green is penalised.
+- **Depth:** tints toward the palette's darks, then snaps each step back onto a palette colour. Levels 2 and 3 snap to its darkest 40% and darkest 3, and never to the space colour itself, so silhouettes stay visible.
+
+Every tile is the same shot: the `depth` view (crew in front, hero planet, then the mid, far and silhouette copies), seed 7, time 2, 320×180. Swaps after review: Lost Century → Pear36 and Island Joy 16 → Lospec500 (no usable dark), Ammo-8 → TwilioQuest 76 (monochrome green), Fantasy 24 → BLK 36 (red-brown space). The swapped-out palettes stay selectable as spares.
+
+| # | Palette | Author | Colours | Source |
+|---|---|---|---|---|
+| 01 | Resurrect 64 | Kerrie Lake | 64 | https://lospec.com/palette-list/resurrect-64 |
+| 02 | Apollo | AdamCYounis | 46 | https://lospec.com/palette-list/apollo |
+| 03 | Sweetie 16 | — | 16 | https://lospec.com/palette-list/sweetie-16 |
+| 04 | PICO-8 | — | 16 | https://lospec.com/palette-list/pico-8 |
+| 05 | Endesga 32 | ENDESGA | 32 | https://lospec.com/palette-list/endesga-32 |
+| 06 | Endesga 64 | ENDESGA | 64 | https://lospec.com/palette-list/endesga-64 |
+| 07 | AAP-64 | Adigun A. Polack | 64 | https://lospec.com/palette-list/aap-64 |
+| 08 | DawnBringer 16 | — | 16 | https://lospec.com/palette-list/dawnbringer-16 |
+| 09 | DawnBringer 32 | — | 32 | https://lospec.com/palette-list/dawnbringer-32 |
+| 10 | Pear36 | PineappleOnPizzaComissions Open | 36 | https://lospec.com/palette-list/pear36 |
+| 11 | Oil 6 | — | 6 | https://lospec.com/palette-list/oil-6 |
+| 12 | Twilight 5 | Star | 5 | https://lospec.com/palette-list/twilight-5 |
+| 13 | SLSO8 | Luis Miguel Maldonado | 8 | https://lospec.com/palette-list/slso8 |
+| 14 | Nyx8 | — | 8 | https://lospec.com/palette-list/nyx8 |
+| 15 | TwilioQuest 76 | Kerrie Lake | 76 | https://lospec.com/palette-list/twilioquest-76 |
+| 16 | CC-29 | Alpha6 | 29 | https://lospec.com/palette-list/cc-29 |
+| 17 | Journey | PineappleOnPizzaComissions Open | 64 | https://lospec.com/palette-list/journey |
+| 18 | Vinik24 | Vinik | 24 | https://lospec.com/palette-list/vinik24 |
+| 19 | BLK 36 | BurakoIRL | 36 | https://lospec.com/palette-list/blk-36 |
+| 20 | Zughy 32 | — | 32 | https://lospec.com/palette-list/zughy-32 |
+| 21 | Rosy 42 | PineappleOnPizzaComissions Open | 42 | https://lospec.com/palette-list/rosy-42 |
+| 22 | Lospec500 | — | 42 | https://lospec.com/palette-list/lospec500 |
+| 23 | Bubblegum 16 | PineappleOnPizzaComissions Open | 16 | https://lospec.com/palette-list/bubblegum-16 |
+| 24 | Steam Lords | Slynyrd | 16 | https://lospec.com/palette-list/steam-lords |
+| 25 | NA16 | Nauris | 16 | https://lospec.com/palette-list/na16 |
+
+
 ## Screenshots
 
 | File | Shows |
@@ -74,4 +114,5 @@ v2 is the current palette. v1 (the batch 1 pastels) stays selectable from the `p
 | `screenshots/depth-scene-off.png` | Same scene, fade off, for comparison |
 | `screenshots/pixel-120.png` | Chunkier pixels: 213×120 ×6 |
 | `screenshots/pixel-360.png` | Finer pixels: 640×360 ×2 |
+| `screenshots/palettes/contact-sheet.png` | The 25 palettes, 5×5, numbered and labelled; `NN-<slug>.png` are the full-size frames |
 | `screenshots/palette-before-after.png` | Depth scene, v1 palette (left) vs v2 (right). `palette-v1-depth.png` is its input |

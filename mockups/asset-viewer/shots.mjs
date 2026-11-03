@@ -1,11 +1,14 @@
 // Saves review screenshots with headless Chromium. The page is served through
 // Playwright request interception, so no socket is opened and nothing touches the network.
 // Usage: node shots.mjs [name ...]   (no names = all shots)
+//        node shots.mjs --palettes   (25 Lospec palettes + labelled contact sheet)
 import { chromium } from 'playwright';
-import { access, mkdir, readFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rm } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeFile } from 'node:fs/promises';
+import { LOSPEC, LOSPEC_ORDER } from './palettes.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const ORIGIN = 'http://viewer.local';
@@ -25,8 +28,9 @@ const SHOTS = {
 };
 const BASE = { seed: 7, ring: true, depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'v2' };
 
-const wanted = process.argv.slice(2);
-const names = wanted.length ? wanted : Object.keys(SHOTS);
+const PALETTE_MODE = process.argv.includes('--palettes');
+const wanted = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const names = PALETTE_MODE ? [] : wanted.length ? wanted : Object.keys(SHOTS);
 const outDir = path.join(ROOT, 'screenshots');
 await mkdir(outDir, { recursive: true });
 
@@ -53,6 +57,46 @@ for (const name of names) {
   await page.locator('#view').screenshot({ path: path.join(outDir, `${name}.png`) });
   console.log(`screenshots/${name}.png`);
 }
+
+if (PALETTE_MODE) {
+  // Same seed, camera and time for every palette: the depth scene with the crew in front.
+  const palDir = path.join(outDir, 'palettes');
+  await rm(palDir, { recursive: true, force: true }); // drop frames of swapped-out palettes
+  await mkdir(palDir, { recursive: true });
+  const tiles = [];
+  for (const [i, slug] of LOSPEC_ORDER.entries()) {
+    const label = `${String(i + 1).padStart(2, '0')} ${LOSPEC[slug].name}`;
+    await page.evaluate((opts) => window.viewer.set(opts), { ...BASE, view: 'depth', time: 2, palette: `lospec:${slug}` });
+    const png = await page.locator('#view').screenshot({ path: path.join(palDir, `${String(i + 1).padStart(2, '0')}-${slug}.png`) });
+    tiles.push({ label, url: `data:image/png;base64,${png.toString('base64')}` });
+    console.log(`screenshots/palettes/${String(i + 1).padStart(2, '0')}-${slug}.png`);
+  }
+  // Contact sheet: 5x5 tiles at the 320x180 internal resolution (exact 1/4 nearest), labelled.
+  const sheet = await page.evaluate(async (items) => {
+    const TW = 320, TH = 180, LAB = 18, GAP = 8;
+    const c = document.createElement('canvas');
+    c.width = GAP + 5 * (TW + GAP);
+    c.height = GAP + 5 * (TH + LAB + GAP);
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.font = '12px ui-monospace, Menlo, monospace';
+    ctx.textBaseline = 'top';
+    for (const [i, it] of items.entries()) {
+      const img = new Image();
+      img.src = it.url;
+      await img.decode();
+      const x = GAP + (i % 5) * (TW + GAP), y = GAP + Math.floor(i / 5) * (TH + LAB + GAP);
+      ctx.drawImage(img, x, y, TW, TH);
+      ctx.fillStyle = '#e6e0ee';
+      ctx.fillText(it.label, x + 2, y + TH + 3);
+    }
+    return c.toDataURL('image/png');
+  }, tiles);
+  await writeFile(path.join(palDir, 'contact-sheet.png'), Buffer.from(sheet.split(',')[1], 'base64'));
+  console.log('screenshots/palettes/contact-sheet.png');
+}
 await browser.close();
 if (errors.length) throw errors[0];
 
@@ -61,7 +105,7 @@ const FFMPEG = process.env.FFMPEG ?? '/opt/homebrew/bin/ffmpeg';
 const before = path.join(outDir, 'palette-v1-depth.png');
 const after = path.join(outDir, 'depth-scene.png');
 const ok = await Promise.all([FFMPEG, before, after].map((f) => access(f).then(() => true, () => false)));
-if (ok.every(Boolean)) {
+if (!PALETTE_MODE && ok.every(Boolean)) {
   execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-i', before, '-i', after, '-filter_complex',
     '[0]scale=640:360:flags=neighbor[a];[1]scale=640:360:flags=neighbor[b];[a][b]hstack', path.join(outDir, 'palette-before-after.png')]);
   console.log('screenshots/palette-before-after.png');

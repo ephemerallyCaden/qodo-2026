@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "node serve.mjs",
-    "shots": "node shots.mjs"
+    "shots": "node shots.mjs",
+    "palettes": "node shots.mjs --palettes"
   },
   "dependencies": {
     "three": "0.187.0"

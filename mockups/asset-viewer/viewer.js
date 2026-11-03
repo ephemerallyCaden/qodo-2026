@@ -5,6 +5,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { FACE_W, FACE_H, EYES, MOUTHS, faceBitmap, faceFor } from './faces.js';
+import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
+import { mapPalette, snapToPool } from './palette-map.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -54,8 +56,11 @@ export const PALETTES = {
     depth: [['#1b1f4a', 0], ['#1b1f4a', 0.38], ['#1b1f4a', 0.72], ['#17172f', 0.88]],
   },
 };
+// Published palettes, mapped onto our roles using only their own colours.
+for (const slug of [...LOSPEC_ORDER, ...SPARES]) PALETTES[`lospec:${slug}`] = mapPalette(slug);
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
 const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
+const SHOW_MOUTHS = false; // faces on hold pending the ApprenticeHack V2 eye designs; mouth code kept
 let paletteName = 'v2';
 // Ramp keys are paths into the active palette, e.g. 'ocean' or 'contributors.mint'.
 const resolve = (key) => key.split('.').reduce((o, k) => o[k], PALETTES[paletteName]);
@@ -65,8 +70,11 @@ const depthCache = new Map();
 function depthColor(hex, level) {
   const key = `${paletteName}:${hex}:${level}`;
   if (!depthCache.has(key)) {
-    const [tint, t] = PALETTES[paletteName].depth[level];
-    depthCache.set(key, new THREE.Color(hex).lerp(new THREE.Color(tint), t));
+    const pal = PALETTES[paletteName];
+    const [tint, t] = pal.depth[level];
+    const c = new THREE.Color(hex).lerp(new THREE.Color(tint), t);
+    // Published palettes snap each depth step back onto their own (darker) colours.
+    depthCache.set(key, pal.snap?.[level] ? new THREE.Color(snapToPool(c, pal.snap[level])) : c);
   }
   return depthCache.get(key);
 }
@@ -575,7 +583,8 @@ const ASTRO_FRAG = /* glsl */ `
       vec2 uv = visorUV(p).xy;
       ivec2 px = clamp(ivec2(uv * vec2(${FACE_W}.0, ${FACE_H}.0)), ivec2(0), ivec2(${FACE_W - 1}, ${FACE_H - 1}));
       if (texelFetch(uFace, px, 0).r > 0.5) c = uAccent[2];
-      if (dot(refl, L) > 0.975 && b >= 1) c = uGlint; // small specular glint over the face
+      // Monitor reflection: a fixed 3 px glint in the screen's top-left corner, clear of the face.
+      if ((px.y == 3 && (px.x == 4 || px.x == 5)) || (px.y == 4 && px.x == 4)) c = uGlint;
     } else if (r == 2) c = uAccent[b];
     else if (r == 1) c = uGear[b];
     else c = uSuit[b];
@@ -708,7 +717,7 @@ const planets = [
 });
 
 // Crew line-up for the close-up, off to the side of the hero planet.
-const CREW_SPOT = new THREE.Vector3(14, 0, 0);
+const CREW_SPOT = new THREE.Vector3(-1.35, -0.2, 4.6); // in front of the hero planet, so one shot shows crew + planet + depth
 const crew = CONTRIBUTOR_KEYS.map((key, i) => {
   const a = makeAstronaut(key);
   a.group.position.set(CREW_SPOT.x + (i - 1) * 0.72, CREW_SPOT.y, CREW_SPOT.z);
@@ -719,9 +728,8 @@ const crew = CONTRIBUTOR_KEYS.map((key, i) => {
   return a;
 });
 
-// Solo astronauts at each depth step; they wear the selected contributor colour.
+// Solo astronauts at the mid, far and silhouette steps (the crew covers near); they wear the selected contributor colour.
 const solos = [
-  { pos: [-0.7, 0.55, 5.0], ry: 0.6 },
   { pos: [4.6, -0.4, -8], ry: -0.3 },
   { pos: [-1.5, 2.6, -21], ry: 0.4 },
   { pos: [6.5, 4.2, -38], ry: -0.5 },
@@ -737,8 +745,8 @@ const solos = [
 
 const VIEWS = {
   planet: { pos: [1.3, 0.75, 3.9], target: [0, 0, 0] },
-  crew: { pos: [CREW_SPOT.x + 0.35, 0.95, 2.7], target: [CREW_SPOT.x, 0.52, 0] },
-  depth: { pos: [0.6, 1.4, 8.2], target: [0, 0.4, -9] },
+  crew: { pos: [CREW_SPOT.x + 0.35, CREW_SPOT.y + 0.95, CREW_SPOT.z + 2.7], target: [CREW_SPOT.x, CREW_SPOT.y + 0.52, CREW_SPOT.z] },
+  depth: { pos: [0.1, 1.2, 9.6], target: [-0.3, 0.3, -6] },
 };
 
 // ---------------------------------------------------------------- state
@@ -781,7 +789,8 @@ function applyState() {
   // Faces: hashed from each contributor's handle unless the UI overrides eyes or mouth.
   for (const a of [...crew, ...solos]) {
     const auto = faceFor(HANDLES[a.userData.color ?? state.color]);
-    a.setFace(state.eyes === 'auto' ? auto.eyes : +state.eyes, state.mouth === 'auto' ? auto.mouth : +state.mouth);
+    const mouth = !SHOW_MOUTHS ? -1 : state.mouth === 'auto' ? auto.mouth : +state.mouth;
+    a.setFace(state.eyes === 'auto' ? auto.eyes : +state.eyes, mouth);
   }
   document.getElementById('ui').hidden = !state.ui;
   resize();
@@ -821,6 +830,13 @@ function bindUi() {
   const fill = (sel, items, label) => items.forEach((v, i) => sel.add(new Option(label(v), String(i))));
   fill($('eyes'), EYES, (v) => v);
   fill($('mouth'), MOUTHS, (v) => v || 'none');
+  // Published palettes: the 25 contact-sheet picks, then the spares.
+  for (const [label, slugs] of [['lospec (contact sheet)', LOSPEC_ORDER], ['lospec (spares)', SPARES]]) {
+    const group = document.createElement('optgroup');
+    group.label = label;
+    slugs.forEach((slug, i) => group.append(new Option(`${label.includes('sheet') ? `${String(i + 1).padStart(2, '0')} ` : ''}${LOSPEC[slug].name}`, `lospec:${slug}`)));
+    $('palette').append(group);
+  }
   $('eyes').addEventListener('change', (e) => { state.eyes = e.target.value; applyState(); });
   $('mouth').addEventListener('change', (e) => { state.mouth = e.target.value; applyState(); });
   addEventListener('resize', resize);
