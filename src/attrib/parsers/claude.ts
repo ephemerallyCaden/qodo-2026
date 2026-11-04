@@ -465,12 +465,17 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       s.firstTs = Math.min(s.firstTs, ts);
       s.lastTs = Math.max(s.lastTs, ts);
       for (const sha of shas) out.ranCommits.push({ sessionKey: key, sha });
+      // A record counts as one drop however many of its paths can't be placed (Qodo PR6 #5).
+      let recordDropped = false;
       edits.forEach((e, i) => {
         const eventId = sha256Hex(`${TOOL}:${key}:${uuid}:${i}`).slice(0, 16);
         const abs = onDisk(e.filePath);
         const path = abs.startsWith('/') ? relativise(abs, roots, knownPaths) : null;
         if (!path) {
-          if (inCwd(abs)) drops++;
+          if (inCwd(abs) && !recordDropped) {
+            recordDropped = true;
+            drops++;
+          }
           return;
         }
         if (seen.has(eventId)) return;
