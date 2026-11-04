@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { beforeAll, expect, it } from 'vitest';
@@ -119,4 +119,14 @@ it('an absolute path starting anywhere inside a subject word is redacted, only i
   for (const keep of ['src/x.ts', 'and/or', '12:30', 'a/b', './scripts/run.sh', '../shared/lib', 'a/../b', 'v1.2/3']) {
     expect(redactPaths(keep), keep).toBe(keep);
   }
+});
+
+it('author names carrying private paths are redacted in people[].displayName (Qodo local #3)', async () => {
+  const repo = miniRepo([{ id: 'root', at: '2026-10-10T08:00:00Z', path: 'README.md', lines: ['# Author fixture', 'An odd author name.'],
+    author: { name: 'Eve C:\\Users\\canary-eve (/home/canary-eve/bin)', email: 'eve@example.com' } }]);
+  const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'commet-author-claude-')) });
+  expect(r.code).toBe(0);
+  const snapshot = readFileSync(join(repo.dir, '.git/commet/snapshot.json'), 'utf8');
+  for (const text of [snapshot, r.out, r.err]) expect(text.includes('canary-eve'), 'canary-eve').toBe(false);
+  expect((JSON.parse(snapshot) as SnapshotV01).people.map((p) => p.displayName)).toEqual(['Eve <path> (<path>)']);
 });

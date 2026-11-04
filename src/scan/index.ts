@@ -130,7 +130,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const people = new Map<string, SnapshotV01['people'][number]>();
   const commits: Commit[] = raw.map((c, seq) => {
     const author = personId(c.email);
-    if (!people.has(author)) people.set(author, { id: author, displayName: c.name, isSelf: isSelf(c) });
+    if (!people.has(author)) people.set(author, { id: author, displayName: redactPaths(c.name), isSelf: isSelf(c) });
     const r = results.get(c.sha)!;
     const rows: Commit['files'] = [...c.files].filter(([p, row]) => !excluded(p, row))
       .sort((a, b) => byCodepoint(a[0], b[0]))
