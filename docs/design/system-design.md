@@ -514,7 +514,7 @@ These live as `test/server/security.test.ts`, and the PR description lists the r
 - artefact cell sizing, which assumes perspective;
 - the golden image matrix.
 
-Everything else is mode-agnostic. **Recommendation: ortho-snapped** (2% crawl, matches technical-risks #9). Use ortho-free only if the human rejects 45° yaw cuts. Perspective shimmers.
+Everything else is mode-agnostic. **Decided (human, 2026-11-04): perspective free flight.** Earlier recommendation was ortho-snapped (2% crawl, matches technical-risks #9). Use ortho-free only if the human rejects 45° yaw cuts. Perspective shimmers.
 
 **Blocked on art direction:**
 - **Drones:** v1 renders a placeholder: a 3 px BLK 36 glyph on an orbit seeded from the session, with no data beyond identity.
