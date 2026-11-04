@@ -1,0 +1,339 @@
+{
+  "commits": [
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-10-01T09:00:00Z",
+      "date": "2026-10-01T09:00:00Z",
+      "files": [
+        [
+          "README.md",
+          2,
+          0,
+          0
+        ],
+        [
+          "src/core.ts",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 0,
+      "sha": "ef127056e661ddb90c5b18ced0190d83c07cecc1",
+      "subject": "chore: initial human commit"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 1000,
+        "class": "agent",
+        "evidence": [
+          {
+            "detail": "verbatim",
+            "kind": "transcript_match"
+          },
+          {
+            "detail": "git_commit_output",
+            "kind": "agent_ran_commit"
+          }
+        ],
+        "selfCommittedAgentWritten": true,
+        "sessions": [
+          {
+            "lines": 5,
+            "sessionKey": "s_559f47d70d1b76"
+          }
+        ],
+        "tier": "high"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-10-02T10:00:00Z",
+      "date": "2026-10-02T10:00:00Z",
+      "files": [
+        [
+          "src/agent.ts",
+          6,
+          0,
+          5
+        ]
+      ],
+      "seq": 1,
+      "sha": "f8d55db9df86dbd3ac2207623c08e2522a047d91",
+      "subject": "feat: agent writes the agent module"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 500,
+        "class": "mixed",
+        "evidence": [
+          {
+            "detail": "verbatim",
+            "kind": "transcript_match"
+          }
+        ],
+        "selfCommittedAgentWritten": true,
+        "sessions": [
+          {
+            "lines": 2,
+            "sessionKey": "s_559f47d70d1b76"
+          }
+        ],
+        "tier": "high"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-10-03T10:00:00Z",
+      "date": "2026-10-03T10:00:00Z",
+      "files": [
+        [
+          "src/core.ts",
+          4,
+          0,
+          2
+        ]
+      ],
+      "seq": 2,
+      "sha": "e6d929783736248dd0e31412ceb23972bc62e964",
+      "subject": "feat: extend core together"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "human",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "high"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-10-04T10:00:00Z",
+      "date": "2026-10-04T10:00:00Z",
+      "files": [
+        [
+          "docs/notes.md",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 3,
+      "sha": "28dd1fb66caf7f79550e7aecca7d8563ca674642",
+      "subject": "docs: human notes"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_eacc18316388",
+      "authorDate": "2026-10-05T10:00:00Z",
+      "date": "2026-10-05T10:00:00Z",
+      "files": [
+        [
+          "docs/team.md",
+          2,
+          0,
+          0
+        ]
+      ],
+      "seq": 4,
+      "sha": "62370bd313b3d5dcf3167d88ca3b2e5006750323",
+      "subject": "docs: teammate page"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 1000,
+        "class": "agent",
+        "evidence": [
+          {
+            "detail": "verbatim",
+            "kind": "transcript_match"
+          }
+        ],
+        "selfCommittedAgentWritten": true,
+        "sessions": [
+          {
+            "lines": 2,
+            "sessionKey": "s_e06dbb9b23fc4a"
+          }
+        ],
+        "tier": "high"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-10-06T10:00:00Z",
+      "date": "2026-10-06T10:00:00Z",
+      "files": [
+        [
+          "src/sub/helper.ts",
+          3,
+          0,
+          2
+        ]
+      ],
+      "seq": 5,
+      "sha": "d2ef4727742e1cf0d06cb5a03236de5213179e3e",
+      "subject": "feat: subagent helper"
+    }
+  ],
+  "coverage": [
+    {
+      "from": "2026-10-02T09:00:00Z",
+      "to": "2026-10-06T10:00:00Z",
+      "tool": "claude-code"
+    }
+  ],
+  "exclusions": {
+    "counts": {
+      "binary": 1,
+      "lockfile": 1
+    },
+    "rules": [
+      {
+        "id": "lockfile",
+        "kind": "glob",
+        "pattern": "**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lockb,bun.lock,Cargo.lock,Gemfile.lock,poetry.lock,composer.lock,go.sum,uv.lock}"
+      },
+      {
+        "id": "node_modules",
+        "kind": "glob",
+        "pattern": "**/node_modules/**"
+      },
+      {
+        "id": "dist",
+        "kind": "glob",
+        "pattern": "**/dist/**"
+      },
+      {
+        "id": "vendor",
+        "kind": "glob",
+        "pattern": "**/vendor/**"
+      },
+      {
+        "id": "minified",
+        "kind": "glob",
+        "pattern": "**/*.min.{js,css}"
+      },
+      {
+        "id": "binary",
+        "kind": "binary",
+        "pattern": "numstat:-"
+      }
+    ],
+    "rulesetVersion": "builtin-0.1"
+  },
+  "files": [
+    {
+      "id": "f_b33563055168",
+      "loc": 2,
+      "path": "README.md"
+    },
+    {
+      "id": "f_327ffd98a1f7",
+      "loc": 3,
+      "path": "docs/notes.md"
+    },
+    {
+      "id": "f_a35b5d628675",
+      "loc": 2,
+      "path": "docs/team.md"
+    },
+    {
+      "id": "f_49cc4f090941",
+      "loc": 6,
+      "path": "src/agent.ts"
+    },
+    {
+      "id": "f_033ecd338eec",
+      "loc": 7,
+      "path": "src/core.ts"
+    },
+    {
+      "id": "f_04ac967ba698",
+      "loc": 3,
+      "path": "src/sub/helper.ts"
+    }
+  ],
+  "generator": {
+    "name": "commet",
+    "version": "0.0.0"
+  },
+  "people": [
+    {
+      "displayName": "Ada Self",
+      "id": "p_391d66efc87e",
+      "isSelf": true
+    },
+    {
+      "displayName": "Tom Mate",
+      "id": "p_eacc18316388",
+      "isSelf": false
+    }
+  ],
+  "repo": {
+    "branch": "main",
+    "head": "d2ef4727742e1cf0d06cb5a03236de5213179e3e",
+    "headDate": "2026-10-06T10:00:00Z",
+    "repoId": "47ae229688ab8719",
+    "selfPersonIds": [
+      "p_391d66efc87e"
+    ]
+  },
+  "schemaVersion": "0.1",
+  "sessions": [
+    {
+      "branch": "main",
+      "commits": [
+        "f8d55db9df86dbd3ac2207623c08e2522a047d91",
+        "e6d929783736248dd0e31412ceb23972bc62e964"
+      ],
+      "endedAt": "2026-10-07T08:00:00Z",
+      "filesTouched": 2,
+      "inferred": false,
+      "key": "s_559f47d70d1b76",
+      "kind": "main",
+      "linesAdded": 8,
+      "linesRemoved": 0,
+      "model": "claude-opus-4-1",
+      "seed": 2699774684,
+      "startedAt": "2026-10-02T09:59:00Z",
+      "tool": "claude-code",
+      "toolVersion": "2.1.31"
+    },
+    {
+      "agentType": "general-purpose",
+      "branch": "main",
+      "commits": [
+        "d2ef4727742e1cf0d06cb5a03236de5213179e3e"
+      ],
+      "endedAt": "2026-10-06T09:59:58Z",
+      "filesTouched": 1,
+      "inferred": false,
+      "key": "s_e06dbb9b23fc4a",
+      "kind": "subagent",
+      "linesAdded": 3,
+      "linesRemoved": 0,
+      "model": "claude-sonnet-4-5",
+      "parentKey": "s_559f47d70d1b76",
+      "seed": 2822226756,
+      "startedAt": "2026-10-06T09:59:58Z",
+      "tool": "claude-code",
+      "toolVersion": "2.1.31"
+    }
+  ],
+  "window": {
+    "firstParent": true,
+    "months": 24,
+    "since": "2024-10-06T10:00:00Z",
+    "until": "2026-10-06T10:00:00Z"
+  }
+}

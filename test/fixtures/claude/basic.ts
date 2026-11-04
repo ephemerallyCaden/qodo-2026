@@ -1,0 +1,88 @@
+// Synthetic Claude Code transcripts in the v2.1.31x shape (probed key names only), planted with
+// privacy canaries. Generated at test time because `cwd` and file paths must be absolute.
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { AGENT_FILE, CORE_AGENT, HELPER, NOTES, type FixtureRepo } from '../build/basic.js';
+
+export const CANARIES = {
+  prompt: 'CANARY_PROMPT_7f3a',
+  originalFile: 'CANARY_ORIGINAL_9b1c',
+  lastPrompt: 'CANARY_LASTPROMPT_51d2',
+  attachment: 'CANARY_ATTACHMENT_c3e8',
+  apiRequest: 'CANARY_APIREQ_6d0f',
+  history: 'CANARY_HISTORY_2e7b',
+  description: 'CANARY_DESC_44aa',
+  home: '/Users/canary-home',
+  code: 'const CANARY_CODE = 1;',
+};
+
+export const MAIN_SESSION = '11111111-1111-4111-8111-111111111111';
+export const SUBAGENT_ID = 'a1b2c3d4';
+const OTHER_SESSION = '22222222-2222-4222-8222-222222222222';
+
+export interface ClaudeFixture { claudeDir: string; transcripts: string[] }
+
+export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
+  const claudeDir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-claude-')));
+  const at = (p: string) => join(repo.dir, p);
+  const base = { sessionId: MAIN_SESSION, cwd: repo.dir, gitBranch: 'main', version: '2.1.31', userType: 'external', isSidechain: false };
+  const call = (uuid: string, timestamp: string, name: string, input: object) => ({ ...base, type: 'assistant', uuid, timestamp,
+    message: { role: 'assistant', model: 'claude-opus-4-1', content: [{ type: 'tool_use', id: `t-${uuid}`, name, input }] } });
+  const result = (uuid: string, parent: string, timestamp: string, toolUseResult: object) => ({ ...base, type: 'user', uuid,
+    parentUuid: parent, sourceToolAssistantUUID: parent, timestamp, toolUseResult,
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t-${parent}`, content: 'ok' }] } });
+  const writeResult = { type: 'create', filePath: at('src/agent.ts'), content: AGENT_FILE.join('\n') + '\n', structuredPatch: [], originalFile: null };
+
+  const main = [
+    { type: 'last-prompt', lastPrompt: `${CANARIES.lastPrompt} write the module`, sessionId: MAIN_SESSION },
+    { ...base, type: 'user', uuid: 'u1', timestamp: '2026-10-02T09:00:00.000Z', message: { role: 'user', content: `${CANARIES.prompt} please write the agent module` } },
+    call('a2', '2026-10-02T09:59:00.000Z', 'Write', { file_path: at('src/agent.ts'), content: AGENT_FILE.join('\n') }),
+    result('u3', 'a2', '2026-10-02T09:59:01.000Z', writeResult),
+    // The commit's own Bash result is logged after the commit date: the edit is timed by the call.
+    call('a4', '2026-10-02T09:59:50.000Z', 'Bash', { command: 'git commit -m "feat: agent writes the agent module"' }),
+    result('u5', 'a4', '2026-10-02T10:00:02.000Z', { stdout: `[main ${repo.commits['c1']!.sha.slice(0, 7)}] feat: agent writes the agent module\n 3 files changed`, stderr: '', interrupted: false }),
+    call('a6', '2026-10-03T09:30:00.000Z', 'Edit', { file_path: at('src/core.ts'), old_string: '}', new_string: '}\n...' }),
+    result('u7', 'a6', '2026-10-03T09:30:01.000Z', { filePath: at('src/core.ts'), oldString: CANARIES.originalFile, newString: 'x',
+      originalFile: `${CANARIES.originalFile}\n${CANARIES.code}`, userModified: false, replaceAll: false,
+      structuredPatch: [{ oldStart: 3, oldLines: 1, newStart: 3, newLines: 3, lines: [' }', ...CORE_AGENT.map((l) => `+${l}`)] }] }),
+    // Denylisted records carry edits that would make c3 look agent-written if they were parsed.
+    { ...base, type: 'attachment', uuid: 'att', timestamp: '2026-10-04T09:00:00.000Z', attachment: { content: CANARIES.attachment },
+      toolUseResult: { type: 'create', filePath: at('docs/notes.md'), content: NOTES.join('\n') } },
+    { ...base, type: 'api-request', uuid: 'api', timestamp: '2026-10-04T09:00:01.000Z', body: CANARIES.apiRequest,
+      toolUseResult: { type: 'create', filePath: at('docs/notes.md'), content: NOTES.join('\n') } },
+    // An edit outside the repo is dropped.
+    result('u9', 'a6', '2026-10-04T09:10:00.000Z', { type: 'create', filePath: `${CANARIES.home}/secret.ts`, content: CANARIES.code }),
+  ];
+  // A resumed session keeps its sessionId and repeats an earlier record: same key, no double count.
+  const resumed = [result('u3', 'a2', '2026-10-07T08:00:00.000Z', writeResult)];
+  const subBase = { ...base, cwd: at('src'), agentId: SUBAGENT_ID, isSidechain: true };
+  const sub = [
+    { ...subBase, type: 'user', uuid: 's1', timestamp: '2026-10-06T09:00:00.000Z', message: { role: 'user', content: `${CANARIES.prompt} subagent task` } },
+    { ...subBase, type: 'assistant', uuid: 's2', timestamp: '2026-10-06T09:59:58.000Z',
+      message: { role: 'assistant', model: 'claude-sonnet-4-5', content: [{ type: 'tool_use', id: 't-s2', name: 'Bash', input: { command: 'cat > helper.ts' } }] } },
+    { ...subBase, type: 'user', uuid: 's3', parentUuid: 's2', sourceToolAssistantUUID: 's2', timestamp: '2026-10-06T10:00:03.000Z',
+      toolUseResult: { stdout: '', stderr: '', bashEditDiff: { files: [{ filePath: at('src/sub/helper.ts'), created: true,
+        hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 3, lines: HELPER.map((l) => `+${l}`) }] }] } } },
+  ];
+  // Another repo's session (its slug looks like ours on purpose): discovery must go by cwd.
+  const other = [{ type: 'user', sessionId: OTHER_SESSION, cwd: `${CANARIES.home}/elsewhere`, uuid: 'o1', timestamp: '2026-10-02T09:00:00.000Z',
+    toolUseResult: { type: 'create', filePath: `${CANARIES.home}/elsewhere/src/agent.ts`, content: AGENT_FILE.join('\n') } }];
+
+  const jsonl = (rows: object[]) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+  const files: [string, string][] = [
+    [`projects/-unrelated-slug/${MAIN_SESSION}.jsonl`, jsonl(main)],
+    ['projects/-unrelated-slug/33333333-3333-4333-8333-333333333333.jsonl', jsonl(resumed)],
+    [`projects/-unrelated-slug/${MAIN_SESSION}/subagents/agent-${SUBAGENT_ID}.jsonl`, jsonl(sub)],
+    [`projects/-unrelated-slug/${MAIN_SESSION}/subagents/agent-${SUBAGENT_ID}.meta.json`,
+      JSON.stringify({ agentType: 'general-purpose', description: CANARIES.description, toolUseId: 't-sub', spawnDepth: 1 })],
+    [`projects/-fixture-repo/${OTHER_SESSION}.jsonl`, jsonl(other)],
+    ['history.jsonl', jsonl([{ display: CANARIES.history, project: repo.dir }])],
+    ['file-history/x/backup', `${CANARIES.history}\n${CANARIES.code}\n`],
+  ];
+  for (const [rel, text] of files) {
+    mkdirSync(join(claudeDir, rel, '..'), { recursive: true });
+    writeFileSync(join(claudeDir, rel), text);
+  }
+  return { claudeDir, transcripts: files.map(([rel]) => join(claudeDir, rel)) };
+}
