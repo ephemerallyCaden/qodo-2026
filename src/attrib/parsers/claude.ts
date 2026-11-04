@@ -371,6 +371,8 @@ function gitTargetsRepo(command: string, cwd: string, roots: string[]): boolean 
     const real = existsSync(p) ? realNative(p) : null;
     return [p, real].some((x) => x !== null && roots.some((r) => under(x, r)));
   });
+  // A command substitution runs its own commands, which this walk doesn't follow (Qodo local r3 #3).
+  if (/\$\(|`/.test(command)) return true;
   const { segs, opaque } = segmentsOf(command);
   if (opaque) return true;
   let dirs: string[] | null = [cwd];

@@ -485,6 +485,12 @@ describe('Qodo PR10 #5: a foreign session\'s git command must target this repo',
     expect(await foreignCommit(() => 'export GIT_DIR="$X"; git commit -q -m x')).toMatchObject({ class: 'unknown' });
   });
 
+  it('a command substitution or backticks can\'t be followed, so the commit counts (Qodo local r3 #3)', async () => {
+    for (const command of [(d: string) => `echo $(cd ${d} && git commit -q -m x)`, (d: string) => `echo \`cd ${d}; git commit -q -m x\``]) {
+      expect(await foreignCommit(command), command('<repo>')).toMatchObject({ class: 'unknown' });
+    }
+  });
+
   it('a -C target applies only to the git invocation in its own segment (issue #11)', async () => {
     // `git -C <repo> status` doesn't move the later commit, which runs in the outside cwd.
     expect(await foreignCommit((d) => `git -C ${d} status && git commit -q -m x`)).toMatchObject({ class: 'human', evidence: [] });
