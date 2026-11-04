@@ -31,7 +31,7 @@ const SHOTS = {
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-smooth', depthBands: '3-band', artefacts: false, artAuto: true, artCount: 3, artTeal: false, cover: null };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-smooth', depthBands: '3-band', artefacts: false, artAuto: true, artCount: 3, artTeal: false, cover: null, lavaMode: 'flow' };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
@@ -139,6 +139,19 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('rings-s
   }
   await contactSheet(items, 3, path.join(outDir, 'rings-sheet.png'));
   console.log('screenshots/rings-sheet.png');
+}
+
+// Lava modes side by side on the lava hero: static, flow (default), full-warp, at two loop times.
+if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('lava-modes'))) {
+  const items = [];
+  for (const time of [3, 9]) {
+    for (const lavaMode of ['static', 'flow', 'full-warp']) {
+      const png = await capture({ view: 'planet', time, biome: 'lava', seed: 11, ringMode: 'off', moons: true, lavaMode });
+      items.push({ label: `lava ${lavaMode} · t ${time} s`, url: `data:image/png;base64,${png.toString('base64')}` });
+    }
+  }
+  await contactSheet(items, 3, path.join(outDir, 'lava-modes.png'));
+  console.log('screenshots/lava-modes.png');
 }
 
 // Biome variety: each row entry is [label, base biome, [[seed, size, ring], ...]].
@@ -270,6 +283,8 @@ if (PLANET_MODE) {
   };
   // Hero loop: the lush planet with moons, the default 24 s loop (surface 2 turns, clouds 3) at 100/3 fps.
   await renderLoop('hero-loop', {}, '100/3');
+  // Animated lava (LAVA_MODES): flow (default) and full-warp on the lava hero, one 24 s loop at 15 fps.
+  for (const [name, lavaMode] of [['lava-flow', 'flow'], ['lava-fullwarp', 'full-warp']]) await renderLoop(name, { biome: 'lava', seed: 11, ringMode: 'off', lavaMode }, '15');
   // Artefacts loop: the same hero with artefacts on, at 15 fps (one frame per glitch tick, ART_TICKS per surface turn).
   await renderLoop('artefacts-loop', { artefacts: true }, '15');
   // Cloud drift options at 15 fps: the default (24 s, 2:3, clouds 1.5x) and the alternative (36 s, 3:4, 1.33x).

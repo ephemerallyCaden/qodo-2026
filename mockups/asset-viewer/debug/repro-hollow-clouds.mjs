@@ -34,7 +34,10 @@ export async function openViewer({ patch } = {}) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e));
   await page.goto(`${ORIGIN}/index.html`);
-  await page.waitForFunction(() => window.viewer?.ready && window.__dbg, null, { timeout: 15000 }).catch((e) => { throw errors[0] ?? e; });
+  // Startup compiles every shader in SwiftShader (~12-15 s for one viewer on an idle machine, more
+  // when the suite's browsers start together or the machine is busy), so allow 60 s; on failure,
+  // close the browser so a test process never hangs on it.
+  await page.waitForFunction(() => window.viewer?.ready && window.__dbg, null, { timeout: 60000 }).catch(async (e) => { await browser.close(); throw errors[0] ?? e; });
   return { browser, page };
 }
 

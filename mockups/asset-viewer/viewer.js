@@ -347,6 +347,23 @@ function poolCut({ freq, pool }, off) {
   }
   return vals.sort((a, b) => b - a)[Math.round(pool.share * N)];
 }
+// Animated lava (LAVA_MODES, viewer control). 'static' is the still crust, cracks and pools;
+// 'flow' (default) keeps that geometry (so ash placement and the CPU ports still match) and
+// animates the molten fill of pools and fissures with a domain-warped FBM; 'full-warp' paints
+// the whole surface from the warped FBM (classic Quilez look), for comparison. The field is
+// loop-locked: its warp inputs ride circles in noise space, `cycles` times per surface turn.
+//   freq   base frequency on the unit sphere (top octave ~4x: features stay >= 2-3 px at 180p)
+//   warp   warp strength (noise units) of each of the two passes
+//   drift  radius of the warp inputs' circles (how far the flow moves per cycle)
+//   pool   flow-mode pool fill cuts on the field: below [0] a dark cooling skin, below [1] the
+//          cooler rim colour, below [2] orange, above it yellow (accents only)
+//   crack  how far the field shifts a fissure pixel's core position (bright pulses course along)
+//   full   full-warp cuts: crust below [0] (its top 0.05 a light step up), rim below [1], orange
+//          below [3] ([2] unused), yellow above
+// The field's quantiles (debug probe, 4 seeds x 6 phases): 10% 0.337, 30% 0.431, 50% 0.498,
+// 70% 0.565, 90% 0.655, 95% 0.690.
+export const LAVA_MODES = ['static', 'flow', 'full-warp'];
+const LAVA_FLOW = { freq: 1.2, warp: 1.0, drift: 0.5, cycles: 1, pool: [0.337, 0.38, 0.665], crack: 0.9, full: [0.467, 0.513, 0.6, 0.683] }; // cuts ~ field quantiles: pool 10/17/91%, full 40/55/94%
 const WORLEY_GLSL = /* glsl */ `
   vec3 hash33(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
   // Integer cell hash (pcg3d), bit-exact on the CPU, unlike the float hash33 (whose large
@@ -399,6 +416,26 @@ const WORLEY_GLSL = /* glsl */ `
   const float ICE_CRACK_FREQ = ${CRACKS.ice.freq.toFixed(2)}, ICE_CRACK_CUT = ${CRACKS.ice.cut.toFixed(2)};
   const float LAVA_POOL_SCALE = ${CRACKS.lava.pool.scale.toFixed(3)}, ICE_POOL_SCALE = ${CRACKS.ice.pool.scale.toFixed(3)};
 `;
+// Loop-locked domain-warped FBM (Inigo Quilez, "warp"): f(p + w * r), r = fbm(p + w * q + drift(t)),
+// q = fbm(p + drift(t)), with each pass's input riding its own circle (uLavaTime = cos, sin of the
+// lava angle), so the molten rock swirls and churns and returns to itself every cycle. 0..1, ~0.5 mean.
+const LAVA_GLSL = /* glsl */ `
+  uniform int uLavaMode;  // LAVA_MODES index
+  uniform vec2 uLavaTime; // cos, sin of the loop-locked lava angle
+  float fbmL(vec3 p, int oct) {
+    float s = 0.0, a = 0.5, n = 0.0;
+    for (int i = 0; i < 3; i++) { if (i >= oct) break; s += a * snoise(p); n += a; p = p * 2.03 + 11.7; a *= 0.5; }
+    return s / n * 0.5 + 0.5;
+  }
+  vec3 fbm3v(vec3 p) { return vec3(snoise(p), snoise(p + vec3(5.2, 1.3, 2.8)), snoise(p + vec3(1.7, 9.2, 4.1))) * 0.5; } // warp vectors: one octave each (compile cost)
+  float lavaFlow(vec3 p) {
+    const float D = ${LAVA_FLOW.drift.toFixed(3)}, W = ${LAVA_FLOW.warp.toFixed(3)};
+    vec3 a = p * ${LAVA_FLOW.freq.toFixed(3)} + uSeedOff.zxy;
+    vec3 q = fbm3v(a + vec3(uLavaTime * D, 0.0));
+    vec3 r = fbm3v(a + W * q + vec3(8.3, 2.8, 1.1) + vec3(0.0, uLavaTime.yx * D));
+    return fbmL(a + W * r, 3);
+  }
+`;
 
 // Biome surfaces (art-direction: biome = module health). All flat light bands from
 // palette ramps; lava fissures (and toxic veins) are emissive and ignore lighting.
@@ -424,6 +461,7 @@ const PLANET_FRAG = /* glsl */ `
   in vec3 vPosW;
 
   ${WORLEY_GLSL}
+  ${LAVA_GLSL}
   // Worley F1 distance plus a random id for the nearest cell.
   vec2 worley(vec3 p) {
     vec3 i = floor(p), f = fract(p);
@@ -463,6 +501,10 @@ const PLANET_FRAG = /* glsl */ `
   }
   // Region of the last surface() sample, for the regions debug view: 0 ground, 1 crack, 2 open (pool / water).
   int gRegion = 0;
+  // The animated lava field at this fragment. lavaFlow() is evaluated once per fragment in main(),
+  // not in surface(): surface() is inlined at every artefact resample, and each copy of the warped
+  // FBM costs seconds of shader compile in SwiftShader.
+  float gLavaV = 0.5;
 
   // Craters: sparse cells get a dark floor and a bright rim.
   vec3 craters(vec3 p, vec3 c, int b, float scale, float density) {
@@ -521,19 +563,38 @@ const PLANET_FRAG = /* glsl */ `
       float h = fbm(p * 2.4 + uSeedOff);
       c = uA[min(b, 2) + (h > 0.58 ? 1 : 0)]; // crust stays in the darkest steps
       vec3 own, across;
-      float dpx = plates(p, LAVA_CRACK_FREQ, uSeedOff, own, across);
-      if (poolField(own, uSeedOff, LAVA_POOL_SCALE) > uPoolCut) {
+      float dpx = 9.0, w = 0.0;
+      bool pool = false, shore = false, fissure = false;
+      if (uLavaMode != 2) {
+        dpx = plates(p, LAVA_CRACK_FREQ, uSeedOff, own, across);
+        pool = poolField(own, uSeedOff, LAVA_POOL_SCALE) > uPoolCut;
+        shore = poolField(across, uSeedOff, LAVA_POOL_SCALE) <= uPoolCut; // the edge here faces solid crust
+        // no crack along a shore: the pool's rim marks that edge (a clipped half-crack is a 1 px sliver)
+        if (!pool) { w = crackWidth(p, LAVA_CRACK_FREQ, uSeedOff, LAVA_CRACK_CUT, 1.5); fissure = dpx < w && shore; }
+      }
+      bool rim = pool && shore && dpx < 1.5;
+      float v = gLavaV; // the warped field at this fragment (set once in main(); artefact resamples reuse it)
+      if (uLavaMode == 2) {
+        // full-warp: the whole surface is the warped field, banded crust -> rim -> orange -> yellow
+        const vec4 F = vec4(${LAVA_FLOW.full.map((x) => x.toFixed(3)).join(', ')});
+        if (v < F.x) c = uA[min(b, 2) + (v > F.x - 0.05 ? 1 : 0)];
+        else { gRegion = 2; c = v < F.y ? uG[0] : v < F.w ? uG[1] : uG[2]; }
+      } else if (pool) {
         // open molten pool where the crust broke away: orange, a cooler rim at the shore, and
         // yellow only on the hottest cores, away from the shore
         gRegion = 2;
-        bool shore = poolField(across, uSeedOff, LAVA_POOL_SCALE) <= uPoolCut;
-        c = shore && dpx < 1.5 ? uG[0] : uG[1];
-        if ((!shore || dpx > 4.0) && snoise(p * 3.5 + uSeedOff.yzx) > 0.6) c = uG[2];
-      } else {
-        // emissive jagged fissures: orange, darker glowing edges, yellow only down the core of the widest
-        float w = crackWidth(p, LAVA_CRACK_FREQ, uSeedOff, LAVA_CRACK_CUT, 1.5);
-        // no crack along a shore: the pool's rim marks that edge (a clipped half-crack is a 1 px sliver)
-        if (dpx < w && poolField(across, uSeedOff, LAVA_POOL_SCALE) <= uPoolCut) { gRegion = 1; c = dpx < w * 0.25 && w > 1.4 ? uG[2] : dpx < w * 0.7 ? uG[1] : uG[0]; }
+        c = rim ? uG[0] : uG[1];
+        if (uLavaMode == 1) {
+          // flow: the warped field churns the fill (dark cooling skins, cooler swirls, yellow hot cores)
+          const vec3 P = vec3(${LAVA_FLOW.pool.map((x) => x.toFixed(3)).join(', ')});
+          if (!rim) c = v < P.x ? uA[min(b, 2) + 1] : v < P.y ? uG[0] : v < P.z ? uG[1] : uG[2];
+        } else if ((!shore || dpx > 4.0) && snoise(p * 3.5 + uSeedOff.yzx) > 0.6) c = uG[2];
+      } else if (fissure) {
+        // emissive jagged fissures: orange, darker glowing edges, yellow only down the core of the widest;
+        // in flow mode the field slides the core position, so bright pulses course along the fissure
+        gRegion = 1;
+        float k = dpx / w - (v - 0.5) * ${LAVA_FLOW.crack.toFixed(3)};
+        c = k < 0.25 && w > 1.4 ? uG[2] : k < 0.7 ? uG[1] : uG[0];
       }
     } else {
       // gas giant: turbulent alternating bands and a storm
@@ -552,6 +613,7 @@ const PLANET_FRAG = /* glsl */ `
   void main() {
     vec3 p = normalize(vLocal);
     setScreenScale(p);
+    if (uBiome == 4 && uLavaMode != 0) gLavaV = lavaFlow(p); // uniform branch: free on other biomes
     int b = band(normalize(vNormalW));
     gl_FragColor = vec4(artefacts(p, b, surface(p, b)), 1.0);
     if (uRegions == 1) { gl_FragColor = vec4(gRegion == 1 ? 1.0 : 0.0, gRegion == 2 ? 1.0 : 0.0, gRegion == 0 ? 1.0 : 0.0, 1.0); return; } // debug: ground / crack / open
@@ -824,7 +886,7 @@ function makePlanet() {
     uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 }, uPoolCut: { value: 9 }, uRegions: { value: 0 },
     uBands: { value: new THREE.Vector3(0.2, 0.58, 0.86) }, // lit directional terminator, crescent bands
     // artefacts (artefacts.js): off while uArtN = 0
-    uArtN: { value: 0 }, uArtTick: { value: 0 }, uArtTeal: { value: 0 }, uArtDebug: { value: 0 }, uArtTealC: { value: new THREE.Color(ACCENTS.reveal[3]) }, // [OIII] teal, garnish only
+    uArtN: { value: 0 }, uArtTick: { value: 0 }, uArtTeal: { value: 0 }, uArtDebug: { value: 0 }, uLavaMode: { value: 1 }, uLavaTime: { value: new THREE.Vector2(1, 0) }, uArtTealC: { value: new THREE.Color(ACCENTS.reveal[3]) }, // [OIII] teal, garnish only
     uArtSec: { value: Array.from({ length: MAX_ART }, () => new THREE.Vector4(0, 0, 1, 4)) }, uViewSize: VIEW_SIZE,
   });
   const spin = new THREE.Group(); // the surface turns surfaceTurns per loop
@@ -1106,6 +1168,8 @@ function makePlanet() {
     const turn = phase * Math.PI * 2 * LOOP.surfaceTurns; // whole surface turns per loop
     spin.rotation.y = -turn; // right -> left
     sky.rotation.y = -phase * Math.PI * 2 * LOOP.cloudTurns; // clouds drift ahead of the ground
+    const lavaAngle = turn * LAVA_FLOW.cycles; // whole cycles per surface turn: loop-locked
+    surfaceMat.uniforms.uLavaTime.value.set(Math.cos(lavaAngle), Math.sin(lavaAngle));
     const ticks = ART_TICKS * LOOP.surfaceTurns;
     surfaceMat.uniforms.uArtTick.value = Math.floor(phase * ticks + 1e-6) % ticks; // glitches re-roll on loop-locked ticks
     artUpdate();
@@ -1125,7 +1189,8 @@ function makePlanet() {
   }
   // artefacts: 0 = off, 1..5 = that many sectors, 'auto' = by planet size (artefactCount).
   let artefactsOpt = 0;
-  function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false, cloudShadow = true, regions = false, artDebug = false } = {}) {
+  function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false, cloudShadow = true, regions = false, artDebug = false, lavaMode = 'flow' } = {}) {
+    surfaceMat.uniforms.uLavaMode.value = Math.max(0, LAVA_MODES.indexOf(lavaMode));
     surfaceMat.uniforms.uRegions.value = regions ? 1 : 0;
     surfaceMat.uniforms.uArtDebug.value = artDebug ? 1 : 0;
     for (const m of MOONS) m.mesh.visible = moons;
@@ -1522,6 +1587,7 @@ const state = {
   artefacts: false, artAuto: true, artCount: 3, artTeal: false, // planet artefacts (artefacts.js); artAuto: sector count by planet size
   cover: null, // cloud-cover override (0..1) for the hero planets; null = the biome's WEATHER cover
   regions: false, // debug (measurement only): planet surfaces as ground / crack / open-plate colours
+  lavaMode: 'flow', // LAVA_MODES: static, flow (default), full-warp
   artDebug: false, // debug (measurement only): artefact cells as cell-index colours (artefacts.js uArtDebug)
 };
 
@@ -1562,7 +1628,7 @@ function applyState() {
   LOOP.period = Math.max(1, state.period);
   LOOP.surfaceTurns = Math.max(1, Math.round(state.surfaceTurns));
   LOOP.cloudTurns = Math.max(0, Math.round(state.cloudTurns));
-  const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow, regions: state.regions, artDebug: state.artDebug };
+  const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow, regions: state.regions, artDebug: state.artDebug, lavaMode: state.lavaMode };
   document.getElementById('art-auto').checked = state.artAuto;
   planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
@@ -1664,6 +1730,9 @@ function bindUi() {
   for (const m of DEPTH_MODES) $('depth-mode').add(new Option(m, m));
   $('depth-mode').value = state.depthMode;
   $('depth-mode').addEventListener('change', (e) => { state.depthMode = e.target.value; applyState(); });
+  for (const m of LAVA_MODES) $('lava-mode').add(new Option(m, m));
+  $('lava-mode').value = state.lavaMode;
+  $('lava-mode').addEventListener('change', (e) => { state.lavaMode = e.target.value; applyState(); });
   for (const b of Object.keys(DEPTH_BANDS)) $('depth-bands').add(new Option(b, b));
   $('depth-bands').value = state.depthBands;
   $('depth-bands').addEventListener('change', (e) => { state.depthBands = e.target.value; applyState(); });
