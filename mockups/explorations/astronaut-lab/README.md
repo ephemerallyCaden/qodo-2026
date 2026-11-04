@@ -1,8 +1,8 @@
 # Astronaut lab
 
-> **Exploration, 2026-11-04: 10 astronaut variants. Outcome: the human kept A (current spec). Not used by the final assets.**
+> **Exploration, 2026-11-04: 10 variants. Outcome: final = K (C with A's backpack and smooth white suit); to be ported into asset-viewer.**
 
-A lineup of astronaut designs to pick from, focused on proportions and joint connections. There's one parameterised astronaut (`astronaut.js`): a raymarched SDF like the asset viewer's, with the same banded lighting, unified self-shadowing, 4:3 screen visor, V2 eyes and BLK 36 crew colours. Each variant is only a parameter set (`variants.js`), so picking elements from different variants means mixing parameters. A throwaway mockup, not product code.
+A lineup of astronaut designs to pick from (A–J), plus the pick, K, focused on proportions and joint connections. There's one parameterised astronaut (`astronaut.js`): a raymarched SDF like the asset viewer's, with the same banded lighting, unified self-shadowing, 4:3 screen visor, V2 eyes and BLK 36 crew colours. Each variant is only a parameter set (`variants.js`), so picking elements from different variants means mixing parameters. A throwaway mockup, not product code.
 
 ## Run
 
@@ -12,7 +12,7 @@ npm run lab   # regenerates everything in out/ (headless Chromium + SwiftShader,
 npm run dev   # live mixer at http://127.0.0.1:5186/ (loopback only; PORT=... to change)
 ```
 
-`node lab.mjs lineup closeups` renders just the named outputs (`lineup`, `poses`, `closeups`, `turntable`, `params`).
+`node lab.mjs lineup closeups` renders just the named outputs (`lineup`, `poses`, `closeups`, `turntable`, `final`, `params`).
 
 ## Outputs (`out/`)
 
@@ -22,15 +22,26 @@ npm run dev   # live mixer at http://127.0.0.1:5186/ (loopback only; PORT=... to
 | `lineup-poses.png` | Idle float (t = 0) and mid-bob (t = 1.5 s) at 3/4 and side, with sway |
 | `lineup-turntable.gif` | All variants turning together: one turn and one bob per 6 s loop, 15 fps, seamless |
 | `<letter>-closeup.png` | One variant with the camera at half distance (twice the pixels), ×4: 3/4, side and back 3/4 |
+| `final-compare.png` | The pick: A, C and K from the front, 3/4 and side, idle and mid-bob, ×3 |
+| `K-turntable.gif` | K alone at the 2× close-up scale, turning: one turn and one bob per 6 s loop, 15 fps, seamless |
 | `params.md` | Every variant's parameters and its leaning, in plain words |
 
 Every tile `npm run lab` renders is checked, and the run fails if any check fails:
 - only BLK 36 crew colours plus space appear (no antialiasing, no dithering);
 - the silhouette is one connected piece (no floating parts or gaps);
 - the figure isn't clipped by the tile edge;
-- the turntable's frame 90 is pixel-identical to frame 0.
+- each turntable's frame 90 is pixel-identical to frame 0.
 
 The crew colours are also checked against what `../../asset-viewer/palette-map.js` resolves for BLK 36.
+
+## K, the final
+
+K is C (hard-suit engineer) with A's backpack and a smooth white suit. All of C's grey (gear) detailing stays: the ring collars at the shoulders (in the contributor colour) and hips, the glove and boot cuffs, the neck seal, the mitts, the boots, the chest panel and the visor bezel. Every white-on-white detail goes back to A:
+- elbows and knees are one smooth bent tube, not accordion ribs;
+- the torso has A's corner radius instead of C's bevelled box edges;
+- A's limb, bend and neck blends replace C's crisp white creases.
+
+C's proportions are kept. The full parameter set is the K row of `out/params.md` (anything not listed there is A's default in `params.js`).
 
 ## How it's built
 

@@ -1,6 +1,6 @@
 // Regenerates every lab output in out/ with headless Chromium (SwiftShader). The page is served
 // through Playwright request interception, so no socket is opened and nothing touches the network.
-// Usage: node lab.mjs [lineup] [poses] [turntable] [closeups] [params]   (no names = all)
+// Usage: node lab.mjs [lineup] [poses] [turntable] [closeups] [final] [params]   (no names = all)
 // Every rendered tile is checked: only BLK 36 crew colours + space (no AA, no dithering), one
 // connected silhouette (no floating parts or gaps), and nothing clipped by the tile edge.
 import { chromium } from 'playwright';
@@ -98,32 +98,33 @@ if (want('closeups')) {
   }
 }
 
-if (want('turntable')) {
-  // All variants turning together: one turn and one bob per 6 s loop, 15 fps, sway off.
-  // Each figure blinks once, staggered. 3/4 start so frame 0 matches the lineup's middle row.
-  const tmp = path.join(OUT, '.frames');
+// One turn and one bob per 6 s loop, 15 fps, sway off; each figure blinks once, staggered.
+// Starts at 3/4 so frame 0 matches the lineup's middle row. rows: arrays of variants.
+async function turntable(name, rows, { scale = 2, zoom = 1, w = 100, h = 128 } = {}) {
+  const tmp = path.join(OUT, `.frames-${name}`);
   await rm(tmp, { recursive: true, force: true });
   await mkdir(tmp, { recursive: true });
   const N = LOOP_S * FPS;
   const blink = (t, i) => { const k = t - (1 + i * 0.4); return k > 0 && k < 0.18 ? 1 - Math.sin((k / 0.18) * Math.PI) * 0.88 : 1; };
+  const per = Math.max(...rows.map((r) => r.length));
   const frame = (f) => {
     const t = f / FPS;
     return {
-      w: 100, h: 128, scale: 2, crispLabels: true,
-      rows: [VARIANTS.slice(0, 5), VARIANTS.slice(5)].map((vs, r) => ({
-        cells: vs.map((v, j) => ({ variant: v.id, yaw: -0.75 - (Math.PI * 2 * f) / N, t, blink: blink(t, r * 5 + j), caption: `${v.id} · ${v.name}` })),
+      w, h, scale, crispLabels: true,
+      rows: rows.map((vs, r) => ({
+        cells: vs.map((v, j) => ({ variant: v.id, yaw: -0.75 - (Math.PI * 2 * f) / N, t, zoom, blink: blink(t, r * per + j), caption: `${v.id} · ${v.name}` })),
       })),
     };
   };
   let first;
   for (let f = 0; f < N; f++) {
-    const { png } = await render(`turntable frame ${f}`, frame(f), path.join(tmp, `f${String(f).padStart(3, '0')}.png`));
+    const { png } = await render(`${name} frame ${f}`, frame(f), path.join(tmp, `f${String(f).padStart(3, '0')}.png`));
     first ??= png;
   }
   // Seamless: the frame one loop later must be pixel-identical to the first.
-  if ((await render('turntable seam', frame(N))).png !== first) problems.push('turntable: frame N differs from frame 0 (loop seam)');
-  else console.log('  turntable seam: frame 90 == frame 0');
-  const gif = path.join(OUT, 'lineup-turntable.gif');
+  if ((await render(`${name} seam`, frame(N))).png !== first) problems.push(`${name}: frame N differs from frame 0 (loop seam)`);
+  else console.log(`  ${name} seam: frame ${N} == frame 0`);
+  const gif = path.join(OUT, `${name}.gif`);
   // A fixed palette of exactly the colours in the frames (palettegen nudged #14665b to #15665b).
   const hexes = [...CREW.suit, ...CREW.gear, ...CREW.visor, CREW.glint, ...CREW.contributors.mint, SPACE, '#111111', '#fff6e4'];
   const pal = Buffer.alloc(16 * 16 * 3);
@@ -134,6 +135,21 @@ if (want('turntable')) {
     '-filter_complex', '[0][1]paletteuse=dither=none', '-loop', '0', gif]);
   await rm(tmp, { recursive: true, force: true });
   console.log(path.relative(ROOT, gif));
+}
+const byId = (id) => VARIANTS.find((v) => v.id === id);
+
+if (want('turntable')) await turntable('lineup-turntable', [VARIANTS.slice(0, 6), VARIANTS.slice(6)]);
+
+if (want('final')) {
+  // The pick: K against the two it came from, every view, idle and mid-bob, x3.
+  const cols = [['front', 0], ['3/4', -0.75], ['side', -Math.PI / 2]].flatMap(([v, yaw]) => [[`${v} idle`, yaw, 0], [`${v} mid-bob`, yaw, 1.5]]);
+  await render('final-compare', {
+    title: 'final: K (C + A pack, smooth white) vs A and C · 180p crops at x3 · idle (t = 0) and mid-bob (t = 1.5 s), with sway',
+    w: 100, h: 128, scale: 3, rowLabelW: 150, headH: 26, heads: cols.map(([label]) => [label]),
+    rows: ['A', 'C', 'K'].map((id) => ({ label: `${id} · ${byId(id).name}`, cells: cols.map(([, yaw, t]) => ({ variant: id, yaw, t, sway: 1 })) })),
+  }, path.join(OUT, 'final-compare.png'));
+  // K alone, at the 2x close-up scale, turning.
+  await turntable('K-turntable', [[byId('K')]], { scale: 3, zoom: 2, w: 240, h: 260 });
 }
 
 if (want('params')) {

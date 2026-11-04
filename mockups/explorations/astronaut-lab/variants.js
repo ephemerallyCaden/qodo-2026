@@ -92,4 +92,16 @@ export const VARIANTS = [
       cuffScale: 1.12, ringT: 0.012, packW: 0.13, packH: 0.14, packD: 0.055, packRound: 0.9,
     },
   },
+  {
+    id: 'K', name: 'Final: C + A pack, smooth white',
+    // C's grey (gear) detailing kept; every white-on-white detail back to A: elbow/knee
+    // accordion -> smooth bend, torsoCorner 0.3 -> 0.65 (no bevelled box edges), body/bend/
+    // neck blends 0.012 -> A's (no crisp white creases), backpack -> A's. Proportions stay C's.
+    leaning: "The pick: C's grey hard-suit parts (ring collars, cuffs, neck seal) on smooth white tubes and torso, with A's backpack.",
+    params: {
+      helmetSink: 0.05, torsoW: 0.16, hipX: 0.09, armR: 0.058, legR: 0.07,
+      shoulder: 1, hip: 1, collar: 1, gloveCuff: 1, bootCuff: 1, band: 1, ringT: 0.018,
+      bootH: 0.045, bootL: 0.09,
+    },
+  },
 ];
