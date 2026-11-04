@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { runsGitCommit } from '../src/attrib/parsers/claude.js';
+import { discoverClaude, parseClaude, runsGitCommit } from '../src/attrib/parsers/claude.js';
 import { createResult, miniClaude, miniRepo, scanMini, session, type Row } from './fixtures/mini.js';
 
 const SID = '12121212-1212-4121-8121-121212121212';
@@ -285,5 +285,37 @@ describe('Qodo PR8 #7: sessions started outside the repo', () => {
     expect(control.attr('target')).toMatchObject({ class: 'human' });
     expect(withCase.logs.unattributed).toBe(1);
     expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none' });
+  });
+});
+
+describe('Qodo PR8 #3: Windows-shaped cwds and edit paths', () => {
+  // Synthetic Windows transcripts on any host: the paths don't exist here, so placement goes by
+  // prefix against the worktree roots git reports (forward slashes on Windows).
+  const winSession = (cwd: string, file: string): Row[] => {
+    const s = session(SID, cwd);
+    return [s.user('u1', at('09:00:00')), s.call('a2', at('09:30:00'), 'Write', { file_path: file }),
+      s.result('u3', 'a2', at('09:30:01'), createResult(file, LINES)), s.user('u4', at('10:30:00'))];
+  };
+  const parsed = async (root: string, cwd: string, file: string) => {
+    const found = await discoverClaude(miniClaude({ [SID]: winSession(cwd, file) }), `${root}/.git`, [root]);
+    return { found, ingest: await parseClaude(found, new Set([PATH, 'lib/y.ts']), (l) => l) };
+  };
+
+  it('a drive-letter cwd and edit path (backslashes, different case) match the repo', async () => {
+    const { found, ingest } = await parsed('C:/Users/Dev/repo', 'C:\\Users\\Dev\\repo', 'c:\\users\\dev\\REPO\\src\\reviewed.ts');
+    expect([found.transcripts.length, found.stats.unattributed]).toEqual([1, 0]);
+    expect(ingest.events.map((e) => e.path)).toEqual([PATH]);
+    expect(ingest.dropped).toBe(0);
+  });
+
+  it('a UNC cwd and edit path match the repo', async () => {
+    const { found, ingest } = await parsed('//build/share/repo', '\\\\build\\share\\repo\\sub', '\\\\build\\share\\repo\\lib\\y.ts');
+    expect(found.transcripts.length).toBe(1);
+    expect(ingest.events.map((e) => e.path)).toEqual(['lib/y.ts']);
+  });
+
+  it('a Windows path outside the repo stays outside', async () => {
+    const { ingest } = await parsed('C:/Users/Dev/repo', 'C:\\Users\\Dev\\repo', 'C:\\Users\\Dev\\repo-other\\src\\reviewed.ts');
+    expect([ingest.events.length, ingest.dropped]).toEqual([0, 0]);
   });
 });

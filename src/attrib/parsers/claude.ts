@@ -4,7 +4,7 @@
 import { createReadStream, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { open, readFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, posix, win32 } from 'node:path';
 import { createInterface } from 'node:readline';
 import { byCodepoint } from '../../core/canonical-json.js';
 import { sessionKey, sha256Hex } from '../../core/hash.js';
@@ -156,7 +156,19 @@ export function redactPaths(text: string): string {
   });
 }
 const version = (v: unknown): string | undefined => (typeof v === 'string' && VERSION_TOKEN.test(v) ? v : undefined);
-const under = (p: string, root: string) => p === root || p.startsWith(root + '/');
+/** Windows-shaped: a drive-letter (`C:\\`, `C:/`) or UNC (`\\\\host\\share`) path. */
+const WIN_PATH = /^([A-Za-z]:[\\/]|[\\/]{2}[^\\/])/;
+/**
+ * Transcript and git paths are judged by their own shape, not the host OS, so Windows logs read
+ * the same on any platform (Qodo PR8 #3): a Windows-shaped path gets forward slashes, is absolute
+ * by win32 rules, and compares case-insensitively.
+ */
+const slash = (p: string) => (WIN_PATH.test(p) ? p.replace(/\\/g, '/') : p);
+const isAbs = (p: string) => (WIN_PATH.test(p) ? win32.isAbsolute(p) : posix.isAbsolute(p));
+const under = (p: string, root: string) => {
+  const [a, b] = WIN_PATH.test(root) ? [p.toLowerCase(), root.toLowerCase()] : [p, root];
+  return a === b || a.startsWith(b + '/');
+};
 
 function sortedDir(dir: string): string[] {
   try {
@@ -283,7 +295,7 @@ function edgeTo(file: string): number {
 
 function realNative(p: string): string | null {
   try {
-    return realpathSync.native(p);
+    return slash(realpathSync.native(p));
   } catch {
     return null;
   }
@@ -341,7 +353,7 @@ async function readHead(file: string, maxBytes: number): Promise<Head | null | t
       if (Number.isNaN(ts)) continue;
       first ??= ts;
       const cwd = str(r?.['cwd']);
-      if (cwd) return { cwd, ts: first };
+      if (cwd) return { cwd: slash(cwd), ts: first };
     }
     return first === null ? null : { cwd: null, ts: first };
   } finally {
@@ -378,7 +390,8 @@ const OUTSIDE_AS = { yes: 'foreign', no: 'other', undecided: 'unplaced' } as con
 function rootNeedles(roots: string[]): Buffer[] {
   const kept: string[] = [];
   for (const r of [...new Set(roots)].sort((a, b) => a.length - b.length)) if (!kept.some((k) => under(r, k))) kept.push(r);
-  return kept.map((r) => Buffer.from(JSON.stringify(r).slice(1, -1)));
+  // A Windows root appears in transcripts with escaped backslashes.
+  return kept.flatMap((r) => [r, ...(WIN_PATH.test(r) ? [r.replace(/\//g, '\\')] : [])]).map((r) => Buffer.from(JSON.stringify(r).slice(1, -1)));
 }
 
 /** Whether the first `maxBytes` of `file` contain any needle; read in chunks with an overlap. */
@@ -446,7 +459,7 @@ const inGitDir = (abs: string, root: string) => under(abs, `${root}/.git`);
 function relativise(abs: string, roots: string[], known: Set<string>): string | null {
   let fallback: string | null = null;
   for (const root of roots) {
-    if (abs === root || !under(abs, root)) continue;
+    if (abs.length === root.length || !under(abs, root)) continue;
     const rel = abs.slice(root.length + 1);
     if (inGitDir(abs, root) || rel.split('/').includes('..')) return null;
     if (known.has(rel)) return rel;
@@ -473,7 +486,8 @@ function hunkLines(hunks: unknown[]): { added: string[]; removed: number } {
 /** Allowlisted edit paths only: Edit/Write structuredPatch, Write-create content, bashEditDiff. */
 function editsOf(res: Obj): { filePath: string; added: string[]; removed: number }[] {
   const out: { filePath: string; added: string[]; removed: number }[] = [];
-  const fp = str(res['filePath']);
+  const raw = str(res['filePath']);
+  const fp = raw === undefined ? undefined : slash(raw);
   const patch = res['structuredPatch'];
   if (fp && Array.isArray(patch) && patch.length > 0) out.push({ filePath: fp, ...hunkLines(patch) });
   else if (fp && res['type'] === 'create' && typeof res['content'] === 'string') {
@@ -485,7 +499,8 @@ function editsOf(res: Obj): { filePath: string; added: string[]; removed: number
   const bed = res['bashEditDiff'];
   if (isObj(bed) && Array.isArray(bed['files'])) {
     for (const f of bed['files']) {
-      const p = isObj(f) ? str(f['filePath']) : undefined;
+      const raw = isObj(f) ? str(f['filePath']) : undefined;
+      const p = raw === undefined ? undefined : slash(raw);
       if (p && Array.isArray(f['hunks'])) out.push({ filePath: p, ...hunkLines(f['hunks']) });
     }
   }
@@ -524,10 +539,10 @@ function readMeta(file: string): { agentType: string | undefined; parentAgentId:
 export async function discoverClaude(projectsDir: string, commonDir: string, worktreeRoots: string[],
   maxFileBytes = MAX_FILE): Promise<Discovery> {
   // realpath.native also gives the on-disk case on case-insensitive filesystems (Issue #5 case 4).
-  const liveRoots = worktreeRoots.flatMap((r) => (existsSync(r) ? [r, realpathSync.native(r)] : [r]));
+  const liveRoots = worktreeRoots.map(slash).flatMap((r) => (existsSync(r) ? [r, slash(realpathSync.native(r))] : [r]));
   // 'unplaced': a cwd we can't resolve to a repo, so its transcript could be ours.
   const place = async (cwd: string): Promise<'ours' | 'other' | 'unplaced'> => {
-    if (!cwd.startsWith('/')) return 'unplaced';
+    if (!isAbs(cwd)) return 'unplaced';
     if (!existsSync(cwd)) return liveRoots.some((r) => under(cwd, r)) ? 'ours' : 'other';
     const real = realNative(cwd);
     if (real === null) return 'unplaced';
@@ -662,7 +677,7 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     // An edit inside any of this repo's paths (logical or real) must land in it; one that can't
     // be placed is a drop. Paths outside them all (another repo, a home dotfile) are ignored.
     const ours = [...aliases.flat(), ...roots];
-    const inCwd = (p: string) => !p.startsWith('/') || (ours.some((c) => under(p, c)) && !roots.some((r) => inGitDir(p, r)));
+    const inCwd = (p: string) => !isAbs(p) || (ours.some((c) => under(p, c)) && !roots.some((r) => inGitDir(p, r)));
     for (const [li, line] of lines.entries()) {
       const isResult = line.includes('"toolUseResult"') && RESULT_KEYS.test(line);
       const editish = isResult || EDIT_CALL.test(line);
@@ -739,7 +754,7 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       edits.forEach((e, i) => {
         const eventId = sha256Hex(`${TOOL}:${key}:${uuid}:${i}`).slice(0, 16);
         const abs = onDisk(e.filePath);
-        const path = abs.startsWith('/') ? relativise(abs, roots, knownPaths) : null;
+        const path = isAbs(abs) ? relativise(abs, roots, knownPaths) : null;
         if (!path) {
           if (inCwd(abs) && !recordDropped) {
             recordDropped = true;
