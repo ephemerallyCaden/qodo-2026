@@ -1,7 +1,7 @@
 // Qodo PR #6 findings on the Issue #5 fix. Each case scans a tiny repo twice: a control without
 // the triggering record (must be human or agent as stated) and the case itself.
 import { describe, expect, it } from 'vitest';
-import { copyFileSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { discoverClaude, parseClaude, runsGitCommit } from '../src/attrib/parsers/claude.js';
@@ -451,6 +451,27 @@ describe('Qodo PR10 #5: a foreign session\'s git command must target this repo',
     for (const command of forms) {
       expect(await foreignCommit(command), command('<repo>')).toMatchObject({ class: 'unknown', evidence: [{ kind: 'agent_ran_commit', detail: 'git_command' }] });
     }
+  });
+
+  it('a quoted directory holding a separator still marks it (Qodo local r2 #1)', async () => {
+    // A directory outside whose name holds a `;`, symlinked to this repo, entered with the `;` escaped.
+    const linkDir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-semi-')));
+    const linkTo = (d: string) => {
+      if (!existsSync(join(linkDir, 'to;repo'))) symlinkSync(d, join(linkDir, 'to;repo'));
+      return `${linkDir}/to\\;repo`;
+    };
+    const forms = [
+      (d: string) => `cd ${linkTo(d)} && git commit -q -m x`,
+      (d: string) => `mkdir -p '${d}/odd;name' && cd '${d}/odd;name' && git commit -q -m x`,
+      (d: string) => `cd "${d}/a|b" && git commit -q -m x`,
+      // A quoted shell string holding a separator and a cd or git can't be split safely: conservative.
+      (d: string) => `bash -c 'echo go && cd ${d} && git commit -q -m x'`,
+    ];
+    for (const command of forms) {
+      expect(await foreignCommit(command), command('<repo>')).toMatchObject({ class: 'unknown', evidence: [{ kind: 'agent_ran_commit', detail: 'git_command' }] });
+    }
+    // A separator inside a commit message doesn't hide where the commit runs (outside here).
+    expect(await foreignCommit(() => 'git commit -q -m "fix; tidy | done"')).toMatchObject({ class: 'human', evidence: [] });
   });
 
   it('a -C target applies only to the git invocation in its own segment (issue #11)', async () => {

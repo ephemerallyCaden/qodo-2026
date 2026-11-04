@@ -279,8 +279,54 @@ function toolUses(r: Obj): Obj[] {
   return Array.isArray(content) ? content.filter((c): c is Obj => isObj(c) && c['type'] === 'tool_use') : [];
 }
 
-/** Command boundaries: newline, `;`, `&&`, `||` and `|` (quotes aren't tracked; see below). */
-const SEGMENT = /\r?\n|;|&&|\|\||\|/;
+/** Shell words that can move git: a quoted string holding a separator and one of these can't be split safely. */
+const MOVES_GIT = /\b(?:cd|pushd|git)\b|-C|--(?:git-dir|work-tree)|GIT_(?:DIR|WORK_TREE)=/;
+
+/**
+ * Splits a command into segments at newlines, `;`, `&&`, `||` and `|` outside quotes and
+ * backslash escapes (Qodo local r2 #1). `opaque` when that can't be trusted: an unterminated
+ * quote, or a quoted string (`bash -c '…'`) that itself holds a separator and a cd or git.
+ */
+function segmentsOf(command: string): { segs: string[]; opaque: boolean } {
+  const segs: string[] = [];
+  let cur = '';
+  let quote: string | null = null;
+  let quoted = '';
+  let opaque = false;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!;
+    if (c === '\\' && quote !== "'" && i + 1 < command.length) {
+      cur += c + command[++i];
+      if (quote) quoted += c + command[i];
+      continue;
+    }
+    if (quote) {
+      cur += c;
+      if (c !== quote) quoted += c;
+      else {
+        quote = null;
+        if (/[\n;|]|&&/.test(quoted) && MOVES_GIT.test(quoted)) opaque = true;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      quoted = '';
+      cur += c;
+      continue;
+    }
+    const two = command.slice(i, i + 2);
+    if (two === '&&' || two === '||' || c === ';' || c === '|' || c === '\n') {
+      segs.push(cur);
+      cur = '';
+      if (two === '&&' || two === '||') i++;
+      continue;
+    }
+    cur += c;
+  }
+  segs.push(cur);
+  return { segs, opaque: opaque || quote !== null };
+}
 /** One shell word: a quoted run or bare characters. */
 const DIR_ARG = `("[^"]*"|'[^']*'|[^\\s;&|(){}'"]+)`;
 /**
@@ -294,15 +340,17 @@ const GIT_TARGET = new RegExp(`(?:\\s-C\\s*|\\s--(?:git-dir|work-tree)(?:=|\\s+)
 /** A directory word resolved against the current directories; null when it can't be resolved. */
 function resolveDir(arg: string | undefined, bases: string[]): string[] | null {
   const dir = arg?.replace(/^(["'])(.*)\1$/, '$2');
-  if (!dir || dir === '-' || /[$`*?~]/.test(dir)) return null;
+  // A backslash outside a Windows path is a shell escape we don't undo: unresolvable.
+  if (!dir || dir === '-' || /[$`*?~]/.test(dir) || (dir.includes('\\') && !WIN_PATH.test(dir))) return null;
   if (isAbs(dir)) return [slash(dir)];
   return bases.map((b) => slash((WIN_PATH.test(b) ? win32 : posix).join(b, dir)));
 }
 
 /**
  * Whether a foreign session's commit command could act on this repo (Qodo PR10 #5, local #1).
- * The command is split into segments at newlines, `;`, `&&`, `||` and `|`. A `cd`/`pushd` at a
- * segment's start moves later segments. A segment that runs a commit-creating git command
+ * The command is split into segments at newlines, `;`, `&&`, `||` and `|` outside quotes and
+ * escapes (segmentsOf); an opaque split counts as can't-determine. A `cd`/`pushd` at a segment's
+ * start moves later segments. A segment that runs a commit-creating git command
  * targets its own `-C`/`--git-dir`/`--work-tree`/`GIT_DIR` values, else the current directory;
  * those values never carry to other segments (issue #11). True when such a target lies under a
  * root, also through its realpath. Also true, conservatively, when a directory can't be resolved
@@ -314,9 +362,11 @@ function gitTargetsRepo(command: string, cwd: string, roots: string[]): boolean 
     const real = existsSync(p) ? realNative(p) : null;
     return [p, real].some((x) => x !== null && roots.some((r) => under(x, r)));
   });
+  const { segs, opaque } = segmentsOf(command);
+  if (opaque) return true;
   let dirs: string[] | null = [cwd];
   let placed = false;
-  for (const seg of command.split(SEGMENT)) {
+  for (const seg of segs) {
     const cd = CD_AT_START.exec(seg);
     if (cd) dirs = dirs && resolveDir(cd[1], dirs);
     if (!runsGitCommit(seg)) continue;
