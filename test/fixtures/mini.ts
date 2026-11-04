@@ -9,7 +9,7 @@ import type { CommitAttribution } from '../../src/core/snapshot/types.js';
 import { scan } from '../../src/scan/index.js';
 import { SELF } from './build/basic.js';
 
-export interface MiniCommit { id: string; at: string; path: string; lines: string[] }
+export interface MiniCommit { id: string; at: string; path: string; lines: string[]; subject?: string }
 export interface MiniRepo { dir: string; sha: Record<string, string> }
 
 /** Commits each entry as self, in order, at its fixed date. */
@@ -27,7 +27,7 @@ export function miniRepo(commits: MiniCommit[], setup?: (dir: string) => void): 
     mkdirSync(dirname(join(dir, c.path)), { recursive: true });
     writeFileSync(join(dir, c.path), c.lines.join('\n') + '\n');
     git(['add', '-A']);
-    git(['commit', '-q', '-m', `test: ${c.id}`], { GIT_AUTHOR_NAME: SELF.name, GIT_AUTHOR_EMAIL: SELF.email, GIT_AUTHOR_DATE: c.at,
+    git(['commit', '-q', '-m', c.subject ?? `test: ${c.id}`], { GIT_AUTHOR_NAME: SELF.name, GIT_AUTHOR_EMAIL: SELF.email, GIT_AUTHOR_DATE: c.at,
       GIT_COMMITTER_NAME: SELF.name, GIT_COMMITTER_EMAIL: SELF.email, GIT_COMMITTER_DATE: c.at });
     sha[c.id] = git(['rev-parse', 'HEAD']);
   }

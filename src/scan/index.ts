@@ -1,5 +1,5 @@
 import { matchCommits, buildSessions, type MatchCommit } from '../attrib/match.js';
-import { discoverClaude, mergeIntervals, parseClaude, type Interval } from '../attrib/parsers/claude.js';
+import { discoverClaude, mergeIntervals, parseClaude, redactPaths, type Interval } from '../attrib/parsers/claude.js';
 import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import { lineHasher, sha256Hex } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
@@ -106,7 +106,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
       .sort((a, b) => byCodepoint(a[0], b[0]))
       .map(([p, row]) => [p, row.added, row.removed, r.agentLines.get(p) ?? 0]);
     return { seq, sha: c.sha, date: isoUtc(c.dateMs), authorDate: isoUtc(c.authorMs), author,
-      subject: c.subject, files: rows, attribution: r.attribution };
+      subject: redactPaths(c.subject), files: rows, attribution: r.attribution };
   });
 
   const snapshot: SnapshotV01 = {

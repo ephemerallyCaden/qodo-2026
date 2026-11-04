@@ -1,6 +1,6 @@
 import { readFileSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { beforeAll, expect, it } from 'vitest';
 import { DENIED_PATH, discoverClaude, metaToken, parseClaude } from '../src/attrib/parsers/claude.js';
 import type { SnapshotV01 } from '../src/core/snapshot/types.js';
@@ -8,6 +8,7 @@ import { formatSummary } from '../src/core/summary.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
 import { CANARIES, MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
 import { cli } from './fixtures/cli.js';
+import { createResult, miniClaude, miniRepo, session } from './fixtures/mini.js';
 
 let repo: FixtureRepo;
 let claude: ClaudeFixture;
@@ -75,4 +76,23 @@ it('skips and counts a transcript deleted between discovery and parsing (Qodo #7
   expect(ingest.events.length).toBeGreaterThan(0);
   const summary = formatSummary(JSON.parse(outputs['snapshot']!) as SnapshotV01, { tooLarge: 0, unavailable: 1, dropped: 0, unattributed: 0 });
   expect(summary).toContain('1 transcript(s) skipped (too large 0, unavailable 1); commits during them are never classed human');
+});
+
+it('commit subjects carrying private paths are redacted in the snapshot and the summary (Qodo PR8 #4)', async () => {
+  const lines = ['export const subjectCanaryOne = 5101;', 'export const subjectCanaryTwo = subjectCanaryOne + 1;'];
+  const subject = `fix: copy ${CANARIES.home}/notes.txt and C:\\Users\\canary-win\\notes.txt (from ~/drafts, ${homedir().slice(1)}/x)`;
+  const repo = miniRepo([{ id: 'agent', at: '2026-10-10T10:00:00Z', path: 'src/subject.ts', lines, subject }]);
+  const s = session('56565656-5656-4565-8565-565656565656', repo.dir);
+  const projects = miniClaude({ s: [s.user('u1', '2026-10-10T09:00:00.000Z'), s.call('a2', '2026-10-10T09:30:00.000Z', 'Write', {}),
+    s.result('u3', 'a2', '2026-10-10T09:30:01.000Z', createResult(join(repo.dir, 'src/subject.ts'), lines))] });
+  const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: dirname(projects) });
+  expect(r.code).toBe(0);
+  const snapshot = readFileSync(join(repo.dir, '.git/commet/snapshot.json'), 'utf8');
+  for (const text of [snapshot, r.out, r.err]) {
+    for (const leak of ['canary-home', 'canary-win', 'C:\\', '~/drafts', homedir().slice(1)]) expect(text.includes(leak), leak).toBe(false);
+  }
+  // The rest of the subject survives, and the commit is still listed.
+  const redacted = 'fix: copy <path> and <path> (from <path>, <path>)';
+  expect((JSON.parse(snapshot) as SnapshotV01).commits[0]!.subject).toBe(redacted);
+  expect(r.out).toContain(redacted.slice(0, 40));
 });

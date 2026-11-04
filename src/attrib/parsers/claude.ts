@@ -134,6 +134,24 @@ export function metaToken(v: unknown): string | undefined {
   const named = PRIVATE_DIRS.some((d) => (d.length > 1 ? hasRun(parts, d) : parts.length > 1 && parts[0] === d[0]));
   return named ? undefined : v;
 }
+/** Starts an absolute, home, drive-letter or UNC path. */
+const PATH_START = /^(\/.|~|[A-Za-z]:[\\/]|\\\\)/;
+
+/**
+ * Free text for output (commit subjects): every whitespace-separated word that is, or names, a
+ * private path becomes `<path>`. That covers absolute, home (`~`), drive-letter and UNC paths,
+ * and de-rooted home or temp dirs matched by whole segments as in metaToken. Brackets, quotes and
+ * trailing punctuation around the word are kept (Qodo PR8 #4).
+ */
+export function redactPaths(text: string): string {
+  return text.replace(/\S+/g, (word) => {
+    const [, pre, core, post] = /^([("'`[<{]*)(.*?)([)"'`\]>},.;:!?]*)$/.exec(word)!;
+    if (!core) return word;
+    const parts = core.replace(/\\/g, '/').split('/');
+    const named = PATH_START.test(core) || PRIVATE_DIRS.some((d) => (d.length > 1 ? hasRun(parts, d) : parts.length > 1 && parts[0] === d[0]));
+    return named ? `${pre}<path>${post}` : word;
+  });
+}
 const version = (v: unknown): string | undefined => (typeof v === 'string' && VERSION_TOKEN.test(v) ? v : undefined);
 const under = (p: string, root: string) => p === root || p.startsWith(root + '/');
 
