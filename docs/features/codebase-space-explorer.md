@@ -28,15 +28,24 @@ You are the astronaut and your AI agents are your drone crew. Anything you didn'
 - [ ] R2b. Per-session attribution. Each session is its own drone, seeded from a hash of tool + session ID. Show safe metadata only (time, branch, model), never prompts. Without logs, fall back to pseudo-sessions inferred from commit clustering, labelled "inferred".
 - [ ] R3. Stable layout per the space mapping above: append-only orbit slots, and file identity survives renames. Adding files never moves existing planets. Size = lines of code. **Biomes are decorative**, picked by a hash of the planet's stable ID; they carry no data.
 - [ ] R4. three.js pixel view: planet focus, warp between systems, 2D map toggle, reduced motion (animation frozen on a fixed frame, rendering only on interaction, cuts instead of glides). Labels use a crisp bitmap pixel font drawn at native resolution outside the pixel pass. **Camera: perspective free flight (human, 2026-11-04).** It is the most immersive option. Known cost: pixel shimmer and crawl under camera motion (see technical-risks #9). Mitigating that is an art-direction and render task. The camera module stays pluggable.
-- [ ] R5. Fog of war, per file. Fog covers every change you didn't write yourself: agents, teammates and unknown attribution. Opening a file's diff charts it, and a planet clears when all its files are charted. Any later change refogs the whole file. **First-run baseline (approved 2026-11-04):** an explicit, undoable "chart everything up to <HEAD> as my baseline" action, so the whole repo isn't fogged on day one. Comprehension questions are an optional alternative way to chart, generated from git only in v1 (no LLM). State is local only.
+- [ ] R5. Fog of war, per file. Fog covers every change you didn't write yourself: agents, teammates and unknown attribution. Opening a file's diff charts it, and a planet clears when all its files are charted. Any later change refogs the whole file. **First-run baseline (approved 2026-11-04):** an explicit, undoable "chart everything up to <HEAD> as my baseline" action, so the whole repo isn't fogged on day one. **Charting progress (gamification, human 2026-11-04):** each planet shows how much of it *you* have charted. This is private, and it's map coverage, not a score. Fully charting a planet plays a small landing moment (a flag goes in and a beacon lights). Comprehension questions are an optional alternative way to chart, generated from git only in v1 (no LLM). State is local only.
 - [ ] R6. Teammates' astronauts and territory come from local git history, with no network calls. Teammates' agent logs never reach your machine, so their agent work is visible only through trailers, bot authors or pushed git-ai notes. Anything else they committed shows as **unknown**, never as human.
 - [ ] R7. `commet hook install` adds a git post-commit/post-merge hook and a Claude Code hook that refresh the snapshot and record session events (hashes and safe metadata only) to `.git/commet/events.jsonl`. It asks before writing to `.git/hooks/` or `.claude/settings.local.json`, chains existing hooks rather than replacing them, and `commet hook remove` undoes it.
 - [ ] R8. Factory-verifiable: golden snapshots on fixture repos, layout property tests, a deterministic render mode for golden images, draw-call budgets. A frame is a pure function of (snapshot, chart state, camera, frame number).
 - [ ] R14. Hardened local server. `commet open` binds 127.0.0.1 only, rejects requests whose Host header isn't localhost (blocks DNS rebinding), requires a per-launch secret token from the opened URL, sends no CORS headers, and accepts writes only for chart state and beacons. It pushes live updates when the snapshot changes. Must pass the builder-security check before merge.
 
+**Motivation design (human, 2026-11-04).** What Commet encourages:
+1. Review and understand agent-written code before it piles up.
+2. Keep your mental model fresh.
+3. Leave knowledge for others.
+4. Ask the right person.
+5. Keep versioning tidy.
+
+The mechanics are charting progress (R5), drone debriefs (R16), anomalies (R9), beacons (R10), comms to astronauts (R15) and the debris sweep (R13). They reward understanding and exploration, they stay private, and they inform rather than score. **Never:** XP, levels, streaks, leaderboards, comparing people, rewards for commit/PR/line counts, or time-in-app metrics.
+
 **Candidates (approved 2026-11-04)**
-- [ ] R9. Co-change constellations: lines between files that usually change together, from git history only. If a change touches a file but not its usual partner, flag the partner: "usually changes with X (not touched)". Deterministic, documented thresholds.
-- [ ] R10. Captain's log beacons: an optional one-line note when charting, shown as a beacon on the planet. Stored in `.git/commet/beacons.json` (not git notes, which attach to commits and can be pushed).
+- [ ] R9. Co-change constellations: lines between files that usually change together, from git history only. If a change touches a file but not its usual partner, flag the partner: "usually changes with X (not touched)". Deterministic, documented thresholds. **Shown as an anomaly** (gamification, human 2026-11-04): a signal on the untouched partner that you investigate by opening it. Investigating clears the anomaly. It's a short exploration quest, and the most useful review prompt in persona testing.
+- [ ] R10. Captain's log beacons: an optional one-line note when charting, shown as a beacon on the planet. Stored in `.git/commet/beacons.json` (not git notes, which attach to commits and can be pushed). Beacons are knowledge for future-you and teammates, offered right after charting. Counts are shown per planet, never per person.
 - [ ] R11. Terminal mode: the snapshot as an ASCII view (reusing ascii-fx), showing fog, drones and beacons. Doubles as a screen-reader fallback. Exempt from the live-3D art rule.
 - [ ] R12. Status message: an on-demand, deterministic pixel star chart plus a text summary for a day or week (what changed, by which sessions, what's still uncharted). You share it manually, after a preview that lists everything it reveals (paths, branch names, models), with an option to redact paths and branches. First use: daily hackathon posts about Commet's own repo and factory. No scores.
 - [ ] R13. Space debris (human, 2026-11-04). Old unmerged branches and stale PRs drift as debris near the planets they touch, so you can see how tidy your versioning and PR habits are.
@@ -51,6 +60,11 @@ You are the astronaut and your AI agents are your drone crew. Anything you didn'
     - PRs: only through the opt-in, read-only GitHub token. Without it, branch debris still works.
   - Clicking a piece shows its age, its last commit, and which session or person created it, then gives a **copyable** cleanup command (`git branch -d …` / `gh pr close …`). Commet never deletes, closes or posts anything itself.
   - Shown as repo-level tidiness: total debris count and a rough mass figure. No per-person tallies.
+  - **Debris sweep** (gamification, human 2026-11-04): once Commet sees the branch or PR is gone on the next scan, that piece breaks apart in a short animation. Commet itself only ever offers the copyable command.
+- [ ] R15. **People layer: which humans did what** (human, 2026-11-04). Show per person, from local git and mailmap, which planets they've worked on and how recently. Add their reviews only with the opt-in read-only GitHub token.
+  - Keep **"committed by"** and **"written by"** separate. For you, lines that don't match an agent count as written by you. For teammates, only authorship is known, so their commits stay `unknown` unless a trailer or a git-ai note says otherwise (R6).
+  - **Comms to the right astronaut** (gamification): on an uncharted or anomalous planet, show the teammates' astronauts who have context, each with a plain unranked reason (for example "reviewed 6 changes here this year"), plus a copyable "ask <name> about <area>" line. It routes questions; it never ranks people. There are no per-person scores or comparison views.
+- [ ] R16. **Drone crew and debriefs** (gamification, human 2026-11-04). Each agent session (R2b) is a named drone with a deterministic name and sprite. A drone hovers over the planets its session changed until you **debrief** it, which means charting that session's changes. Then it docks with your ship. The crew roster lists each drone's safe metadata (time, branch, model) and what it built, so you can read who built what. Undebriefed drones are the visible to-do; nothing is ever posted or assigned.
 
 ## Week plan (human, 2026-11-04)
 | Deadline | Ships |
@@ -61,7 +75,11 @@ You are the astronaut and your AI agents are your drone crew. Anything you didn'
 | Nov 29 | VS Code extension, polish |
 | Dec 2 | Demo |
 
-R13 isn't scheduled yet.
+Proposed by the lead (not yet confirmed by the human): R15 and R16 → Nov 15 (R16 needs the drone art pass), R13 → Nov 22.
+
+**Backlog (human, 2026-11-04):**
+- **Dust:** areas you haven't revisited in months gather faint dust (not fog). A gentle nudge to refresh, never a penalty.
+- **Expedition log:** R12's weekly star chart framed as a shareable expedition summary (planets charted, drones debriefed, debris swept). You share it manually, and there's no comparison.
 
 ## Open assumptions
 - Scan time on large repos is unmeasured end to end (git/git numstat alone: 3.6 s for 2 years). Benchmark before fixing the first-run experience.
