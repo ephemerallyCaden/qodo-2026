@@ -10,6 +10,7 @@ import { mapPalette, mapColors, snapToPool } from './palette-map.js';
 import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH, ACCENTS } from './planet-ramps.js';
 import { tangentFrame } from './cloud-frame.js';
 import { voronoiCells, poolField, crackMask } from './snoise.js';
+import { ASTRO_SDF_GLSL, BMIN as ASTRO_BMIN, BMAX as ASTRO_BMAX, SCALE as ASTRO_SCALE, LIFT as ASTRO_LIFT, layout as astroLayout, pose as astroPose } from './astronaut.js';
 import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors, artefactCount } from './artefacts.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
@@ -1207,17 +1208,16 @@ function makePlanet() {
 }
 
 // ---------------------------------------------------------------- astronaut
-// One signed-distance body, raymarched inside a proxy box. Every part joins one
-// surface (smooth unions), so a single lighting pass shades the whole figure. Cast
-// shadows and contact occlusion come from marching the same field toward the light.
-// Limbs are continuous bent tubes: shoulder->elbow->wrist and hip->knee->ankle,
-// smooth-unioned so the bend has no seam. Local units: 1 tall, facing +z.
+// Variant K from the astronaut lab (geometry in astronaut.js): one signed-distance body,
+// raymarched inside a proxy box. Every part joins one surface, so a single lighting pass
+// shades the whole figure. Cast shadows and contact occlusion come from marching the same
+// field toward the light. White limbs are smooth bent tubes; the grey ring collars, cuffs and
+// neck seal are separate crisp parts. Figure units: 1 tall, facing +z (scaled by SCALE).
 const ASTRO_FRAG = /* glsl */ `
   uniform mat4 uInvModel;
   uniform mat4 uModel;
   uniform mat4 uProj;
   uniform vec3 uLightLocal;
-  uniform vec3 uJ[12]; // lS lE lW rS rE rW lH lK lA rH rK rA
   uniform vec3 uSuit[4];
   uniform vec3 uGear[4];
   uniform vec3 uAccent[4];
@@ -1225,38 +1225,8 @@ const ASTRO_FRAG = /* glsl */ `
   uniform vec3 uGlint;
   ${DEPTH_GLSL}
   ${EYES_GLSL}
+  ${ASTRO_SDF_GLSL}
   in vec3 vPosW;
-
-  // Chibi: the helmet is ~55% of the figure, with a short torso and stubby limbs.
-  const vec3 HEAD = vec3(0.0, 0.71, 0.0);
-  const float HEAD_R = 0.27;
-  const vec3 BMIN = vec3(-0.5, -0.08, -0.42);
-  const vec3 BMAX = vec3(0.5, 1.06, 0.42);
-
-  float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
-  float sdRoundBox(vec3 p, vec3 b, float r) { vec3 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r; }
-  float sdCapsule(vec3 p, vec3 a, vec3 b, float r) { vec3 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h) - r; }
-  float limb(vec3 p, vec3 a, vec3 b, vec3 c, float r0, float r1) { return smin(sdCapsule(p, a, b, r0), sdCapsule(p, b, c, r1), 0.035); }
-
-  float dHelmet(vec3 p) { return length(p - HEAD) - HEAD_R; }
-  float dTorso(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.36, 0.0), vec3(0.145, 0.1, 0.115), 0.065); }
-  float dPack(vec3 p) { return sdRoundBox(p - vec3(0.0, 0.38, -0.18), vec3(0.175, 0.13, 0.075), 0.04); }
-  float dArm(vec3 p, int i) { return limb(p, uJ[i], uJ[i + 1], uJ[i + 2], 0.058, 0.054); }
-  float dHand(vec3 p, int i) { return length(p - (uJ[i + 2] + normalize(uJ[i + 2] - uJ[i + 1]) * 0.03)) - 0.06; }
-  float dLeg(vec3 p, int i) { return limb(p, uJ[i], uJ[i + 1], uJ[i + 2], 0.072, 0.066); }
-  float dBoot(vec3 p, int i) { return sdRoundBox(p - (uJ[i + 2] + vec3(0.0, -0.03, 0.025)), vec3(0.062, 0.04, 0.08), 0.034); }
-
-  float map(vec3 p) {
-    float d = smin(dHelmet(p), dTorso(p), 0.04);
-    d = smin(d, dPack(p), 0.015);
-    for (int i = 0; i < 6; i += 3) {
-      d = smin(d, dArm(p, i), 0.04);
-      d = smin(d, dHand(p, i), 0.02);
-      d = smin(d, dLeg(p, i + 6), 0.04);
-      d = smin(d, dBoot(p, i + 6), 0.02);
-    }
-    return d;
-  }
 
   vec3 calcNormal(vec3 p) {
     const vec2 k = vec2(1.0, -1.0);
@@ -1266,10 +1236,10 @@ const ASTRO_FRAG = /* glsl */ `
 
   float shadow(vec3 ro, vec3 rd) {
     float t = 0.02;
-    for (int i = 0; i < 40; i++) {
+    for (int i = 0; i < 48; i++) {
       float h = map(ro + rd * t);
       if (h < 0.002) return 0.0;
-      t += max(h, 0.01);
+      t += max(h * 0.85, 0.008);
       if (t > 1.4) break;
     }
     return 1.0;
@@ -1284,46 +1254,6 @@ const ASTRO_FRAG = /* glsl */ `
     return clamp(1.0 - o * 0.3, 0.0, 1.0);
   }
 
-  // Visor screen: a rounded rectangle in yaw/pitch about the helmet centre, ~4:3 once
-  // projected onto the sphere. xy = screen uv (0..1, y down), z = superellipse value.
-  vec3 visorUV(vec3 p) {
-    vec3 d = normalize(p - HEAD);
-    float yaw = atan(d.x, d.z);
-    float pitch = asin(clamp(d.y, -1.0, 1.0)) + 0.02;
-    vec2 q = vec2(yaw / 0.74, pitch / 0.54);
-    return vec3(q.x * 0.5 + 0.5, 0.5 - q.y * 0.5, pow(abs(q.x), 5.0) + pow(abs(q.y), 5.0));
-  }
-
-  // 0 suit, 1 gear, 2 accent, 3 visor
-  int region(vec3 p) {
-    float best = dHelmet(p);
-    int id = 0;
-    int part = 0; // 0 helmet 1 torso 2 pack 3 arm 4 hand 5 leg 6 boot
-    float d;
-    d = dTorso(p); if (d < best) { best = d; part = 1; }
-    d = dPack(p); if (d < best) { best = d; part = 2; }
-    int armI = 0;
-    for (int i = 0; i < 6; i += 3) {
-      d = dArm(p, i); if (d < best) { best = d; part = 3; armI = i; }
-      d = dHand(p, i); if (d < best) { best = d; part = 4; }
-      d = dLeg(p, i + 6); if (d < best) { best = d; part = 5; }
-      d = dBoot(p, i + 6); if (d < best) { best = d; part = 6; }
-    }
-    if (part == 0) {
-      float e = visorUV(p).z;
-      return e < 1.0 ? 3 : e < 1.75 ? 1 : 0; // screen, then a gear-tone bezel
-    }
-    if (part == 1) return (p.z > 0.085 && abs(p.x) < 0.06 && abs(p.y - 0.36) < 0.032) ? 1 : 0; // chest panel
-    if (part == 2) return abs(p.y - 0.43) < 0.032 ? 2 : 1; // backpack + contributor stripe
-    if (part == 3) {
-      // contributor shoulder band around the upper arm
-      vec3 a = uJ[armI], b = uJ[armI + 1];
-      float h = dot(p - a, b - a) / dot(b - a, b - a);
-      return (h > 0.22 && h < 0.42) ? 2 : 0;
-    }
-    return part == 4 || part == 6 ? 1 : 0;
-  }
-
   void main() {
     vec3 ro = (uInvModel * vec4(cameraPosition, 1.0)).xyz;
     vec3 rd = normalize((uInvModel * vec4(vPosW, 1.0)).xyz - ro);
@@ -1333,10 +1263,10 @@ const ASTRO_FRAG = /* glsl */ `
     float tf = min(min(tmax.x, tmax.y), tmax.z);
     float t = tn;
     bool hit = false;
-    for (int i = 0; i < 96; i++) {
+    for (int i = 0; i < 160; i++) {
       float h = map(ro + rd * t);
       if (h < 0.0012 * (1.0 + t)) { hit = true; break; }
-      t += h;
+      t += h * 0.8; // under-step a little to stay on the thin rings
       if (t > tf) break;
     }
     if (!hit) discard;
@@ -1367,52 +1297,44 @@ const ASTRO_FRAG = /* glsl */ `
   }
 `;
 
-const PROXY_GEO = new THREE.BoxGeometry(1, 1.14, 0.84).translate(0, 0.49, 0);
+const PROXY_GEO = new THREE.BoxGeometry(ASTRO_BMAX[0] - ASTRO_BMIN[0], ASTRO_BMAX[1] - ASTRO_BMIN[1], ASTRO_BMAX[2] - ASTRO_BMIN[2])
+  .translate((ASTRO_BMAX[0] + ASTRO_BMIN[0]) / 2, (ASTRO_BMAX[1] + ASTRO_BMIN[1]) / 2, (ASTRO_BMAX[2] + ASTRO_BMIN[2]) / 2);
+const ASTRO_LAYOUT = astroLayout();
 
 function makeAstronaut(colorKey) {
+  // root (placement, yaw) -> lift (boot sole at LIFT) -> body (bob, sway, SCALE) -> proxy
   const root = new THREE.Group();
+  const lift = new THREE.Group();
+  lift.position.y = ASTRO_LIFT;
   const body = new THREE.Group();
-  root.add(body);
+  body.scale.setScalar(ASTRO_SCALE);
+  root.add(lift);
+  lift.add(body);
   const joints = Array.from({ length: 12 }, () => new THREE.Vector3());
+  const rings = [];
   const mat = paletteMaterial(ASTRO_FRAG, {
     uSuit: 'suit', uGear: 'gear', uAccent: `contributors.${colorKey}`, uVisor: 'visor', uGlint: 'glint',
   }, {
     uInvModel: { value: new THREE.Matrix4() }, uModel: { value: null }, uProj: { value: camera.projectionMatrix },
     uLightLocal: { value: new THREE.Vector3() }, uJ: { value: joints }, uEyes: { value: 0 }, uBlink: { value: 1 },
+    uRingC: { value: Array.from({ length: 8 }, () => new THREE.Vector3()) },
+    uRingA: { value: Array.from({ length: 8 }, () => new THREE.Vector3(0, 1, 0)) },
+    uRingR: { value: new Array(8).fill(0.05) },
   }, { side: THREE.BackSide });
   const proxy = new THREE.Mesh(PROXY_GEO, mat);
   mat.uniforms.uModel.value = proxy.matrixWorld;
   body.add(proxy);
 
   const q = new THREE.Quaternion();
-  // Relaxed float: elbows and knees softly bent; the bends breathe with the bob.
-  function pose(t) {
-    const W = (Math.PI * 2) / cycle(); // loop-locked: whole cycles per loop
-    const bob = Math.sin(t * 2 * W);
-    const sway = Math.sin(t * W + 0.8);
-    for (const [k, s] of [[0, -1], [3, 1]]) {
-      const lift = 0.02 * Math.sin(t * 2 * W + 0.6 + s * 0.4);
-      // stubby arms: the hands hang at about hip height
-      joints[k].set(s * 0.165, 0.42, 0);
-      joints[k + 1].set(s * (0.225 + 0.008 * bob), 0.36 + lift * 0.6, 0.03);
-      joints[k + 2].set(s * (0.24 + 0.01 * bob), 0.29 + lift * 1.2, 0.08 + 0.008 * sway);
-    }
-    for (const [k, s, bend] of [[6, -1, 1], [9, 1, 0.6]]) {
-      // short legs, about a fifth of the height; knee bend scaled to the shorter tube
-      const kb = bend * (0.025 + 0.01 * Math.sin(t * 2 * W + s));
-      joints[k].set(s * 0.075, 0.25, 0);
-      joints[k + 1].set(s * 0.085, 0.17, 0.02 + kb);
-      joints[k + 2].set(s * 0.08, 0.1 + kb * 0.3, -0.01 + kb * 0.15);
-    }
-  }
-
+  // Relaxed float: elbows and knees softly bent; the bends breathe with the bob (astronaut.js).
   function update(t) {
     const p = t + root.userData.phase;
-    const W = (Math.PI * 2) / cycle();
+    const W = (Math.PI * 2) / cycle(); // loop-locked: whole cycles per loop
+    astroPose(ASTRO_LAYOUT, p, cycle(), joints, rings);
+    rings.forEach((r, i) => { mat.uniforms.uRingC.value[i].copy(r.c); mat.uniforms.uRingA.value[i].copy(r.a).normalize(); mat.uniforms.uRingR.value[i] = r.r; });
     body.position.y = Math.sin(p * 2 * W) * 0.05;
     body.rotation.z = Math.sin(p * W) * 0.07;
     body.rotation.x = Math.sin(p * W + 1.3) * 0.05;
-    pose(p);
     mat.uniforms.uBlink.value = blink(p);
     root.updateMatrixWorld(true);
     mat.uniforms.uInvModel.value.copy(proxy.matrixWorld).invert();

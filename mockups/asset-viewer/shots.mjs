@@ -57,7 +57,8 @@ page.on('pageerror', (e) => errors.push(e));
 page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('GPU stall')) console.log(`[page] ${m.text()}`); });
 
 await page.goto(`${ORIGIN}/index.html`);
-await page.waitForFunction(() => window.viewer?.ready, null, { timeout: 15000 }).catch((e) => { throw errors[0] ?? e; });
+// Startup compiles every shader in SwiftShader (slower on a busy machine): allow 60 s, and close the browser on failure.
+await page.waitForFunction(() => window.viewer?.ready, null, { timeout: 60000 }).catch(async (e) => { await browser.close(); throw errors[0] ?? e; });
 for (const name of names) {
   await page.evaluate((opts) => window.viewer.set(opts), { ...BASE, ...SHOTS[name] });
   await page.locator('#view').screenshot({ path: path.join(outDir, `${name}.png`) });
@@ -229,11 +230,13 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('depth-o
 
 if (PLANET_MODE) {
   const dir = path.join(outDir, 'planets');
-  await rm(dir, { recursive: true, force: true });
+  // `--planets name ...` renders only the named outputs (e.g. system-shot hero-loop) and keeps the rest.
+  const wantP = (n) => !wanted.length || wanted.includes(n);
+  if (!wanted.length) await rm(dir, { recursive: true, force: true });
   await mkdir(dir, { recursive: true });
   const STUDIO = { view: 'studio', time: 3, palette: 'final' };
   const tiles = [];
-  for (const [label, biome, variants] of PLANET_SET) {
+  for (const [label, biome, variants] of wantP('variety-sheet') ? PLANET_SET : []) {
     for (const [seed, size, ringMode, moons = false] of variants) {
       const png = await capture({ ...STUDIO, biome, seed, size, ringMode, moons });
       const name = `${label.replace(/ \(extra\)/, '').replace(/[: ]+/g, '-')}-${seed}`;
@@ -241,11 +244,15 @@ if (PLANET_MODE) {
       tiles.push({ label: `${label} · seed ${seed} · ${sizeTag(size)}${ringMode !== 'off' ? ` · ${ringMode} ring` : ''}`, url: asUrl(png) });
     }
   }
-  await contactSheet(tiles, 6, path.join(dir, 'variety-sheet.png'));
-  console.log(`screenshots/planets/variety-sheet.png (${tiles.length} tiles)`);
+  if (wantP('variety-sheet')) {
+    await contactSheet(tiles, 6, path.join(dir, 'variety-sheet.png'));
+    console.log(`screenshots/planets/variety-sheet.png (${tiles.length} tiles)`);
+  }
 
-  await writeFile(path.join(dir, 'system-shot.png'), await capture({ view: 'system', time: 2, palette: 'final' }));
-  console.log('screenshots/planets/system-shot.png');
+  if (wantP('system-shot')) {
+    await writeFile(path.join(dir, 'system-shot.png'), await capture({ view: 'system', time: 2, palette: 'final' }));
+    console.log('screenshots/planets/system-shot.png');
+  }
 
   // Unique-colour counts at the internal resolution (no upscale, no AA anywhere).
   await capture({ view: 'planet', time: 2, palette: 'final', biome: 'lush', seed: 7, ringMode: 'thin', moons: true });
@@ -260,6 +267,7 @@ if (PLANET_MODE) {
   const FFMPEG = process.env.FFMPEG ?? '/opt/homebrew/bin/ffmpeg';
   const loopDir = path.join(ROOT, 'frames-loop');
   const renderLoop = async (name, opts, fps) => { // fps: an ffmpeg rate, e.g. '15' or '100/3'
+    if (!wantP(name)) return;
     const period = opts.period ?? BASE.period;
     const [num, den = 1] = fps.split('/').map(Number);
     const frames = Math.round((period * num) / den);
