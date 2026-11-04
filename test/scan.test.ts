@@ -42,6 +42,8 @@ describe('scan', () => {
     expect(cls('c7')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
     // Qodo #5: decorated header paths match agent edits, and the spaced-dir lockfile is excluded.
     expect(cls('c8')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+    // Qodo #6: a commit in a gap between transcripts is unknown, never human.
+    expect(cls('c9')).toMatchObject({ class: 'unknown', tier: 'none' });
     expect(cls('c1').selfCommittedAgentWritten).toBe(true);
     expect(cls('c1').evidence.map((e) => e.kind)).toEqual(['transcript_match', 'agent_ran_commit']);
     expect(cls('c2').agentLineShareMilli).toBe(500);
@@ -75,6 +77,14 @@ describe('scan', () => {
     expect(c.json).toBe(a.json);
   });
 
+  it('never classes a commit human during a transcript it could not read (Qodo #6)', async () => {
+    const mainFile = claude.transcripts.find((f) => f.endsWith(`${MAIN_SESSION}.jsonl`))!;
+    const { snapshot } = await run({ maxTranscriptBytes: statSync(mainFile).size - 1 });
+    const cls = (id: string) => snapshot.commits.find((c) => c.sha === repo.commits[id]!.sha)!.attribution.class;
+    expect(['c3', 'c6'].map(cls)).toEqual(['unknown', 'unknown']);
+    expect(snapshot.coverage.length).toBeGreaterThan(0);
+  });
+
   it('classes everything unknown, never human, without log coverage', async () => {
     const { snapshot } = await run({ ingest: false });
     expect(new Set(snapshot.commits.map((c) => c.attribution.class))).toEqual(new Set(['unknown']));
@@ -86,8 +96,9 @@ describe('commet scan CLI', () => {
   it('writes .git/commet/snapshot.json (0600) and prints per-class counts', async () => {
     const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: claude.claudeDir });
     expect(r).toMatchObject({ code: 0, err: '' });
-    expect(r.out).toContain('9 commits: agent 4 · mixed 1 · human 2 · unknown 2');
+    expect(r.out).toContain('10 commits: agent 4 · mixed 1 · human 2 · unknown 3');
     expect(r.out).toContain('committed by you, written by an agent: 5');
+    expect(r.out).toContain('Claude Code logs cover 2 span(s) between 2026-10-02 and 2026-10-25; a commit outside them is never classed human.');
     const file = join(repo.dir, '.git/commet/snapshot.json');
     expect(readFileSync(file, 'utf8')).toBe(readFileSync(GOLDEN, 'utf8'));
     expect(statSync(file).mode & 0o777).toBe(0o600);

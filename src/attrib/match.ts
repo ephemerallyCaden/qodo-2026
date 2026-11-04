@@ -9,9 +9,9 @@ export interface MatchCommit {
   /** Committer time: edits after it can't be in the commit. */
   dateMs: number;
   isSelf: boolean;
-  /** Authored and committed while agent logs could have seen the edits. */
+  /** Committed inside a span the agent logs cover, and outside any span they couldn't read. */
   covered: boolean;
-  /** Countable added-line hashes per non-excluded path (only for covered commits). */
+  /** Countable added-line hashes per non-excluded path (empty before the logs begin). */
   added: Map<string, string[]>;
   /** Sessions whose `git commit` output named this commit. */
   ranBy: Set<SessionKey>;
@@ -64,10 +64,11 @@ export function matchCommits(commits: MatchCommit[], events: EditEvent[]): Map<s
     }
     for (const k of c.ranBy) if (!perSession.has(k)) perSession.set(k, 0);
     const share = counted > 0 ? Math.floor((matched * 1000) / counted) : 0;
-    const cls: CommitClass = !c.covered || counted === 0 ? 'unknown'
+    // Matched lines are evidence wherever they fall; only "human" needs the logs to have been watching.
+    const cls: CommitClass = counted === 0 ? 'unknown'
       : share >= SHARE_AGENT ? 'agent'
       : share >= SHARE_MIXED ? 'mixed'
-      : c.isSelf ? 'human' : 'unknown';
+      : c.isSelf && c.covered ? 'human' : 'unknown';
     const evidence: CommitAttribution['evidence'] = [];
     if (matched > 0) evidence.push({ kind: 'transcript_match', detail: 'verbatim' });
     if (c.ranBy.size > 0) evidence.push({ kind: 'agent_ran_commit', detail: 'git_commit_output' });

@@ -54,12 +54,12 @@ export async function main(argv: string[], io: Io): Promise<number> {
   }
   try {
     const claudeDir = io.env['CLAUDE_CONFIG_DIR'] || join(homedir(), '.claude');
-    const { snapshot, json, commonDir } = await scan({
+    const { snapshot, json, commonDir, logs } = await scan({
       repoDir: io.cwd, windowMonths: args.window, ingest: args.ingest,
       claudeProjectsDir: join(claudeDir, 'projects'), keyFor: (dir) => loadOrCreateKey(stateDir(dir)),
     });
     writeAtomic(args.out ? resolve(io.cwd, args.out) : join(stateDir(commonDir), 'snapshot.json'), json);
-    io.stdout(formatSummary(snapshot, args.ingest));
+    io.stdout(formatSummary(snapshot, logs));
     const where = args.out ? 'the --out file' : '<git-common-dir>/commet/snapshot.json';
     io.stdout(`snapshot written to ${where} (${Buffer.byteLength(json)} bytes, sha256 ${sha256Hex(json).slice(0, 16)})\n`);
     return 0;

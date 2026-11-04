@@ -281,12 +281,41 @@
       "seq": 8,
       "sha": "3cf0531849a196cc532f1e92be34bb126af9651b",
       "subject": "feat: files at awkward paths"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-10-20T10:00:00Z",
+      "date": "2026-10-20T10:00:00Z",
+      "files": [
+        [
+          "docs/gap.md",
+          2,
+          0,
+          0
+        ]
+      ],
+      "seq": 9,
+      "sha": "9ade81ff7bafed5730bc3ddb3045695c72d809bb",
+      "subject": "docs: gap notes"
     }
   ],
   "coverage": [
     {
-      "from": "2026-10-02T09:00:00Z",
-      "to": "2026-10-09T10:00:00Z",
+      "from": "2026-10-02T08:55:00Z",
+      "to": "2026-10-09T09:35:01Z",
+      "tool": "claude-code"
+    },
+    {
+      "from": "2026-10-25T08:55:00Z",
+      "to": "2026-10-25T09:05:00Z",
       "tool": "claude-code"
     }
   ],
@@ -346,6 +375,11 @@
       "path": "dir/naïve \"q\".ts"
     },
     {
+      "id": "f_66eb6c128d09",
+      "loc": 2,
+      "path": "docs/gap.md"
+    },
+    {
       "id": "f_b651e26a9c88",
       "loc": 2,
       "path": "docs/late.md"
@@ -399,8 +433,8 @@
   ],
   "repo": {
     "branch": "main",
-    "head": "3cf0531849a196cc532f1e92be34bb126af9651b",
-    "headDate": "2026-10-09T10:00:00Z",
+    "head": "9ade81ff7bafed5730bc3ddb3045695c72d809bb",
+    "headDate": "2026-10-20T10:00:00Z",
     "repoId": "47ae229688ab8719",
     "selfPersonIds": [
       "p_391d66efc87e"
@@ -475,12 +509,27 @@
       "startedAt": "2026-10-06T09:59:58Z",
       "tool": "claude-code",
       "toolVersion": "2.1.31"
+    },
+    {
+      "branch": "main",
+      "commits": [],
+      "endedAt": "2026-10-25T09:00:00Z",
+      "filesTouched": 1,
+      "inferred": false,
+      "key": "s_e163aeda659596",
+      "kind": "main",
+      "linesAdded": 1,
+      "linesRemoved": 0,
+      "seed": 3011960468,
+      "startedAt": "2026-10-25T09:00:00Z",
+      "tool": "claude-code",
+      "toolVersion": "2.1.31"
     }
   ],
   "window": {
     "firstParent": true,
     "months": 24,
-    "since": "2024-10-09T10:00:00Z",
-    "until": "2026-10-09T10:00:00Z"
+    "since": "2024-10-20T10:00:00Z",
+    "until": "2026-10-20T10:00:00Z"
   }
 }

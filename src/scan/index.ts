@@ -1,5 +1,5 @@
 import { matchCommits, buildSessions, type MatchCommit } from '../attrib/match.js';
-import { discoverClaude, parseClaude } from '../attrib/parsers/claude.js';
+import { discoverClaude, parseClaude, type Interval } from '../attrib/parsers/claude.js';
 import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import { lineHasher, sha256Hex } from '../core/hash.js';
 import { hashLines } from '../core/lines.js';
@@ -19,15 +19,22 @@ export interface ScanOptions {
   claudeProjectsDir: string;
   /** Returns the HMAC key for the repo's state dir (tests inject a fixed key). */
   keyFor: (commonDir: string) => Uint8Array;
+  /** Transcripts larger than this are skipped (their span becomes blind). */
+  maxTranscriptBytes?: number;
 }
+
+/** Aggregate log-reading counts for the summary; null when logs weren't read. */
+export type LogStats = { transcripts: number; tooLarge: number; unavailable: number } | null;
 
 export interface ScanResult {
   snapshot: SnapshotV01;
   json: string;
   commonDir: string;
+  logs: LogStats;
 }
 
 const DAY_MS = 86_400_000;
+const within = (spans: Interval[], t: number) => spans.some((s) => t >= s.from && t <= s.to);
 const personId = (email: string): PersonId => `p_${sha256Hex(email).slice(0, 12)}`;
 const excluded = (path: string, row: NumstatRow | undefined) => exclusionOf(path, row?.binary) !== null;
 
@@ -42,7 +49,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const [head, raw, found] = await Promise.all([
     headFiles(git, repo.head, repo.emptyTree),
     windowCommits(git, repo.head, since),
-    o.ingest ? discoverClaude(o.claudeProjectsDir, repo.commonDir, repo.worktreeRoots) : null,
+    o.ingest ? discoverClaude(o.claudeProjectsDir, repo.commonDir, repo.worktreeRoots, o.maxTranscriptBytes) : null,
   ]);
   for (const [path, row] of head) {
     const rule = exclusionOf(path, row.binary);
@@ -52,12 +59,13 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   files.sort((a, b) => byCodepoint(a.path, b.path));
 
   const hash = lineHasher(o.keyFor(repo.commonDir));
-  const fromMs = found?.coverageFromMs ?? null;
-  const covered = fromMs !== null && fromMs <= repo.headMs;
+  const coverage = found?.coverage ?? [];
+  const fromMs = coverage[0]?.from;
   const knownPaths = new Set([...head.keys(), ...raw.flatMap((c) => [...c.files.keys()])]);
   // The patch log runs while the transcripts parse; it starts no earlier than the window.
   const [patches, ingest] = await Promise.all([
-    covered ? addedLines(git, repo.head, isoUtc(Math.max(sinceMs, fromMs - DAY_MS))) : new Map<string, Map<string, string[]>>(),
+    fromMs !== undefined && fromMs <= repo.headMs ? addedLines(git, repo.head, isoUtc(Math.max(sinceMs, fromMs - DAY_MS)))
+      : new Map<string, Map<string, string[]>>(),
     found ? parseClaude(found, knownPaths, hash) : null,
   ]);
 
@@ -67,13 +75,12 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     if (hit.length === 1) ranBy.set(hit[0]!.sha, (ranBy.get(hit[0]!.sha) ?? new Set()).add(sessionKey));
   }
   const matchInput: MatchCommit[] = raw.map((c) => {
-    const isCovered = covered && Math.min(c.dateMs, c.authorMs) >= fromMs;
     const added = new Map<string, string[]>();
-    for (const [path, lines] of (isCovered && patches.get(c.sha)) || []) {
+    for (const [path, lines] of patches.get(c.sha) ?? []) {
       if (!excluded(path, c.files.get(path))) added.set(path, hashLines(lines, hash));
     }
     return { sha: c.sha, dateMs: c.dateMs, isSelf: c.email === repo.selfEmail,
-      covered: isCovered, added, ranBy: ranBy.get(c.sha) ?? new Set() };
+      covered: within(coverage, c.dateMs) && !within(found?.blind ?? [], c.dateMs), added, ranBy: ranBy.get(c.sha) ?? new Set() };
   });
   const results = matchCommits(matchInput, ingest?.events ?? []);
 
@@ -96,11 +103,12 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
       selfPersonIds: repo.selfEmail ? [personId(repo.selfEmail)] : [] },
     window: { months: o.windowMonths, since, until: isoUtc(repo.headMs), firstParent: true },
     exclusions: { rulesetVersion: RULESET_VERSION, rules: RULES, counts },
-    coverage: covered ? [{ tool: 'claude-code', from: isoUtc(fromMs), to: isoUtc(repo.headMs) }] : [],
+    coverage: coverage.map((s) => ({ tool: 'claude-code', from: isoUtc(s.from), to: isoUtc(s.to) })),
     files,
     people: [...people.values()].sort((a, b) => byCodepoint(a.id, b.id)),
     commits,
     sessions: buildSessions(ingest?.sessions.values() ?? [], raw.map((c) => c.sha), results),
   };
-  return { snapshot, json: canonicalJson(snapshot), commonDir: repo.commonDir };
+  const logs = found && { transcripts: found.transcripts.length, ...found.stats };
+  return { snapshot, json: canonicalJson(snapshot), commonDir: repo.commonDir, logs };
 }

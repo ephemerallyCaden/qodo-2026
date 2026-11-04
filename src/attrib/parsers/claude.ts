@@ -2,7 +2,7 @@
 // Privacy (design §6): explicit field allowlist, denylisted records dropped before JSON.parse,
 // edit lines hashed immediately. No absolute path, cwd, prompt or code leaves this module.
 import { createReadStream, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { open, readFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -16,6 +16,9 @@ const TOOL = 'claude-code';
 const MAX_LINE = 4 << 20;
 const MAX_FILE = 200 << 20;
 const HEAD_CAP = 4 << 20;
+const TAIL_CHUNK = 64 << 10;
+/** A transcript covers [first record, last record], widened by this much on each side. */
+export const COVERAGE_SLACK_MS = 5 * 60_000;
 const READ_CONCURRENCY = 32;
 /** Files Commet must never open (history.jsonl, file-history/, api-request*). */
 export const DENIED_PATH = /(^|[\\/])(history\.jsonl$|file-history([\\/]|$)|api-request)/;
@@ -47,12 +50,28 @@ export interface ClaudeIngest {
   ranCommits: { sessionKey: SessionKey; sha: string }[];
 }
 
+export interface Interval { from: number; to: number }
+
 export interface Discovery {
   /** This repo's transcripts; `cwd` stays in memory and is never output. */
-  transcripts: { file: string; subagent: boolean; cwd: string }[];
+  transcripts: { file: string; subagent: boolean; cwd: string; span: Interval }[];
   liveRoots: string[];
-  /** Earliest record in any of this repo's transcripts, or null if there are none. */
-  coverageFromMs: number | null;
+  /** Merged spans of the transcripts that were read: when edits would have been logged. */
+  coverage: Interval[];
+  /** Spans of this repo's transcripts that couldn't be read: no commit in them may be human. */
+  blind: Interval[];
+  stats: { tooLarge: number; unavailable: number };
+}
+
+/** Sorted union of intervals. */
+export function mergeIntervals(spans: Interval[]): Interval[] {
+  const out: Interval[] = [];
+  for (const s of [...spans].sort((a, b) => a.from - b.from || a.to - b.to)) {
+    const last = out[out.length - 1];
+    if (last && s.from <= last.to) last.to = Math.max(last.to, s.to);
+    else out.push({ ...s });
+  }
+  return out;
 }
 
 type Obj = Record<string, unknown>;
@@ -142,6 +161,28 @@ async function readHead(file: string): Promise<{ cwd: string; ts: number } | nul
   }
 }
 
+/** Timestamp of the last allowlisted record, reading backwards in bounded chunks. */
+async function readLastTs(file: string, size: number): Promise<number | null> {
+  if (!readable(file)) return null;
+  const fh = await open(file, 'r');
+  try {
+    for (let n = Math.min(size, TAIL_CHUNK); ; n = Math.min(size, n * 4)) {
+      const buf = Buffer.alloc(n);
+      await fh.read(buf, 0, n, size - n);
+      const lines = buf.toString('utf8').split('\n');
+      if (n < size) lines.shift(); // may be a partial line
+      for (const line of lines.reverse()) {
+        if (!line.includes('"timestamp"') || DENIED_TYPE.test(line)) continue;
+        const ts = Date.parse(str(parseLine(line)?.['timestamp']) ?? '');
+        if (!Number.isNaN(ts)) return ts;
+      }
+      if (n >= size || n >= HEAD_CAP) return null;
+    }
+  } finally {
+    await fh.close();
+  }
+}
+
 /** Git's own discovery rule: a directory belongs to the nearest ancestor holding `.git`. */
 function nearestCheckout(dir: string): string | null {
   for (let d = dir; ; d = dirname(d)) {
@@ -228,7 +269,8 @@ function readMeta(file: string): { agentType: string | undefined; parentAgentId:
  * worktrees (or, for a nested checkout, when git resolves it to our common dir). A cwd that no
  * longer exists (a deleted worktree) falls back to a prefix match against our worktree paths.
  */
-export async function discoverClaude(projectsDir: string, commonDir: string, worktreeRoots: string[]): Promise<Discovery> {
+export async function discoverClaude(projectsDir: string, commonDir: string, worktreeRoots: string[],
+  maxFileBytes = MAX_FILE): Promise<Discovery> {
   const liveRoots = worktreeRoots.flatMap((r) => (existsSync(r) ? [r, realpathSync(r)] : [r]));
   const belongs = async (cwd: string): Promise<boolean> => {
     if (!existsSync(cwd)) return liveRoots.some((r) => under(cwd, r));
@@ -248,13 +290,19 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
   }));
   const cwds = [...new Set(heads.flatMap((h) => (h ? [h.cwd] : [])))];
   const ours = new Set((await Promise.all(cwds.map(async (c) => ((await belongs(c)) ? [c] : [])))).flat());
-  const d: Discovery = { transcripts: [], liveRoots, coverageFromMs: null };
+  const d: Discovery = { transcripts: [], liveRoots, coverage: [], blind: [], stats: { tooLarge: 0, unavailable: 0 } };
   for (const [i, t] of list.entries()) {
     const head = heads[i];
-    if (!head || !ours.has(head.cwd) || statSync(t.file).size > MAX_FILE) continue;
-    d.transcripts.push({ ...t, cwd: head.cwd });
-    d.coverageFromMs = Math.min(d.coverageFromMs ?? head.ts, head.ts);
+    if (!head || !ours.has(head.cwd)) continue;
+    const size = statSync(t.file).size;
+    const last = (await readLastTs(t.file, size)) ?? head.ts;
+    const span = { from: head.ts - COVERAGE_SLACK_MS, to: Math.max(last, head.ts) + COVERAGE_SLACK_MS };
+    if (size > maxFileBytes) {
+      d.blind.push(span);
+      d.stats.tooLarge++;
+    } else d.transcripts.push({ ...t, cwd: head.cwd, span });
   }
+  d.coverage = mergeIntervals(d.transcripts.map((t) => t.span));
   return d;
 }
 

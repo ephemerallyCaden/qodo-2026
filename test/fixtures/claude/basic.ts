@@ -60,12 +60,12 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
     result('u9', 'a6', '2026-10-04T09:10:00.000Z', { type: 'create', filePath: `${CANARIES.home}/secret.ts`, content: CANARIES.code }),
     // Written after c6 was committed (but before its later author date): must not count.
     call('a10', '2026-10-08T09:00:00.000Z', 'Write', { file_path: at('docs/late.md') }),
+    result('u11', 'a10', '2026-10-08T09:00:01.000Z', { type: 'create', filePath: at('docs/late.md'), content: LATE.join('\n'), structuredPatch: [] }),
     call('a12', '2026-10-08T09:30:00.000Z', 'Write', { file_path: at('src/ctrl.ts') }),
     result('u13', 'a12', '2026-10-08T09:30:01.000Z', { type: 'create', filePath: at('src/ctrl.ts'), content: CONTROL.join('\n'), structuredPatch: [] }),
     call('a14', '2026-10-09T09:30:00.000Z', 'Bash', { command: 'write awkward paths' }),
     result('u15', 'a14', '2026-10-09T09:30:01.000Z', { stdout: '', bashEditDiff: { files: [SPACED.plain, SPACED.quoted].map((p) => ({
       filePath: at(p), created: true, hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: SPACED_LINES.map((l) => `+${l}`) }] })) } }),
-    result('u11', 'a10', '2026-10-08T09:00:01.000Z', { type: 'create', filePath: at('docs/late.md'), content: LATE.join('\n'), structuredPatch: [] }),
   ];
   // A resumed session keeps its sessionId and repeats an earlier record: same key, no double count.
   const resumed = [result('u3', 'a2', '2026-10-07T08:00:00.000Z', writeResult)];
@@ -96,6 +96,9 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
   ];
   const metaSub = [{ ...metaBase, agentId: 'f00d', isSidechain: true, type: 'user', uuid: 'm3', timestamp: '2026-10-05T09:10:00.000Z',
     toolUseResult: { type: 'create', filePath: at('scratch/sub.txt'), content: 'scratch file written by a subagent', structuredPatch: [] } }];
+  // A later session: its interval starts after c9, leaving c9 in a gap between transcripts.
+  const late = [{ ...base, sessionId: '77777777-7777-4777-8777-777777777777', type: 'user', uuid: 'l1', timestamp: '2026-10-25T09:00:00.000Z',
+    toolUseResult: { type: 'create', filePath: at('scratch/late.txt'), content: 'a later scratch file from the agent', structuredPatch: [] } }];
   const jsonl = (rows: object[]) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
   const files: [string, string][] = [
     [`projects/-unrelated-slug/${MAIN_SESSION}.jsonl`, jsonl(main)],
@@ -105,6 +108,7 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
       JSON.stringify({ agentType: 'general-purpose', description: CANARIES.description, toolUseId: 't-sub', spawnDepth: 1 })],
     [`projects/-fixture-repo/${OTHER_SESSION}.jsonl`, jsonl(other)],
     ['projects/-unrelated-slug/66666666-6666-4666-8666-666666666666.jsonl', jsonl(meta)],
+    ['projects/-unrelated-slug/77777777-7777-4777-8777-777777777777.jsonl', jsonl(late)],
     ['projects/-unrelated-slug/66666666-6666-4666-8666-666666666666/subagents/agent-f00d.jsonl', jsonl(metaSub)],
     ['projects/-unrelated-slug/66666666-6666-4666-8666-666666666666/subagents/agent-f00d.meta.json',
       JSON.stringify({ agentType: `C:/${CANARIES.metaAgentType}` })],

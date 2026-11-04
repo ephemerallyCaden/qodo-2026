@@ -55,5 +55,6 @@ it('never reads denylisted agent-log paths, even through file or directory symli
     '/projects/-unrelated-slug/33333333-3333-4333-8333-333333333333.jsonl',
     '/projects/-unrelated-slug/66666666-6666-4666-8666-666666666666/subagents/agent-f00d.jsonl',
     '/projects/-unrelated-slug/66666666-6666-4666-8666-666666666666.jsonl',
+    '/projects/-unrelated-slug/77777777-7777-4777-8777-777777777777.jsonl',
   ]);
 });

@@ -86,5 +86,8 @@ export function buildBasicRepo(): FixtureRepo {
   write(SPACED.quoted, SPACED_LINES);
   write(SPACED.lock, ['{', '  "name": "fixture-lock-entry",', '  "lockfileVersion": 3', '}']);
   commit('c8', '2026-10-09T10:00:00Z', 'feat: files at awkward paths');
+  // c9: human-looking text in a gap between transcripts (Qodo #6) → unknown, never human.
+  write('docs/gap.md', ['# Gap', 'Written while no agent log was being recorded.']);
+  commit('c9', '2026-10-20T10:00:00Z', 'docs: gap notes');
   return { dir, commits };
 }
