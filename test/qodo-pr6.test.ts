@@ -474,6 +474,11 @@ describe('Qodo PR10 #5: a foreign session\'s git command must target this repo',
     expect(await foreignCommit(() => 'git commit -q -m "fix; tidy | done"')).toMatchObject({ class: 'human', evidence: [] });
   });
 
+  it('a relative target option resolves against the working directory, not the previous option (Qodo local r3 #1)', async () => {
+    expect(await foreignCommit((d) => `git --git-dir other/.git --work-tree ${d.split('/').pop()} commit -q -m x`))
+      .toMatchObject({ class: 'unknown', evidence: [{ kind: 'agent_ran_commit', detail: 'git_command' }] });
+  });
+
   it('a -C target applies only to the git invocation in its own segment (issue #11)', async () => {
     // `git -C <repo> status` doesn't move the later commit, which runs in the outside cwd.
     expect(await foreignCommit((d) => `git -C ${d} status && git commit -q -m x`)).toMatchObject({ class: 'human', evidence: [] });

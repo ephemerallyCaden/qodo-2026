@@ -378,12 +378,14 @@ function gitTargetsRepo(command: string, cwd: string, roots: string[]): boolean 
     if (!runsGitCommit(seg)) continue;
     placed = true;
     if (dirs === null) return true;
-    let targets = dirs;
+    // Each target resolves against the segment's directory and, for `-C a -C b`, the earlier
+    // targets too; any one inside the repo counts (Qodo local r3 #1).
+    let bases = dirs;
     let pointed = false;
     for (const m of seg.matchAll(GIT_TARGET)) {
-      const next = resolveDir(m[1], targets);
+      const next = resolveDir(m[1], bases);
       if (next === null || inRepo(next)) return true;
-      targets = next;
+      bases = [...bases, ...next];
       pointed = true;
     }
     if (!pointed && inRepo(dirs)) return true;
