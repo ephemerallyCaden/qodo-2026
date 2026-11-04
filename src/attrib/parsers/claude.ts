@@ -84,8 +84,11 @@ export interface ClaudeIngest {
 export interface Interval { from: number; to: number }
 
 export interface Discovery {
-  /** This repo's transcripts; `cwd` stays in memory and is never output. */
-  transcripts: { file: string; subagent: boolean; cwd: string; span: Interval }[];
+  /**
+   * This repo's transcripts; `cwd` stays in memory and is never output. `foreign`: started
+   * outside the repo but edits it by absolute path, so only the repo roots place its edits.
+   */
+  transcripts: { file: string; subagent: boolean; cwd: string; span: Interval; foreign?: boolean }[];
   liveRoots: string[];
   /** Merged spans of the transcripts that were read: when edits would have been logged. */
   coverage: Interval[];
@@ -368,6 +371,66 @@ async function readLastTs(file: string, size: number): Promise<number | null> {
   }
 }
 
+/** How an outside session's editsRepo() verdict places it. */
+const OUTSIDE_AS = { yes: 'foreign', no: 'other', undecided: 'unplaced' } as const;
+
+/** Root paths as they appear inside JSON strings, minus any that another root already contains. */
+function rootNeedles(roots: string[]): Buffer[] {
+  const kept: string[] = [];
+  for (const r of [...new Set(roots)].sort((a, b) => a.length - b.length)) if (!kept.some((k) => under(r, k))) kept.push(r);
+  return kept.map((r) => Buffer.from(JSON.stringify(r).slice(1, -1)));
+}
+
+/** Whether the first `maxBytes` of `file` contain any needle; read in chunks with an overlap. */
+async function mentions(file: string, needles: Buffer[], maxBytes: number): Promise<boolean> {
+  if (needles.length === 0) return false;
+  const overlap = Math.max(...needles.map((n) => n.length)) - 1;
+  const buf = Buffer.alloc((1 << 20) + overlap);
+  const fh = await open(file, 'r');
+  try {
+    let carry = 0;
+    for (let pos = 0; pos < maxBytes;) {
+      const { bytesRead } = await fh.read(buf, carry, Math.min(1 << 20, maxBytes - pos), pos);
+      if (bytesRead === 0) return false;
+      const view = buf.subarray(0, carry + bytesRead);
+      if (needles.some((n) => view.includes(n))) return true;
+      pos += bytesRead;
+      carry = Math.min(overlap, view.length);
+      view.copy(buf, 0, view.length - carry);
+    }
+    return false;
+  } finally {
+    await fh.close();
+  }
+}
+
+/**
+ * Does a transcript whose cwd is outside the repo edit it? A cheap byte search for the roots
+ * first; then 'yes' when an allowlisted edit path lies under a root, 'undecided' when a result
+ * naming a root can't be parsed, else 'no'.
+ */
+async function editsRepo(file: string, roots: string[], needles: Buffer[], maxBytes: number): Promise<'yes' | 'no' | 'undecided'> {
+  if (!readable(file) || !(await mentions(file, needles, maxBytes))) return 'no';
+  const texts = needles.map((n) => n.toString());
+  let undecided = false;
+  const input = createReadStream(file, { end: maxBytes - 1, highWaterMark: 64 << 10 });
+  try {
+    for await (const line of createInterface({ input, crlfDelay: Infinity })) {
+      if (!line.includes('"toolUseResult"') || DENIED_TYPE.test(line) || !texts.some((n) => line.includes(n))) continue;
+      const r = line.length > MAX_LINE ? null : parseLine(line);
+      if (!r) {
+        undecided = true;
+        continue;
+      }
+      const res = r['toolUseResult'];
+      if (isObj(res) && editsOf(res).some((e) => roots.some((root) => under(e.filePath, root) && !inGitDir(e.filePath, root)))) return 'yes';
+    }
+  } finally {
+    input.destroy();
+  }
+  return undecided ? 'undecided' : 'no';
+}
+
 /** Git's own discovery rule: a directory belongs to the nearest ancestor holding `.git`. */
 function nearestCheckout(dir: string): string | null {
   for (let d = dir; ; d = dirname(d)) {
@@ -488,6 +551,14 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
   const cwds = [...new Set(heads.flatMap((h) => (h && h !== UNREADABLE && h.cwd ? [h.cwd] : [])))];
   const placed = new Map(await Promise.all(cwds.map(async (c) => [c, await place(c)] as const)));
   const d: Discovery = { transcripts: [], liveRoots, coverage: [], blind: [], stats: { tooLarge: 0, unavailable: 0, unattributed: 0 } };
+  // A session started outside the repo may still edit it by absolute path (Qodo PR8 #7).
+  const outside = list.flatMap((t, i) => {
+    const h = heads[i];
+    return h && h !== UNREADABLE && h.cwd !== null && placed.get(h.cwd) === 'other' ? [i] : [];
+  });
+  const needles = rootNeedles(liveRoots);
+  const verdicts = new Map((await pool(outside, async (i) => [i, await editsRepo(list[i]!.file, liveRoots, needles, maxFileBytes)
+    .catch(() => 'undecided' as const)] as const)));
   // A transcript we can't read could be this repo's: blind over its stat times (Qodo PR8 #2).
   for (const [i, h] of heads.entries()) {
     if (h !== UNREADABLE) continue;
@@ -497,7 +568,8 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
   const mine = list.flatMap((t, i) => {
     const head = heads[i];
     if (!head || head === UNREADABLE) return [];
-    const where = head.cwd === null ? 'unplaced' : placed.get(head.cwd)!;
+    const placedAs = head.cwd === null ? 'unplaced' : placed.get(head.cwd)!;
+    const where = placedAs === 'other' ? OUTSIDE_AS[verdicts.get(i) ?? 'no'] : placedAs;
     return where === 'other' ? [] : [{ t, head, where }];
   });
   const tails = await pool(mine, async ({ t }) => {
@@ -517,7 +589,7 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
     } else if (size > maxFileBytes) {
       d.blind.push(span);
       d.stats.tooLarge++;
-    } else d.transcripts.push({ ...t, cwd: head.cwd!, span });
+    } else d.transcripts.push({ ...t, cwd: head.cwd!, span, ...(where === 'foreign' ? { foreign: true } : {}) });
   }
   d.coverage = mergeIntervals(d.transcripts.map((t) => t.span));
   return d;
@@ -536,7 +608,8 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       out.unreadable.push(t.span);
       continue;
     }
-    const roots = [...d.liveRoots, ...(existsSync(t.cwd) ? [] : [t.cwd])].sort((a, b) => b.length - a.length);
+    // A foreign session's cwd is outside the repo: neither a root nor an alias of one.
+    const roots = [...d.liveRoots, ...(t.foreign || existsSync(t.cwd) ? [] : [t.cwd])].sort((a, b) => b.length - a.length);
     const meta = t.subagent ? readMeta(t.file) : null;
     const fileAgentId = /agent-([\w-]+)\.jsonl$/.exec(t.file)?.[1];
     let model: string | undefined;
@@ -581,7 +654,7 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     // A symlinked, case-variant or /var-vs-/private/var cwd: edits are mapped onto real paths,
     // which liveRoots also hold. The cwd maps onto its realpath, and the root it sits in maps
     // through the same alias, so edits above a subdirectory cwd land too (Qodo PR6 #4).
-    const aliases = aliasesOf(t.cwd, roots);
+    const aliases = t.foreign ? [] : aliasesOf(t.cwd, roots);
     const onDisk = (p: string) => {
       const a = aliases.find(([logical]) => under(p, logical));
       return a ? a[1] + p.slice(a[0].length) : p;

@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { runsGitCommit } from '../src/attrib/parsers/claude.js';
 import { createResult, miniClaude, miniRepo, scanMini, session, type Row } from './fixtures/mini.js';
 
@@ -243,5 +243,47 @@ describe('Qodo PR8 #2: a transcript that can\'t be read is a blind span', () => 
   it.skipIf(process.getuid?.() === 0)('a transcript that fails to read is counted as unavailable', async () => {
     const { withCase } = await controlAndCase((dir) => ({ [IDLE]: idle(dir), [`mode000:${SID}`]: writer(dir) }));
     expect(withCase.logs.unavailable).toBe(1);
+  });
+});
+
+describe('Qodo PR8 #7: sessions started outside the repo', () => {
+  const writer = (cwd: string, file: string, extra: Row[] = []): Row[] => {
+    const s = session(SID, cwd);
+    return [s.user('u1', at('09:00:00')), s.call('a2', at('09:30:00'), 'Write', { file_path: file }),
+      s.result('u3', 'a2', at('09:30:01'), createResult(file, LINES)), ...extra, s.user('u4', at('10:30:00'))];
+  };
+
+  it('a session in a parent directory that edits this repo by absolute path and commits matches as agent', async () => {
+    const { control, withCase } = await controlAndCase((dir, trigger) => {
+      const s = session(SID, dirname(dir));
+      // A sibling edit under the parent cwd, outside this repo: not ours, so not a drop either.
+      const sibling = join(dirname(dir), 'commet-sibling-project', 'notes.md');
+      const commit = [s.call('a7', at('09:40:00'), 'Write', { file_path: sibling }), s.result('u8', 'a7', at('09:40:01'), createResult(sibling, ['Sibling notes.'])),
+        s.call('a5', at('09:59:50'), 'Bash', { command: `git -C ${dir} commit -q -m reviewed` }),
+        s.result('u6', 'a5', at('10:00:02'), { stdout: '', stderr: '', interrupted: false })];
+      return trigger ? { [SID]: writer(dirname(dir), join(dir, PATH), commit) } : {};
+    });
+    expect(control.attr('target').class).toBe('unknown');
+    expect(withCase.attr('target')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000,
+      evidence: [{ kind: 'transcript_match', detail: 'verbatim' }, { kind: 'agent_ran_commit', detail: 'git_command' }] });
+    expect(withCase.logs).toMatchObject({ dropped: 0, unattributed: 0 });
+  });
+
+  it('a session in an unrelated repo editing an identically named file stays ignored', async () => {
+    const other = repoWith();
+    const { withCase } = await controlAndCase((dir) => ({ [IDLE]: idle(dir), [SID]: writer(other.dir, join(other.dir, PATH)) }));
+    expect(withCase.attr('target')).toMatchObject({ class: 'human', agentLineShareMilli: 0 });
+    expect(withCase.logs).toMatchObject({ transcripts: 1, dropped: 0, unattributed: 0 });
+  });
+
+  it('an outside session whose result naming this repo cannot be parsed is an unattributed blind span', async () => {
+    const { control, withCase } = await controlAndCase((dir, trigger) => {
+      const s = session(SID, dirname(dir));
+      const bad = JSON.stringify(s.result('u3', 'a2', at('09:30:01'), createResult(join(dir, PATH), LINES))).slice(0, -3);
+      return { [IDLE]: idle(dir), [SID]: [s.user('u1', at('09:00:00')), ...(trigger ? [bad] : []), s.user('u4', at('10:30:00'))] };
+    });
+    expect(control.attr('target')).toMatchObject({ class: 'human' });
+    expect(withCase.logs.unattributed).toBe(1);
+    expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none' });
   });
 });
