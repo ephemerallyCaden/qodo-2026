@@ -2,6 +2,7 @@ import { matchCommits, buildSessions, type MatchCommit } from '../attrib/match.j
 import { discoverClaude, parseClaude, type Interval } from '../attrib/parsers/claude.js';
 import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import { lineHasher, sha256Hex } from '../core/hash.js';
+import type { LogCounts } from '../core/summary.js';
 import { hashLines } from '../core/lines.js';
 import type { Commit, PersonId, SessionKey, SnapshotV01 } from '../core/snapshot/types.js';
 import { isoUtc, minusMonths } from '../core/time.js';
@@ -24,7 +25,7 @@ export interface ScanOptions {
 }
 
 /** Aggregate log-reading counts for the summary; null when logs weren't read. */
-export type LogStats = { transcripts: number; tooLarge: number; unavailable: number } | null;
+export type LogStats = (LogCounts & { transcripts: number }) | null;
 
 export interface ScanResult {
   snapshot: SnapshotV01;
@@ -70,6 +71,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   ]);
 
   const blind = [...(found?.blind ?? []), ...(ingest?.unreadable ?? [])];
+  const partial = ingest?.partial ?? [];
   const ranBy = new Map<string, Set<SessionKey>>();
   for (const { sessionKey, sha } of ingest?.ranCommits ?? []) {
     const hit = raw.filter((c) => c.sha.startsWith(sha));
@@ -81,7 +83,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
       if (!excluded(path, c.files.get(path))) added.set(path, hashLines(lines, hash));
     }
     return { sha: c.sha, dateMs: c.dateMs, isSelf: c.email === repo.selfEmail, isMerge: c.isMerge,
-      covered: within(coverage, c.dateMs) && !within(blind, c.dateMs), partial: false, added, ranBy: ranBy.get(c.sha) ?? new Set() };
+      covered: within(coverage, c.dateMs) && !within(blind, c.dateMs), partial: within(partial, c.dateMs), added, ranBy: ranBy.get(c.sha) ?? new Set() };
   });
   const results = matchCommits(matchInput, ingest?.events ?? []);
 
@@ -112,6 +114,6 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   };
   const unreadable = ingest?.unreadable.length ?? 0;
   const logs = found && { transcripts: found.transcripts.length - unreadable, tooLarge: found.stats.tooLarge,
-    unavailable: found.stats.unavailable + unreadable };
+    unavailable: found.stats.unavailable + unreadable, dropped: ingest?.dropped ?? 0, unattributed: found.stats.unattributed };
   return { snapshot, json: canonicalJson(snapshot), commonDir: repo.commonDir, logs };
 }

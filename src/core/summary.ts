@@ -7,9 +7,12 @@ const day = (iso: string) => iso.slice(0, 10);
 // Subjects come from the repo; strip control characters so they can't drive the terminal.
 const printable = (t: string) => t.replace(/\p{Cc}/gu, '?');
 
+/** Aggregate log-reading counts: skipped transcripts, dropped records, unattributed transcripts. */
+export interface LogCounts { tooLarge: number; unavailable: number; dropped: number; unattributed: number }
+
 /** Human-readable scan summary. Contains repo-relative data only: no absolute paths or code. */
 /** `logs` holds aggregate log-reading counts, or null when logs weren't read (--no-ingest). */
-export function formatSummary(s: SnapshotV01, logs: { tooLarge: number; unavailable: number } | null): string {
+export function formatSummary(s: SnapshotV01, logs: LogCounts | null): string {
   const excludedTotal = Object.values(s.exclusions.counts).reduce((a, b) => a + b, 0);
   const excludedList = Object.entries(s.exclusions.counts).sort((a, b) => byCodepoint(a[0], b[0]))
     .map(([k, v]) => `${k} ${v}`).join(', ');
@@ -30,6 +33,13 @@ export function formatSummary(s: SnapshotV01, logs: { tooLarge: number; unavaila
       : 'no Claude Code logs found for this repo: every commit is unknown',
   ];
   if (skipped) lines.push(`${skipped} transcript(s) skipped (too large ${logs!.tooLarge}, unavailable ${logs!.unavailable}); commits during them are never classed human`);
+  if (logs?.dropped) {
+    lines.push(`${logs.dropped} log record(s) dropped (over the size cap, malformed, missing ids, or at a path outside the repo); `
+      + 'commits during their transcripts are never classed human');
+  }
+  if (logs?.unattributed) {
+    lines.push(`${logs.unattributed} transcript(s) could not be placed in a repo (no usable cwd); commits during them are never classed human`);
+  }
   const agentWritten = s.commits.filter((c) => c.attribution.class === 'agent' || c.attribution.class === 'mixed').reverse();
   if (agentWritten.length > 0) {
     lines.push('', 'agent-written commits (newest first):');

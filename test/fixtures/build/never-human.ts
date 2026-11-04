@@ -20,6 +20,9 @@ export const EDGE_LINES = {
   agentMerge: ['export const thirdLineOne = 801;', 'export const thirdLineTwo = thirdLineOne + 1;'],
   resolvedTeam: ['export const resolvedTeamOne = 901;', 'export const resolvedTeamTwo = resolvedTeamOne + 1;'],
   resolvedSelf: ['export const resolvedBySelfOne = 911;', 'export const resolvedBySelfTwo = resolvedBySelfOne + 1;'],
+  cwdless: ['export const cwdlessWriteOne = 1001;', 'export const cwdlessWriteTwo = cwdlessWriteOne + 1;'],
+  noUuid: ['export const noUuidWriteOne = 1101;', 'export const noUuidWriteTwo = noUuidWriteOne + 1;'],
+  dotdot: ['export const dotdotWriteOne = 1201;', 'export const dotdotWriteTwo = dotdotWriteOne + 1;'],
 };
 
 /** Case id → [day, repo path]. Each commit lands at <day>T10:00:00Z. */
@@ -34,6 +37,9 @@ export const EDGE_CASES = {
   control: ['2026-10-09', 'docs/control.md'],
   agentMerge: ['2026-10-10', 'lib/third.ts'],
   resolvedMerge: ['2026-10-11', 'lib/resolved.ts'],
+  cwdless: ['2026-10-12', 'src/cwdless.ts'],
+  noUuid: ['2026-10-13', 'src/no-uuid.ts'],
+  dotdot: ['2026-10-14', 'src/dotdot.ts'],
 } as const;
 /** Edge cases that are merge commits (two parents). */
 export const MERGES: EdgeCase[] = ['merge', 'agentMerge', 'resolvedMerge'];
@@ -104,5 +110,11 @@ export function buildNeverHumanRepo(): FixtureRepo {
   git(['merge', '-q', '--no-ff', '--no-commit', 'teammate4'], as(SELF, at('resolvedMerge')));
   write(EDGE_CASES.resolvedMerge[1], [...EDGE_LINES.resolvedTeam, ...EDGE_LINES.resolvedSelf]);
   commit('resolvedMerge', at('resolvedMerge'), "Merge branch 'teammate4'");
+  // Cases 3d–3f: a transcript with no cwd anywhere, an edit record missing its uuid, and an
+  // edit path under the cwd that doesn't relativise.
+  for (const c of ['cwdless', 'noUuid', 'dotdot'] as const) {
+    write(EDGE_CASES[c][1], EDGE_LINES[c]);
+    commit(c, at(c), `feat: agent-written ${c} module`);
+  }
   return { dir, commits };
 }

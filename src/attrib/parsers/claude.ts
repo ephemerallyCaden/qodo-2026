@@ -15,7 +15,7 @@ import { gitRunner, tryGit } from '../../scan/git.js';
 const TOOL = 'claude-code';
 const MAX_LINE = 4 << 20;
 const MAX_FILE = 200 << 20;
-const HEAD_CAP = 4 << 20;
+const TAIL_CAP = 4 << 20;
 const TAIL_CHUNK = 64 << 10;
 /** A transcript covers [first record, last record], widened by this much on each side. */
 export const COVERAGE_SLACK_MS = 5 * 60_000;
@@ -50,6 +50,10 @@ export interface ClaudeIngest {
   ranCommits: { sessionKey: SessionKey; sha: string }[];
   /** Spans of transcripts that vanished or became unreadable after discovery. */
   unreadable: Interval[];
+  /** Spans of transcripts that dropped a record which could have held an edit: never human. */
+  partial: Interval[];
+  /** How many such records were dropped (over the line cap, malformed, missing ids, unplaceable path). */
+  dropped: number;
 }
 
 export interface Interval { from: number; to: number }
@@ -60,9 +64,12 @@ export interface Discovery {
   liveRoots: string[];
   /** Merged spans of the transcripts that were read: when edits would have been logged. */
   coverage: Interval[];
-  /** Spans of this repo's transcripts that couldn't be read: no commit in them may be human. */
+  /**
+   * Spans no commit in may be human: this repo's transcripts that couldn't be read, and
+   * transcripts with no usable cwd, which could belong to any repo (unattributed).
+   */
   blind: Interval[];
-  stats: { tooLarge: number; unavailable: number };
+  stats: { tooLarge: number; unavailable: number; unattributed: number };
 }
 
 /** Sorted union of intervals. */
@@ -145,19 +152,28 @@ export function listTranscripts(projectsDir: string): { file: string; subagent: 
   return out.filter((t) => !DENIED_PATH.test(t.file));
 }
 
-/** First allowlisted record carrying `cwd`, reading at most HEAD_CAP bytes. */
-async function readHead(file: string): Promise<{ cwd: string; ts: number } | null> {
+interface Head { cwd: string | null; ts: number }
+
+/**
+ * The first allowlisted record's timestamp and the first timestamped `cwd`, reading at most
+ * `maxBytes`. `cwd` is null when no record has one; null when no record is datable at all.
+ */
+async function readHead(file: string, maxBytes: number): Promise<Head | null> {
   if (!readable(file)) return null;
-  const input = createReadStream(file, { end: HEAD_CAP - 1, highWaterMark: 16 << 10 });
+  const input = createReadStream(file, { end: maxBytes - 1, highWaterMark: 16 << 10 });
+  let first: number | null = null;
   try {
     for await (const line of createInterface({ input, crlfDelay: Infinity })) {
-      if (!line.includes('"cwd"') || DENIED_TYPE.test(line)) continue;
+      if (line.length > MAX_LINE || DENIED_TYPE.test(line)) continue;
+      if (!line.includes('"cwd"') && (first !== null || !line.includes('"timestamp"'))) continue;
       const r = parseLine(line);
-      const cwd = str(r?.['cwd']);
       const ts = Date.parse(str(r?.['timestamp']) ?? '');
-      if (cwd && !Number.isNaN(ts)) return { cwd, ts };
+      if (Number.isNaN(ts)) continue;
+      first ??= ts;
+      const cwd = str(r?.['cwd']);
+      if (cwd) return { cwd, ts: first };
     }
-    return null;
+    return first === null ? null : { cwd: null, ts: first };
   } finally {
     input.destroy();
   }
@@ -178,7 +194,7 @@ async function readLastTs(file: string, size: number): Promise<number | null> {
         const ts = Date.parse(str(parseLine(line)?.['timestamp']) ?? '');
         if (!Number.isNaN(ts)) return ts;
       }
-      if (n >= size || n >= HEAD_CAP) return null;
+      if (n >= size || n >= TAIL_CAP) return null;
     }
   } finally {
     await fh.close();
@@ -270,30 +286,43 @@ function readMeta(file: string): { agentType: string | undefined; parentAgentId:
  * Appendix A.10). A live cwd belongs here when its checkout is one of this repo's registered
  * worktrees (or, for a nested checkout, when git resolves it to our common dir). A cwd that no
  * longer exists (a deleted worktree) falls back to a prefix match against our worktree paths.
+ * A transcript with no cwd, or one we can't resolve, could be ours: its span becomes blind.
  */
 export async function discoverClaude(projectsDir: string, commonDir: string, worktreeRoots: string[],
   maxFileBytes = MAX_FILE): Promise<Discovery> {
   const liveRoots = worktreeRoots.flatMap((r) => (existsSync(r) ? [r, realpathSync(r)] : [r]));
-  const belongs = async (cwd: string): Promise<boolean> => {
-    if (!existsSync(cwd)) return liveRoots.some((r) => under(cwd, r));
-    const real = realpathSync(cwd);
-    const top = nearestCheckout(real);
-    if (!top || !liveRoots.some((r) => under(real, r))) return false;
-    if (liveRoots.includes(top)) return true;
-    const out = await tryGit(gitRunner(real), ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-    return out !== null && realpathSync(out.trim()) === commonDir;
+  // 'unplaced': a cwd we can't resolve to a repo, so its transcript could be ours.
+  const place = async (cwd: string): Promise<'ours' | 'other' | 'unplaced'> => {
+    if (!cwd.startsWith('/')) return 'unplaced';
+    if (!existsSync(cwd)) return liveRoots.some((r) => under(cwd, r)) ? 'ours' : 'other';
+    try {
+      const real = realpathSync(cwd);
+      const top = nearestCheckout(real);
+      if (!top || !liveRoots.some((r) => under(real, r))) return 'other';
+      if (liveRoots.includes(top)) return 'ours';
+      const out = await tryGit(gitRunner(real), ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+      if (out === null) return 'unplaced';
+      return realpathSync(out.trim()) === commonDir ? 'ours' : 'other';
+    } catch {
+      return 'unplaced';
+    }
   };
   const list = listTranscripts(projectsDir);
   // Thousands of small reads: overlap their latency, keeping results in listing order.
-  const heads: ({ cwd: string; ts: number } | null)[] = new Array(list.length).fill(null);
+  const heads: (Head | null)[] = new Array(list.length).fill(null);
   let next = 0;
   await Promise.all(Array.from({ length: READ_CONCURRENCY }, async () => {
-    for (let i = next++; i < list.length; i = next++) heads[i] = await readHead(list[i]!.file).catch(() => null);
+    for (let i = next++; i < list.length; i = next++) heads[i] = await readHead(list[i]!.file, maxFileBytes).catch(() => null);
   }));
-  const cwds = [...new Set(heads.flatMap((h) => (h ? [h.cwd] : [])))];
-  const ours = new Set((await Promise.all(cwds.map(async (c) => ((await belongs(c)) ? [c] : [])))).flat());
-  const d: Discovery = { transcripts: [], liveRoots, coverage: [], blind: [], stats: { tooLarge: 0, unavailable: 0 } };
-  const mine = list.flatMap((t, i) => (heads[i] && ours.has(heads[i].cwd) ? [{ t, head: heads[i] }] : []));
+  const cwds = [...new Set(heads.flatMap((h) => (h?.cwd ? [h.cwd] : [])))];
+  const placed = new Map(await Promise.all(cwds.map(async (c) => [c, await place(c)] as const)));
+  const d: Discovery = { transcripts: [], liveRoots, coverage: [], blind: [], stats: { tooLarge: 0, unavailable: 0, unattributed: 0 } };
+  const mine = list.flatMap((t, i) => {
+    const head = heads[i];
+    if (!head) return [];
+    const where = head.cwd === null ? 'unplaced' : placed.get(head.cwd)!;
+    return where === 'other' ? [] : [{ t, head, cwd: where === 'ours' ? head.cwd : null }];
+  });
   const tails = await Promise.all(mine.map(async ({ t }) => {
     let size = -1;
     try {
@@ -303,16 +332,19 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
     }
     return { size, last: size < 0 ? null : await readLastTs(t.file, size).catch(() => null) };
   }));
-  for (const [i, { t, head }] of mine.entries()) {
+  for (const [i, { t, head, cwd }] of mine.entries()) {
     const { size, last } = tails[i]!;
     const span = { from: head.ts - COVERAGE_SLACK_MS, to: Math.max(last ?? head.ts, head.ts) + COVERAGE_SLACK_MS };
-    if (size < 0) {
+    if (cwd === null) {
+      d.blind.push(span);
+      d.stats.unattributed++;
+    } else if (size < 0) {
       d.blind.push(span);
       d.stats.unavailable++;
     } else if (size > maxFileBytes) {
       d.blind.push(span);
       d.stats.tooLarge++;
-    } else d.transcripts.push({ ...t, cwd: head.cwd, span });
+    } else d.transcripts.push({ ...t, cwd, span });
   }
   d.coverage = mergeIntervals(d.transcripts.map((t) => t.span));
   return d;
@@ -320,7 +352,7 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
 
 /** Parses this repo's transcripts through the allowlist into hashed edit events and sessions. */
 export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (line: string) => string): Promise<ClaudeIngest> {
-  const out: ClaudeIngest = { events: [], sessions: new Map(), ranCommits: [], unreadable: [] };
+  const out: ClaudeIngest = { events: [], sessions: new Map(), ranCommits: [], unreadable: [], partial: [], dropped: 0 };
   const seen = new Set<string>();
   for (const t of d.transcripts) {
     let text: string;
@@ -339,12 +371,24 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     // A result is logged when its tool call finishes, possibly after a `git commit` it ran, so
     // edits are timed by when the call was issued (its assistant record), falling back to the result.
     const issuedAt = new Map<string, number>();
+    // Every dropped record that could hold (or time) an edit makes the whole transcript partial.
+    let drops = 0;
+    // Edits under the session's cwd must land in the repo; one that can't be placed is a drop.
+    const inCwd = (p: string) => !p.startsWith('/') || (under(p, t.cwd) && !p.slice(t.cwd.length).split('/').includes('.git'));
     for (const line of text.split('\n')) {
       const isResult = line.includes('"toolUseResult"') && RESULT_KEYS.test(line);
-      if (!isResult && !EDIT_CALL.test(line) && (model || !line.includes('"model"'))) continue;
-      if (line.length > MAX_LINE || DENIED_TYPE.test(line)) continue;
+      const editish = isResult || EDIT_CALL.test(line);
+      if (!editish && (model || !line.includes('"model"'))) continue;
+      if (DENIED_TYPE.test(line)) continue;
+      if (line.length > MAX_LINE) {
+        if (editish) drops++;
+        continue;
+      }
       const r = parseLine(line);
-      if (!r) continue;
+      if (!r) {
+        if (editish) drops++;
+        continue;
+      }
       const uuid = str(r['uuid']);
       const resultTs = Date.parse(str(r['timestamp']) ?? '');
       if (r['type'] === 'assistant') {
@@ -354,14 +398,18 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       }
       const res = r['toolUseResult'];
       const sid = str(r['sessionId']);
-      if (r['type'] !== 'user' || !isObj(res) || !sid || !uuid || Number.isNaN(resultTs)) continue;
+      if (r['type'] !== 'user' || !isObj(res)) continue;
+      const edits = editsOf(res);
+      const shas = commitShasOf(res);
+      if (edits.length === 0 && shas.length === 0) continue;
+      if (!sid || !uuid || Number.isNaN(resultTs)) {
+        drops++;
+        continue;
+      }
       const callId = str(r['sourceToolAssistantUUID']) ?? str(r['parentUuid']);
       const ts = Math.min(resultTs, (callId && issuedAt.get(callId)) || resultTs);
       const agentId = meta ? (token(r['agentId']) ?? fileAgentId) : undefined;
       const key = sessionKey(TOOL, sid, agentId);
-      const edits = editsOf(res);
-      const shas = commitShasOf(res);
-      if (edits.length === 0 && shas.length === 0) continue;
       fileKeys.add(key);
       let s = out.sessions.get(key);
       if (!s) {
@@ -379,7 +427,11 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       edits.forEach((e, i) => {
         const eventId = sha256Hex(`${TOOL}:${key}:${uuid}:${i}`).slice(0, 16);
         const path = e.filePath.startsWith('/') ? relativise(e.filePath, roots, knownPaths) : null;
-        if (!path || seen.has(eventId)) return;
+        if (!path) {
+          if (inCwd(e.filePath)) drops++;
+          return;
+        }
+        if (seen.has(eventId)) return;
         seen.add(eventId);
         s.files.add(path);
         s.linesAdded += e.added.length;
@@ -388,6 +440,10 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       });
     }
     if (model) for (const k of fileKeys) out.sessions.get(k)!.model ??= model;
+    if (drops > 0) {
+      out.partial.push(t.span);
+      out.dropped += drops;
+    }
   }
   return out;
 }

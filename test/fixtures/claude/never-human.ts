@@ -135,11 +135,42 @@ export function writeNeverHumanClaude(repo: FixtureRepo): NeverHumanClaude {
   // Case 2c: an idle session open while self resolves a merge by hand.
   const resolvedMerge = idle('resolvedMerge', 11, 'resolvedMerge');
 
+  // Case 3d: no record carries a cwd, so the transcript can't be placed; an idle session covers it.
+  const cwdlessIdle = idle('cwdlessIdle', 12, 'cwdless');
+  const cl = session('cwdless', 13, repo.dir);
+  const noCwdKey = (r: object) => JSON.stringify(r, (k, v: unknown) => (k === 'cwd' ? undefined : v));
+  const cwdless = [
+    cl.user('u1', t('cwdless', '09:00:00')),
+    cl.call('a2', t('cwdless', '09:30:00'), 'Write', { file_path: join(repo.dir, EDGE_CASES.cwdless[1]) }),
+    cl.result('u3', 'a2', t('cwdless', '09:30:01'), create(repo.dir, 'cwdless', EDGE_LINES.cwdless)),
+    cl.user('u4', t('cwdless', '10:30:00')),
+  ].map(noCwdKey);
+  // Case 3e: the Write result has no uuid, so it can't be keyed.
+  const nu = session('noUuid', 14, repo.dir);
+  const noUuidResult: Record<string, unknown> = nu.result('u3', 'a2', t('noUuid', '09:30:01'), create(repo.dir, 'noUuid', EDGE_LINES.noUuid));
+  delete noUuidResult['uuid'];
+  const noUuid = [
+    nu.user('u1', t('noUuid', '09:00:00')),
+    nu.call('a2', t('noUuid', '09:30:00'), 'Write', { file_path: join(repo.dir, EDGE_CASES.noUuid[1]) }),
+    noUuidResult,
+    nu.user('u4', t('noUuid', '10:30:00')),
+  ];
+  // Case 3f: the edit path is under the cwd but has a `..` segment, which relativise refuses.
+  const dd = session('dotdot', 15, repo.dir);
+  const dotdotPath = `${repo.dir}/src/../${EDGE_CASES.dotdot[1]}`; // not join(): it would normalise the `..`
+  const dotdot = [
+    dd.user('u1', t('dotdot', '09:00:00')),
+    dd.call('a2', t('dotdot', '09:30:00'), 'Write', { file_path: dotdotPath }),
+    dd.result('u3', 'a2', t('dotdot', '09:30:01'), { ...create(repo.dir, 'dotdot', EDGE_LINES.dotdot), filePath: dotdotPath }),
+    dd.user('u4', t('dotdot', '10:30:00')),
+  ];
+
   const jsonl = (rows: (object | string)[]) => rows.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n') + '\n';
   const files: [string, (object | string)[]][] = [
     ['bash', bash], ['merge', merge], ['oversized', oversized], ['malformed', malformed], ['noCwdIdle', noCwdIdle],
     ['noCwd', noCwd], ['symlinked', symlinked], ['caseIdle', caseIdle], ['caseVariant', caseRows], ['control', control],
-    ['agentMerge', agentMerge], ['resolvedMerge', resolvedMerge],
+    ['agentMerge', agentMerge], ['resolvedMerge', resolvedMerge], ['cwdlessIdle', cwdlessIdle], ['cwdless', cwdless],
+    ['noUuid', noUuid], ['dotdot', dotdot],
   ];
   const dir = join(claudeDir, 'projects', '-edge-slug');
   mkdirSync(dir, { recursive: true });

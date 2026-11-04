@@ -102,23 +102,40 @@ describe('Issue #5 known bugs (it.fails; the fix flips `bug` to `it`)', () => {
     expect(attr('resolvedMerge')).toMatchObject({ class: 'unknown', tier: 'none' });
   });
 
-  bug('case 3a: a commit inside a transcript that dropped an over-cap (>4 MiB) record is never human', () => {
-    expect(attr('oversized').class).not.toBe('human');
+  it('case 3a: a commit inside a transcript that dropped an over-cap (>4 MiB) record is never human', () => {
+    expect(attr('oversized')).toMatchObject({ class: 'unknown', tier: 'none' });
   });
 
-  bug('case 3b: a commit inside a transcript that dropped a malformed record is never human', () => {
-    expect(attr('malformed').class).not.toBe('human');
+  it('case 3b: a commit inside a transcript that dropped a malformed record is never human', () => {
+    expect(attr('malformed')).toMatchObject({ class: 'unknown', tier: 'none' });
   });
 
-  bug('case 3c: a commit while a session with no readable cwd in its head was open is never human', () => {
-    expect(attr('noCwd').class).not.toBe('human');
+  it('case 3c: a commit while a session with no readable cwd in its head was open is never human', () => {
+    // The head is read past the 4 MiB cap (bounded by the file cap), so the session is placed and its Write matches.
+    expect(attr('noCwd')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
   });
 
-  bug('case 3: every dropped record that could hold an edit is counted in the log stats and the summary', () => {
+  it('case 3d: a transcript with no cwd at all is an unattributed blind span', () => {
+    expect(attr('cwdless')).toMatchObject({ class: 'unknown', tier: 'none' });
+    expect(logs?.unattributed).toBe(1);
+  });
+
+  it('case 3e: a commit inside a transcript that dropped an edit record missing its uuid is never human', () => {
+    expect(attr('noUuid')).toMatchObject({ class: 'unknown', tier: 'none' });
+  });
+
+  it('case 3f: a commit inside a transcript with an in-cwd edit path that does not relativise is never human', () => {
+    expect(attr('dotdot')).toMatchObject({ class: 'unknown', tier: 'none' });
+  });
+
+  it('case 3: every dropped record that could hold an edit is counted in the log stats and the summary', () => {
     // Field names are the fix's choice; at least the over-cap, malformed and no-cwd records count.
     const dropped = Object.entries(logs ?? {}).filter(([k]) => k !== 'transcripts').reduce((n, [, v]) => n + v, 0);
     expect(dropped).toBeGreaterThanOrEqual(3);
-    expect(formatSummary(snapshot, logs)).toContain('never classed human');
+    const summary = formatSummary(snapshot, logs);
+    expect(summary).toContain(`${logs!.dropped} log record(s) dropped (over the size cap, malformed, missing ids, or at a path outside the repo); `
+      + 'commits during their transcripts are never classed human');
+    expect(summary).toContain('1 transcript(s) could not be placed in a repo (no usable cwd); commits during them are never classed human');
   });
 
   bug('case 4: edits logged through a symlinked cwd are matched (agent), not dropped while coverage counts', () => {
