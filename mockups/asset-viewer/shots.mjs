@@ -127,6 +127,20 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('faces-s
   console.log('screenshots/faces-sheet.png');
 }
 
+// Ring width x distance on the lush hero (rows: thread, default, wide belt; columns: hugging,
+// default, far out). The middle tile is the default thin ring. Moons on: they move out with a far ring.
+if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('rings-sheet'))) {
+  const items = [];
+  for (const [wl, ringWidth] of [['thread', 0.04], ['default', 0.22], ['wide belt', 0.72]]) {
+    for (const [dl, ringInner] of [['hugging', 1.25], ['default', 1.69], ['far', 2.6]]) {
+      const png = await capture({ view: 'planet', time: 3, ringMode: 'thin', ringWidth, ringInner, moons: true });
+      items.push({ label: `width ${ringWidth} ${wl} · dist ${ringInner} ${dl}`, url: `data:image/png;base64,${png.toString('base64')}` });
+    }
+  }
+  await contactSheet(items, 3, path.join(outDir, 'rings-sheet.png'));
+  console.log('screenshots/rings-sheet.png');
+}
+
 // Biome variety: each row entry is [label, base biome, [[seed, size, ring], ...]].
 // Rings are a modifier: the 'ringed' row puts a wide ring on three bases, and a few
 // other biomes carry a thin one. Sizes stand in for LOC: S < 0.8 <= M < 1.2 <= L.

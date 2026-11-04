@@ -756,6 +756,24 @@ const ramp5 = () => ({ value: Array.from({ length: 5 }, () => new THREE.Color())
 export const LOOP = { period: 24, surfaceTurns: 2, cloudTurns: 3 };
 const cycle = () => LOOP.period / LOOP.surfaceTurns;
 const RING_SECTORS = 5;
+// Ring geometry, a per-planet data channel (reserved for codebase metrics; mapping TBD), in
+// planet radii: inner = distance of the inner edge (hugging the surface .. far out), width =
+// radial width (a thread .. a wide belt). RING_PRESETS are the ring control's presets: thin is
+// the default look exactly; wide is the old two-lane shared-lib belt at the same density.
+export const RING = { inner: [1.2, 2.8], width: [0.03, 1.0] }; // inner from just above the cloud tops (~1.15 R)
+export const RING_PRESETS = { thin: { inner: 1.69, width: 0.22 }, wide: { inner: 1.54, width: 0.72 } };
+const RING_DENSITY = 15 / (1.91 ** 2 - 1.69 ** 2); // clusters per unit of (outer^2 - inner^2): the thin ring's 15
+// Lanes [centre radius, half-width, clusters] for a ring. Past width 0.3 a gap opens between an
+// inner and an outer lane (a Cassini-style division), growing to 0.2 / 0.72 of the width at 0.72
+// (the wide preset's lanes: 1.54-1.78 and 1.98-2.26).
+// Clusters scale with each lane's area, so particle density is the same at every size.
+export function ringLanes({ inner, width }) {
+  const lane = (r, w) => [r + w / 2, w / 2, Math.max(2, Math.round(RING_DENSITY * ((r + w) ** 2 - r ** 2)))];
+  const gap = width * (0.2 / 0.72) * THREE.MathUtils.clamp((width - 0.3) / 0.42, 0, 1);
+  if (gap === 0) return [lane(inner, width)];
+  const a = (width - gap) * (0.24 / 0.52); // the inner lane is the narrower one (0.24 : 0.28 at 0.72)
+  return [lane(inner, a), lane(inner + a + gap, width - gap - a)];
+}
 
 // Ring debris: chunky points. aType 0 = 1 px, 1 = 2x2 block, 2 = 3x3 plus.
 const RING_VERT = /* glsl */ `
@@ -881,9 +899,11 @@ function makePlanet() {
   const up = new THREE.Vector3(0, 1, 0);
   let built = '';
 
+  let moonReach = 1; // moon orbits scale out with a ring pushed past the thin preset's distance
   // cover: optional override of the biome's WEATHER cover (the viewer's cloud slider).
-  function rebuild(seed, biomeKey = 'lush', ringMode = 'thin', cover = null) {
-    const key = `${seed}|${biomeKey}|${ringMode}|${cover}`;
+  // ringGeo: { inner, width } (RING); defaults to the ringMode preset.
+  function rebuild(seed, biomeKey = 'lush', ringMode = 'thin', cover = null, ringGeo = RING_PRESETS[ringMode]) {
+    const key = `${seed}|${biomeKey}|${ringMode}|${cover}|${ringGeo?.inner}|${ringGeo?.width}`;
     if (key === built) return;
     built = key;
     const biome = BIOMES[biomeKey];
@@ -1039,11 +1059,12 @@ function makePlanet() {
     // clusters, plus sparse 1 px dust. One sector is generated and repeated
     // RING_SECTORS times, so flowing it 1/RING_SECTORS of a turn per loop is seamless.
     // Colour mix: mauve-grey > the planet's own colour > taupe specks.
-    ring.visible = ringMode !== 'off';
+    ring.visible = ringMode !== 'off' && !!ringGeo;
+    moonReach = ring.visible ? Math.max(1, ringGeo.inner / RING_PRESETS.thin.inner) : 1;
     const pts = [];
     const shade = [];
     const type = [];
-    const bands = ringMode === 'wide' ? [[1.66, 0.12, 22], [2.12, 0.14, 18]] : [[1.8, 0.11, 15]];
+    const bands = ring.visible ? ringLanes(ringGeo) : [];
     const sector = (Math.PI * 2) / RING_SECTORS;
     const pick = () => { const v = rnd(); return v < 0.5 ? 1 : v < 0.8 ? 2 : 3; };
     const one = [];
@@ -1091,7 +1112,8 @@ function makePlanet() {
     ring.rotation.y = -turn / RING_SECTORS; // debris flow: one sector per surface turn
     for (const m of MOONS) {
       const a = turn + m.offset * Math.PI * 2; // one orbit per surface turn; no easing
-      const p = new THREE.Vector3(Math.cos(a) * m.orbit, -Math.sin(a) * m.orbit * Math.sin(m.incl), Math.sin(a) * m.orbit * Math.cos(m.incl));
+      const orbit = m.orbit * moonReach;
+      const p = new THREE.Vector3(Math.cos(a) * orbit, -Math.sin(a) * orbit * Math.sin(m.incl), Math.sin(a) * orbit * Math.cos(m.incl));
       m.mesh.position.copy(p.applyAxisAngle(up, m.yaw));
     }
     group.updateMatrixWorld(true);
@@ -1472,7 +1494,7 @@ const SYSTEM = [
   { biome: 'toxic', seed: 13, size: 1.1, ring: 'off', pos: [13, 1.2, -36] },
 ].map((cfg) => {
   const p = makePlanet();
-  p.rebuild(cfg.seed, cfg.biome, cfg.ring);
+  p.rebuild(cfg.seed, cfg.biome, cfg.ring); // ring geometry: the preset of cfg.ring
   p.group.position.set(...cfg.pos);
   p.group.scale.setScalar(cfg.size);
   scene.add(p.group);
@@ -1492,6 +1514,7 @@ const VIEWS = {
 // ---------------------------------------------------------------- state
 const state = {
   view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
+  ringInner: RING_PRESETS.thin.inner, ringWidth: RING_PRESETS.thin.width, // ring geometry (RING); the ring control sets a preset
   time: null, ui: true, palette: 'final', eyes: 'auto', period: 24, surfaceTurns: 2, cloudTurns: 3, moons: true, halo: false, cloudShadow: true,
   depthMode: 'pixel-smooth', // DEPTH_MODES (the human's pick)
   depthBands: '3-band', // DEPTH_BANDS (per-pixel modes)
@@ -1527,6 +1550,12 @@ function resize() {
 }
 
 let lastPixelDepth = null;
+// The ring control picks a preset: it resets the width and distance sliders to that preset.
+function ringPreset() {
+  const pre = RING_PRESETS[state.ringMode];
+  if (pre) Object.assign(state, { ringInner: pre.inner, ringWidth: pre.width });
+}
+
 function applyState() {
   LOOP.period = Math.max(1, state.period);
   LOOP.surfaceTurns = Math.max(1, Math.round(state.surfaceTurns));
@@ -1537,7 +1566,7 @@ function applyState() {
   SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   controls.minDistance = minOrbit();
   planets.forEach((p) => {
-    p.rebuild(state.seed, state.biome, state.ringMode, state.cover);
+    p.rebuild(state.seed, state.biome, state.ringMode, state.cover, { inner: state.ringInner, width: state.ringWidth });
     p.group.scale.setScalar(state.size);
   });
   // Which objects a view shows: showcase (hero + depth copies + crew), solo planet, or the system.
@@ -1577,6 +1606,11 @@ function applyState() {
     a.setFace(state.eyes === 'auto' ? eyesFor(HANDLES[a.userData.color ?? state.color]) : +state.eyes);
   }
   document.getElementById('ui').hidden = !state.ui;
+  for (const [id, key] of [['ring-width', 'ringWidth'], ['ring-inner', 'ringInner']]) {
+    document.getElementById(id).value = Math.round(state[key] * 100);
+    document.getElementById(id).disabled = state.ringMode === 'off';
+    document.getElementById(`${id}-readout`).textContent = state[key].toFixed(2);
+  }
   const weather = WEATHER[BIOMES[state.biome].weather];
   const cov = document.getElementById('cover');
   cov.disabled = !weather;
@@ -1612,7 +1646,12 @@ function bindUi() {
   for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => { state.view = b.dataset.view; applyView(state.view); applyState(); });
   $('seed').addEventListener('input', (e) => { state.seed = +e.target.value; $('seed-readout').textContent = state.seed; applyState(); });
   $('reseed').addEventListener('click', () => { state.seed = 1 + Math.floor(Math.random() * 999); $('seed').value = state.seed; $('seed-readout').textContent = state.seed; applyState(); });
-  $('ring').addEventListener('change', (e) => { state.ringMode = e.target.value; applyState(); });
+  $('ring').addEventListener('change', (e) => { state.ringMode = e.target.value; ringPreset(); applyState(); });
+  for (const [id, key] of [['ring-width', 'ringWidth'], ['ring-inner', 'ringInner']]) {
+    const [lo, hi] = RING[key === 'ringWidth' ? 'width' : 'inner'];
+    Object.assign($(id), { min: lo * 100, max: hi * 100, value: state[key] * 100 });
+    $(id).addEventListener('input', (e) => { state[key] = +e.target.value / 100; applyState(); });
+  }
   for (const [key, b] of Object.entries(BIOMES)) $('biome').add(new Option(b.label, key));
   $('biome').addEventListener('change', (e) => { state.biome = e.target.value; state.cover = null; applyState(); });
   $('cover').addEventListener('input', (e) => { state.cover = +e.target.value / 100; applyState(); });
@@ -1661,6 +1700,7 @@ window.viewer = {
   ready: true,
   set(opts) {
     Object.assign(state, opts);
+    if (opts.ringMode && opts.ringInner === undefined && opts.ringWidth === undefined) ringPreset(); // a ring mode alone means its preset
     if (opts.view) applyView(opts.view);
     if (opts.camera) {
       camera.position.set(...opts.camera.pos);
