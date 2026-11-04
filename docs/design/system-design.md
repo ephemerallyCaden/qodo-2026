@@ -179,7 +179,7 @@ Commit subjects are git data the user already has, so they're allowed. The R12 p
 ## 5. Algorithms
 
 Determinism applies throughout:
-- Git always runs with `LC_ALL=C`, `-c core.quotepath=off -c diff.renameLimit=4000 -c log.showSignature=false --no-ext-diff --no-textconv --no-color --use-mailmap -z`. Results never depend on user diff config.
+- Git always runs with `LC_ALL=C`, `-c core.quotepath=off -c diff.renameLimit=4000 -c log.showSignature=false -c log.showRoot=true -c diff.submodule=short --no-ext-diff --no-textconv --no-color --use-mailmap -z` (the full pin list is `CONFIG` in `src/scan/git.ts`). Results never depend on user diff config.
 - Sorting is by codepoint (`localeCompare` is lint-banned).
 - `canonicalJson` sorts keys and rejects non-integer numbers.
 
@@ -202,16 +202,25 @@ Determinism applies throughout:
    - Bot authors match `[bot]` or noreply bot patterns.
    - Commits touching more than 200 files are kept, but get `bulk` evidence and are excluded from co-change.
 8. **File cap.** Rank files by `(lastTouchedSeq desc, path asc)`. The top 5,000 are in. The rest get `overflow: true` and render as the asteroid belt.
-9. **People.** `PersonId = 'p_' + sha256(lowercased mailmapped email)[:12]`. Self is `git config user.email` plus `config.json selfEmails`.
+9. **People.** `PersonId = 'p_' + sha256(lowercased mailmapped email)[:12]`. Self is `git config user.email` plus `config.json selfEmails`, canonicalised with `git check-mailmap "<user.name> <user.email>"` (the name matters for entries that match on name and email) and lowercased, so it compares equal to mailmapped commit authors. One comparison feeds matching, `people[].isSelf` and `selfPersonIds` (Issue #5 case 5).
 
 ### 5.2 Attribution matcher
 1. **Discovery.**
    - Enumerate `~/.claude/projects/*/*.jsonl`, `*/subagents/agent-*.jsonl` **and `*/subagents/workflows/*/agent-*.jsonl`** (workflow subagents; found in the Day 1 build).
    - Before every read: refuse symlinks (`lstat`) and re-check the realpath against the deny list (Qodo PR #3 finding #2).
-   - Read only the first line's allowlisted `cwd` field. If that `cwd` still exists, resolve `git -C cwd rev-parse --git-common-dir` and compare it to ours.
-   - If the `cwd` is gone (a deleted worktree), match by prefix against our worktree paths from `git worktree list` plus the repo root.
+   - Read the first allowlisted record carrying `cwd`, past the first line if needed. The head read is bounded by the 200 MiB file cap and skips lines over the 4 MiB line cap. The span starts at the first timestamped record.
+   - If that `cwd` still exists, resolve it with `realpath.native` (which also gives the on-disk case and resolves `/var` to `/private/var`). It's ours when its checkout is one of our worktrees, also compared by native realpath, or when `git -C cwd rev-parse --git-common-dir` resolves to our common dir.
+   - If the `cwd` is gone (a deleted worktree), match by prefix against our worktree paths from `git worktree list` plus the repo root. A gone `cwd` outside them counts as another repo's.
+   - **Unattributed:** a transcript with no `cwd` in any record, or whose `cwd` can't be resolved (relative, realpath failure, or a git failure inside our tree), could belong to any repo. Its span, from its first and last timestamps, becomes a blind span and is counted in the summary.
    - Store the match method, never the `cwd`.
-2. **Parse with the allowlist (§6).** Read `Edit`/`Write` `toolUseResult.structuredPatch`, `toolUseResult.content` (Write `create` only, hashed immediately and never stored), `bashEditDiff`, and `git commit` result SHAs (giving `agent_ran_commit` evidence). Paths are made repo-relative, and anything outside the repo is dropped.
+2. **Parse with the allowlist (§6).** Read `Edit`/`Write` `toolUseResult.structuredPatch`, `toolUseResult.content` (Write `create` only, hashed immediately and never stored), `bashEditDiff`, and `git commit` result SHAs (giving `agent_ran_commit` evidence).
+   - Edit paths under the session's `cwd` are mapped onto `realpath.native(cwd)`, then made repo-relative. Anything outside the repo is dropped.
+   - **Partial transcripts.** Some drops lose a record that could hold or time an edit. Each one adds the transcript's span to the *partial* set and is counted in the summary:
+     - a line over the 4 MiB cap (an Edit of any file over ~2 MB, because `originalFile` comes along);
+     - a malformed line;
+     - an edit or commit result missing `sessionId`, `uuid` or `timestamp`;
+     - an edit path under the `cwd` that still doesn't relativise (`.git/` internals excepted).
+   - Denylisted records and edits outside the `cwd` and the repo are dropped deliberately and don't count.
 3. **Normalise and hash.** Trim, collapse whitespace runs to one space, and skip lines under 8 characters or made only of brackets and punctuation. The hash is `HMAC-SHA256(key, line)[:16]`. The key is `.git/commet/key`: 32 random bytes made once by `src/state/key.ts`, the only randomness permitted, and it's an *input*. Tests inject a fixed key.
 4. **Cache.** Events are appended to `events.jsonl` and deduplicated by `eventId`. The scan reads the cache, never the raw logs, so log expiry doesn't change past snapshots.
 5. **Match.**
@@ -219,19 +228,22 @@ Determinism applies throughout:
    - For each added line on file F in commit C, the candidates are events on F's lineage paths whose ts is ≤ `C.committerDate + 1 s`. Event ts is the tool-call record's time, not the result's. **There is no lower bound:** with parallel worktrees and fast-forward integration, the previous commit to F is often authored after C's edits. *(As built on Day 1; Qodo PR #3 #1 removed the author-date fallback.)*
    - **Last writer wins:** the owner is the max ts, with ties broken by `eventId` ascending.
 6. **Line class (v1):** `verbatim` or `unmatched`. **Deferred:** `agent-modified`, through a keyed 64-bit SimHash per line (`addedSimhash?` is reserved in the schema), behind its own property test.
-7. **Commit class.**
+7. **Commit class.** One pure function, `classify()` in `src/core/classify.ts`, decides it from `counted`, `shareMilli`, `matched`, `ranCommit`, `isMerge`, `isSelf`, `covered` and `partial`. It has an exhaustive decision-table test and a property test. The first matching row wins:
 
    | Condition | Class | Tier |
    |---|---|---|
-   | git-ai note or hook event | `agent` or `mixed` (by share) | very_high |
-   | Trailer or bot author | `agent` | high |
+   | git-ai note or hook event *(T3, not built yet)* | `agent` or `mixed` (by share) | very_high |
+   | Trailer or bot author *(T3, not built yet)* | `agent` | high |
+   | Merge commit (two or more parents, from `%P`) | `unknown`: merged-in lines must never clear fog | none |
+   | No countable added lines | `unknown` | none |
    | Share ≥ 900‰ | `agent` | high |
    | Share 300–899‰ | `mixed` | high |
-   | Share under 300‰, author is self, inside coverage | `human` (share > 0 means "with traces") | high |
-   | Author is not self, no trailer, bot or note | `unknown` (R6) | none |
-   | Outside coverage | `unknown`, never `human` | none |
+   | Share under 300‰, author is self, `covered`, not `partial`, and no session's `git commit` output named it | `human` (any matched line means "with traces") | high |
+   | Share under 300‰, anything else: not self (R6), outside coverage, in a blind or partial span, or `agent_ran_commit` | `unknown`, never `human` | none |
 
-   **Coverage** is the union of per-transcript spans `[first record, last record] ± 5 min`. Transcripts that are oversized or unreadable become *blind spans*. A commit can be `human` only if its committer time is inside coverage and inside no blind span. Matched lines count as agent evidence wherever they fall (Qodo PR #3 #6). A commit inside coverage with zero countable lines is `unknown`.
+   An agent-run commit with share 0 (the agent wrote it with a heredoc, `sed -i` or codegen, then ran `git commit`) is `unknown` and keeps its `agent_ran_commit` evidence and session. The UI can show it as "committed by an agent session; authorship unverified" (Issue #5). **Residual risk, accepted:** an agent heredoc that a human later commits leaves no allowlisted signal, so it can still be `human`.
+
+   **Coverage** is the union of per-transcript spans `[first record, last record] ± 5 min`, over the transcripts that were read. *Blind spans* come from transcripts that are oversized, unreadable or unattributed. *Partial spans* come from transcripts that dropped a record (item 2). A commit is `covered` when its committer time is inside coverage and inside no blind span; it can be `human` only if it's also inside no partial span. Matched lines count as agent evidence wherever they fall (Qodo PR #3 #6), so a share of 300‰ or more is `agent` or `mixed` even outside coverage. The scan summary prints the dropped-record and unattributed counts, with "never classed human", only when they're above zero.
 
    `selfCommittedAgentWritten = author ∈ self && class ∈ {agent, mixed}`.
 8. Heuristics ("possibly agent", low tier) aren't in v1.
@@ -285,7 +297,7 @@ Determinism applies throughout:
    - After parsing, a typed extractor copies only these explicit paths: `type, sessionId, timestamp, cwd (first line, in-memory only), gitBranch, version, isSidechain, agentId, uuid, toolUseResult.{type, filePath, structuredPatch[].{oldStart,oldLines,newStart,newLines,lines}}, toolUseResult.bashEditDiff.files[].{filePath,hunks}`, the commit SHA regex on Bash results, and `message.model`.
    - `lines` are hashed immediately and the strings are discarded.
    - It never walks keys and never touches `originalFile`.
-   - Line length is capped at 4 MB and file size at 200 MB. Malformed lines are counted and skipped.
+   - Line length is capped at 4 MB and file size at 200 MB. Over-cap and malformed lines that could hold an edit are counted, skipped, and make their transcript's span partial (§5.2.2).
    - `history.jsonl` and `file-history/` are never opened. A path denylist is asserted in tests.
 2. **Read-only SQLite** (Cursor and Kiro, later): open with `file:…?mode=ro&immutable=1` through a wrapper that is the only SQLite import. Queries are named constants, and there's no `SELECT *`.
 3. **Lint rules** (`eslint.config.js`), applied in `src/{core,scan,attrib}` and `web/src/{scene,renderer,frame}`:
