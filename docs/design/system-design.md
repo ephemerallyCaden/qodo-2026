@@ -213,14 +213,16 @@ Determinism applies throughout:
    - If the `cwd` is gone (a deleted worktree), match by prefix against our worktree paths from `git worktree list` plus the repo root. A gone `cwd` outside them counts as another repo's.
    - **Unattributed:** a transcript with no `cwd` in any record, or whose `cwd` can't be resolved (relative, realpath failure, or a git failure inside our tree), could belong to any repo. Its span, from its first and last timestamps, becomes a blind span and is counted in the summary.
    - Store the match method, never the `cwd`.
-2. **Parse with the allowlist (§6).** Read `Edit`/`Write` `toolUseResult.structuredPatch`, `toolUseResult.content` (Write `create` only, hashed immediately and never stored), `bashEditDiff`, and `git commit` result SHAs (giving `agent_ran_commit` evidence).
-   - Edit paths under the session's `cwd` are mapped onto `realpath.native(cwd)`, then made repo-relative. Anything outside the repo is dropped.
-   - **Partial transcripts.** Some drops lose a record that could hold or time an edit. Each one adds the transcript's span to the *partial* set and is counted in the summary:
+2. **Parse with the allowlist (§6).** Read `Edit`/`Write` `toolUseResult.structuredPatch`, `toolUseResult.content` (Write `create` only, hashed immediately and never stored), `bashEditDiff`, and `git commit` result SHAs (giving `agent_ran_commit` evidence with detail `git_commit_output`).
+   - **Git commands (Qodo PR #6 #2).** `git commit -q`, or a command whose output is discarded, prints no SHA. So each Bash call's `input.command` is tested against one regex: `git` (after any `-C <dir>`, `-c k=v` or `--option`) followed by `commit`, `merge`, `cherry-pick`, `revert`, `am`, `pull` or `rebase`. It matches anywhere in a `&&`/`;`/pipe chain or a `bash -c` string. The command text is **only tested**: it is never stored, hashed, logged or output, and a privacy canary in a command guards this. A match marks every commit whose committer time falls in [call − 1 s, result + 1 s] as agent-run. A call with no logged result runs until the file's mtime. The evidence is `agent_ran_commit` with detail `git_command`, used only when no output SHA linked the commit; the session is linked with 0 lines. The regex is over-broad on purpose (`echo git commit` matches), since it can only rule out `human`. Any commit in the window counts, wherever the command pointed (`-C`, `cd`), because transcripts are already this repo's.
+   - **Path mapping.** Edit paths are mapped onto real paths before being made repo-relative: under the session's `cwd`, onto `realpath.native(cwd)`; above it, onto the real root through the logical root alias. The alias is the logical `cwd` minus the `cwd`'s real repo-relative subpath, compared case-insensitively. So `/link/repo/README.md` lands from a `/link/repo/sub` session.
+   - **Partial transcripts.** Some drops lose a record that could hold or time an edit. Each one is counted once per record and makes the transcript *partial*:
      - a line over the 4 MiB cap (an Edit of any file over ~2 MB, because `originalFile` comes along);
      - a malformed line;
-     - an edit or commit result missing `sessionId`, `uuid` or `timestamp`;
-     - an edit path under the `cwd` that still doesn't relativise (`.git/` internals excepted).
-   - Denylisted records and edits outside the `cwd` and the repo are dropped deliberately and don't count.
+     - an edit or commit result missing `sessionId`, `uuid` or `timestamp`, or an edit-capable call (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `Bash`) missing `uuid` or `timestamp`, which can't be linked to or timed against its result;
+     - an edit path that is relative, or absolute and inside any of the repo's paths (logical or real `cwd`, root alias, any worktree root), but still doesn't relativise. Checkout `.git/` internals are exempt.
+   - The partial span is the transcript span joined with the span from the nearest datable record before the first drop to the nearest one after the last. Past either end, the file's birth time bounds it below (the epoch if the birth time is missing or later than the first record), and its mtime bounds it above.
+   - Denylisted records, and edits outside every repo path (another repo, a home dotfile), are dropped deliberately and don't count.
 3. **Normalise and hash.** Trim, collapse whitespace runs to one space, and skip lines under 8 characters or made only of brackets and punctuation. The hash is `HMAC-SHA256(key, line)[:16]`. The key is `.git/commet/key`: 32 random bytes made once by `src/state/key.ts`, the only randomness permitted, and it's an *input*. Tests inject a fixed key.
 4. **Cache.** Events are appended to `events.jsonl` and deduplicated by `eventId`. The scan reads the cache, never the raw logs, so log expiry doesn't change past snapshots.
 5. **Match.**
@@ -238,7 +240,7 @@ Determinism applies throughout:
    | No countable added lines | `unknown` | none |
    | Share ≥ 900‰ | `agent` | high |
    | Share 300–899‰ | `mixed` | high |
-   | Share under 300‰, author is self, `covered`, not `partial`, and no session's `git commit` output named it | `human` (any matched line means "with traces") | high |
+   | Share under 300‰, author is self, `covered`, not `partial`, and no session ran it (no output SHA, no git command window) | `human` (any matched line means "with traces") | high |
    | Share under 300‰, anything else: not self (R6), outside coverage, in a blind or partial span, or `agent_ran_commit` | `unknown`, never `human` | none |
 
    An agent-run commit with share 0 (the agent wrote it with a heredoc, `sed -i` or codegen, then ran `git commit`) is `unknown` and keeps its `agent_ran_commit` evidence and session. The UI can show it as "committed by an agent session; authorship unverified" (Issue #5). **Residual risk, accepted:** an agent heredoc that a human later commits leaves no allowlisted signal, so it can still be `human`.
@@ -294,7 +296,8 @@ Determinism applies throughout:
 
 1. **Allowlist parser** (`src/attrib/parsers/claude.ts`).
    - Before `JSON.parse` of a line, a cheap prefix scan drops records whose `type` is `last-prompt`, `attachment` or `api-request*`.
-   - After parsing, a typed extractor copies only these explicit paths: `type, sessionId, timestamp, cwd (first line, in-memory only), gitBranch, version, isSidechain, agentId, uuid, toolUseResult.{type, filePath, structuredPatch[].{oldStart,oldLines,newStart,newLines,lines}}, toolUseResult.bashEditDiff.files[].{filePath,hunks}`, the commit SHA regex on Bash results, and `message.model`.
+   - After parsing, a typed extractor copies only these explicit paths: `type, sessionId, timestamp, cwd (first line, in-memory only), gitBranch, version, isSidechain, agentId, uuid, toolUseResult.{type, filePath, structuredPatch[].{oldStart,oldLines,newStart,newLines,lines}}, toolUseResult.bashEditDiff.files[].{filePath,hunks}`, the commit SHA regex on Bash results, `message.content[].{type,name}`, and `message.model`.
+   - `message.content[].input.command` of a Bash call is the one exception: it is tested against the git-commit regex (§5.2.2) and never stored, hashed, logged or output.
    - `lines` are hashed immediately and the strings are discarded.
    - It never walks keys and never touches `originalFile`.
    - Line length is capped at 4 MB and file size at 200 MB. Over-cap and malformed lines that could hold an edit are counted, skipped, and make their transcript's span partial (§5.2.2).
