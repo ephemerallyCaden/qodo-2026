@@ -199,6 +199,13 @@ function toolUses(r: Obj): Obj[] {
   return Array.isArray(content) ? content.filter((c): c is Obj => isObj(c) && c['type'] === 'tool_use') : [];
 }
 
+/** `tool_result.tool_use_id`s of a user record (`message.content[]`): which tool uses it answers. */
+function toolResultIds(r: Obj): string[] {
+  const content = isObj(r['message']) ? r['message']['content'] : undefined;
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((c) => (isObj(c) && c['type'] === 'tool_result' && typeof c['tool_use_id'] === 'string' ? [c['tool_use_id']] : []));
+}
+
 /** A Bash call whose command may create a commit. `input.command` is only tested, never kept (design §6). */
 function isGitCommitCall(use: Obj): boolean {
   const input = use['input'];
@@ -495,8 +502,12 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     const fileKeys = new Set<SessionKey>();
     // A result is logged when its tool call finishes, possibly after a `git commit` it ran, so
     // edits are timed by when the call was issued (its assistant record), falling back to the result.
+    // Calls are keyed by `tool_use.id` (`use:`), matched to the result's `tool_result.tool_use_id`,
+    // since one record can hold parallel tool uses whose results arrive in any order and may link
+    // to a sibling result rather than the record (Qodo PR6 #7). Results without an id fall back to
+    // the record's uuid (`rec:`).
     const issuedAt = new Map<string, number>();
-    // Calls whose git command may commit, by uuid, until their result arrives (Qodo PR6 #2).
+    // Calls whose git command may commit, until their own result arrives (Qodo PR6 #2, #7).
     const gitCalls = new Map<string, { at: number; sid: string; agentId: string | undefined; r: Obj }>();
     const touch = (sid: string, agentId: string | undefined, ts: number, r: Obj): SessionMeta => {
       const key = sessionKey(TOOL, sid, agentId);
@@ -559,11 +570,15 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
           if (uses.some((u) => EDIT_TOOLS.has(str(u['name']) ?? ''))) drop(li);
           continue;
         }
-        issuedAt.set(uuid, resultTs);
-        // `git commit -q`, or discarded output, names no SHA, so the call's window marks the
-        // commits instead (Qodo PR6 #2). The command is tested, never kept.
-        if (uses.some(isGitCommitCall)) {
-          if (sid) gitCalls.set(uuid, { at: resultTs, sid, agentId: meta ? (token(r['agentId']) ?? fileAgentId) : undefined, r });
+        issuedAt.set(`rec:${uuid}`, resultTs);
+        const agentId = meta ? (token(r['agentId']) ?? fileAgentId) : undefined;
+        for (const u of uses) {
+          const id = str(u['id']);
+          if (id) issuedAt.set(`use:${id}`, resultTs);
+          // `git commit -q`, or discarded output, names no SHA, so the call's window marks the
+          // commits instead (Qodo PR6 #2). The command is tested, never kept.
+          if (!isGitCommitCall(u)) continue;
+          if (sid) gitCalls.set(id ? `use:${id}` : `rec:${uuid}`, { at: resultTs, sid, agentId, r });
           else drop(li);
         }
         continue;
@@ -572,7 +587,10 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       const sid = str(r['sessionId']);
       if (r['type'] !== 'user' || !isObj(res)) continue;
       const callId = str(r['sourceToolAssistantUUID']) ?? str(r['parentUuid']);
-      const gitCall = callId === undefined ? undefined : gitCalls.get(callId);
+      const useIds = toolResultIds(r);
+      const callKeys = useIds.length > 0 ? useIds.map((id) => `use:${id}`) : callId ? [`rec:${callId}`] : [];
+      const gitKey = callKeys.find((k) => gitCalls.has(k));
+      const gitCall = gitKey === undefined ? undefined : gitCalls.get(gitKey);
       const edits = editsOf(res);
       const shas = commitShasOf(res);
       if (edits.length === 0 && shas.length === 0 && !gitCall) continue;
@@ -580,12 +598,13 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
         drop(li);
         continue;
       }
-      const ts = Math.min(resultTs, (callId && issuedAt.get(callId)) || resultTs);
+      const issued = [...callKeys, ...(callId ? [`rec:${callId}`] : [])].map((k) => issuedAt.get(k)).find((v) => v !== undefined);
+      const ts = Math.min(resultTs, issued ?? resultTs);
       const agentId = meta ? (token(r['agentId']) ?? fileAgentId) : undefined;
       const s = touch(sid, agentId, ts, r);
       const key = s.key;
       if (gitCall) {
-        gitCalls.delete(callId!);
+        gitCalls.delete(gitKey!);
         out.ranWindows.push({ sessionKey: key, from: gitCall.at - COMMAND_SLACK_MS, to: resultTs + COMMAND_SLACK_MS });
       }
       for (const sha of shas) out.ranCommits.push({ sessionKey: key, sha });

@@ -46,6 +46,13 @@ export function session(sessionId: string, cwd: string) {
     result: (uuid: string, parent: string | undefined, timestamp: string, toolUseResult: object) => ({ ...base, type: 'user', uuid,
       parentUuid: parent, sourceToolAssistantUUID: parent, timestamp, toolUseResult,
       message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t-${parent}`, content: 'ok' }] } }),
+    /** One assistant record with several parallel tool uses, each with its own `id`. */
+    calls: (uuid: string, timestamp: string, uses: { id: string; name: string; input: object }[]) => ({ ...base, type: 'assistant', uuid, timestamp,
+      message: { role: 'assistant', model: 'claude-opus-4-1', content: uses.map((u) => ({ type: 'tool_use', ...u })) } }),
+    /** The result of tool use `useId`, linked to its record by `source` and/or `parent`. */
+    resultFor: (uuid: string, useId: string, links: { source?: string; parent?: string }, timestamp: string, toolUseResult: object) => ({ ...base,
+      type: 'user', uuid, parentUuid: links.parent, sourceToolAssistantUUID: links.source, timestamp, toolUseResult,
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: useId, content: 'ok' }] } }),
   };
 }
 

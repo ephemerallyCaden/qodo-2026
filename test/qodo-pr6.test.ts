@@ -175,3 +175,33 @@ describe('Qodo PR6 #2: an agent git command marks the commits made while it ran'
     expect(withCase.attr('target')).toMatchObject({ class: 'unknown', evidence: [{ kind: 'agent_ran_commit', detail: 'git_command' }] });
   });
 });
+
+describe('Qodo PR6 #7: parallel tool uses in one assistant record', () => {
+  it('an Edit result arriving first does not close a parallel quiet git commit\'s window', async () => {
+    const { control, withCase } = await controlAndCase((dir, trigger) => {
+      const s = session(SID, dir);
+      return { [SID]: [s.user('u1', at('09:00:00')),
+        s.calls('a2', at('09:59:50'), [{ id: 'e1', name: 'Edit', input: { file_path: join(dir, 'docs/scratch.md') } },
+          { id: 'g1', name: 'Bash', input: { command: trigger ? 'git commit -q -m "feat: reviewed"' : 'ls -la' } }]),
+        s.resultFor('u3', 'e1', { source: 'a2' }, at('09:59:55'), createResult(join(dir, 'docs/scratch.md'), ['A scratch note the agent wrote.'])),
+        s.resultFor('u4', 'g1', { source: 'a2' }, at('10:00:02'), { stdout: '', stderr: '', interrupted: false }),
+        s.user('u5', at('10:30:00'))] };
+    });
+    expect(control.attr('target')).toMatchObject({ class: 'human' });
+    expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none', evidence: [{ kind: 'agent_ran_commit', detail: 'git_command' }] });
+  });
+
+  it('an edit result linked only through a sibling result (parentUuid) is timed by its own tool use', async () => {
+    // The Write's result is logged after the commit; only the call's time puts the edit before it.
+    const { control, withCase } = await controlAndCase((dir, trigger) => {
+      const s = session(SID, dir);
+      return { [SID]: [s.user('u1', at('09:00:00')),
+        s.calls('a2', at('09:59:50'), [{ id: 'w1', name: 'Write', input: { file_path: join(dir, PATH) } }, { id: 'b1', name: 'Bash', input: { command: 'ls' } }]),
+        s.resultFor('u3', 'b1', { source: 'a2' }, at('09:59:52'), { stdout: '', stderr: '', interrupted: false }),
+        s.resultFor('u4', 'w1', trigger ? { parent: 'u3' } : { source: 'a2' }, at('10:00:05'), createResult(join(dir, PATH), LINES)),
+        s.user('u5', at('10:30:00'))] };
+    });
+    expect(control.attr('target')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+    expect(withCase.attr('target')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+  });
+});
