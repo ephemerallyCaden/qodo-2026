@@ -2,7 +2,7 @@ import { readFileSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { beforeAll, expect, it } from 'vitest';
-import { DENIED_PATH, discoverClaude, metaToken, parseClaude } from '../src/attrib/parsers/claude.js';
+import { DENIED_PATH, discoverClaude, metaToken, parseClaude, redactPaths } from '../src/attrib/parsers/claude.js';
 import type { SnapshotV01 } from '../src/core/snapshot/types.js';
 import { formatSummary } from '../src/core/summary.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
@@ -95,4 +95,15 @@ it('commit subjects carrying private paths are redacted in the snapshot and the 
   const redacted = 'fix: copy <path> and <path> (from <path>, <path>)';
   expect((JSON.parse(snapshot) as SnapshotV01).commits[0]!.subject).toBe(redacted);
   expect(r.out).toContain(redacted.slice(0, 40));
+});
+
+it('absolute, ~, drive-letter and UNC paths are redacted anywhere inside a subject word (Qodo PR10 #7)', () => {
+  const cases: [string, string][] = [
+    ['build --prefix=/home/alice/app', 'build --prefix=<path>'], ['see path:/Users/bob/x.', 'see path:<path>.'],
+    ['read file=/etc/secret', 'read file=<path>'], ['dir=C:\\Users\\carol\\x', 'dir=<path>'], ['share=\\\\host\\s\\x', 'share=<path>'],
+    ['cfg=~/notes', 'cfg=<path>'], ['(see:/opt/dave/x)', '(see:<path>)'], ['a,/srv/erin/y', 'a,<path>'],
+  ];
+  for (const [subject, want] of cases) expect(redactPaths(subject), subject).toBe(want);
+  // Plain relative paths, ratios and times are not paths.
+  for (const keep of ['fix src/x.ts and lib/y', 'and/or', 'at 12:30', 'a:b/c', 'v1.2/3']) expect(redactPaths(keep), keep).toBe(keep);
 });
