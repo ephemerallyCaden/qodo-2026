@@ -9,7 +9,7 @@ import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
 import { mapPalette, mapColors, snapToPool } from './palette-map.js';
 import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH, ACCENTS } from './planet-ramps.js';
 import { tangentFrame } from './cloud-frame.js';
-import { voronoiEdge, crackMask } from './snoise.js';
+import { voronoiCells, poolField, crackMask } from './snoise.js';
 import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors, artefactCount } from './artefacts.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
@@ -329,9 +329,24 @@ const CLOUD_FRAG = /* glsl */ `
   }
 `;
 
-// Cell hash, Voronoi edge distance and the crack mask, shared by the planet shader and the CPU
-// port (snoise.js voronoiEdge / crackMask) that places lava ash on the fissures.
-const CRACKS = { lava: { freq: 3.2, cut: 0.25 }, ice: { freq: 3.8, cut: 0.32 } };
+// Cell hash, Voronoi cells, the crack mask and the pool field, shared by the planet shader and
+// the CPU port (snoise.js voronoiCells / crackMask / poolField) that sets each planet's pool cut
+// and places lava ash on the fissures and pool shores.
+// pool: which whole plates are open (lava pools, ice water). scale = the cluster field's
+// frequency in cells (lower = bigger lakes and seas); share = the open share of the whole
+// sphere, held per seed by a quantile (poolCut), like cloud cover.
+const CRACKS = { lava: { freq: 3.2, cut: 0.25, pool: { scale: 0.3, share: 0.3 } }, ice: { freq: 3.8, cut: 0.23, pool: { scale: 0.35, share: 0.27 } } };
+// The field cut that opens `share` of the sphere's area (Fibonacci samples through the CPU port).
+// off is the offset the shader passes for that biome's plates.
+function poolCut({ freq, pool }, off) {
+  const N = 3000, vals = [];
+  for (let i = 0; i < N; i++) {
+    const y = 1 - ((i + 0.5) / N) * 2, r = Math.sqrt(1 - y * y), lon = i * 2.39996;
+    const { own } = voronoiCells(Math.cos(lon) * r * freq + off.x, y * freq + off.y, Math.sin(lon) * r * freq + off.z);
+    vals.push(poolField(...own, off.x, off.y, off.z, pool.scale));
+  }
+  return vals.sort((a, b) => b - a)[Math.round(pool.share * N)];
+}
 const WORLEY_GLSL = /* glsl */ `
   vec3 hash33(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
   // Integer cell hash (pcg3d), bit-exact on the CPU, unlike the float hash33 (whose large
@@ -346,8 +361,9 @@ const WORLEY_GLSL = /* glsl */ `
   vec3 cellHash(vec3 c) { return vec3(pcg3d(uvec3(ivec3(c) + 4096))) * (1.0 / 4294967296.0); }
   // Distance to the nearest Voronoi cell edge (the bisector plane between the nearest feature
   // and each neighbour; Quilez's two-pass method). Exact, so cracks have even width and
-  // sharp corners instead of blobs at the junctions.
-  float voronoiEdge(vec3 p) {
+  // sharp corners instead of blobs at the junctions. own = the nearest cell, across = the
+  // neighbour on the other side of that edge (integer cell coords).
+  float voronoiCells(vec3 p, out vec3 own, out vec3 across) {
     vec3 i = floor(p), f = fract(p);
     vec3 r1 = vec3(0.0), c1 = vec3(0.0);
     float d1 = 9.0;
@@ -358,17 +374,30 @@ const WORLEY_GLSL = /* glsl */ `
       if (dd < d1) { d1 = dd; r1 = r; c1 = g; }
     }
     float e = 9.0;
+    vec3 ga = c1;
     for (int z = -2; z <= 2; z++) for (int y = -2; y <= 2; y++) for (int x = -2; x <= 2; x++) {
       vec3 g = c1 + vec3(x, y, z);
       vec3 r = g + cellHash(i + g) - f;
       vec3 dr = r - r1;
-      if (dot(dr, dr) > 1e-5) e = min(e, dot(0.5 * (r1 + r), normalize(dr)));
+      if (dot(dr, dr) > 1e-5) {
+        float d = dot(0.5 * (r1 + r), normalize(dr));
+        if (d < e) { e = d; ga = g; }
+      }
     }
+    own = i + c1;
+    across = i + ga;
     return e;
   }
+  float voronoiEdge(vec3 p) { vec3 own, across; return voronoiCells(p, own, across); }
+  // Open plates (lava pools, ice water): whole Voronoi cells of the crack network where the crust
+  // or ice sheet has broken away. A low-frequency field over the cells clusters them into lakes
+  // and seas with straight, jagged shores; a per-cell jitter adds lone pools. cell = integer coords.
+  // A plate is open where poolField > the planet's cut (uPoolCut, a quantile set on the CPU).
+  float poolField(vec3 cell, vec3 off, float scale) { return snoise((cell + cellHash(cell)) * scale + off.zxy) + (cellHash(cell + 31.0).x - 0.5) * 0.5; } // at the feature point: off-lattice, so CPU and GPU never tie in snoise
   float crackMask(vec3 p, float freq, vec3 off) { return snoise(p * freq * 0.35 + off.yzx) * 0.5 + 0.5; }
   const float LAVA_CRACK_FREQ = ${CRACKS.lava.freq.toFixed(2)}, LAVA_CRACK_CUT = ${CRACKS.lava.cut.toFixed(2)};
   const float ICE_CRACK_FREQ = ${CRACKS.ice.freq.toFixed(2)}, ICE_CRACK_CUT = ${CRACKS.ice.cut.toFixed(2)};
+  const float LAVA_POOL_SCALE = ${CRACKS.lava.pool.scale.toFixed(3)}, ICE_POOL_SCALE = ${CRACKS.ice.pool.scale.toFixed(3)};
 `;
 
 // Biome surfaces (art-direction: biome = module health). All flat light bands from
@@ -388,6 +417,8 @@ const PLANET_FRAG = /* glsl */ `
   uniform mat4 modelMatrix;      // three sets these per program; the fragment stage reads them
   uniform mat4 projectionMatrix; // for the planet's screen size (cracks, artefacts)
   uniform vec2 uViewSize;        // drawing-buffer size in px
+  uniform float uPoolCut;        // open plates: poolField above this (lava pools, ice water)
+  uniform int uRegions;          // 1 = debug view: ground blue, crack red, open plates green (measurement)
   in vec3 vNormalW;
   in vec3 vLocal;
   in vec3 vPosW;
@@ -421,17 +452,17 @@ const PLANET_FRAG = /* glsl */ `
   // cracks branch and taper; below ~1 px a crack simply ends, so tips never break into dots.
   // Width is in SCREEN px (halfPx at the widest), so lines stay bold at any size; small
   // planets raise the mask cut instead, so they show fewer cracks rather than solid fissure.
-  // Returns half-width minus the pixel's distance to the edge, in px (> 0 inside), and in
-  // core how central the pixel is (0 centre .. 1 edge).
-  float crack(vec3 p, float freq, vec3 off, float cut, float halfPx, out float core) {
+  // plates() returns the px distance to the nearest cell edge, and the plates on either side of
+  // it; crackWidth() the crack's half-width there in px (0 where no crack shows). Inside a crack
+  // when dpx < w; core = dpx / w is how central the pixel is (0 centre .. 1 edge).
+  float plates(vec3 p, float freq, vec3 off, out vec3 own, out vec3 across) { return voronoiCells(p * freq + off, own, across) / (freq * gPx); }
+  float crackWidth(vec3 p, float freq, vec3 off, float cut, float halfPx) {
     float small = 1.0 - clamp((gRadiusPx - 18.0) / 50.0, 0.0, 1.0); // 1 for tiny planets, 0 from ~70 px radius
     float w = halfPx * smoothstep(cut + small * 0.35, cut + small * 0.35 + 0.25, crackMask(p, freq, off));
-    core = 1.0;
-    if (w < 0.55) return -1.0;
-    float dpx = voronoiEdge(p * freq + off) / (freq * gPx); // px to the cell edge
-    core = dpx / w;
-    return w - dpx;
+    return w < 0.55 ? 0.0 : w; // below ~1 px a crack ends
   }
+  // Region of the last surface() sample, for the regions debug view: 0 ground, 1 crack, 2 open (pool / water).
+  int gRegion = 0;
 
   // Craters: sparse cells get a dark floor and a bright rim.
   vec3 craters(vec3 p, vec3 c, int b, float scale, float density) {
@@ -447,6 +478,7 @@ const PLANET_FRAG = /* glsl */ `
   // The surface colour is a function so artefacts can resample it (cell centres, moshed terrain, flipped bands).
   vec3 surface(vec3 p, int b) {
     vec3 c;
+    gRegion = 0;
     if (uBiome == 0 || uBiome == 1 || uBiome == 7) {
       // lush / ocean / toxic: sea + land
       float h = fbm(p * 1.6 + uSeedOff) + (fbm(p * 4.1 + uSeedOff.zxy) - 0.5) * 0.22;
@@ -464,8 +496,18 @@ const PLANET_FRAG = /* glsl */ `
       float h = fbm(p * 2.3 + uSeedOff);
       float strata = sin((p.y * 5.0 + h * 2.4) * 3.14159);
       c = uA[min(b + 1 + (strata > 0.55 ? 1 : 0), 4)];
-      float core;
-      if (crack(p, ICE_CRACK_FREQ, uSeedOff.yzx, ICE_CRACK_CUT, 1.2, core) > 0.0) c = core < 0.5 ? uB[max(b - 1, 0)] : uB[min(b, 4)];
+      vec3 own, across;
+      float dpx = plates(p, ICE_CRACK_FREQ, uSeedOff.yzx, own, across);
+      if (poolField(own, uSeedOff.yzx, ICE_POOL_SCALE) > uPoolCut) {
+        // open dark-blue water between the sheets, with a paler submerged-ice fringe at the shore
+        gRegion = 2;
+        bool shore = poolField(across, uSeedOff.yzx, ICE_POOL_SCALE) <= uPoolCut && dpx < 1.5;
+        c = shore ? uC[min(b, 2)] : uC[max(min(b, 2) - 1, 0)]; // two dark steps; the lit fringe one up
+      } else {
+        float w = crackWidth(p, ICE_CRACK_FREQ, uSeedOff.yzx, ICE_CRACK_CUT, 1.2);
+        // no crack along a shore: the water's fringe marks that edge (a clipped half-crack is a 1 px sliver)
+        if (dpx < w && poolField(across, uSeedOff.yzx, ICE_POOL_SCALE) <= uPoolCut) { gRegion = 1; c = dpx < w * 0.5 ? uB[max(b - 1, 0)] : uB[min(b, 4)]; }
+      }
     } else if (uBiome == 3 || uBiome == 6) {
       // desert dunes / barren moon, both cratered
       float h = fbm(p * 2.0 + uSeedOff);
@@ -475,12 +517,24 @@ const PLANET_FRAG = /* glsl */ `
       c = craters(p, c, b, 2.4, uBiome == 6 ? 0.55 : 0.3);
       c = craters(p, c, b, 5.2, uBiome == 6 ? 0.45 : 0.2);
     } else if (uBiome == 4) {
-      // lava: dark crust, emissive fissures
+      // lava: dark crust, open molten pools and emissive fissures
       float h = fbm(p * 2.4 + uSeedOff);
       c = uA[min(b, 2) + (h > 0.58 ? 1 : 0)]; // crust stays in the darkest steps
-      // emissive jagged fissures: bright core, darker glowing edges
-      float core;
-      if (crack(p, LAVA_CRACK_FREQ, uSeedOff, LAVA_CRACK_CUT, 1.5, core) > 0.0) c = core < 0.4 ? uG[2] : core < 0.75 ? uG[1] : uG[0];
+      vec3 own, across;
+      float dpx = plates(p, LAVA_CRACK_FREQ, uSeedOff, own, across);
+      if (poolField(own, uSeedOff, LAVA_POOL_SCALE) > uPoolCut) {
+        // open molten pool where the crust broke away: orange, a cooler rim at the shore, and
+        // yellow only on the hottest cores, away from the shore
+        gRegion = 2;
+        bool shore = poolField(across, uSeedOff, LAVA_POOL_SCALE) <= uPoolCut;
+        c = shore && dpx < 1.5 ? uG[0] : uG[1];
+        if ((!shore || dpx > 4.0) && snoise(p * 3.5 + uSeedOff.yzx) > 0.6) c = uG[2];
+      } else {
+        // emissive jagged fissures: orange, darker glowing edges, yellow only down the core of the widest
+        float w = crackWidth(p, LAVA_CRACK_FREQ, uSeedOff, LAVA_CRACK_CUT, 1.5);
+        // no crack along a shore: the pool's rim marks that edge (a clipped half-crack is a 1 px sliver)
+        if (dpx < w && poolField(across, uSeedOff, LAVA_POOL_SCALE) <= uPoolCut) { gRegion = 1; c = dpx < w * 0.25 && w > 1.4 ? uG[2] : dpx < w * 0.7 ? uG[1] : uG[0]; }
+      }
     } else {
       // gas giant: turbulent alternating bands and a storm
       float t = fbm(p * vec3(1.4, 0.45, 1.4) + uSeedOff);
@@ -500,6 +554,7 @@ const PLANET_FRAG = /* glsl */ `
     setScreenScale(p);
     int b = band(normalize(vNormalW));
     gl_FragColor = vec4(artefacts(p, b, surface(p, b)), 1.0);
+    if (uRegions == 1) { gl_FragColor = vec4(gRegion == 1 ? 1.0 : 0.0, gRegion == 2 ? 1.0 : 0.0, gRegion == 0 ? 1.0 : 0.0, 1.0); return; } // debug: ground / crack / open
     bool glow = uBiome == 4 && (gl_FragColor.rgb == uG[0] || gl_FragColor.rgb == uG[1] || gl_FragColor.rgb == uG[2]);
     gl_FragColor.rgb = depthFade(gl_FragColor.rgb, vPosW, glow ? 0.5 : 1.0); // emissive glow fades at half strength
   }
@@ -664,7 +719,7 @@ function setDepthLevel(obj, level) {
 export const BIOMES = {
   lush: { id: 0, label: 'lush', ramps: ['ocean', 'land', 'cap', 'glow'], sea: [0.47, 0.55], weather: 'cloud', haze: null },
   ocean: { id: 1, label: 'ocean', ramps: ['water', 'land', 'cap', 'glow'], sea: [0.7, 0.73], weather: 'thin', haze: 'haze.ocean' },
-  ice: { id: 2, label: 'ice', ramps: ['ice', 'crevasse', 'cap', 'glow'], weather: null, haze: 'haze.ice' },
+  ice: { id: 2, label: 'ice', ramps: ['ice', 'crevasse', 'water', 'glow'], weather: null, haze: 'haze.ice' },
   desert: { id: 3, label: 'desert', ramps: ['sand', 'rock', 'cap', 'glow'], weather: null, haze: null },
   lava: { id: 4, label: 'lava', ramps: ['crust', 'crust', 'ash', 'glow'], weather: 'ash', haze: null },
   gas: { id: 5, label: 'gas giant (extra)', ramps: ['gasA', 'gasB', 'cap', 'glow'], weather: null, haze: null, extra: true },
@@ -748,7 +803,7 @@ function makePlanet() {
   group.userData.depthFamily = 'planet'; // fades through the planet set, not the crew's
   const surfaceMat = paletteMaterial(PLANET_FRAG, {}, {
     uBiome: { value: 0 }, uA: ramp5(), uB: ramp5(), uC: ramp5(), uG: { value: [0, 1, 2].map(() => new THREE.Color()) },
-    uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 },
+    uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 }, uPoolCut: { value: 9 }, uRegions: { value: 0 },
     uBands: { value: new THREE.Vector3(0.2, 0.58, 0.86) }, // lit directional terminator, crescent bands
     // artefacts (artefacts.js): off while uArtN = 0
     uArtN: { value: 0 }, uArtTick: { value: 0 }, uArtTeal: { value: 0 }, uArtTealC: { value: new THREE.Color(ACCENTS.reveal[3]) }, // [OIII] teal, garnish only
@@ -837,6 +892,8 @@ function makePlanet() {
     surfaceMat.uniforms.uSeedOff.value.set(rnd() * 50, rnd() * 50, rnd() * 50);
     const [s0, s1] = biome.sea ?? [0.5, 0.5];
     surfaceMat.uniforms.uSea.value = s0 + rnd() * (s1 - s0);
+    const so = surfaceMat.uniforms.uSeedOff.value;
+    surfaceMat.uniforms.uPoolCut.value = biomeKey === 'lava' ? poolCut(CRACKS.lava, so) : biomeKey === 'ice' ? poolCut(CRACKS.ice, new THREE.Vector3(so.y, so.z, so.x)) : 9;
     const [a, b, c, g] = biome.ramps;
     surfaceMat.userData.ramps = { uA: a, uB: b, uC: c, uG: g };
     haze.visible = !!biome.haze;
@@ -894,16 +951,19 @@ function makePlanet() {
       // Raw weather density per site, then a threshold at the (1 - share) quantile.
       let raw;
       if (weather.fissure) {
-        // the surface shader's fissures (PLANET_FRAG lava branch: crackMask + voronoiEdge), plus a
-        // patch field so only some fissures smoke. Sites off the visible cracks never qualify.
+        // the surface shader's fissures and pool shores (PLANET_FRAG lava branch: voronoiCells,
+        // crackMask, poolField), plus a patch field so only some of them smoke. Sites off the
+        // visible fissures and shores (solid crust, the open middle of a lake) never qualify.
         const o = surfaceMat.uniforms.uSeedOff.value;
-        const { freq, cut } = CRACKS.lava;
+        const { freq, cut, pool } = CRACKS.lava;
+        const openCut = surfaceMat.uniforms.uPoolCut.value;
         const patch = makeFbm3(seed * 23 + 3);
         raw = dirs.map((d) => {
-          const m = THREE.MathUtils.smoothstep(crackMask(d.x, d.y, d.z, freq, o.x, o.y, o.z), cut, cut + 0.25);
-          if (m < 0.4) return -1; // the shader draws no crack here
-          const edge = voronoiEdge(d.x * freq + o.x, d.y * freq + o.y, d.z * freq + o.z) / freq; // sphere units to the crack
-          return 1 - edge * 8 + (patch(d.x * 1.6, d.y * 1.6, d.z * 1.6) - 0.5) * 0.25;
+          const { edge, own, across } = voronoiCells(d.x * freq + o.x, d.y * freq + o.y, d.z * freq + o.z);
+          const open = [own, across].filter((c) => poolField(...c, o.x, o.y, o.z, pool.scale) > openCut).length;
+          if (open === 2) return -1; // inside a lake: no edge shows here
+          if (open === 0 && THREE.MathUtils.smoothstep(crackMask(d.x, d.y, d.z, freq, o.x, o.y, o.z), cut, cut + 0.25) < 0.4) return -1; // the shader draws no crack here
+          return 1 - (edge / freq) * 8 + (patch(d.x * 1.6, d.y * 1.6, d.z * 1.6) - 0.5) * 0.25; // edge / freq: sphere units to the fissure or shore
         });
       } else {
         const massField = makeFbm3(seed * 31 + 5);
@@ -1043,7 +1103,8 @@ function makePlanet() {
   }
   // artefacts: 0 = off, 1..5 = that many sectors, 'auto' = by planet size (artefactCount).
   let artefactsOpt = 0;
-  function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false, cloudShadow = true } = {}) {
+  function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false, cloudShadow = true, regions = false } = {}) {
+    surfaceMat.uniforms.uRegions.value = regions ? 1 : 0;
     for (const m of MOONS) m.mesh.visible = moons;
     shadowMat.visible = cloudShadow;
     halo.visible = showHalo;
@@ -1436,6 +1497,7 @@ const state = {
   depthBands: '3-band', // DEPTH_BANDS (per-pixel modes)
   artefacts: false, artAuto: true, artCount: 3, artTeal: false, // planet artefacts (artefacts.js); artAuto: sector count by planet size
   cover: null, // cloud-cover override (0..1) for the hero planets; null = the biome's WEATHER cover
+  regions: false, // debug (measurement only): planet surfaces as ground / crack / open-plate colours
 };
 
 // Keep the orbit camera out of the cloud layer in planet views (clouds reach ~1.1 R).
@@ -1469,7 +1531,7 @@ function applyState() {
   LOOP.period = Math.max(1, state.period);
   LOOP.surfaceTurns = Math.max(1, Math.round(state.surfaceTurns));
   LOOP.cloudTurns = Math.max(0, Math.round(state.cloudTurns));
-  const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow };
+  const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow, regions: state.regions };
   document.getElementById('art-auto').checked = state.artAuto;
   planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));

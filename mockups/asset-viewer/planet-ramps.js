@@ -112,8 +112,8 @@ export const V2_PLANET_RAMPS = {
   crevasse: ['#16234e', '#24407e', '#3a64b0', '#6a96d6'],
   sand: ['#6a3a1e', '#a8602c', '#d8944a', '#f0c27a', '#fff0b8'],
   rock: ['#2e1c14', '#4e3020', '#7a4c30', '#a4744c'],
-  crust: ['#0e0809', '#0e0809', '#1c0f0d', '#2e1712', '#432118'], // truly near-black
-  glow: ['#d63c1a', '#ff8a1e', '#ffe066'],
+  crust: ['#0b0a10', '#0b0a10', '#17151d', '#262129', '#382c30'], // truly near-black; cool blue-grey shadows, a touch warm in full light
+  glow: ['#c9361a', '#ff761a', '#ffc93c'], // cooler rim, orange body, yellow only on the hottest cores
   ash: ['#1a1719', '#332e30', '#565052', '#827b7c'],
   gasA: ['#5a2e1c', '#9c5a30', '#d89a5a', '#f2cc94', '#fff0d0'],
   gasB: ['#481a18', '#883422', '#c25e38', '#e69068', '#ffc6a0'],

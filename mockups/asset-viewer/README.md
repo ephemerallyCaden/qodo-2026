@@ -12,7 +12,7 @@ npm run dev      # http://127.0.0.1:5180/  (loopback only; PORT=... to change)
 npm run shots    # re-capture screenshots/ in headless Chromium (no server, no network)
 npm run palettes # 25 Lospec-palette renders + labelled contact sheet in screenshots/palettes/
 npm run planets  # variety sheet, system shot, hero-loop.gif, artefacts-loop.gif, cloud-drift-24s/36s.gif, colour counts + loop-seam tests
-npm test         # cloud regression tests: puff handedness (det > 0), hollow-ring renders (32 framings + 12 hero-loop frames; LOOP_FRAMES=48 for all), shading direction (follows the mass dome), CPU/GPU simplex parity; artefacts: off = pixel-identical, on = visible, deterministic, loop-locked; cloud shadow: no phantoms, drifts with the clouds; depth: object mode unchanged, pixel-stepped splits a straddling planet; lava/ice line width ≥ 2 px
+npm test         # cloud regression tests: puff handedness (det > 0), hollow-ring renders (32 framings + 12 hero-loop frames; LOOP_FRAMES=48 for all), shading direction (follows the mass dome), CPU/GPU simplex, Voronoi-cell and pool-field parity; artefacts: off = pixel-identical, on = visible, deterministic, loop-locked; cloud shadow: no phantoms, drifts with the clouds; depth: object mode unchanged, pixel-stepped splits a straddling planet; lava/ice line width ≥ 2 px and a ground / crack / open mix
 ```
 
 `node shots.mjs depth-scene crew-closeup` captures just the named shots.
@@ -83,7 +83,7 @@ v2 is the current palette. v1 (the batch 1 pastels) stays selectable from the `p
 - **Everything else is v2:** space `#0d0b16`, stars, depth tints, and the planets, clouds, caps and haze (`V2_PLANET_RAMPS` in `planet-ramps.js`: the v2 lush ramps plus naturalistic biome ramps in the same spirit).
 - **Clouds:** keep the v2 tones, with the purple mid-shadow swapped for v2's warm cream `#f2d8b8`.
 - **Ring:** no pink, violet or yellow. It's built only from v2 planet-family colours: ocean darkest `#141d5c` (debris in the planet's shadow), cloud cream `#f2d8b8` (most debris), ocean step `#4ea3f7` and pale ocean `#94dcff`.
-- **Lava:** the crust is truly near-black.
+- **Lava:** the crust is truly near-black, with cool blue-grey shadows (`#0b0a10` `#17151d` `#262129`, warming to `#382c30` in full light). The glow is orange with yellow only as an accent: rim `#c9361a`, body `#ff761a`, hottest cores `#ffc93c` (was `#d63c1a` `#ff8a1e` `#ffe066`).
 - **Toxic:** ochre sludge seas, acid-lime growth and purple fungus, so it can't be read as lush.
 
 `final-blk` keeps the revision 5 mix for comparison: BLK 36 crew, banded BLK 36 space, and the research ×2 13-colour shared planet set with its own planet depth family (`RESEARCH_RAMPS` and `PLANET_DEPTH`; the OKLCH/source table is in `planet-ramps.js`).
@@ -115,17 +115,19 @@ Each biome is a branch of one planet shader. Its ramps are re-keyed per biome (`
 |---|---|---|---|
 | lush | healthy, tested, active | sea + land + polar caps | cloud masses and streaks |
 | ocean | stable, rarely touched | blue "water" ramp, sea level ~0.7, so only a few islands | thin, small clouds + lit-limb haze |
-| ice | stable, rarely touched | white strata with jagged, crystalline blue crevasses (deeper blue at the core) | pale haze |
+| ice | stable, rarely touched | white strata broken into sheets by jagged, crystalline blue crevasses (deeper blue at the core), with open dark-blue water (v2 `water` ramp) in leads and polynyas between them, fringed one step paler at the shore | pale haze |
 | desert | stale, low coverage | wind-dune bands and sparse Worley craters (dark floor, bright rim) | none (no clouds) |
-| lava | churn / bugfix hotspot | dark crust from the palette's darkest ~45%; jagged emissive fissures (bright core, darker glowing edges) that ignore lighting | ash/smoke puffs |
+| lava | churn / bugfix hotspot | dark, slightly blue crust from the palette's darkest ~45%, broken by open molten pools, lakes and seas (orange, a cooler rim at the shore, yellow only on the hottest cores) and jagged emissive fissures (orange, darker glowing edges, yellow only down the widest cores); all glow ignores lighting | ash/smoke puffs |
 | ringed | shared lib, many dependents | any base + a wide two-lane ring | the ring |
 | gas giant *(extra)* | very large modules | turbulent alternating bands + a storm | — |
 | barren moon *(extra)* | tiny / dead modules | grey, densely cratered | — |
 | toxic *(extra)* | overgrown / risky | dark sludge sea with glowing veins, acid-lime land, fungal blooms | spore puffs + lime haze |
 
-The haze is a 1.06× shell drawn only as a thin crescent on the lit limb, so it reads as atmosphere rather than an outline. Ash and spore puffs reuse the cloud system with their own ramp, cover and lift. Lava ash reads the surface shader's own fissure field on the CPU (`snoise.js`: ports of the GLSL simplex noise, the integer cell hash and the Voronoi edge distance; `npm test` checks them against the GPU), so smoke only rises from the glowing fissures of a few active regions, as short, flat plumes trailing east.
+The haze is a 1.06× shell drawn only as a thin crescent on the lit limb, so it reads as atmosphere rather than an outline. Ash and spore puffs reuse the cloud system with their own ramp, cover and lift. Lava ash reads the surface shader's own fissure and pool fields on the CPU (`snoise.js`: ports of the GLSL simplex noise, the integer cell hash, the Voronoi cells and the pool field; `npm test` checks them against the GPU), so smoke only rises from the glowing fissures and pool shores of a few active regions, as short, flat plumes trailing east.
 
-**Fissures and crevasses** (`crack()` in the planet shader, `CRACKS` for frequency and mask cut): Voronoi cell edges, i.e. straight segments that meet at pointed junctions, using the exact distance to the cell edge. A low-frequency mask picks which edges show and how wide, so cracks branch and taper to ~1 px tips, then stop rather than breaking into dots. Width is in **screen pixels** (lava up to ~3 px, ice ~2.4 px), worked out from the fragment's screen derivatives, so lines stay bold at any size; small planets raise the mask cut, so they show fewer cracks rather than solid fissure. Median line width at 180p (`node debug/measure-line-width.mjs`, guarded by `npm test`) went from 1 px (16–27% isolated pixels on lava, 50–62% on ice) to 4–5 px on lava and 3–4 px on ice, with ≤ 1.5% isolated pixels.
+**Fissures and crevasses** (`plates()` and `crackWidth()` in the planet shader, `CRACKS` for frequency and mask cut): Voronoi cell edges, i.e. straight segments that meet at pointed junctions, using the exact distance to the cell edge. A low-frequency mask picks which edges show and how wide, so cracks branch and taper to ~1 px tips, then stop rather than breaking into dots. Width is in **screen pixels** (lava up to ~3 px, ice ~2.4 px), worked out from the fragment's screen derivatives, so lines stay bold at any size; small planets raise the mask cut, so they show fewer cracks rather than solid fissure. Median line width at 180p (`node debug/measure-line-width.mjs`, guarded by `npm test`) went from 1 px (16–27% isolated pixels on lava, 50–62% on ice) to 4–5 px on lava and 3–4 px on ice, with ≤ 1.5% isolated pixels.
+
+**Lava pools and ice water** (`poolField()` in the planet shader, `CRACKS.*.pool`): whole Voronoi plates of the crack network are open, where the crust or the ice sheet has broken away, so shores are the same straight, jagged edges as the cracks. A low-frequency field over the plates (`scale`, in cells) clusters them into lakes and seas, and a per-plate jitter adds lone pools. The open share of the whole sphere is a **quantile** per seed (`share`: lava 30%, ice 27%; `poolCut()` samples the CPU port), like cloud cover. A crack never runs along a shore (the shore band marks that edge instead), so there are no clipped 1 px slivers. `node debug/measure-line-width.mjs` classifies pixels with the shader's regions debug view (`viewer.set({ regions: true })`: ground blue, crack red, open green); `npm test` also guards the mix (ground ≥ 40%, cracks ≥ 3%, open 10–55%). Averaged over a turn (6 phases) at S/M/L, ground / cracks / open are 58 / 9–12 / 30–33% on lava and 56–63 / 11–16 / 26–27% on ice; a single face ranges from 14% to 51% open.
 
 ### Measured cloud cover
 
@@ -193,7 +195,7 @@ Every tile is the same shot: the `depth` view (crew in front, hero planet, then 
 | `screenshots/faces-sheet.png` | All 10 V2 eye designs on the same head close-up |
 | `screenshots/astronaut-before-after.png` | Crew before (rev 2: ASCII faces, longer limbs) vs after (V2 eyes, chibi), made once with ffmpeg |
 | `screenshots/depth-scene.png` | Planet and astronaut copies at all four depth steps, fade on |
-| `screenshots/lava-ice-before-after.png` | Lava and ice at S/M/L (variety-sheet tiles): thin ridged lines before (top) vs jagged screen-width cracks after (bottom) |
+| `screenshots/lava-ice-before-after.png` | Lava and ice at S/M/L (variety-sheet tiles): e917540 cracks only (top) vs open lava pools and ice water, orange lava and bluer crust (bottom) |
 | `screenshots/depth-mode-compare.png` | Depth scene and a planet straddling the 12-unit threshold, `object` vs `pixel-stepped` |
 | `screenshots/depth-scene-off.png` | Same scene, fade off, for comparison |
 | `screenshots/pixel-120.png` | Chunkier pixels: 213×120 ×6 |

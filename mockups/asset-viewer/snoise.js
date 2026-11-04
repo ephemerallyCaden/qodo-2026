@@ -60,8 +60,9 @@ function pcg3d(x, y, z) {
 const INV32 = f(1 / 4294967296);
 export const cellHash = (x, y, z) => pcg3d(x + 4096, y + 4096, z + 4096).map((v) => f(f(v) * INV32));
 
-/** Distance to the nearest Voronoi cell edge (the shader's voronoiEdge, two-pass). */
-export function voronoiEdge(px, py, pz) {
+/** The shader's voronoiCells: distance to the nearest Voronoi cell edge (two-pass), the nearest
+ *  cell (own) and the neighbour across that edge (across), as integer cell coords. */
+export function voronoiCells(px, py, pz) {
   const ix = Math.floor(px), iy = Math.floor(py), iz = Math.floor(pz);
   const fx = px - ix, fy = py - iy, fz = pz - iz;
   let d1 = 9, r1 = [0, 0, 0], c1 = [0, 0, 0];
@@ -71,15 +72,28 @@ export function voronoiEdge(px, py, pz) {
     const dd = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
     if (dd < d1) { d1 = dd; r1 = r; c1 = [x, y, z]; }
   }
-  let e = 9;
+  let e = 9, ga = c1;
   for (let z = -2; z <= 2; z++) for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) {
     const g = [c1[0] + x, c1[1] + y, c1[2] + z];
     const h = cellHash(ix + g[0], iy + g[1], iz + g[2]);
     const dr = [g[0] + h[0] - fx - r1[0], g[1] + h[1] - fy - r1[1], g[2] + h[2] - fz - r1[2]];
     const len = Math.hypot(...dr);
-    if (len * len > 1e-5) e = Math.min(e, ((r1[0] + dr[0] / 2) * dr[0] + (r1[1] + dr[1] / 2) * dr[1] + (r1[2] + dr[2] / 2) * dr[2]) / len);
+    if (len * len > 1e-5) {
+      const d = ((r1[0] + dr[0] / 2) * dr[0] + (r1[1] + dr[1] / 2) * dr[1] + (r1[2] + dr[2] / 2) * dr[2]) / len;
+      if (d < e) { e = d; ga = g; }
+    }
   }
-  return e;
+  return { edge: e, own: [ix + c1[0], iy + c1[1], iz + c1[2]], across: [ix + ga[0], iy + ga[1], iz + ga[2]] };
+}
+
+/** Distance to the nearest Voronoi cell edge (the shader's voronoiEdge). */
+export const voronoiEdge = (px, py, pz) => voronoiCells(px, py, pz).edge;
+
+/** The shader's poolField: a plate (integer cell coords) is open (lava pool, ice water) when this
+ *  exceeds the planet's pool cut. (ox, oy, oz) is the offset the shader passes as `off`. */
+export function poolField(cx, cy, cz, ox, oy, oz, scale) {
+  const h = cellHash(cx, cy, cz); // the cell's feature point
+  return snoise(f(cx + h[0]) * scale + oz, f(cy + h[1]) * scale + ox, f(cz + h[2]) * scale + oy) + (cellHash(cx + 31, cy + 31, cz + 31)[0] - 0.5) * 0.5;
 }
 
 /** The shader's crackMask: which crack edges show, and how wide (0..1). */
