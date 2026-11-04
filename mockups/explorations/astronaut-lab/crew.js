@@ -1,5 +1,5 @@
 // BLK 36 crew roles, exactly as the asset viewer resolves them (mapPalette('blk-36')); lab.mjs
-// re-derives them from asset-viewer/palette-map.js and fails if these ever drift.
+// re-derives them from mockups/asset-viewer/palette-map.js and fails if these ever drift.
 export const CREW = {
   suit: ['#4185d8', '#5ab9e5', '#c1d9f2', '#ffffff'],
   gear: ['#293268', '#464b8c', '#6b74b2', '#909edd'],

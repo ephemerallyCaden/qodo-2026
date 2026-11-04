@@ -1,5 +1,7 @@
 # Astronaut lab
 
+> **Exploration, 2026-11-04: 10 astronaut variants. Outcome: the human kept A (current spec). Not used by the final assets.**
+
 A lineup of astronaut designs to pick from, focused on proportions and joint connections. There's one parameterised astronaut (`astronaut.js`): a raymarched SDF like the asset viewer's, with the same banded lighting, unified self-shadowing, 4:3 screen visor, V2 eyes and BLK 36 crew colours. Each variant is only a parameter set (`variants.js`), so picking elements from different variants means mixing parameters. A throwaway mockup, not product code.
 
 ## Run
@@ -28,7 +30,7 @@ Every tile `npm run lab` renders is checked, and the run fails if any check fail
 - the figure isn't clipped by the tile edge;
 - the turntable's frame 90 is pixel-identical to frame 0.
 
-The crew colours are also checked against what `asset-viewer/palette-map.js` resolves for BLK 36.
+The crew colours are also checked against what `../../asset-viewer/palette-map.js` resolves for BLK 36.
 
 ## How it's built
 
@@ -39,4 +41,4 @@ The crew colours are also checked against what `asset-viewer/palette-map.js` res
   - elbows and knees: one smooth bent tube, a ball, or accordion ribs.
   - Rings, balls, cuffs and the neck seal join with a small crisp blend, so they read as separate parts through shading alone (no outlines).
 - **`lab.js`:** the sheet renderer and the live mixer. Each tile is a crop of a 180-tall frame at the viewer's camera (35° FOV, the crew close-up offset), so the pixel density matches the game. Labels are drawn at output resolution, outside the pixel pass.
-- **Read-only import:** the eyes come from `../asset-viewer/faces.js` (`EYES_GLSL`).
+- **Read-only import:** the eyes come from `../../asset-viewer/faces.js` (`EYES_GLSL`); the dev server allowlists that one file outside this folder.

@@ -6,7 +6,7 @@
 // shadows and contact occlusion marched through the same field (unified self-shadowing).
 // Local units: the figure is exactly 1 tall (boot sole y = 0 to helmet top y = 1), facing +z.
 import * as THREE from 'three';
-import { EYES_GLSL } from '../asset-viewer/faces.js';
+import { EYES_GLSL } from '../../asset-viewer/faces.js';
 import { DEFAULTS } from './params.js';
 import { CREW } from './crew.js';
 

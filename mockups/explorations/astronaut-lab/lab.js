@@ -2,7 +2,7 @@
 // pixel pipeline (each tile is a crop of the standard 320x180 frame, nearest-upscaled), plus
 // a live mixer with a variant picker and per-parameter sliders. window.lab drives headless capture.
 import * as THREE from 'three';
-import { EYE_DESIGNS } from '../asset-viewer/faces.js';
+import { EYE_DESIGNS } from '../../asset-viewer/faces.js';
 import { makeAstronaut } from './astronaut.js';
 import { CREW, SPACE } from './crew.js';
 import { PARAMS, DEFAULTS } from './params.js';

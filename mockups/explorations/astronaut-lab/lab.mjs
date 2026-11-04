@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveFile } from './serve.mjs';
-import { mapPalette } from '../asset-viewer/palette-map.js';
+import { mapPalette } from '../../asset-viewer/palette-map.js';
 import { CREW, SPACE } from './crew.js';
 import { PARAMS, DEFAULTS, showValue } from './params.js';
 import { VARIANTS } from './variants.js';

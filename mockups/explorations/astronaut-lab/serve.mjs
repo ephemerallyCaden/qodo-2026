@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const MOCKUPS = path.dirname(ROOT);
+const MOCKUPS = path.dirname(path.dirname(ROOT)); // mockups/ (this lab is mockups/explorations/astronaut-lab)
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT ?? 5186);
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.png': 'image/png', '.gif': 'image/gif', '.md': 'text/markdown' };
