@@ -130,9 +130,20 @@ describe('Qodo PR6 #2: an agent git command marks the commits made while it ran'
       'legit commit', 'gh pr merge 6', 'git diff --stat', 'echo committed'];
     expect(yes.filter((c) => !runsGitCommit(c))).toEqual([]);
     expect(no.filter((c) => runsGitCommit(c))).toEqual([]);
+  });
+
+  it('recognises attached and `=` option forms (Qodo PR6 #6)', () => {
+    const yes = ['git -C/path/to/repo commit -q', 'git -C"/a b" commit -q', "git -C'/a b' merge topic", 'git -ckey=val commit -m x',
+      'git -cuser.name=x commit -m x', 'git -c "user.name=A B" commit -m x', 'git --git-dir=/x/.git --work-tree=/x commit -m y',
+      'git --git-dir /x/.git commit -q', 'git --work-tree "/a b" merge topic', 'git --no-pager commit -m z',
+      'git --namespace=n --bare cherry-pick abc1234', 'git -P revert HEAD'];
+    expect(yes.filter((c) => !runsGitCommit(c))).toEqual([]);
+    expect(['git -C/path status', 'git --git-dir=/x/.git log', 'git -ckey=val show commit'].filter((c) => runsGitCommit(c))).toEqual([]);
     // Each token has one parse, so a pathological option run stays fast.
     const t0 = performance.now();
     runsGitCommit(`git ${'-C -C '.repeat(20_000)}x`);
+    runsGitCommit(`git ${'--git-dir -C -c --work-tree '.repeat(10_000)}x`);
+    runsGitCommit(`git ${'-C/x -ck=v --no-pager '.repeat(10_000)}x`);
     expect(performance.now() - t0).toBeLessThan(1000);
   });
 

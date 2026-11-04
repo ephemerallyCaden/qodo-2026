@@ -29,14 +29,21 @@ const DENIED_TYPE = /"type"\s*:\s*"(last-prompt|attachment|api-request[^"]*|file
 const RESULT_KEYS = /"(structuredPatch|bashEditDiff|gitOperation|stdout)"/;
 const EDIT_CALL = /"name"\s*:\s*"(Edit|Write|MultiEdit|NotebookEdit|Bash)"/;
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash']);
+/** Global git options that take their value as the next word (`-C <dir>`, `--git-dir <path>`). */
+const GIT_VALUE_OPT = '(?:C|c|-git-dir|-work-tree|-namespace|-config-env|-super-prefix)';
+/** One character of a shell word, or a whole quoted run: each input has exactly one parse. */
+const WORD_UNIT = `(?:[^\\s"']|"[^"]*"|'[^']*')`;
 /**
  * A shell command that can create commits: `git commit`, `merge`, `cherry-pick`, `revert`, `am`,
- * `pull` or `rebase`, after any global options (`-C <dir>`, `-c k=v`, `--no-pager`), anywhere in
- * a `&&`/`;`/pipe chain or a `bash -c` string. Over-broad is safe: it only rules out human. Each
- * token has one parse, so matching stays linear. The command text is tested against this and
+ * `pull` or `rebase`, after any global options, anywhere in a `&&`/`;`/pipe chain or a `bash -c`
+ * string. Options take their value as the next word (`-C <dir>`, `--git-dir <path>`), attached
+ * (`-C/path`, `-ckey=val`) or after `=` (`--git-dir=…`). The value-taking and plain alternatives
+ * exclude each other, so every token has one parse and matching stays linear (Qodo PR6 #6).
+ * Over-broad is safe: it only rules out human. The command text is tested against this and
  * never stored, hashed or logged (design §6).
  */
-const GIT_COMMIT_CMD = /(?:^|[\s;&|()"'`/])git(?:\s+-[Cc]\s+(?:"[^"]*"|'[^']*'|[^\s"']\S*)|\s+-(?![Cc]\s)[\w-]+(?:=\S+)?)*\s+(?:commit|merge|cherry-pick|revert|am|pull|rebase)(?![\w-])/;
+const GIT_COMMIT_CMD = new RegExp(`(?:^|[\\s;&|()"'\`/])git(?:\\s+-(?:${GIT_VALUE_OPT}\\s+${WORD_UNIT}+|(?!${GIT_VALUE_OPT}\\s)${WORD_UNIT}*))*`
+  + '\\s+(?:commit|merge|cherry-pick|revert|am|pull|rebase)(?![\\w-])');
 /** True when `command` may create a commit (see GIT_COMMIT_CMD). Exported for tests. */
 export const runsGitCommit = (command: string): boolean => GIT_COMMIT_CMD.test(command);
 /** A git command's window is widened by this on each side: commit dates have 1 s resolution. */
