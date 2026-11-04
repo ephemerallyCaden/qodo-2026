@@ -40,7 +40,7 @@ export async function readRepo(git: Git): Promise<RepoInfo> {
     git(['worktree', 'list', '--porcelain', '-z']),
   ]);
   return {
-    commonDir: realpathSync(commonDir),
+    commonDir: realpathSync.native(commonDir),
     head,
     emptyTree,
     headMs: Number(ct.trim()) * 1000,

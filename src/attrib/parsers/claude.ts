@@ -121,6 +121,14 @@ function readable(file: string): boolean {
   }
 }
 
+function realNative(p: string): string | null {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return null;
+  }
+}
+
 function parseLine(line: string): Obj | null {
   try {
     const v: unknown = JSON.parse(line);
@@ -290,19 +298,20 @@ function readMeta(file: string): { agentType: string | undefined; parentAgentId:
  */
 export async function discoverClaude(projectsDir: string, commonDir: string, worktreeRoots: string[],
   maxFileBytes = MAX_FILE): Promise<Discovery> {
-  const liveRoots = worktreeRoots.flatMap((r) => (existsSync(r) ? [r, realpathSync(r)] : [r]));
+  // realpath.native also gives the on-disk case on case-insensitive filesystems (Issue #5 case 4).
+  const liveRoots = worktreeRoots.flatMap((r) => (existsSync(r) ? [r, realpathSync.native(r)] : [r]));
   // 'unplaced': a cwd we can't resolve to a repo, so its transcript could be ours.
   const place = async (cwd: string): Promise<'ours' | 'other' | 'unplaced'> => {
     if (!cwd.startsWith('/')) return 'unplaced';
     if (!existsSync(cwd)) return liveRoots.some((r) => under(cwd, r)) ? 'ours' : 'other';
     try {
-      const real = realpathSync(cwd);
+      const real = realpathSync.native(cwd);
       const top = nearestCheckout(real);
       if (!top || !liveRoots.some((r) => under(real, r))) return 'other';
       if (liveRoots.includes(top)) return 'ours';
       const out = await tryGit(gitRunner(real), ['rev-parse', '--path-format=absolute', '--git-common-dir']);
       if (out === null) return 'unplaced';
-      return realpathSync(out.trim()) === commonDir ? 'ours' : 'other';
+      return realpathSync.native(out.trim()) === commonDir ? 'ours' : 'other';
     } catch {
       return 'unplaced';
     }
@@ -373,8 +382,13 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     const issuedAt = new Map<string, number>();
     // Every dropped record that could hold (or time) an edit makes the whole transcript partial.
     let drops = 0;
+    // A symlinked, case-variant or /var-vs-/private/var cwd: edits under it are mapped onto its
+    // real path, which liveRoots also hold.
+    const realCwd = existsSync(t.cwd) ? realNative(t.cwd) : null;
+    const onDisk = (p: string) => (realCwd && under(p, t.cwd) ? realCwd + p.slice(t.cwd.length) : p);
     // Edits under the session's cwd must land in the repo; one that can't be placed is a drop.
-    const inCwd = (p: string) => !p.startsWith('/') || (under(p, t.cwd) && !p.slice(t.cwd.length).split('/').includes('.git'));
+    const inCwd = (p: string) => !p.startsWith('/') || [t.cwd, realCwd].some((c) => c !== null && under(p, c)
+      && !p.slice(c.length).split('/').includes('.git'));
     for (const line of text.split('\n')) {
       const isResult = line.includes('"toolUseResult"') && RESULT_KEYS.test(line);
       const editish = isResult || EDIT_CALL.test(line);
@@ -426,7 +440,7 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       for (const sha of shas) out.ranCommits.push({ sessionKey: key, sha });
       edits.forEach((e, i) => {
         const eventId = sha256Hex(`${TOOL}:${key}:${uuid}:${i}`).slice(0, 16);
-        const path = e.filePath.startsWith('/') ? relativise(e.filePath, roots, knownPaths) : null;
+        const path = e.filePath.startsWith('/') ? relativise(onDisk(e.filePath), roots, knownPaths) : null;
         if (!path) {
           if (inCwd(e.filePath)) drops++;
           return;

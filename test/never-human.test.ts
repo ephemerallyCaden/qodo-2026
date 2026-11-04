@@ -77,6 +77,15 @@ describe('Issue #5 fixture preconditions (must pass before and after the fix)', 
     expect(() => JSON.parse(bad)).toThrow();
   });
 
+  it.skipIf(process.platform !== 'darwin')('case 4c setup: on macOS the /var/… cwd is a different string for the same directory', () => {
+    expect(claude.varCwd).not.toBe(repo.dir);
+    expect(realpathSync(claude.varCwd)).toBe(repo.dir);
+  });
+
+  it('case 4d setup: the subdirectory cwd is a symlink into the repo', () => {
+    expect(realpathSync(claude.subLink)).toBe(join(repo.dir, 'src/linked'));
+  });
+
   it.skipIf(!CASE_INSENSITIVE)('case 4b setup: the case-variant cwd is the same directory as the repo', () => {
     expect(claude.caseInsensitiveFs).toBe(true);
   });
@@ -138,13 +147,27 @@ describe('Issue #5 known bugs (it.fails; the fix flips `bug` to `it`)', () => {
     expect(summary).toContain('1 transcript(s) could not be placed in a repo (no usable cwd); commits during them are never classed human');
   });
 
-  bug('case 4: edits logged through a symlinked cwd are matched (agent), not dropped while coverage counts', () => {
+  it('case 4: edits logged through a symlinked cwd are matched (agent), not dropped while coverage counts', () => {
     expect(attr('symlinked')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
   });
 
-  (CASE_INSENSITIVE ? bug : it.skip)('case 4b: edits logged through a case-variant cwd are matched (agent), never human', () => {
+  it.skipIf(!CASE_INSENSITIVE)('case 4b: edits logged through a case-variant cwd are matched (agent), never human', () => {
     expect(attr('caseVariant').class).not.toBe('human');
     expect(attr('caseVariant')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+  });
+
+  it('case 4c: edits logged under a /var/… cwd for a /private/var/… repo are matched (agent)', () => {
+    expect(attr('varCwd')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+  });
+
+  it('case 4d: edits logged through a symlinked subdirectory cwd are matched (agent)', () => {
+    expect(attr('symlinkedSub')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+  });
+
+  it('cases 3–4: exactly the records the parser could not use are counted', () => {
+    // oversized, malformed, noUuid and dotdot each drop one record; symlinked and case-variant
+    // cwds no longer do. Only the cwd-less transcript is unattributed.
+    expect(logs).toMatchObject({ tooLarge: 0, unavailable: 0, dropped: 4, unattributed: 1 });
   });
 });
 

@@ -16,6 +16,10 @@ export interface NeverHumanClaude {
   /** The repo path with its last segment upper-cased (case 4b); same directory on a case-insensitive FS. */
   caseVariant: string;
   caseInsensitiveFs: boolean;
+  /** The repo path as macOS logs it without the /private prefix (case 4c); the repo path elsewhere. */
+  varCwd: string;
+  /** A symlink to the repo's src/linked subdirectory, used as one session's cwd (case 4d). */
+  subLink: string;
   sessionIds: Record<string, string>;
 }
 
@@ -27,6 +31,9 @@ export function writeNeverHumanClaude(repo: FixtureRepo): NeverHumanClaude {
   symlinkSync(repo.dir, link);
   const caseVariant = join(dirname(repo.dir), basename(repo.dir).toUpperCase());
   const caseInsensitiveFs = caseVariant !== repo.dir && existsSync(caseVariant);
+  const varCwd = repo.dir.replace(/^\/private\/var\//, '/var/');
+  const subLink = join(dirname(link), 'sub-link');
+  symlinkSync(join(repo.dir, 'src/linked'), subLink);
   const sessionIds: Record<string, string> = {};
 
   const session = (name: string, n: number, cwd: string) => {
@@ -164,16 +171,29 @@ export function writeNeverHumanClaude(repo: FixtureRepo): NeverHumanClaude {
     dd.result('u3', 'a2', t('dotdot', '09:30:01'), { ...create(repo.dir, 'dotdot', EDGE_LINES.dotdot), filePath: dotdotPath }),
     dd.user('u4', t('dotdot', '10:30:00')),
   ];
+  // Cases 4c and 4d: Writes logged under a /var/… cwd and under a symlinked subdirectory cwd.
+  const viaCwd = (c: 'varCwd' | 'symlinkedSub', n: number, cwd: string, rel: string) => {
+    const v = session(c, n, cwd);
+    return [
+      v.user('u1', t(c, '09:00:00')),
+      v.call('a2', t(c, '09:30:00'), 'Write', { file_path: join(cwd, rel) }),
+      v.result('u3', 'a2', t(c, '09:30:01'), { type: 'create', filePath: join(cwd, rel), content: EDGE_LINES[c].join('\n') + '\n',
+        structuredPatch: [], originalFile: null }),
+      v.user('u4', t(c, '10:30:00')),
+    ];
+  };
+  const varRows = viaCwd('varCwd', 16, varCwd, EDGE_CASES.varCwd[1]);
+  const subRows = viaCwd('symlinkedSub', 17, subLink, 'sub.ts');
 
   const jsonl = (rows: (object | string)[]) => rows.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n') + '\n';
   const files: [string, (object | string)[]][] = [
     ['bash', bash], ['merge', merge], ['oversized', oversized], ['malformed', malformed], ['noCwdIdle', noCwdIdle],
     ['noCwd', noCwd], ['symlinked', symlinked], ['caseIdle', caseIdle], ['caseVariant', caseRows], ['control', control],
     ['agentMerge', agentMerge], ['resolvedMerge', resolvedMerge], ['cwdlessIdle', cwdlessIdle], ['cwdless', cwdless],
-    ['noUuid', noUuid], ['dotdot', dotdot],
+    ['noUuid', noUuid], ['dotdot', dotdot], ['varCwd', varRows], ['symlinkedSub', subRows],
   ];
   const dir = join(claudeDir, 'projects', '-edge-slug');
   mkdirSync(dir, { recursive: true });
   for (const [name, rows] of files) writeFileSync(join(dir, `${sessionIds[name]}.jsonl`), jsonl(rows));
-  return { claudeDir, link, caseVariant, caseInsensitiveFs, sessionIds };
+  return { claudeDir, link, caseVariant, caseInsensitiveFs, varCwd, subLink, sessionIds };
 }
