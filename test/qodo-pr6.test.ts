@@ -1,7 +1,7 @@
 // Qodo PR #6 findings on the Issue #5 fix. Each case scans a tiny repo twice: a control without
 // the triggering record (must be human or agent as stated) and the case itself.
 import { describe, expect, it } from 'vitest';
-import { lutimesSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { copyFileSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { discoverClaude, parseClaude, runsGitCommit } from '../src/attrib/parsers/claude.js';
@@ -372,5 +372,32 @@ describe('Qodo PR10 #6: a symlinked transcript stays a gap', () => {
     expect(control.attr('target')).toMatchObject({ class: 'human' });
     expect(withCase.logs.unavailable).toBe(1);
     expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none' });
+  });
+});
+
+describe('Qodo PR10 #1 and #4: an outside transcript that can\'t be fully inspected is undecided', () => {
+  /** A parent-directory session that writes this repo's file: an outside transcript that edits it. */
+  const outsideWriter = (dir: string, padding = 0): Row[] => {
+    const s = session(SID, dirname(dir));
+    return [s.user('u1', at('09:00:00')), ...Array.from({ length: padding }, (_, i) => s.user(`p${i}`, at('09:10:00'))),
+      s.call('a2', at('09:30:00'), 'Write', { file_path: join(dir, PATH) }),
+      s.result('u3', 'a2', at('09:30:01'), createResult(join(dir, PATH), LINES)), s.user('u4', at('10:30:00'))];
+  };
+
+  it('#4: one refused by readable() when inspected (here swapped for a symlink) is a blind span', async () => {
+    const repo = repoWith();
+    const projects = miniClaude({ [SID]: outsideWriter(repo.dir) });
+    const file = join(projects, '-mini', `${SID}.jsonl`);
+    const copy = join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-swap-'))), 'copy.jsonl');
+    copyFileSync(file, copy);
+    // Discovery awaits the self-commit times right before inspecting outside sessions.
+    const times = { then: (done: (v: number[]) => void) => {
+      rmSync(file);
+      symlinkSync(copy, file);
+      done([Date.parse(`${DAY}T10:00:00Z`)]);
+    } } as unknown as Promise<number[]>;
+    const found = await discoverClaude(projects, join(repo.dir, '.git'), [repo.dir], undefined, times);
+    expect(found.transcripts).toEqual([]);
+    expect(found.stats.unattributed).toBe(1);
   });
 });

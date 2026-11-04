@@ -427,7 +427,9 @@ async function mentions(file: string, needles: Buffer[], maxBytes: number): Prom
  * naming a root can't be parsed, else 'no'.
  */
 async function editsRepo(file: string, roots: string[], needles: Buffer[], maxBytes: number): Promise<'yes' | 'no' | 'undecided'> {
-  if (!readable(file) || !(await mentions(file, needles, maxBytes))) return 'no';
+  // Refused now (it passed when its head was read): its uncertainty must not read as 'no' (Qodo PR10 #4).
+  if (!readable(file)) return 'undecided';
+  if (!(await mentions(file, needles, maxBytes))) return 'no';
   const texts = needles.map((n) => n.toString());
   let undecided = false;
   const input = createReadStream(file, { end: maxBytes - 1, highWaterMark: 64 << 10 });
