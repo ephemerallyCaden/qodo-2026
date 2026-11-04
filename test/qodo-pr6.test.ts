@@ -400,4 +400,13 @@ describe('Qodo PR10 #1 and #4: an outside transcript that can\'t be fully inspec
     expect(found.transcripts).toEqual([]);
     expect(found.stats.unattributed).toBe(1);
   });
+
+  it('#1: one larger than the file cap, with nothing found in the part read, is a blind span', async () => {
+    const repo = repoWith();
+    // ~40 padding records push the Write result past a 4 KiB cap.
+    const projects = miniClaude({ [SID]: outsideWriter(repo.dir, 40) });
+    const found = await discoverClaude(projects, join(repo.dir, '.git'), [repo.dir], 4096);
+    expect(found.transcripts).toEqual([]);
+    expect(found.stats.unattributed).toBe(1);
+  });
 });

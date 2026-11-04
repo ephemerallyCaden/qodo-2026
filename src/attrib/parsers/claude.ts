@@ -429,9 +429,11 @@ async function mentions(file: string, needles: Buffer[], maxBytes: number): Prom
 async function editsRepo(file: string, roots: string[], needles: Buffer[], maxBytes: number): Promise<'yes' | 'no' | 'undecided'> {
   // Refused now (it passed when its head was read): its uncertainty must not read as 'no' (Qodo PR10 #4).
   if (!readable(file)) return 'undecided';
-  if (!(await mentions(file, needles, maxBytes))) return 'no';
+  // Only the first `maxBytes` are read: past them, finding nothing proves nothing (Qodo PR10 #1).
+  const truncated = (fileSize(file) ?? Number.MAX_SAFE_INTEGER) > maxBytes;
+  if (!(await mentions(file, needles, maxBytes))) return truncated ? 'undecided' : 'no';
   const texts = needles.map((n) => n.toString());
-  let undecided = false;
+  let undecided = truncated;
   const input = createReadStream(file, { end: maxBytes - 1, highWaterMark: 64 << 10 });
   try {
     for await (const line of createInterface({ input, crlfDelay: Infinity })) {
