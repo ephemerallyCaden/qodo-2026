@@ -2,9 +2,9 @@
 // synthetic transcripts (v2.1.31x key names, synthetic content only). Each case is scanned with
 // and without the record that triggers it, so a test can't pass vacuously.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { CommitAttribution } from '../../src/core/snapshot/types.js';
 import { scan } from '../../src/scan/index.js';
 import { SELF } from './build/basic.js';
@@ -64,7 +64,14 @@ export function miniClaude(transcripts: Record<string, Row[]>): string {
   const projects = join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-mini-claude-'))), 'projects');
   mkdirSync(join(projects, '-mini'), { recursive: true });
   for (const [name, rows] of Object.entries(transcripts)) {
-    writeFileSync(join(projects, '-mini', `${name}.jsonl`), rows.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n') + '\n');
+    // `link:<file>` plants a symlink to an existing file; `mode000:<name>` writes an unreadable file.
+    if (name.startsWith('link:')) {
+      symlinkSync(name.slice(5), join(projects, '-mini', `${basename(name.slice(5), '.jsonl')}-link.jsonl`));
+      continue;
+    }
+    const file = join(projects, '-mini', `${name.replace(/^mode000:/, '')}.jsonl`);
+    writeFileSync(file, rows.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n') + '\n');
+    if (name.startsWith('mode000:')) chmodSync(file, 0);
   }
   return projects;
 }

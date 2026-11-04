@@ -254,6 +254,21 @@ function edgeFrom(file: string, firstTs: number): number {
   }
 }
 
+/**
+ * When an unreadable transcript's records could be dated: from its birth time (the epoch when
+ * missing or later than its mtime) to its mtime. A symlink isn't followed even for stat, so its
+ * span is the epoch to the link's own mtime. When lstat fails too, all time.
+ */
+function statSpan(file: string): Interval {
+  try {
+    const st = lstatSync(file);
+    const birth = st.isSymbolicLink() || !(st.birthtimeMs > 0 && st.birthtimeMs <= st.mtimeMs) ? 0 : st.birthtimeMs;
+    return { from: Math.max(0, birth - COVERAGE_SLACK_MS), to: st.mtimeMs + COVERAGE_SLACK_MS };
+  } catch {
+    return { from: 0, to: Number.MAX_SAFE_INTEGER };
+  }
+}
+
 /** Latest time a record after a transcript's last datable one could have: its modification time. */
 function edgeTo(file: string): number {
   try {
@@ -303,13 +318,15 @@ export function listTranscripts(projectsDir: string): { file: string; subagent: 
 }
 
 interface Head { cwd: string | null; ts: number }
+/** A transcript refused by `readable()` (a symlink, a denied real path) or failing to read. */
+const UNREADABLE = 'unreadable' as const;
 
 /**
  * The first allowlisted record's timestamp and the first timestamped `cwd`, reading at most
  * `maxBytes`. `cwd` is null when no record has one; null when no record is datable at all.
  */
-async function readHead(file: string, maxBytes: number): Promise<Head | null> {
-  if (!readable(file)) return null;
+async function readHead(file: string, maxBytes: number): Promise<Head | null | typeof UNREADABLE> {
+  if (!readable(file)) return UNREADABLE;
   const input = createReadStream(file, { end: maxBytes - 1, highWaterMark: 16 << 10 });
   let first: number | null = null;
   try {
@@ -461,19 +478,25 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
     return common === commonDir ? 'ours' : 'other';
   };
   const list = listTranscripts(projectsDir);
-  const heads = await pool(list, (t) => readHead(t.file, HEAD_CAP).catch(() => null));
+  const heads = await pool(list, (t) => readHead(t.file, HEAD_CAP).catch(() => UNREADABLE));
   // A head with no cwd in its first 4 MiB is read on, up to the file cap. That's rare, so it
   // runs one at a time, which bounds memory to one long line.
   for (const [i, h] of heads.entries()) {
-    if (h?.cwd || (fileSize(list[i]!.file) ?? 0) <= HEAD_CAP) continue;
-    heads[i] = await readHead(list[i]!.file, maxFileBytes).catch(() => null);
+    if (h === UNREADABLE || h?.cwd || (fileSize(list[i]!.file) ?? 0) <= HEAD_CAP) continue;
+    heads[i] = await readHead(list[i]!.file, maxFileBytes).catch(() => UNREADABLE);
   }
-  const cwds = [...new Set(heads.flatMap((h) => (h?.cwd ? [h.cwd] : [])))];
+  const cwds = [...new Set(heads.flatMap((h) => (h && h !== UNREADABLE && h.cwd ? [h.cwd] : [])))];
   const placed = new Map(await Promise.all(cwds.map(async (c) => [c, await place(c)] as const)));
   const d: Discovery = { transcripts: [], liveRoots, coverage: [], blind: [], stats: { tooLarge: 0, unavailable: 0, unattributed: 0 } };
+  // A transcript we can't read could be this repo's: blind over its stat times (Qodo PR8 #2).
+  for (const [i, h] of heads.entries()) {
+    if (h !== UNREADABLE) continue;
+    d.blind.push(statSpan(list[i]!.file));
+    d.stats.unavailable++;
+  }
   const mine = list.flatMap((t, i) => {
     const head = heads[i];
-    if (!head) return [];
+    if (!head || head === UNREADABLE) return [];
     const where = head.cwd === null ? 'unplaced' : placed.get(head.cwd)!;
     return where === 'other' ? [] : [{ t, head, where }];
   });

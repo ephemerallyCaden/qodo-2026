@@ -1,6 +1,6 @@
 // Synthetic Claude Code transcripts in the v2.1.31x shape (probed key names only), planted with
 // privacy canaries. Generated at test time because `cwd` and file paths must be absolute.
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { lutimesSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AGENT_FILE, CONTROL, CORE_AGENT, HELPER, LATE, NOTES, SPACED, SPACED_LINES, type FixtureRepo } from '../build/basic.js';
@@ -122,7 +122,12 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
     mkdirSync(join(claudeDir, rel, '..'), { recursive: true });
     writeFileSync(join(claudeDir, rel), text);
   }
-  symlinkSync(join(claudeDir, 'file-history/x/linked.jsonl'), join(claudeDir, 'projects/-unrelated-slug/55555555-5555-4555-8555-555555555555.jsonl'));
+  const link = join(claudeDir, 'projects/-unrelated-slug/55555555-5555-4555-8555-555555555555.jsonl');
+  symlinkSync(join(claudeDir, 'file-history/x/linked.jsonl'), link);
+  // A refused symlink is blind from the epoch to its own mtime (Qodo PR8 #2). Date it before the
+  // fixture's history, as a link made then would be, so it stays a denylist check only.
+  const before = new Date('2026-10-01T08:00:00Z');
+  lutimesSync(link, before, before);
   symlinkSync(join(claudeDir, 'file-history/x'), join(claudeDir, 'projects/-linked-slug'));
   return { claudeDir, transcripts: files.map(([rel]) => join(claudeDir, rel)) };
 }

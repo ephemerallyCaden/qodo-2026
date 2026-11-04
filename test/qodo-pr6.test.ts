@@ -218,3 +218,30 @@ describe('Qodo PR8 #6: a failed agent git commit closes its window', () => {
     expect(withCase.attr('target')).toMatchObject({ class: 'human', evidence: [] });
   });
 });
+
+describe('Qodo PR8 #2: a transcript that can\'t be read is a blind span', () => {
+  const writer = (dir: string): Row[] => {
+    const s = session(SID, dir);
+    return [s.user('u1', at('09:00:00')), s.call('a2', at('09:30:00'), 'Write', { file_path: join(dir, PATH) }),
+      s.result('u3', 'a2', at('09:30:01'), createResult(join(dir, PATH), LINES)), s.user('u4', at('10:30:00'))];
+  };
+
+  it('a symlinked transcript keeps a commit covered by another transcript from being human', async () => {
+    const { control, withCase } = await controlAndCase((dir, trigger) => {
+      const rows = { [IDLE]: idle(dir) };
+      if (!trigger) return rows;
+      // Planted after the projects dir exists: a transcript reached through a symlink is never read.
+      const real = join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-linked-log-'))), 'real.jsonl');
+      writeFileSync(real, writer(dir).map((r) => JSON.stringify(r)).join('\n') + '\n');
+      return { ...rows, [`link:${real}`]: [] };
+    });
+    expect(control.attr('target')).toMatchObject({ class: 'human' });
+    expect(withCase.logs.unavailable).toBe(1);
+    expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none' });
+  });
+
+  it.skipIf(process.getuid?.() === 0)('a transcript that fails to read is counted as unavailable', async () => {
+    const { withCase } = await controlAndCase((dir) => ({ [IDLE]: idle(dir), [`mode000:${SID}`]: writer(dir) }));
+    expect(withCase.logs.unavailable).toBe(1);
+  });
+});
