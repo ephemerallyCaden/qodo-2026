@@ -15,7 +15,7 @@ npm run build       # tsc → dist/ (CLI entry: dist/cli.js)
 ```
 
 ## How to check the work
-Run all four before you commit. CI runs the same steps on Node 20 and 22.
+Run these before you commit. CI (`.github/workflows/ci.yml`) runs `npm ci`, lint, typecheck, test and build on Node 20 and 22. The `scan` smoke test is manual and isn't run by CI.
 ```sh
 npm run typecheck   # strict tsc over src/ and test/
 npm run lint        # ESLint, including the determinism and module-boundary rules
