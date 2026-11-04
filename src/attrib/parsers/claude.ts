@@ -343,6 +343,9 @@ const CD_AT_START = new RegExp(`^[\\s({]*(?:(?:bash|sh|zsh)\\s+(?:-\\w+\\s+)*)?[
 /** Where one git invocation points: `-C` (attached or not), `--git-dir`/`--work-tree`, `GIT_DIR=`/`GIT_WORK_TREE=`. */
 const GIT_TARGET = new RegExp(`(?:\\s-C\\s*|\\s--(?:git-dir|work-tree)(?:=|\\s+)|(?:^|\\s)GIT_(?:DIR|WORK_TREE)=)${DIR_ARG}`, 'g');
 
+/** GIT_DIR/GIT_WORK_TREE assignments, bare or after `export`/`declare`, in any segment. */
+const GIT_ENV = new RegExp(`(?:^|\\s)GIT_(?:DIR|WORK_TREE)=${DIR_ARG}`, 'g');
+
 /** A directory word resolved against the current directories; null when it can't be resolved. */
 function resolveDir(arg: string | undefined, bases: string[]): string[] | null {
   const dir = arg?.replace(/^(["'])(.*)\1$/, '$2');
@@ -371,13 +374,22 @@ function gitTargetsRepo(command: string, cwd: string, roots: string[]): boolean 
   const { segs, opaque } = segmentsOf(command);
   if (opaque) return true;
   let dirs: string[] | null = [cwd];
+  // GIT_DIR/GIT_WORK_TREE set (or exported) in an earlier segment still point later git
+  // commands; null once one can't be resolved (Qodo local r3 #2).
+  let env: string[] | null = [];
   let placed = false;
   for (const seg of segs) {
     const cd = CD_AT_START.exec(seg);
     if (cd) dirs = dirs && resolveDir(cd[1], dirs);
-    if (!runsGitCommit(seg)) continue;
+    if (!runsGitCommit(seg)) {
+      for (const m of seg.matchAll(GIT_ENV)) {
+        const next: string[] | null = dirs && env ? resolveDir(m[1], dirs) : null;
+        env = next && env ? [...env, ...next] : null;
+      }
+      continue;
+    }
     placed = true;
-    if (dirs === null) return true;
+    if (dirs === null || env === null || inRepo(env)) return true;
     // Each target resolves against the segment's directory and, for `-C a -C b`, the earlier
     // targets too; any one inside the repo counts (Qodo local r3 #1).
     let bases = dirs;
