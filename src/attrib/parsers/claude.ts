@@ -157,23 +157,46 @@ export function metaToken(v: unknown): string | undefined {
   if (/^(\/|~|[A-Za-z]:)/.test(v) || parts.includes('..')) return undefined;
   return namesPrivateDir(parts) ? undefined : v;
 }
-/**
- * An absolute, home (`~`), drive-letter or UNC path that starts a word, or follows one of
- * `=:,;(<[{'"\`@` inside it (`--prefix=/home/x`, `path:/Users/y`): it runs to the word's end.
- */
-const EMBEDDED_PATH = /(^|[=:,;(<[{'"`@])((?:\/\S|~|[A-Za-z]:[\\/]|\\\\)\S*)$/;
+/** Whether an absolute, home (`~`), drive-letter or UNC path starts at `word[i]`. */
+function pathAt(word: string, i: number): boolean {
+  const c = word[i];
+  if (c === '/') return i + 1 < word.length;
+  if (c === '~') return i + 1 === word.length || word[i + 1] === '/';
+  if (c === '\\') return word[i + 1] === '\\';
+  return /^[A-Za-z]:[\\/]/.test(word.slice(i, i + 3));
+}
 
 /**
- * Free text for output (commit subjects): private paths in each whitespace-separated word become
- * `<path>`. An absolute, `~`, drive-letter or UNC path is redacted wherever it starts in a word,
- * whoever's it is (Qodo PR10 #7); a de-rooted home or temp dir is matched by whole segments as in
- * metaToken. Plain relative paths (`src/x.ts`) are kept, as are brackets, quotes and trailing
- * punctuation around a redacted path (Qodo PR8 #4).
+ * Where a path to redact starts in a word: at its start, or right after a non-alphanumeric
+ * character (`fix-/Users/x`, `--prefix=/home/x`), but not after the dots of a relative `./`,
+ * `../` or `a/../` prefix. −1 when there is none (`src/x.ts`, `and/or`, `a/b` stay).
+ */
+function pathStart(word: string): number {
+  for (let i = 0; i < word.length; i++) {
+    if (!pathAt(word, i)) continue;
+    if (i === 0) return 0;
+    if (/[A-Za-z0-9]/.test(word[i - 1]!)) continue;
+    if (word[i - 1] === '.') {
+      let j = i - 1;
+      while (j >= 0 && word[j] === '.') j--;
+      if (j < 0 || word[j] === '/') continue;
+    }
+    return i;
+  }
+  return -1;
+}
+
+/**
+ * Free text for output (commit subjects, author names): private paths in each whitespace-separated
+ * word become `<path>`. An absolute, `~`, drive-letter or UNC path is redacted wherever it starts
+ * in a word, whoever's it is, from its start to the word's end, keeping trailing punctuation
+ * (Qodo PR10 #7, local #2). A de-rooted home or temp dir is matched by whole segments as in
+ * metaToken. Plain relative paths (`src/x.ts`, `../lib`) are kept (Qodo PR8 #4).
  */
 export function redactPaths(text: string): string {
   return text.replace(/\S+/g, (word) => {
-    const m = EMBEDDED_PATH.exec(word);
-    if (m) return `${word.slice(0, m.index)}${m[1]}<path>${/[)"'`\]>},.;:!?]*$/.exec(m[2]!)![0]}`;
+    const i = pathStart(word);
+    if (i >= 0) return `${word.slice(0, i)}<path>${/[)"'`\]>},.;:!?]*$/.exec(word.slice(i))![0]}`;
     const [, pre, core, post] = /^([("'`[<{]*)(.*?)([)"'`\]>},.;:!?]*)$/.exec(word)!;
     if (!core) return word;
     return namesPrivateDir(core.split(/[\\/]/)) ? `${pre}<path>${post}` : word;

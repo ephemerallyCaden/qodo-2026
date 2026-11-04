@@ -107,3 +107,16 @@ it('absolute, ~, drive-letter and UNC paths are redacted anywhere inside a subje
   // Plain relative paths, ratios and times are not paths.
   for (const keep of ['fix src/x.ts and lib/y', 'and/or', 'at 12:30', 'a:b/c', 'v1.2/3']) expect(redactPaths(keep), keep).toBe(keep);
 });
+
+it('an absolute path starting anywhere inside a subject word is redacted, only its suffix (Qodo local #2)', () => {
+  const cases: [string, string][] = [
+    ['fix-/Users/alice/private.txt', 'fix-<path>'], ['see_/home/bob/x', 'see_<path>'], ['x+/etc/secret,', 'x+<path>,'],
+    ['note#~/drafts', 'note#<path>'], ['fix-C:\\Users\\carol\\x', 'fix-<path>'], ['fix.\\\\host\\s\\x', 'fix.<path>'],
+    ['fix./Users/dave/x', 'fix.<path>'],
+  ];
+  for (const [subject, want] of cases) expect(redactPaths(subject), subject).toBe(want);
+  // Relative paths (including ./ and ../ prefixes), ratios and times are kept.
+  for (const keep of ['src/x.ts', 'and/or', '12:30', 'a/b', './scripts/run.sh', '../shared/lib', 'a/../b', 'v1.2/3']) {
+    expect(redactPaths(keep), keep).toBe(keep);
+  }
+});
