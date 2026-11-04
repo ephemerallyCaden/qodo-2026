@@ -5,6 +5,8 @@ const CONFIG = [
   '-c', 'core.quotepath=off', '-c', 'diff.renameLimit=4000', '-c', 'log.showSignature=false',
   '-c', 'diff.noprefix=false', '-c', 'diff.mnemonicPrefix=false', '-c', 'diff.relative=false',
   '-c', 'diff.indentHeuristic=true', '-c', 'color.ui=false', '-c', 'i18n.logOutputEncoding=UTF-8',
+  // The root commit's patch and numstat are needed; submodules diff as a one-line SHA change.
+  '-c', 'log.showRoot=true', '-c', 'diff.submodule=short',
 ];
 export const DIFF_OPTS = [
   '--no-ext-diff', '--no-textconv', '--no-color', '--diff-algorithm=myers', '-M',

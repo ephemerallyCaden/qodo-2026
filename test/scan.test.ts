@@ -85,6 +85,17 @@ describe('scan', () => {
     expect(snapshot.coverage.length).toBeGreaterThan(0);
   });
 
+  it('ignores the user\'s log.showRoot and diff.submodule config (bar raiser #8)', async () => {
+    const set = (k: string, v: string) => execFileSync('git', ['config', k, v], { cwd: repo.dir });
+    set('log.showRoot', 'false');
+    set('diff.submodule', 'log');
+    try {
+      expect((await run()).json).toBe(readFileSync(GOLDEN, 'utf8'));
+    } finally {
+      for (const k of ['log.showRoot', 'diff.submodule']) execFileSync('git', ['config', '--unset', k], { cwd: repo.dir });
+    }
+  });
+
   it('classes everything unknown, never human, without log coverage', async () => {
     const { snapshot } = await run({ ingest: false });
     expect(new Set(snapshot.commits.map((c) => c.attribution.class))).toEqual(new Set(['unknown']));
