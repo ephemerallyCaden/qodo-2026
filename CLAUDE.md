@@ -1,60 +1,52 @@
-# [PROJECT NAME]
+# Commet
 
-> [One sentence: what it does and who it's for]
+> A local-first, pixel-art 3D explorer that helps a solo developer working with AI coding agents keep a real mental model of their own codebase. Entry for Qodo's "Build a Software Factory in 30 Days" hackathon (Nov 2 – Dec 2, 2026, solo).
 
-## Stack
-<!-- Fill in at kickoff -->
-- Framework:
-- UI:
-- Database:
-- External APIs: [sponsor API + anything else]
-- Deploy target:
+**Read first:** `CONSTITUTION.md` (principles, autonomy, quality gates; currently a draft), `docs/features/codebase-space-explorer.md` (requirements R1–R14, week plan), `JOURNAL.md` (state and decisions), `docs/design/art-direction.md` (the Current spec section is the visual source of truth).
 
-## Commands
-<!-- Fill in once stack is chosen -->
-- `[dev command]` to start dev server
-- `[build command]` to build
-- `[test command]` to run tests
-- `[lint command]` to lint
+## Stack (pinned at scaffold; see CONSTITUTION.md)
+- TypeScript (strict), Node ≥ 20, npm.
+- One `commet` npm package: scanner + CLI (native `git` via child_process, no language parsers) + terminal mode.
+- One web bundle: Vite, three.js `WebGLRenderer`, GLSL. Served by `commet open` on a hardened 127.0.0.1 server (R14).
+- Tests: Vitest (unit, golden, property), Playwright + SwiftShader for golden images.
+- No remote servers, telemetry or uploads. GitHub API calls only as explicit read-only opt-ins.
 
-## Architecture
-<!-- Fill in after initial scaffolding -->
-- Entry point:
-- API routes:
-- Components:
+## Build & Test
+**Not scaffolded yet.** The product has no build, test or lint commands until the scaffold task lands; record the verified commands here when it does.
 
-## Sponsor API
-<!-- Fill in at kickoff -->
-- API key in `.env` as `[SPONSOR]_API_KEY`
-- Docs: [link]
-- SDK: [install command]
+The design mockups live on `feature/hype-gif` under `mockups/asset-viewer/` (`npm install && npm test` there). They are throwaway prototypes, not product code.
+
+## Layout (planned)
+- `snapshot.v1.json` produced by `commet scan`; local state in `.git/commet/` (snapshot, chart state, beacons, events).
+- `layout(snapshot) → positions` is a pure function. Space mapping: repo = system, top-level dirs = planets, second-level dirs = moons, files = surface features.
 
 ## Rules
 - Read files before editing. Don't guess what exists.
-- No features beyond what was asked. Hackathon scope is tight.
-- Match existing patterns. Don't refactor adjacent code.
+- No features beyond the task. Match existing patterns; don't refactor adjacent code.
+- **Determinism:** no `Math.random` in pipeline, layout or render code; use the pinned seeded PRNG and hash. No wall-clock time in snapshots.
+- **Privacy:** never copy code, prompt text or absolute paths from agent logs into any output. Never read `originalFile`, `last-prompt`, `history.jsonl`, `file-history/`, `api-request*` or `attachment` records (see `docs/research/agent-attribution.md`).
+- **Golden and property tests** are updated deliberately with a reason, never regenerated just to pass. Render tests must fail on empty output.
 - Run build/test after changes. Fix what you break.
-- Commit after every working feature. Small commits, clear messages.
-- If unsure, ask. Don't assume and build the wrong thing.
-- No abstractions for one-time code. Inline is fine for 24 hours.
-- Skip error handling except on the demo path.
+- **Stage explicit paths only.** Never `git add -A` or `git add .`; other sessions write files in this checkout.
+- New dependencies need a one-line justification in the PR description.
+
+## Branching
+- `main` changes only with the human's approval. Never merge into or push `main`.
+- Work happens on `session/<name>` branches; feature agents use `feature/<name>`, debuggers `debug/<name>`, each in a worktree under `.sandboxes/`.
+- Integrate by rebase + fast-forward. The team lead merges; other agents only commit on their own branch.
+- Commits: conventional style (`feat:`, `fix:`, `docs:`, `test:`, `chore:`), small and focused.
+
+## Gotchas
+- `JOURNAL.md` and `.archive/` are gitignored and absent from worktrees. Reference them by absolute path, e.g. `<main-checkout>/JOURNAL.md` and `<main-checkout>/.archive/...`, where `<main-checkout>` is `$(git rev-parse --path-format=absolute --git-common-dir)/..`.
+- Qodo can't see binary files. Report visual results as text (test output, colour counts) in PRs.
+- `refs/notes/commet` is reserved for attribution events, not user notes.
 
 ## Context management
 - When context feels long (50+ tool calls, or responses getting shorter): write your current plan to PLAN.md, then run `/compact`.
-- Compact AFTER: finishing a research phase, fixing a bug, completing a feature.
-- Do NOT compact DURING: active implementation, multi-file changes, debugging.
-- After compacting: read PLAN.md and SPEC.md back to restore state.
+- Compact after finishing research, a bug fix or a feature, not during active implementation or debugging.
 
 ## Agent auto-routing
-Use these agents and skills proactively without being asked:
-- After writing code that changes behavior: run `/verify` to check build/types/lint/tests
-- When a build or test fails: run `/fix` with the error output
-- Before committing: run `git diff` and scan for debug code, hardcoded secrets, console.logs
-- When starting a new feature: read SPEC.md first to check scope and team ownership
-- When exploring unfamiliar code: use the `explorer` agent, don't read files one by one
-
-## Team
-Four developers working in parallel on feature branches.
-- Merge to `main` only when your feature works and builds.
-- Coordinate with teammates before touching shared files.
-- Each person owns their branch. Don't edit others' branches.
+- After writing code that changes behaviour: run `/verify`.
+- When a build or test fails: run `/fix` with the error output.
+- Before committing: review `git diff --cached` for debug code, secrets and stray files.
+- When exploring unfamiliar code: use the `explorer` agent.
