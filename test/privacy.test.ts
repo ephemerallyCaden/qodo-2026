@@ -16,7 +16,7 @@ let outputs: Record<string, string>;
 
 beforeAll(async () => {
   repo = buildBasicRepo();
-  claude = writeClaudeFixture(repo);
+  claude = writeClaudeFixture(repo, { fileSymlink: true });
   const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: claude.claudeDir });
   expect(r.code).toBe(0);
   outputs = { snapshot: readFileSync(join(repo.dir, '.git/commet/snapshot.json'), 'utf8'), stdout: r.out, stderr: r.err };

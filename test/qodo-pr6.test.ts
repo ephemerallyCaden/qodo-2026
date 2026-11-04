@@ -1,7 +1,7 @@
 // Qodo PR #6 findings on the Issue #5 fix. Each case scans a tiny repo twice: a control without
 // the triggering record (must be human or agent as stated) and the case itself.
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { lutimesSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { discoverClaude, parseClaude, runsGitCommit } from '../src/attrib/parsers/claude.js';
@@ -354,5 +354,23 @@ describe('Qodo PR8 #7 bound: which outside sessions are searched', () => {
     const { attr, logs } = await scanMini(repo, projects);
     expect(attr('target')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
     expect(logs.transcripts).toBe(2);
+  });
+});
+
+describe('Qodo PR10 #6: a symlinked transcript stays a gap', () => {
+  it('a commit after the link\'s own mtime is still blind', async () => {
+    const [a, b] = [repoWith(), repoWith()];
+    const control = await scanMini(a, miniClaude({ [IDLE]: idle(a.dir) }));
+    const real = join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-linked-log-'))), 'real.jsonl');
+    writeFileSync(real, '{}\n');
+    const projects = miniClaude({ [IDLE]: idle(b.dir), [`link:${real}`]: [] });
+    // The link was made before the commit; the file behind it can still grow, so its gap never closes.
+    const linked = readdirSync(join(projects, '-mini')).find((f) => f.endsWith('-link.jsonl'))!;
+    const made = new Date('2026-10-10T08:30:00Z');
+    lutimesSync(join(projects, '-mini', linked), made, made);
+    const withCase = await scanMini(b, projects);
+    expect(control.attr('target')).toMatchObject({ class: 'human' });
+    expect(withCase.logs.unavailable).toBe(1);
+    expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none' });
   });
 });

@@ -273,13 +273,15 @@ function edgeFrom(file: string, firstTs: number): number {
 
 /**
  * When an unreadable transcript's records could be dated: from its birth time (the epoch when
- * missing or later than its mtime) to its mtime. A symlink isn't followed even for stat, so its
- * span is the epoch to the link's own mtime. When lstat fails too, all time.
+ * missing or later than its mtime) to its mtime. A symlink isn't followed even for stat, and the
+ * file behind it can keep growing, so its span is all time (Qodo PR10 #6). When lstat fails too,
+ * all time.
  */
 function statSpan(file: string): Interval {
   try {
     const st = lstatSync(file);
-    const birth = st.isSymbolicLink() || !(st.birthtimeMs > 0 && st.birthtimeMs <= st.mtimeMs) ? 0 : st.birthtimeMs;
+    if (st.isSymbolicLink()) return { from: 0, to: Number.MAX_SAFE_INTEGER };
+    const birth = st.birthtimeMs > 0 && st.birthtimeMs <= st.mtimeMs ? st.birthtimeMs : 0;
     return { from: Math.max(0, birth - COVERAGE_SLACK_MS), to: st.mtimeMs + COVERAGE_SLACK_MS };
   } catch {
     return { from: 0, to: Number.MAX_SAFE_INTEGER };
