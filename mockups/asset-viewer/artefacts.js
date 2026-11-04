@@ -18,6 +18,10 @@
 // the terrain (lava's near-black crust) take inverted lightness so they stay legible.
 
 export const MAX_ART = 5;
+// Glyph clamp: the cells across a sector stay within these bounds at any zoom. Zooming in grows
+// each cell (in whole internal pixels per glyph pixel) instead of adding cells; zooming out never
+// shrinks a sector below `min` cells (discs under ~1.5x that width, 13.5 px radius at 180p, are skipped).
+export const ART_CELLS = { min: 3, max: 10 };
 export const ART_TICKS = 180; // per surface turn (15 ticks/s at 12 s per turn); rates 2..6 all divide it
 
 // 5x5 glyphs ('#' = ink), drawn in 6 px cells; from mockups/ascii-fx/glyphs.js.
@@ -62,6 +66,8 @@ export const ARTEFACTS_GLSL = /* glsl */ `
   uniform int uArtTeal;
   uniform vec3 uArtTealC;
   uniform vec4 uArtSec[${MAX_ART}]; // xyz = centre direction (planet frame), w = size in cells
+  uniform int uArtDebug;        // 1 = debug view (no row slip): rgb = cell x + 128, cell y + 128, sector * 50 + cells across * 4
+  const float ART_CELLS_MIN = ${ART_CELLS.min.toFixed(1)}, ART_CELLS_MAX = ${ART_CELLS.max.toFixed(1)};
   const int BUGS[10] = int[10](${BUGS.map((n) => mask(GLYPHS[n])).join(', ')});
   const int PLUS = ${mask(GLYPHS.plus)};
   float ah(vec2 q) { return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
@@ -75,8 +81,7 @@ export const ARTEFACTS_GLSL = /* glsl */ `
     vec3 dpx = dFdx(p), dpy = dFdy(p); // to find each cell's centre on the sphere
     vec3 base = c;
     vec2 fp = vec2(gl_FragCoord.x, uViewSize.y - gl_FragCoord.y); // px, top-down
-    float k = max(1.0, floor(uViewSize.y / 180.0 + 0.5)); // glyph pixel scale: 1 at 180p, 2 at 360p
-    float cellPx = 6.0 * k;
+    float k = max(1.0, floor(uViewSize.y / 180.0 + 0.5)); // base glyph pixel scale: 1 at 180p, 2 at 360p
     float radiusPx = gRadiusPx;
     int lo = max(b - 1, 0), hi = min(b + 1, 3);
     for (int i = 0; i < ${MAX_ART}; i++) {
@@ -88,22 +93,28 @@ export const ARTEFACTS_GLSL = /* glsl */ `
       vec2 s = vec2(clip.x / clip.w + 1.0, 1.0 - clip.y / clip.w) * 0.5 * uViewSize;
       float facing = dot(normalize(mat3(modelMatrix) * dir), normalize(cameraPosition - w.xyz));
       if (facing < 0.2) continue;
-      // half-width in cells: ~half the disc across on big planets, a smaller share on small ones
-      // (down to 0.6x below ~25 px radius), so one sector never swamps a small disc
+      // natural half-width in base cells: ~half the disc across on big planets, a smaller share on
+      // small ones (down to 0.6x below ~25 px radius), so one sector never swamps a small disc
       float cells = uArtSec[i].w * radiusPx / (50.0 * k) * mix(0.6, 1.0, clamp((radiusPx - 25.0) / 35.0, 0.0, 1.0));
-      if (cells < 1.0) continue; // too small to read (distant planets)
+      if (radiusPx < ART_CELLS_MIN * 4.5 * k) continue; // the disc can't hold a ART_CELLS_MIN sector (under ~1.5x its width): too small to read
+      // glyph clamp: grow the glyph pixel g (whole px) until at most ART_CELLS_MAX cells span the
+      // sector, then hold at least ART_CELLS_MIN
+      float g = max(k, ceil(2.0 * cells * k / ART_CELLS_MAX - 1e-3));
+      cells = max(cells * k / g, ART_CELLS_MIN * 0.5);
+      float cellPx = 6.0 * g;
       float seed = float(i) * 17.3 + 3.1;
       // whole-sector row slip on a few ticks
       float slipStep = floor(float(uArtTick) / 3.0);
       vec2 rel = fp - floor(s);
-      if (ah(vec2(slipStep, seed)) > 0.8) rel.x += (floor(ah(vec2(floor(rel.y / (3.0 * k)), slipStep + seed)) * 7.0) - 3.0) * k;
+      if (uArtDebug == 0 && ah(vec2(slipStep, seed)) > 0.8) rel.x += (floor(ah(vec2(floor(rel.y / (3.0 * g)), slipStep + seed)) * 7.0) - 3.0) * g;
       ivec2 cell = ivec2(floor(rel / cellPx));
-      ivec2 lp = ivec2(floor((rel - vec2(cell) * cellPx) / k));
+      ivec2 lp = ivec2(floor((rel - vec2(cell) * cellPx) / g));
       vec2 cc = vec2(cell) + 0.5;
       vec2 hs = vec2(cells * max(facing, 0.25), cells * 0.8);
       float e = length(cc / hs);
       float rough = ah(vec2(cell) + seed);
       if (e > 0.7 + rough * 0.55) continue;
+      if (uArtDebug == 1) { c = vec3(float(cell.x) + 128.0, float(cell.y) + 128.0, float(i) * 50.0 + floor(cells * 8.0 + 0.5)) / 255.0; continue; }
       vec2 toCentre = cc * cellPx - rel; // px, top-down
       vec3 pc = normalize(p + dpx * toCentre.x - dpy * toCentre.y);
       // each cell re-rolls at its own rate (2..6 ticks, all dividing ${ART_TICKS}), so the sector simmers
@@ -119,7 +130,7 @@ export const ARTEFACTS_GLSL = /* glsl */ `
       } else if (r < 0.46) {
         c = ah(vec2(cell) + 9.1) > 0.5 ? invL(base) : surface(p, 3 - b); // invert: lightness, or the light bands
       } else if (r < 0.55) {
-        c = surface(rotY(p, (ah(vec2(floor(rel.y / (2.0 * k)), st + seed)) - 0.5) * 0.6), b); // tear
+        c = surface(rotY(p, (ah(vec2(floor(rel.y / (2.0 * g)), st + seed)) - 0.5) * 0.6), b); // tear
       } else {
         int g = BUGS[int(ah(vec2(cell) * 2.3 + st) * 10.0)];
         if (!core && r > 0.85) g = PLUS;

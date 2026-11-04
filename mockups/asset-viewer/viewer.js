@@ -824,7 +824,7 @@ function makePlanet() {
     uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 }, uPoolCut: { value: 9 }, uRegions: { value: 0 },
     uBands: { value: new THREE.Vector3(0.2, 0.58, 0.86) }, // lit directional terminator, crescent bands
     // artefacts (artefacts.js): off while uArtN = 0
-    uArtN: { value: 0 }, uArtTick: { value: 0 }, uArtTeal: { value: 0 }, uArtTealC: { value: new THREE.Color(ACCENTS.reveal[3]) }, // [OIII] teal, garnish only
+    uArtN: { value: 0 }, uArtTick: { value: 0 }, uArtTeal: { value: 0 }, uArtDebug: { value: 0 }, uArtTealC: { value: new THREE.Color(ACCENTS.reveal[3]) }, // [OIII] teal, garnish only
     uArtSec: { value: Array.from({ length: MAX_ART }, () => new THREE.Vector4(0, 0, 1, 4)) }, uViewSize: VIEW_SIZE,
   });
   const spin = new THREE.Group(); // the surface turns surfaceTurns per loop
@@ -1125,8 +1125,9 @@ function makePlanet() {
   }
   // artefacts: 0 = off, 1..5 = that many sectors, 'auto' = by planet size (artefactCount).
   let artefactsOpt = 0;
-  function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false, cloudShadow = true, regions = false } = {}) {
+  function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false, cloudShadow = true, regions = false, artDebug = false } = {}) {
     surfaceMat.uniforms.uRegions.value = regions ? 1 : 0;
+    surfaceMat.uniforms.uArtDebug.value = artDebug ? 1 : 0;
     for (const m of MOONS) m.mesh.visible = moons;
     shadowMat.visible = cloudShadow;
     halo.visible = showHalo;
@@ -1521,6 +1522,7 @@ const state = {
   artefacts: false, artAuto: true, artCount: 3, artTeal: false, // planet artefacts (artefacts.js); artAuto: sector count by planet size
   cover: null, // cloud-cover override (0..1) for the hero planets; null = the biome's WEATHER cover
   regions: false, // debug (measurement only): planet surfaces as ground / crack / open-plate colours
+  artDebug: false, // debug (measurement only): artefact cells as cell-index colours (artefacts.js uArtDebug)
 };
 
 // Keep the orbit camera out of the cloud layer in planet views (clouds reach ~1.1 R).
@@ -1560,7 +1562,7 @@ function applyState() {
   LOOP.period = Math.max(1, state.period);
   LOOP.surfaceTurns = Math.max(1, Math.round(state.surfaceTurns));
   LOOP.cloudTurns = Math.max(0, Math.round(state.cloudTurns));
-  const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow, regions: state.regions };
+  const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow, regions: state.regions, artDebug: state.artDebug };
   document.getElementById('art-auto').checked = state.artAuto;
   planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
