@@ -49,17 +49,14 @@ export function artefactSectors(rnd, count) {
   });
 }
 
-// Needs surface(p, band), uBiome and the light-band uniforms from PLANET_FRAG, plus
-// three's modelMatrix / projectionMatrix (declared here; the renderer sets them per program).
+// Needs surface(p, band), uBiome, the light-band uniforms, modelMatrix / projectionMatrix,
+// uViewSize and gRadiusPx (the planet's radius in screen px) from PLANET_FRAG.
 export const ARTEFACTS_GLSL = /* glsl */ `
-  uniform mat4 modelMatrix;
-  uniform mat4 projectionMatrix;
   uniform int uArtN;            // 0 = off: artefacts() returns c untouched
   uniform int uArtTick;         // 0..ART_TICKS * surfaceTurns - 1, loop-locked
   uniform int uArtTeal;
   uniform vec3 uArtTealC;
   uniform vec4 uArtSec[${MAX_ART}]; // xyz = centre direction (planet frame), w = size in cells
-  uniform vec2 uViewSize;       // drawing-buffer size in px
   const int BUGS[10] = int[10](${BUGS.map((n) => mask(GLYPHS[n])).join(', ')});
   const int PLUS = ${mask(GLYPHS.plus)};
   float ah(vec2 q) { return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
@@ -75,8 +72,7 @@ export const ARTEFACTS_GLSL = /* glsl */ `
     vec2 fp = vec2(gl_FragCoord.x, uViewSize.y - gl_FragCoord.y); // px, top-down
     float k = max(1.0, floor(uViewSize.y / 180.0 + 0.5)); // glyph pixel scale: 1 at 180p, 2 at 360p
     float cellPx = 6.0 * k;
-    vec4 centreV = viewMatrix * modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-    float radiusPx = length(modelMatrix[0].xyz) * projectionMatrix[1][1] / -centreV.z * uViewSize.y * 0.5;
+    float radiusPx = gRadiusPx;
     int lo = max(b - 1, 0), hi = min(b + 1, 3);
     for (int i = 0; i < ${MAX_ART}; i++) {
       if (i >= uArtN) break;

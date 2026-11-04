@@ -1,0 +1,54 @@
+// Probe: width of lava fissures and ice crevasses at 180p (studio view, depth off).
+// Line pixels are classified by colour: lava = the glow ramp, ice = the crevasse ramp.
+// Width at a line pixel = min(horizontal run, vertical run) through it; reports the median,
+// the share of isolated pixels (no 4-neighbour on the line) and the line share of the disc.
+// Usage: node debug/measure-line-width.mjs
+import { openViewer } from './repro-hollow-clouds.mjs';
+
+export const LINE_SET = [['lava', 11, 1.0], ['lava', 12, 0.7], ['lava', 58, 1.3], ['ice', 8, 0.7], ['ice', 19, 1.0], ['ice', 77, 1.3]];
+
+export async function measureLines(page, biome, seed, size, time = 3) {
+  return page.evaluate(({ biome, seed, size, time }) => {
+    window.viewer.set({ view: 'studio', biome, seed, size, time, ringMode: 'off', moons: false, depth: false, pixelH: 180, palette: 'final', spin: true, ui: false, artefacts: false });
+    const src = document.getElementById('view');
+    const W = src.width, H = src.height;
+    const c = Object.assign(document.createElement('canvas'), { width: W, height: H });
+    const x = c.getContext('2d');
+    x.drawImage(src, 0, 0);
+    const d = x.getImageData(0, 0, W, H).data;
+    const hex = (i) => (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+    const ramp = (biome === 'lava' ? ['#d63c1a', '#ff8a1e', '#ffe066'] : ['#16234e', '#24407e', '#3a64b0', '#6a96d6']).map((h) => parseInt(h.slice(1), 16));
+    const space = new Set([0x0d0b16, 0x3b3866, 0x9a90e0, 0xfff8ff]);
+    const line = new Uint8Array(W * H);
+    let disc = 0;
+    for (let i = 0; i < W * H; i++) {
+      const k = hex(i * 4);
+      if (!space.has(k)) disc++;
+      if (ramp.includes(k)) line[i] = 1;
+    }
+    const widths = [];
+    let isolated = 0, n = 0;
+    for (let y = 0; y < H; y++) for (let x0 = 0; x0 < W; x0++) {
+      const i = y * W + x0;
+      if (!line[i]) continue;
+      n++;
+      let l = x0, r = x0, u = y, b = y;
+      while (l > 0 && line[y * W + l - 1]) l--;
+      while (r < W - 1 && line[y * W + r + 1]) r++;
+      while (u > 0 && line[(u - 1) * W + x0]) u--;
+      while (b < H - 1 && line[(b + 1) * W + x0]) b++;
+      widths.push(Math.min(r - l + 1, b - u + 1));
+      if (r === l && b === u) isolated++;
+    }
+    widths.sort((a, b) => a - b);
+    return { biome, seed, size, linePx: n, median: widths.length ? widths[widths.length >> 1] : 0, p75: widths.length ? widths[Math.floor(widths.length * 0.75)] : 0, isolated: +(isolated / Math.max(1, n)).toFixed(3), lineShare: +(n / Math.max(1, disc)).toFixed(3) };
+  }, { biome, seed, size, time });
+}
+
+if (process.argv[1]?.endsWith('measure-line-width.mjs')) {
+  const { browser, page } = await openViewer();
+  const rows = [];
+  for (const [biome, seed, size] of LINE_SET) rows.push(await measureLines(page, biome, seed, size));
+  console.table(rows);
+  await browser.close();
+}

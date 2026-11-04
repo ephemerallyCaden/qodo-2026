@@ -9,7 +9,7 @@ import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
 import { mapPalette, mapColors, snapToPool } from './palette-map.js';
 import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH, ACCENTS } from './planet-ramps.js';
 import { tangentFrame } from './cloud-frame.js';
-import { ridge } from './snoise.js';
+import { voronoiEdge, crackMask } from './snoise.js';
 import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors } from './artefacts.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
@@ -309,6 +309,48 @@ const CLOUD_FRAG = /* glsl */ `
   }
 `;
 
+// Cell hash, Voronoi edge distance and the crack mask, shared by the planet shader and the CPU
+// port (snoise.js voronoiEdge / crackMask) that places lava ash on the fissures.
+const CRACKS = { lava: { freq: 3.2, cut: 0.25 }, ice: { freq: 3.8, cut: 0.32 } };
+const WORLEY_GLSL = /* glsl */ `
+  vec3 hash33(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
+  // Integer cell hash (pcg3d), bit-exact on the CPU, unlike the float hash33 (whose large
+  // fract() arguments differ by GPU rounding). Cells are offset to stay non-negative.
+  uvec3 pcg3d(uvec3 v) {
+    v = v * 1664525u + 1013904223u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    return v;
+  }
+  vec3 cellHash(vec3 c) { return vec3(pcg3d(uvec3(ivec3(c) + 4096))) * (1.0 / 4294967296.0); }
+  // Distance to the nearest Voronoi cell edge (the bisector plane between the nearest feature
+  // and each neighbour; Quilez's two-pass method). Exact, so cracks have even width and
+  // sharp corners instead of blobs at the junctions.
+  float voronoiEdge(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    vec3 r1 = vec3(0.0), c1 = vec3(0.0);
+    float d1 = 9.0;
+    for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+      vec3 g = vec3(x, y, z);
+      vec3 r = g + cellHash(i + g) - f;
+      float dd = dot(r, r);
+      if (dd < d1) { d1 = dd; r1 = r; c1 = g; }
+    }
+    float e = 9.0;
+    for (int z = -2; z <= 2; z++) for (int y = -2; y <= 2; y++) for (int x = -2; x <= 2; x++) {
+      vec3 g = c1 + vec3(x, y, z);
+      vec3 r = g + cellHash(i + g) - f;
+      vec3 dr = r - r1;
+      if (dot(dr, dr) > 1e-5) e = min(e, dot(0.5 * (r1 + r), normalize(dr)));
+    }
+    return e;
+  }
+  float crackMask(vec3 p, float freq, vec3 off) { return snoise(p * freq * 0.35 + off.yzx) * 0.5 + 0.5; }
+  const float LAVA_CRACK_FREQ = ${CRACKS.lava.freq.toFixed(2)}, LAVA_CRACK_CUT = ${CRACKS.lava.cut.toFixed(2)};
+  const float ICE_CRACK_FREQ = ${CRACKS.ice.freq.toFixed(2)}, ICE_CRACK_CUT = ${CRACKS.ice.cut.toFixed(2)};
+`;
+
 // Biome surfaces (art-direction: biome = module health). All flat light bands from
 // palette ramps; lava fissures (and toxic veins) are emissive and ignore lighting.
 // uA/uB/uC are 5-entry ramps and uG a 3-entry glow ramp, re-keyed per biome (BIOMES).
@@ -323,11 +365,14 @@ const PLANET_FRAG = /* glsl */ `
   uniform vec3 uG[3];
   uniform vec3 uSeedOff;
   uniform float uSea;
+  uniform mat4 modelMatrix;      // three sets these per program; the fragment stage reads them
+  uniform mat4 projectionMatrix; // for the planet's screen size (cracks, artefacts)
+  uniform vec2 uViewSize;        // drawing-buffer size in px
   in vec3 vNormalW;
   in vec3 vLocal;
   in vec3 vPosW;
 
-  vec3 hash33(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
+  ${WORLEY_GLSL}
   // Worley F1 distance plus a random id for the nearest cell.
   vec2 worley(vec3 p) {
     vec3 i = floor(p), f = fract(p);
@@ -341,6 +386,32 @@ const PLANET_FRAG = /* glsl */ `
     return vec2(sqrt(d), id);
   }
   float ridge(vec3 p) { return 1.0 - abs(snoise(p)); } // 1.0 along a network of thin lines
+
+  // Screen scale, set once per fragment in main() (uniform control flow) and read by surface():
+  // gPx = sphere units per screen pixel here, gRadiusPx = the planet's radius in screen px.
+  float gPx = 0.01, gRadiusPx = 60.0;
+  void setScreenScale(vec3 p) {
+    vec3 dx = dFdx(p), dy = dFdy(p);
+    gPx = max(1e-5, max(length(dx), length(dy))); // the foreshortened axis: lines never swell at the limb
+    vec4 centreV = viewMatrix * modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+    gRadiusPx = length(modelMatrix[0].xyz) * projectionMatrix[1][1] / -centreV.z * uViewSize.y * 0.5;
+  }
+  // Jagged cracks (lava fissures, ice crevasses): Voronoi cell edges, i.e. straight segments
+  // meeting at pointed junctions. A mask (crackMask) picks which edges show and how wide, so
+  // cracks branch and taper; below ~1 px a crack simply ends, so tips never break into dots.
+  // Width is in SCREEN px (halfPx at the widest), so lines stay bold at any size; small
+  // planets raise the mask cut instead, so they show fewer cracks rather than solid fissure.
+  // Returns half-width minus the pixel's distance to the edge, in px (> 0 inside), and in
+  // core how central the pixel is (0 centre .. 1 edge).
+  float crack(vec3 p, float freq, vec3 off, float cut, float halfPx, out float core) {
+    float small = 1.0 - clamp((gRadiusPx - 18.0) / 50.0, 0.0, 1.0); // 1 for tiny planets, 0 from ~70 px radius
+    float w = halfPx * smoothstep(cut + small * 0.35, cut + small * 0.35 + 0.25, crackMask(p, freq, off));
+    core = 1.0;
+    if (w < 0.55) return -1.0;
+    float dpx = voronoiEdge(p * freq + off) / (freq * gPx); // px to the cell edge
+    core = dpx / w;
+    return w - dpx;
+  }
 
   // Craters: sparse cells get a dark floor and a bright rim.
   vec3 craters(vec3 p, vec3 c, int b, float scale, float density) {
@@ -369,11 +440,12 @@ const PLANET_FRAG = /* glsl */ `
         if (lat > 0.9) c = uC[b];
       }
     } else if (uBiome == 2) {
-      // ice: bright strata and a network of crevasses
+      // ice: bright strata and a network of jagged crevasses (deeper blue at the core)
       float h = fbm(p * 2.3 + uSeedOff);
       float strata = sin((p.y * 5.0 + h * 2.4) * 3.14159);
       c = uA[min(b + 1 + (strata > 0.55 ? 1 : 0), 4)];
-      if (ridge(p * 2.6 + uSeedOff) > 0.972 || ridge(p * 6.0 + uSeedOff.yzx) > 0.982) c = uB[min(b, 4)];
+      float core;
+      if (crack(p, ICE_CRACK_FREQ, uSeedOff.yzx, ICE_CRACK_CUT, 1.2, core) > 0.0) c = core < 0.5 ? uB[max(b - 1, 0)] : uB[min(b, 4)];
     } else if (uBiome == 3 || uBiome == 6) {
       // desert dunes / barren moon, both cratered
       float h = fbm(p * 2.0 + uSeedOff);
@@ -386,10 +458,9 @@ const PLANET_FRAG = /* glsl */ `
       // lava: dark crust, emissive fissures
       float h = fbm(p * 2.4 + uSeedOff);
       c = uA[min(b, 2) + (h > 0.58 ? 1 : 0)]; // crust stays in the darkest steps
-      float f = max(ridge(p * 2.0 + uSeedOff), ridge(p * 4.6 + uSeedOff.zxy) * 0.988);
-      if (f > 0.978) c = uG[2];
-      else if (f > 0.958) c = uG[1];
-      else if (f > 0.935) c = uG[0];
+      // emissive jagged fissures: bright core, darker glowing edges
+      float core;
+      if (crack(p, LAVA_CRACK_FREQ, uSeedOff, LAVA_CRACK_CUT, 1.5, core) > 0.0) c = core < 0.4 ? uG[2] : core < 0.75 ? uG[1] : uG[0];
     } else {
       // gas giant: turbulent alternating bands and a storm
       float t = fbm(p * vec3(1.4, 0.45, 1.4) + uSeedOff);
@@ -406,6 +477,7 @@ const PLANET_FRAG = /* glsl */ `
   ${ARTEFACTS_GLSL}
   void main() {
     vec3 p = normalize(vLocal);
+    setScreenScale(p);
     int b = band(normalize(vNormalW));
     gl_FragColor = vec4(artefacts(p, b, surface(p, b)), 1.0);
     bool glow = uBiome == 4 && (gl_FragColor.rgb == uG[0] || gl_FragColor.rgb == uG[1] || gl_FragColor.rgb == uG[2]);
@@ -445,6 +517,7 @@ const SHADOW_FRAG = PLANET_FRAG.replace(/void main\(\) \{[\s\S]*\}\s*$/, `in vec
   void main() {
     if (vReach < 0.0 || vReach > 0.1) discard; // straddling-triangle residue of culled vertices; near the terminator shadows would smear across the disc
     vec3 p = normalize(vLocal);
+    setScreenScale(p);
     int b = band(normalize(vHitW));
     if (b == 0) discard; // the night side is already the darkest step
     gl_FragColor = vec4(depthFade(surface(p, b - 1), vPosW, 1.0), 1.0);
@@ -801,11 +874,17 @@ function makePlanet() {
       // Raw weather density per site, then a threshold at the (1 - share) quantile.
       let raw;
       if (weather.fissure) {
-        // the surface shader's fissure field (PLANET_FRAG lava branch), plus a patch field so only some fissures smoke
+        // the surface shader's fissures (PLANET_FRAG lava branch: crackMask + voronoiEdge), plus a
+        // patch field so only some fissures smoke. Sites off the visible cracks never qualify.
         const o = surfaceMat.uniforms.uSeedOff.value;
+        const { freq, cut } = CRACKS.lava;
         const patch = makeFbm3(seed * 23 + 3);
-        raw = dirs.map((d) => Math.max(ridge(d.x * 2 + o.x, d.y * 2 + o.y, d.z * 2 + o.z), ridge(d.x * 4.6 + o.z, d.y * 4.6 + o.x, d.z * 4.6 + o.y) * 0.988)
-          + (patch(d.x * 1.6, d.y * 1.6, d.z * 1.6) - 0.5) * 0.25);
+        raw = dirs.map((d) => {
+          const m = THREE.MathUtils.smoothstep(crackMask(d.x, d.y, d.z, freq, o.x, o.y, o.z), cut, cut + 0.25);
+          if (m < 0.4) return -1; // the shader draws no crack here
+          const edge = voronoiEdge(d.x * freq + o.x, d.y * freq + o.y, d.z * freq + o.z) / freq; // sphere units to the crack
+          return 1 - edge * 8 + (patch(d.x * 1.6, d.y * 1.6, d.z * 1.6) - 0.5) * 0.25;
+        });
       } else {
         const massField = makeFbm3(seed * 31 + 5);
         const streakField = makeFbm3(seed * 17 + 9);

@@ -45,3 +45,42 @@ export function snoise(vx, vy, vz) {
 
 /** 1.0 along a network of thin lines, as the shader's `ridge`. */
 export const ridge = (x, y, z) => 1 - Math.abs(snoise(x, y, z));
+
+// CPU port of the shader's integer cell hash, Voronoi edge distance and crack mask
+// (WORLEY_GLSL in viewer.js), so lava ash can sit on the jagged fissures. pcg3d is integer
+// maths, so it is bit-exact; the float steps round to float32 like the GPU.
+const U = (x) => x >>> 0;
+function pcg3d(x, y, z) {
+  x = U(Math.imul(x, 1664525) + 1013904223); y = U(Math.imul(y, 1664525) + 1013904223); z = U(Math.imul(z, 1664525) + 1013904223);
+  x = U(x + Math.imul(y, z)); y = U(y + Math.imul(z, x)); z = U(z + Math.imul(x, y));
+  x = U(x ^ (x >>> 16)); y = U(y ^ (y >>> 16)); z = U(z ^ (z >>> 16));
+  x = U(x + Math.imul(y, z)); y = U(y + Math.imul(z, x)); z = U(z + Math.imul(x, y));
+  return [x, y, z];
+}
+const INV32 = f(1 / 4294967296);
+export const cellHash = (x, y, z) => pcg3d(x + 4096, y + 4096, z + 4096).map((v) => f(f(v) * INV32));
+
+/** Distance to the nearest Voronoi cell edge (the shader's voronoiEdge, two-pass). */
+export function voronoiEdge(px, py, pz) {
+  const ix = Math.floor(px), iy = Math.floor(py), iz = Math.floor(pz);
+  const fx = px - ix, fy = py - iy, fz = pz - iz;
+  let d1 = 9, r1 = [0, 0, 0], c1 = [0, 0, 0];
+  for (let z = -1; z <= 1; z++) for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) {
+    const h = cellHash(ix + x, iy + y, iz + z);
+    const r = [x + h[0] - fx, y + h[1] - fy, z + h[2] - fz];
+    const dd = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+    if (dd < d1) { d1 = dd; r1 = r; c1 = [x, y, z]; }
+  }
+  let e = 9;
+  for (let z = -2; z <= 2; z++) for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) {
+    const g = [c1[0] + x, c1[1] + y, c1[2] + z];
+    const h = cellHash(ix + g[0], iy + g[1], iz + g[2]);
+    const dr = [g[0] + h[0] - fx - r1[0], g[1] + h[1] - fy - r1[1], g[2] + h[2] - fz - r1[2]];
+    const len = Math.hypot(...dr);
+    if (len * len > 1e-5) e = Math.min(e, ((r1[0] + dr[0] / 2) * dr[0] + (r1[1] + dr[1] / 2) * dr[1] + (r1[2] + dr[2] / 2) * dr[2]) / len);
+  }
+  return e;
+}
+
+/** The shader's crackMask: which crack edges show, and how wide (0..1). */
+export const crackMask = (x, y, z, freq, ox, oy, oz) => snoise(x * freq * 0.35 + oy, y * freq * 0.35 + oz, z * freq * 0.35 + ox) * 0.5 + 0.5;
