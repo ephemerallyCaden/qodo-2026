@@ -570,7 +570,9 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     for (const [li, line] of lines.entries()) {
       const isResult = line.includes('"toolUseResult"') && RESULT_KEYS.test(line);
       const editish = isResult || EDIT_CALL.test(line);
-      if (!editish && (model || !line.includes('"model"'))) continue;
+      // Any result may answer a pending git call, whatever its shape (Qodo PR8 #6).
+      const mayAnswer = gitCalls.size > 0 && line.includes('"tool_result"');
+      if (!editish && !mayAnswer && (model || !line.includes('"model"'))) continue;
       if (DENIED_TYPE.test(line)) continue;
       const r = line.length > MAX_LINE ? null : parseLine(line);
       if (!r) {
@@ -603,12 +605,22 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       }
       const res = r['toolUseResult'];
       const sid = str(r['sessionId']);
-      if (r['type'] !== 'user' || !isObj(res)) continue;
+      if (r['type'] !== 'user') continue;
       const callId = str(r['sourceToolAssistantUUID']) ?? str(r['parentUuid']);
       const useIds = toolResultIds(r);
       const callKeys = useIds.length > 0 ? useIds.map((id) => `use:${id}`) : callId ? [`rec:${callId}`] : [];
       const gitKey = callKeys.find((k) => gitCalls.has(k));
       const gitCall = gitKey === undefined ? undefined : gitCalls.get(gitKey);
+      if (!isObj(res)) {
+        // A failed or refused call logs its result as a plain string (or none): it still ends the
+        // call's window. Nothing is read from the string.
+        if (gitCall && !Number.isNaN(resultTs)) {
+          gitCalls.delete(gitKey!);
+          const { key } = touch(gitCall.sid, gitCall.agentId, gitCall.at, gitCall.r);
+          out.ranWindows.push({ sessionKey: key, from: gitCall.at - COMMAND_SLACK_MS, to: resultTs + COMMAND_SLACK_MS });
+        }
+        continue;
+      }
       const edits = editsOf(res);
       const shas = commitShasOf(res);
       if (edits.length === 0 && shas.length === 0 && !gitCall) continue;

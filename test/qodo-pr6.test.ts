@@ -205,3 +205,16 @@ describe('Qodo PR6 #7: parallel tool uses in one assistant record', () => {
     expect(withCase.attr('target')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
   });
 });
+
+describe('Qodo PR8 #6: a failed agent git commit closes its window', () => {
+  it('a git commit whose result is a plain error string does not mark a later human commit as agent-run', async () => {
+    const { control, withCase } = await controlAndCase((dir, trigger) => {
+      const s = session(SID, dir);
+      const failed = [s.call('a2', at('09:00:00'), 'Bash', { command: 'git commit -m "feat: reviewed"' }),
+        { ...s.result('u3', 'a2', at('09:00:01'), {}), toolUseResult: 'Error: permission denied' }];
+      return { [SID]: [s.user('u1', at('08:55:00')), ...(trigger ? failed : []), s.user('u4', at('09:30:00')), s.user('u5', at('10:30:00'))] };
+    });
+    expect(control.attr('target')).toMatchObject({ class: 'human', evidence: [] });
+    expect(withCase.attr('target')).toMatchObject({ class: 'human', evidence: [] });
+  });
+});
