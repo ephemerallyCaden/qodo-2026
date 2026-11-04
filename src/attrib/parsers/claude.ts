@@ -293,16 +293,18 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
   const cwds = [...new Set(heads.flatMap((h) => (h ? [h.cwd] : [])))];
   const ours = new Set((await Promise.all(cwds.map(async (c) => ((await belongs(c)) ? [c] : [])))).flat());
   const d: Discovery = { transcripts: [], liveRoots, coverage: [], blind: [], stats: { tooLarge: 0, unavailable: 0 } };
-  for (const [i, t] of list.entries()) {
-    const head = heads[i];
-    if (!head || !ours.has(head.cwd)) continue;
+  const mine = list.flatMap((t, i) => (heads[i] && ours.has(heads[i].cwd) ? [{ t, head: heads[i] }] : []));
+  const tails = await Promise.all(mine.map(async ({ t }) => {
     let size = -1;
     try {
       size = statSync(t.file).size;
     } catch {
       // Deleted since its head was read: its span stays blind (below).
     }
-    const last = size < 0 ? null : await readLastTs(t.file, size).catch(() => null);
+    return { size, last: size < 0 ? null : await readLastTs(t.file, size).catch(() => null) };
+  }));
+  for (const [i, { t, head }] of mine.entries()) {
+    const { size, last } = tails[i]!;
     const span = { from: head.ts - COVERAGE_SLACK_MS, to: Math.max(last ?? head.ts, head.ts) + COVERAGE_SLACK_MS };
     if (size < 0) {
       d.blind.push(span);
