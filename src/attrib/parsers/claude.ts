@@ -157,11 +157,17 @@ export function metaToken(v: unknown): string | undefined {
   if (/^(\/|~|[A-Za-z]:)/.test(v) || parts.includes('..')) return undefined;
   return namesPrivateDir(parts) ? undefined : v;
 }
+/** A home path: `~`, `~/…`, or a named user's `~alice`, `~alice/…` (Qodo local r2 #2). */
+const HOME_AT = /~[A-Za-z0-9._-]*(?:\/|$)/y;
+
 /** Whether an absolute, home (`~`), drive-letter or UNC path starts at `word[i]`. */
 function pathAt(word: string, i: number): boolean {
   const c = word[i];
   if (c === '/') return i + 1 < word.length;
-  if (c === '~') return i + 1 === word.length || word[i + 1] === '/';
+  if (c === '~') {
+    HOME_AT.lastIndex = i;
+    return HOME_AT.test(word);
+  }
   if (c === '\\') return word[i + 1] === '\\';
   return /^[A-Za-z]:[\\/]/.test(word.slice(i, i + 3));
 }

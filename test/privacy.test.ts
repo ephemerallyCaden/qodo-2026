@@ -130,3 +130,11 @@ it('author names carrying private paths are redacted in people[].displayName (Qo
   for (const text of [snapshot, r.out, r.err]) expect(text.includes('canary-eve'), 'canary-eve').toBe(false);
   expect((JSON.parse(snapshot) as SnapshotV01).people.map((p) => p.displayName)).toEqual(['Eve <path> (<path>)']);
 });
+
+it('named-user home paths (~alice/…) are redacted in subjects and names (Qodo local r2 #2)', () => {
+  const cases: [string, string][] = [
+    ['copy ~alice/secret.txt', 'copy <path>'], ['see:~bob/x,', 'see:<path>,'], ['fix-~carol.d/y', 'fix-<path>'], ['~dave', '<path>'],
+  ];
+  for (const [text, want] of cases) expect(redactPaths(text), text).toBe(want);
+  for (const keep of ['about ~5% faster', 'a~b/c']) expect(redactPaths(keep), keep).toBe(keep);
+});
