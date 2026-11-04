@@ -9,6 +9,7 @@ import { scan, type ScanOptions } from '../src/scan/index.js';
 import { addedLines } from '../src/scan/repo.js';
 import { buildBasicRepo, CONTROL, SPACED, type FixtureRepo } from './fixtures/build/basic.js';
 import { cli } from './fixtures/cli.js';
+import { miniRepo } from './fixtures/mini.js';
 import { MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
 
 const GOLDEN = join(import.meta.dirname, 'golden/basic.snapshot.json');
@@ -123,6 +124,29 @@ describe('commet scan CLI', () => {
     const r = await cli(['scan'], dir, { CLAUDE_CONFIG_DIR: claude.claudeDir });
     expect(r.code).toBe(3);
     expect(r.err).toContain('git fetch --unshallow');
+  });
+
+  it('maps a failing git log to the normal internal-error exit, with no unhandled rejection (Qodo PR10 #8)', async () => {
+    const broken = miniRepo([{ id: 'root', at: '2026-10-10T08:00:00Z', path: 'README.md', lines: ['# Broken fixture', 'git log fails here.'] }]);
+    // A git shim on PATH fails only `git log`, so readRepo succeeds and windowCommits rejects.
+    const shim = mkdtempSync(join(tmpdir(), 'commet-git-shim-'));
+    const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+    writeFileSync(join(shim, 'git'), `#!/bin/sh\nfor a in "$@"; do [ "$a" = log ] && { echo "fatal: synthetic log failure" >&2; exit 128; }; done\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
+    const path = process.env['PATH'];
+    process.env['PATH'] = `${shim}:${path ?? ''}`;
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const r = await cli(['scan'], broken.dir, { CLAUDE_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'commet-broken-claude-')) });
+      await new Promise((done) => setTimeout(done, 50));
+      expect(r).toMatchObject({ code: 1 });
+      expect(r.err).toContain('commet: internal error');
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      process.env['PATH'] = path;
+    }
   });
 
   it('exits 4 outside a repo and 2 on usage errors', async () => {

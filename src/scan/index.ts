@@ -62,6 +62,9 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const rawP = windowCommits(git, repo.head, since);
   // Commits that could come out human bound which outside sessions discovery searches first.
   const selfTimes = rawP.then((cs) => cs.filter((c) => isSelf(c) && !c.isMerge).map((c) => c.dateMs));
+  // A git failure surfaces once, through rawP below; discovery may never await this copy, so it
+  // must not reject unhandled and crash the CLI past its error path (Qodo PR10 #8).
+  selfTimes.catch(() => undefined);
   const [head, raw, found] = await Promise.all([
     headFiles(git, repo.head, repo.emptyTree),
     rawP,
