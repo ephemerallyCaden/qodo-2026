@@ -21,6 +21,9 @@ export const CORE_AGENT = ['export const agentAddedOne = core().length;', 'expor
 export const CORE_HUMAN = ['export const humanAddedOne = core().toUpperCase();', 'export const humanAddedTwo = humanAddedOne.trim();'];
 export const HELPER = ['export function subagentHelper(): string {', "  return 'written by a subagent via bash';", '}'];
 export const LATE = ['Late notes typed by the human before committing.', 'The author date is set later than the commit.'];
+/** A line with U+0001 (Qodo #4): it must not split the patch stream. */
+export const CONTROL = ['export const marker = "\u0001 control char";', 'export const afterMarkerOne = marker.length;',
+  'export const afterMarkerTwo = afterMarkerOne + 1;'];
 export const NOTES = ['# Notes', 'These notes were typed by the human author.', 'A second human-written sentence here.'];
 
 export interface FixtureCommit { sha: string; date: string }
@@ -72,5 +75,8 @@ export function buildBasicRepo(): FixtureRepo {
   // c6: author date after the committer date; an agent writes the same lines only after the commit.
   write('docs/late.md', LATE);
   commit('c6', '2026-10-07T10:00:00Z', 'docs: late-dated human notes', SELF, '2026-10-09T10:00:00Z');
+  // c7: agent-written lines around a U+0001 → agent.
+  write('src/ctrl.ts', CONTROL);
+  commit('c7', '2026-10-08T10:00:00Z', 'feat: control-character module');
   return { dir, commits };
 }

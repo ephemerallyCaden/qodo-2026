@@ -3,7 +3,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AGENT_FILE, CORE_AGENT, HELPER, LATE, NOTES, type FixtureRepo } from '../build/basic.js';
+import { AGENT_FILE, CONTROL, CORE_AGENT, HELPER, LATE, NOTES, type FixtureRepo } from '../build/basic.js';
 
 export const CANARIES = {
   prompt: 'CANARY_PROMPT_7f3a',
@@ -60,6 +60,8 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
     result('u9', 'a6', '2026-10-04T09:10:00.000Z', { type: 'create', filePath: `${CANARIES.home}/secret.ts`, content: CANARIES.code }),
     // Written after c6 was committed (but before its later author date): must not count.
     call('a10', '2026-10-08T09:00:00.000Z', 'Write', { file_path: at('docs/late.md') }),
+    call('a12', '2026-10-08T09:30:00.000Z', 'Write', { file_path: at('src/ctrl.ts') }),
+    result('u13', 'a12', '2026-10-08T09:30:01.000Z', { type: 'create', filePath: at('src/ctrl.ts'), content: CONTROL.join('\n'), structuredPatch: [] }),
     result('u11', 'a10', '2026-10-08T09:00:01.000Z', { type: 'create', filePath: at('docs/late.md'), content: LATE.join('\n'), structuredPatch: [] }),
   ];
   // A resumed session keeps its sessionId and repeats an earlier record: same key, no double count.

@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { sessionKey } from '../src/core/hash.js';
+import { gitRunner } from '../src/scan/git.js';
 import { scan, type ScanOptions } from '../src/scan/index.js';
-import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
+import { addedLines } from '../src/scan/repo.js';
+import { buildBasicRepo, CONTROL, type FixtureRepo } from './fixtures/build/basic.js';
 import { cli } from './fixtures/cli.js';
 import { MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
 
@@ -36,6 +38,8 @@ describe('scan', () => {
       .toEqual(['unknown', 'agent', 'mixed', 'human', 'unknown', 'agent']);
     // Qodo #1: an edit after the committer time doesn't count, even before a later author date.
     expect(cls('c6')).toMatchObject({ class: 'human', agentLineShareMilli: 0, sessions: [] });
+    // Qodo #4: a U+0001 inside a line doesn't split the patch stream.
+    expect(cls('c7')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
     expect(cls('c1').selfCommittedAgentWritten).toBe(true);
     expect(cls('c1').evidence.map((e) => e.kind)).toEqual(['transcript_match', 'agent_ran_commit']);
     expect(cls('c2').agentLineShareMilli).toBe(500);
@@ -49,7 +53,7 @@ describe('scan', () => {
     const byKey = new Map(snapshot.sessions.map((s) => [s.key, s]));
     const [mainS, subS] = [byKey.get(mainKey), byKey.get(subKey)];
     expect([mainS?.kind, mainS?.parentKey, subS?.kind, subS?.parentKey]).toEqual(['main', undefined, 'subagent', mainKey]);
-    expect(mainS).toMatchObject({ linesAdded: 10, filesTouched: 3, model: 'claude-opus-4-1', commits: [repo.commits['c1']!.sha, repo.commits['c2']!.sha] });
+    expect(mainS).toMatchObject({ linesAdded: 13, filesTouched: 4, model: 'claude-opus-4-1', commits: ['c1', 'c2', 'c7'].map((id) => repo.commits[id]!.sha) });
     expect(subS).toMatchObject({ agentType: 'general-purpose', commits: [repo.commits['c5']!.sha] });
     const c5 = snapshot.commits.find((c) => c.sha === repo.commits['c5']!.sha)!;
     expect(c5.attribution.sessions).toEqual([{ sessionKey: subKey, lines: 2 }]);
@@ -80,8 +84,8 @@ describe('commet scan CLI', () => {
   it('writes .git/commet/snapshot.json (0600) and prints per-class counts', async () => {
     const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: claude.claudeDir });
     expect(r).toMatchObject({ code: 0, err: '' });
-    expect(r.out).toContain('7 commits: agent 2 · mixed 1 · human 2 · unknown 2');
-    expect(r.out).toContain('committed by you, written by an agent: 3');
+    expect(r.out).toContain('8 commits: agent 3 · mixed 1 · human 2 · unknown 2');
+    expect(r.out).toContain('committed by you, written by an agent: 4');
     const file = join(repo.dir, '.git/commet/snapshot.json');
     expect(readFileSync(file, 'utf8')).toBe(readFileSync(GOLDEN, 'utf8'));
     expect(statSync(file).mode & 0o777).toBe(0o600);
@@ -101,5 +105,13 @@ describe('commet scan CLI', () => {
     expect((await cli(['scan'], mkdtempSync(join(tmpdir(), 'commet-norepo-')), {})).code).toBe(4);
     expect((await cli(['scan', '--window', 'x'], repo.dir, {})).code).toBe(2);
     expect((await cli(['frobnicate'], repo.dir, {})).code).toBe(2);
+  });
+});
+
+describe('git patch parsing', () => {
+  it('keys patches by real commit SHAs even when content holds U+0001 (Qodo #4)', async () => {
+    const patches = await addedLines(gitRunner(repo.dir), repo.commits['c7']!.sha, '2026-01-01T00:00:00Z');
+    expect(new Set(patches.keys())).toEqual(new Set(Object.values(repo.commits).map((c) => c.sha)));
+    expect(patches.get(repo.commits['c7']!.sha)!.get('src/ctrl.ts')).toEqual(CONTROL);
   });
 });

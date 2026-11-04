@@ -128,8 +128,9 @@ function unquote(p: string): string {
 /** Raw added lines per path for first-parent commits since `sinceIso`, from `-U0` patches. */
 export async function addedLines(git: Git, head: string, sinceIso: string): Promise<Map<string, Map<string, string[]>>> {
   const out = new Map<string, Map<string, string[]>>();
-  const log = await git(['log', ...LOG_OPTS, '-p', '-U0', '--format=%x01%H', `--since=${sinceIso}`, head]);
-  for (const chunk of log.split('\x01')) {
+  // NUL separates records: text patches can't contain it (git treats such files as binary).
+  const log = await git(['log', ...LOG_OPTS, '-p', '-U0', '--format=%x00%H', `--since=${sinceIso}`, head]);
+  for (const chunk of log.split('\0')) {
     const lines = chunk.split('\n');
     if (!lines[0]) continue;
     const files = new Map<string, string[]>();

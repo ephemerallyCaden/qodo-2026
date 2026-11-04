@@ -207,12 +207,46 @@
       "seq": 6,
       "sha": "d2b280e0b8073600f0c4d0be8bc49ca911981624",
       "subject": "docs: late-dated human notes"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 1000,
+        "class": "agent",
+        "evidence": [
+          {
+            "detail": "verbatim",
+            "kind": "transcript_match"
+          }
+        ],
+        "selfCommittedAgentWritten": true,
+        "sessions": [
+          {
+            "lines": 3,
+            "sessionKey": "s_559f47d70d1b76"
+          }
+        ],
+        "tier": "high"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-10-08T10:00:00Z",
+      "date": "2026-10-08T10:00:00Z",
+      "files": [
+        [
+          "src/ctrl.ts",
+          3,
+          0,
+          3
+        ]
+      ],
+      "seq": 7,
+      "sha": "c354b5ae3e3c3e8778788bddf15931eb2997a6fe",
+      "subject": "feat: control-character module"
     }
   ],
   "coverage": [
     {
       "from": "2026-10-02T09:00:00Z",
-      "to": "2026-10-07T10:00:00Z",
+      "to": "2026-10-08T10:00:00Z",
       "tool": "claude-code"
     }
   ],
@@ -287,6 +321,11 @@
       "path": "src/core.ts"
     },
     {
+      "id": "f_089cedd9e904",
+      "loc": 3,
+      "path": "src/ctrl.ts"
+    },
+    {
       "id": "f_04ac967ba698",
       "loc": 3,
       "path": "src/sub/helper.ts"
@@ -310,8 +349,8 @@
   ],
   "repo": {
     "branch": "main",
-    "head": "d2b280e0b8073600f0c4d0be8bc49ca911981624",
-    "headDate": "2026-10-07T10:00:00Z",
+    "head": "c354b5ae3e3c3e8778788bddf15931eb2997a6fe",
+    "headDate": "2026-10-08T10:00:00Z",
     "repoId": "47ae229688ab8719",
     "selfPersonIds": [
       "p_391d66efc87e"
@@ -323,14 +362,15 @@
       "branch": "main",
       "commits": [
         "f8d55db9df86dbd3ac2207623c08e2522a047d91",
-        "e6d929783736248dd0e31412ceb23972bc62e964"
+        "e6d929783736248dd0e31412ceb23972bc62e964",
+        "c354b5ae3e3c3e8778788bddf15931eb2997a6fe"
       ],
-      "endedAt": "2026-10-08T09:00:00Z",
-      "filesTouched": 3,
+      "endedAt": "2026-10-08T09:30:00Z",
+      "filesTouched": 4,
       "inferred": false,
       "key": "s_559f47d70d1b76",
       "kind": "main",
-      "linesAdded": 10,
+      "linesAdded": 13,
       "linesRemoved": 0,
       "model": "claude-opus-4-1",
       "seed": 2699774684,
@@ -389,7 +429,7 @@
   "window": {
     "firstParent": true,
     "months": 24,
-    "since": "2024-10-07T10:00:00Z",
-    "until": "2026-10-07T10:00:00Z"
+    "since": "2024-10-08T10:00:00Z",
+    "until": "2026-10-08T10:00:00Z"
   }
 }
