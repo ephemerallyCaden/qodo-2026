@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>astronaut lab · commet</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #111; }
+    body { display: flex; font: 12px/1.4 ui-monospace, Menlo, monospace; color: #e6e0ee; }
+    #ui { width: 270px; flex: none; height: 100%; overflow-y: auto; box-sizing: border-box; padding: 10px 12px; background: #1a1626; border-right: 1px solid #3b3866; }
+    #ui h1 { font-size: 12px; margin: 0 0 8px; color: #fff6e4; font-weight: 600; }
+    #ui h2 { font-size: 11px; margin: 12px 0 4px; color: #a99cbf; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+    #ui label { display: grid; grid-template-columns: 1fr 42px 104px; align-items: center; gap: 4px; margin: 3px 0; }
+    #ui label.wide { grid-template-columns: 1fr 140px; }
+    #ui .readout { color: #a99cbf; text-align: right; }
+    #ui input[type=range] { width: 104px; accent-color: #42bc7f; }
+    #ui select, #ui button, #ui textarea { font: inherit; background: #3b3349; color: #e6e0ee; border: 1px solid #5d5372; }
+    #ui label select { grid-column: 3; }
+    #ui label.wide select { grid-column: 2; }
+    #ui button { padding: 2px 7px; cursor: pointer; }
+    #variants { display: flex; flex-wrap: wrap; gap: 4px; }
+    #current { color: #42bc7f; margin: 6px 0; }
+    #json { width: 100%; height: 120px; box-sizing: border-box; }
+    #stage { flex: 1; display: grid; place-items: center; overflow: auto; }
+    #view { image-rendering: pixelated; display: block; }
+  </style>
+  <script type="importmap">{ "imports": { "three": "./node_modules/three/build/three.module.js" } }</script>
+</head>
+<body>
+  <div id="ui">
+    <h1>astronaut lab</h1>
+    <div id="variants"></div>
+    <div id="current"></div>
+    <label class="wide">view <select id="mode"><option value="mix">mix: front, 3/4, side, back</option><option value="zoom">mix: 2x close-up</option><option value="lineup">all variants (3/4)</option></select></label>
+    <label class="wide">eyes <select id="eyes"></select></label>
+    <label class="wide">contributor <select id="color"><option value="mint">mint</option><option value="coral">coral</option><option value="lilac">lilac</option></select></label>
+    <label class="wide">idle bob <input id="animate" type="checkbox" checked></label>
+    <label class="wide">turntable <input id="spin" type="checkbox"></label>
+    <div id="sliders"></div>
+    <h2>changed from A</h2>
+    <textarea id="json" readonly></textarea>
+    <button id="copy">copy params</button>
+    <p style="color:#a99cbf">Hover a parameter for its meaning. Pick a variant, then move sliders to mix; the box shows what differs from A.</p>
+  </div>
+  <div id="stage"><canvas id="view"></canvas></div>
+  <script type="module" src="./lab.js"></script>
+</body>
+</html>

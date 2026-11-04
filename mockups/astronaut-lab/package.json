@@ -1,0 +1,17 @@
+{
+  "name": "astronaut-lab",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Astronaut design lab: one parameterised SDF astronaut, a lineup of variant parameter sets, and a live mixer page.",
+  "type": "module",
+  "scripts": {
+    "dev": "node serve.mjs",
+    "lab": "node lab.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}
