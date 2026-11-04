@@ -112,8 +112,48 @@ const resolve = (key) => {
   return v !== undefined || !key.includes('.') ? v : resolve(key.split('.').slice(0, -1).join('.'));
 };
 
-const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object drops a level
+const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object (or, per pixel, a fragment) drops a level
 const depthCache = new Map();
+
+// Depth mode. 'object' (the original): each whole object picks a level from its distance
+// and its ramps are swapped for pre-faded colours on the CPU. 'pixel-stepped' (default):
+// each fragment picks the level from its OWN camera distance, using the same thresholds,
+// tints and strengths (palette.depth), so an object straddling a threshold shows a crisp
+// pixel edge between levels. 'pixel-smooth': a continuous per-pixel lerp through the same
+// strengths, for comparison only. 'levels': debug view, every fragment in its level colour.
+export const DEPTH_MODES = ['object', 'pixel-stepped', 'pixel-smooth', 'levels'];
+// Shared by every fading material: mode, thresholds, and per family (0 planet, 1 crew) the
+// tint (rgb) and strength (a) of each level. Filled from the active palette in applyState.
+const DEPTH_U = {
+  uDepthMode: { value: 1 },
+  uDepthFrom: { value: new THREE.Vector3(...DEPTH_RANGES) },
+  uDepthTint: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
+};
+// depthFade(colour, world position, k): k scales the strength (emissive lava glow fades at
+// half strength so a far lava world still glows). uDepthFamily is set per material.
+const DEPTH_GLSL = /* glsl */ `
+  uniform int uDepthMode;
+  uniform int uDepthFamily;
+  uniform vec3 uDepthFrom;
+  uniform vec4 uDepthTint[8];
+  vec3 depthFade(vec3 c, vec3 posW, float k) {
+    if (uDepthMode == 0) return c; // object mode: the ramps are already faded on the CPU
+    float d = distance(posW, cameraPosition);
+    int f = uDepthFamily * 4;
+    int l = d >= uDepthFrom.z ? 3 : d >= uDepthFrom.y ? 2 : d >= uDepthFrom.x ? 1 : 0;
+    if (uDepthMode == 3) return l == 0 ? vec3(1.0, 0.0, 0.0) : l == 1 ? vec3(0.0, 1.0, 0.0) : l == 2 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 1.0, 0.0);
+    vec4 tint = uDepthTint[f + l];
+    if (uDepthMode == 2) { // smooth: no fade before the first threshold, then a lerp across each band to the next level's tint
+      float x = d < uDepthFrom.x ? 0.0 : d < uDepthFrom.y ? (d - uDepthFrom.x) / (uDepthFrom.y - uDepthFrom.x)
+        : d < uDepthFrom.z ? 1.0 + (d - uDepthFrom.y) / (uDepthFrom.z - uDepthFrom.y)
+        : min(3.0, 2.0 + (d - uDepthFrom.z) / (uDepthFrom.z - uDepthFrom.y));
+      int i = int(min(floor(x), 2.0));
+      tint = mix(uDepthTint[f + i], uDepthTint[f + i + 1], x - float(i));
+    }
+    return mix(c, tint.rgb, tint.a * k);
+  }
+`;
+const depthUniforms = (family = 0) => ({ ...DEPTH_U, uDepthFamily: { value: family } });
 // `family` lets planets fade through their own shared set (palette.planetDepth)
 // while the crew keeps the palette's depth steps.
 function depthColor(hex, level, family = 'crew') {
@@ -213,9 +253,11 @@ const VERT = /* glsl */ `
 
 const TOON_FRAG = /* glsl */ `
   ${BANDS}
+  ${DEPTH_GLSL}
   uniform vec3 uRamp[4];
   in vec3 vNormalW;
-  void main() { gl_FragColor = vec4(uRamp[band(normalize(vNormalW))], 1.0); }
+  in vec3 vPosW;
+  void main() { gl_FragColor = vec4(depthFade(uRamp[band(normalize(vNormalW))], vPosW, 1.0), 1.0); }
 `;
 
 // Clouds: each puff's normal is blended with two smooth fields, so the puffs of a mass
@@ -245,6 +287,7 @@ const CLOUD_VERT = /* glsl */ `
 `;
 const CLOUD_FRAG = /* glsl */ `
   ${BANDS}
+  ${DEPTH_GLSL}
   uniform vec3 uRamp[4];
   uniform vec3 uCenter;
   in vec3 vNormalW;
@@ -262,6 +305,7 @@ const CLOUD_FRAG = /* glsl */ `
     if (mg < 0.0) m -= mg * g;
     vec3 n = mix((g * 0.55 + r * 0.8) / 1.35, (g * 0.1 + r * 0.3 + m * 1.1) / 1.5, vMass);
     gl_FragColor = vec4(uRamp[band(n)], 1.0);
+    gl_FragColor.rgb = depthFade(gl_FragColor.rgb, vPosW, 1.0);
   }
 `;
 
@@ -271,6 +315,7 @@ const CLOUD_FRAG = /* glsl */ `
 const PLANET_FRAG = /* glsl */ `
   ${NOISE}
   ${BANDS}
+  ${DEPTH_GLSL}
   uniform int uBiome;
   uniform vec3 uA[5];
   uniform vec3 uB[5];
@@ -280,6 +325,7 @@ const PLANET_FRAG = /* glsl */ `
   uniform float uSea;
   in vec3 vNormalW;
   in vec3 vLocal;
+  in vec3 vPosW;
 
   vec3 hash33(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
   // Worley F1 distance plus a random id for the nearest cell.
@@ -362,6 +408,8 @@ const PLANET_FRAG = /* glsl */ `
     vec3 p = normalize(vLocal);
     int b = band(normalize(vNormalW));
     gl_FragColor = vec4(artefacts(p, b, surface(p, b)), 1.0);
+    bool glow = uBiome == 4 && (gl_FragColor.rgb == uG[0] || gl_FragColor.rgb == uG[1] || gl_FragColor.rgb == uG[2]);
+    gl_FragColor.rgb = depthFade(gl_FragColor.rgb, vPosW, glow ? 0.5 : 1.0); // emissive glow fades at half strength
   }
 `;
 
@@ -375,6 +423,7 @@ const SHADOW_VERT = /* glsl */ `
   uniform mat4 uToSurface; // world -> surface-local (inverse of the surface's matrixWorld)
   out vec3 vLocal;
   out vec3 vHitW;
+  out vec3 vPosW;
   out float vReach;
   void main() {
     vec3 w = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;
@@ -385,6 +434,7 @@ const SHADOW_VERT = /* glsl */ `
     if (t <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; } // both roots behind the cloud (it faces away from the light): no shadow, not its mirror image on the lit side
     vec3 hit = w - uLight * t;
     vHitW = hit - uCenter;
+    vPosW = hit;
     vReach = t / uRadius; // how far the shadow falls from its cloud, in planet radii
     vLocal = (uToSurface * vec4(hit, 1.0)).xyz;
     gl_Position = projectionMatrix * viewMatrix * vec4(hit, 1.0);
@@ -397,13 +447,14 @@ const SHADOW_FRAG = PLANET_FRAG.replace(/void main\(\) \{[\s\S]*\}\s*$/, `in vec
     vec3 p = normalize(vLocal);
     int b = band(normalize(vHitW));
     if (b == 0) discard; // the night side is already the darkest step
-    gl_FragColor = vec4(surface(p, b - 1), 1.0);
+    gl_FragColor = vec4(depthFade(surface(p, b - 1), vPosW, 1.0), 1.0);
   }
 `);
 
 // Atmosphere haze: a slightly larger shell drawn only near the lit limb, so it rims
 // the planet and breaks the silhouette without reading as an outline.
 const HAZE_FRAG = /* glsl */ `
+  ${DEPTH_GLSL}
   uniform vec3 uHaze;
   uniform vec3 uLight;
   in vec3 vNormalW;
@@ -412,7 +463,7 @@ const HAZE_FRAG = /* glsl */ `
     vec3 n = normalize(vNormalW);
     float rim = 1.0 - abs(dot(n, normalize(cameraPosition - vPosW)));
     if (rim < 0.72 || dot(n, uLight) < 0.3) discard; // a thin crescent on the lit limb only
-    gl_FragColor = vec4(uHaze, 1.0);
+    gl_FragColor = vec4(depthFade(uHaze, vPosW, 1.0), 1.0);
   }
 `;
 
@@ -486,7 +537,7 @@ function makeFbm3(seed) {
 
 // A material whose colour ramps can be re-tinted for depth. `ramps` maps uniform -> hex list.
 function paletteMaterial(frag, ramps, extra = {}, opts = {}) {
-  const uniforms = { uLight: { value: LIGHT_DIR }, uBands: { value: new THREE.Vector3(-0.08, 0.28, 0.62) }, ...extra };
+  const uniforms = { uLight: { value: LIGHT_DIR }, uBands: { value: new THREE.Vector3(-0.08, 0.28, 0.62) }, ...depthUniforms(), ...extra };
   for (const [name, key] of Object.entries(ramps)) {
     const hexes = resolve(key);
     uniforms[name] = { value: Array.isArray(hexes) ? hexes.map((h) => new THREE.Color(h)) : new THREE.Color(hexes) };
@@ -503,6 +554,7 @@ function setDepthLevel(obj, level) {
   obj.traverse((o) => {
     const mats = o.material ? [o.material].flat() : [];
     for (const m of mats) {
+      if (m.uniforms?.uDepthFamily) m.uniforms.uDepthFamily.value = family === 'planet' ? 0 : 1; // per-pixel fades use the same family tints
       for (const [name, key] of Object.entries(m.userData.ramps ?? {})) {
         const hexes = resolve(key);
         const arr = m.uniforms[name].value;
@@ -574,6 +626,7 @@ const RING_VERT = /* glsl */ `
   }
 `;
 const RING_CHUNK_FRAG = /* glsl */ `
+  ${DEPTH_GLSL}
   uniform vec3 uRamp[4];
   uniform vec3 uLight;
   uniform vec3 uCenter;
@@ -590,10 +643,10 @@ const RING_CHUNK_FRAG = /* glsl */ `
     vec3 oc = vPosW - uCenter;
     float bq = dot(oc, uLight);
     if (bq < 0.0 && dot(oc, oc) - bq * bq < uRadius * uRadius) i = 0; // in the planet's shadow
-    gl_FragColor = vec4(uRamp[i], 1.0);
+    gl_FragColor = vec4(depthFade(uRamp[i], vPosW, 1.0), 1.0);
   }
 `;
-const FLAT_FRAG = /* glsl */ `uniform vec3 uColor; void main() { gl_FragColor = vec4(uColor, 1.0); }`;
+const FLAT_FRAG = /* glsl */ `${DEPTH_GLSL} uniform vec3 uColor; in vec3 vPosW; void main() { gl_FragColor = vec4(depthFade(uColor, vPosW, 1.0), 1.0); }`;
 const MOON_GEO = new THREE.SphereGeometry(1, 20, 14);
 const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size, shared by every planet surface (artefact cells)
 
@@ -654,7 +707,7 @@ function makePlanet() {
     vertexShader: RING_VERT, fragmentShader: RING_CHUNK_FRAG,
     uniforms: {
       uRamp: { value: [0, 1, 2, 3].map(() => new THREE.Color()) }, uLight: { value: LIGHT_DIR },
-      uCenter: { value: new THREE.Vector3() }, uRadius: { value: 1 },
+      uCenter: { value: new THREE.Vector3() }, uRadius: { value: 1 }, ...depthUniforms(),
     },
   });
   ringMat.userData.ramps = { uRamp: 'ring' };
@@ -916,6 +969,7 @@ const ASTRO_FRAG = /* glsl */ `
   uniform vec3 uAccent[4];
   uniform vec3 uVisor[2];
   uniform vec3 uGlint;
+  ${DEPTH_GLSL}
   ${EYES_GLSL}
   in vec3 vPosW;
 
@@ -1052,8 +1106,9 @@ const ASTRO_FRAG = /* glsl */ `
     } else if (r == 2) c = uAccent[b];
     else if (r == 1) c = uGear[b];
     else c = uSuit[b];
-    gl_FragColor = vec4(c, 1.0);
-    vec4 clip = uProj * viewMatrix * uModel * vec4(p, 1.0);
+    vec4 pw = uModel * vec4(p, 1.0);
+    gl_FragColor = vec4(depthFade(c, pw.xyz, 1.0), 1.0);
+    vec4 clip = uProj * viewMatrix * pw;
     gl_FragDepth = clip.z / clip.w * 0.5 + 0.5;
   }
 `;
@@ -1272,6 +1327,7 @@ const VIEWS = {
 const state = {
   view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
   time: null, ui: true, palette: 'final', eyes: 'auto', period: 24, surfaceTurns: 2, cloudTurns: 3, moons: true, halo: false, cloudShadow: true,
+  depthMode: 'pixel-stepped', // DEPTH_MODES
   artefacts: false, artCount: 3, artTeal: false, // planet artefacts (artefacts.js)
   cover: null, // cloud-cover override (0..1) for the hero planets; null = the biome's WEATHER cover
 };
@@ -1302,6 +1358,7 @@ function resize() {
   if (readout) readout.textContent = `${w}×${h} ×${scale}`;
 }
 
+let lastPixelDepth = null;
 function applyState() {
   LOOP.period = Math.max(1, state.period);
   LOOP.surfaceTurns = Math.max(1, Math.round(state.surfaceTurns));
@@ -1325,6 +1382,15 @@ function applyState() {
     scene.traverse((o) => { if (o.userData.depthLevel !== undefined) o.userData.depthLevel = -1; }); // force a re-tint
   }
   renderer.setClearColor(resolve('space'));
+  // Per-pixel depth: the same thresholds and per-level tints/strengths as the object fade.
+  const pixelDepth = state.depthMode !== 'object';
+  DEPTH_U.uDepthMode.value = state.depth ? DEPTH_MODES.indexOf(state.depthMode) : 0;
+  ['planet', 'crew'].forEach((family, f) => {
+    const pal = family === 'planet' && PALETTES[paletteName].planetDepth ? PALETTES[paletteName].planetDepth : PALETTES[paletteName];
+    pal.depth.forEach(([tint, t], l) => { const c = new THREE.Color(tint); DEPTH_U.uDepthTint.value[f * 4 + l].set(c.r, c.g, c.b, t); });
+  });
+  if (pixelDepth !== lastPixelDepth) scene.traverse((o) => { if (o.userData.depthLevel !== undefined) o.userData.depthLevel = -1; }); // re-tint: pixel modes keep level-0 ramps
+  lastPixelDepth = pixelDepth;
   document.body.style.background = resolve('space');
   solos.forEach((s) => s.setColor(state.color));
   // Faces: hashed from each contributor's handle unless the UI overrides the eye design.
@@ -1353,7 +1419,7 @@ function frame() {
   setDepthLevel(sky, 0);
   for (const obj of [...planets, ...SYSTEM, ...crew, ...solos].map((o) => o.group)) {
     const d = camera.position.distanceTo(obj.getWorldPosition(tmp));
-    const level = !state.depth ? 0 : DEPTH_RANGES.filter((r) => d >= r).length;
+    const level = !state.depth || state.depthMode !== 'object' ? 0 : DEPTH_RANGES.filter((r) => d >= r).length;
     setDepthLevel(obj, level);
   }
   renderer.render(scene, camera);
@@ -1375,6 +1441,9 @@ function bindUi() {
   $('color').addEventListener('change', (e) => { state.color = e.target.value; applyState(); });
   $('pixel').addEventListener('input', (e) => { state.pixelH = +e.target.value; applyState(); });
   $('depth').addEventListener('change', (e) => { state.depth = e.target.checked; applyState(); });
+  for (const m of DEPTH_MODES) $('depth-mode').add(new Option(m, m));
+  $('depth-mode').value = state.depthMode;
+  $('depth-mode').addEventListener('change', (e) => { state.depthMode = e.target.value; applyState(); });
   $('spin').addEventListener('change', (e) => { state.spin = e.target.checked; });
   $('palette').addEventListener('change', (e) => { state.palette = e.target.value; applyState(); });
   $('moons').addEventListener('change', (e) => { state.moons = e.target.checked; applyState(); });

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "node serve.mjs",
-    "test": "node --test test/cloud-handedness.test.mjs test/loop-rings.test.mjs test/snoise-port.test.mjs test/artefacts.test.mjs test/cloud-shadow.test.mjs debug/repro-hollow-clouds.test.mjs",
+    "test": "node --test test/cloud-handedness.test.mjs test/loop-rings.test.mjs test/snoise-port.test.mjs test/artefacts.test.mjs test/cloud-shadow.test.mjs test/depth-pixel.test.mjs debug/repro-hollow-clouds.test.mjs",
     "shots": "node shots.mjs",
     "palettes": "node shots.mjs --palettes",
     "planets": "node shots.mjs --planets"

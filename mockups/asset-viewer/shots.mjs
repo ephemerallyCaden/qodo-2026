@@ -31,7 +31,7 @@ const SHOTS = {
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', artefacts: false, artCount: 3, artTeal: false, cover: null };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-stepped', artefacts: false, artCount: 3, artTeal: false, cover: null };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
@@ -164,6 +164,18 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('artefac
   }
   await contactSheet(items, 3, path.join(outDir, 'artefacts.png'));
   console.log('screenshots/artefacts.png');
+}
+
+// Depth modes side by side: the depth scene, and a big planet straddling the first
+// threshold (radius 2.2 at distance 13.2), per object vs per pixel (stepped).
+if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('depth-mode-compare'))) {
+  const STRADDLE = { view: 'studio', biome: 'lush', seed: 7, size: 2.2, ringMode: 'thin', moons: false, time: 3, camera: { pos: [0, 0, 13.2], target: [0, 0, 0] } };
+  const items = [];
+  for (const [label, opts] of [['depth scene', { view: 'depth', time: 2 }], ['planet straddling 12', STRADDLE]]) {
+    for (const depthMode of ['object', 'pixel-stepped']) items.push({ label: `${label} · ${depthMode}`, url: asUrl(await capture({ ...opts, depthMode })) });
+  }
+  await contactSheet(items, 2, path.join(outDir, 'depth-mode-compare.png'));
+  console.log('screenshots/depth-mode-compare.png');
 }
 
 if (PLANET_MODE) {
