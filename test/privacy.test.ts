@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, expect, it } from 'vitest';
-import { DENIED_PATH, listTranscripts } from '../src/attrib/parsers/claude.js';
+import { DENIED_PATH, discoverClaude } from '../src/attrib/parsers/claude.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
-import { CANARIES, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
+import { CANARIES, MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
 import { cli } from './fixtures/cli.js';
 
 let repo: FixtureRepo;
@@ -39,9 +39,13 @@ it('no snapshot string value looks like an absolute or home path', () => {
   expect(strings.filter((s) => /^([A-Za-z]:\\|\/|~)/.test(s))).toEqual([]);
 });
 
-it('never lists denylisted agent-log paths', () => {
+it('never reads denylisted agent-log paths, even through file or directory symlinks (Qodo #2)', async () => {
   for (const p of ['/h/.claude/history.jsonl', '/h/.claude/file-history/x', '/h/p/api-request-1.jsonl']) expect(DENIED_PATH.test(p)).toBe(true);
-  const listed = listTranscripts(join(claude.claudeDir, 'projects')).map((t) => t.file);
-  expect(listed.length).toBe(4);
-  expect(listed.some((f) => DENIED_PATH.test(f) || f.endsWith('.meta.json'))).toBe(false);
+  const found = await discoverClaude(join(claude.claudeDir, 'projects'), join(repo.dir, '.git'), [repo.dir]);
+  const read = found.transcripts.map((t) => t.file.slice(claude.claudeDir.length));
+  expect(read).toEqual([
+    `/projects/-unrelated-slug/${MAIN_SESSION}/subagents/agent-${SUBAGENT_ID}.jsonl`,
+    `/projects/-unrelated-slug/${MAIN_SESSION}.jsonl`,
+    '/projects/-unrelated-slug/33333333-3333-4333-8333-333333333333.jsonl',
+  ]);
 });

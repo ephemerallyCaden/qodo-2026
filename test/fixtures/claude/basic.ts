@@ -1,6 +1,6 @@
 // Synthetic Claude Code transcripts in the v2.1.31x shape (probed key names only), planted with
 // privacy canaries. Generated at test time because `cwd` and file paths must be absolute.
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AGENT_FILE, CORE_AGENT, HELPER, LATE, NOTES, type FixtureRepo } from '../build/basic.js';
@@ -72,6 +72,9 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
   const other = [{ type: 'user', sessionId: OTHER_SESSION, cwd: `${CANARIES.home}/elsewhere`, uuid: 'o1', timestamp: '2026-10-02T09:00:00.000Z',
     toolUseResult: { type: 'create', filePath: `${CANARIES.home}/elsewhere/src/agent.ts`, content: AGENT_FILE.join('\n') } }];
 
+  // A transcript-shaped file under the denied file-history/: symlinks must not make it readable.
+  const denied = [{ type: 'user', sessionId: '44444444-4444-4444-8444-444444444444', cwd: repo.dir, uuid: 'd1',
+    timestamp: '2026-10-04T09:00:00.000Z', toolUseResult: { type: 'create', filePath: at('docs/notes.md'), content: NOTES.join('\n'), structuredPatch: [] } }];
   const jsonl = (rows: object[]) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
   const files: [string, string][] = [
     [`projects/-unrelated-slug/${MAIN_SESSION}.jsonl`, jsonl(main)],
@@ -82,10 +85,13 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
     [`projects/-fixture-repo/${OTHER_SESSION}.jsonl`, jsonl(other)],
     ['history.jsonl', jsonl([{ display: CANARIES.history, project: repo.dir }])],
     ['file-history/x/backup', `${CANARIES.history}\n${CANARIES.code}\n`],
+    ['file-history/x/linked.jsonl', jsonl(denied)],
   ];
   for (const [rel, text] of files) {
     mkdirSync(join(claudeDir, rel, '..'), { recursive: true });
     writeFileSync(join(claudeDir, rel), text);
   }
+  symlinkSync(join(claudeDir, 'file-history/x/linked.jsonl'), join(claudeDir, 'projects/-unrelated-slug/55555555-5555-4555-8555-555555555555.jsonl'));
+  symlinkSync(join(claudeDir, 'file-history/x'), join(claudeDir, 'projects/-linked-slug'));
   return { claudeDir, transcripts: files.map(([rel]) => join(claudeDir, rel)) };
 }

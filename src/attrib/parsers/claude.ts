@@ -1,7 +1,7 @@
 // Claude Code transcript reader (format probed on v2.1.31x; no tool documents its log format).
 // Privacy (design §6): explicit field allowlist, denylisted records dropped before JSON.parse,
 // edit lines hashed immediately. No absolute path, cwd, prompt or code leaves this module.
-import { createReadStream, existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -66,6 +66,18 @@ function sortedDir(dir: string): string[] {
   }
 }
 
+/**
+ * Re-checked right before every read: no symlinked file, and the real path (which resolves any
+ * symlinked directory) must still pass the deny policy.
+ */
+function readable(file: string): boolean {
+  try {
+    return !lstatSync(file).isSymbolicLink() && !DENIED_PATH.test(realpathSync(file));
+  } catch {
+    return false;
+  }
+}
+
 function parseLine(line: string): Obj | null {
   try {
     const v: unknown = JSON.parse(line);
@@ -99,6 +111,7 @@ export function listTranscripts(projectsDir: string): { file: string; subagent: 
 
 /** First allowlisted record carrying `cwd`, reading at most HEAD_CAP bytes. */
 async function readHead(file: string): Promise<{ cwd: string; ts: number } | null> {
+  if (!readable(file)) return null;
   const input = createReadStream(file, { end: HEAD_CAP - 1, highWaterMark: 16 << 10 });
   try {
     for await (const line of createInterface({ input, crlfDelay: Infinity })) {
@@ -185,8 +198,9 @@ function commitShasOf(res: Obj): string[] {
 
 function readMeta(file: string): { agentType: string | undefined; parentAgentId: string | undefined } {
   let m: Obj | null = null;
+  const metaFile = file.replace(/\.jsonl$/, '.meta.json');
   try {
-    m = parseLine(readFileSync(file.replace(/\.jsonl$/, '.meta.json'), 'utf8'));
+    if (readable(metaFile)) m = parseLine(readFileSync(metaFile, 'utf8'));
   } catch {
     // No meta file: the subagent keeps its key and parent, without an agentType.
   }
@@ -234,6 +248,7 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
   const out: ClaudeIngest = { events: [], sessions: new Map(), ranCommits: [] };
   const seen = new Set<string>();
   for (const t of d.transcripts) {
+    if (!readable(t.file)) continue;
     const roots = [...d.liveRoots, ...(existsSync(t.cwd) ? [] : [t.cwd])].sort((a, b) => b.length - a.length);
     const meta = t.subagent ? readMeta(t.file) : null;
     const fileAgentId = /agent-([\w-]+)\.jsonl$/.exec(t.file)?.[1];
