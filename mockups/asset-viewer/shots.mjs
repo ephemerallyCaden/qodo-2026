@@ -31,7 +31,7 @@ const SHOTS = {
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-stepped', artefacts: false, artCount: 3, artTeal: false, cover: null };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-stepped', depthBands: '3-band', artefacts: false, artCount: 3, artTeal: false, cover: null };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
@@ -178,6 +178,26 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('depth-m
   console.log('screenshots/depth-mode-compare.png');
 }
 
+// Depth options for the human to compare: columns = options, rows = scenes. Prints the
+// system shot's unique-colour count per option.
+const DEPTH_OPTIONS = [
+  ['object', { depthMode: 'object' }], ['3-band stepped', { depthMode: 'pixel-stepped', depthBands: '3-band' }],
+  ['6-band stepped', { depthMode: 'pixel-stepped', depthBands: '6-band' }], ['8-band stepped', { depthMode: 'pixel-stepped', depthBands: '8-band' }],
+  ['pixel-smooth', { depthMode: 'pixel-smooth', depthBands: '3-band' }],
+];
+if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('depth-options-sheet'))) {
+  const items = [];
+  const counts = [];
+  for (const [scene, opts] of [['depth scene', { view: 'depth', time: 2 }], ['system', { view: 'system', time: 2 }], ['hero planet', { view: 'planet', time: 3 }]]) {
+    for (const [label, o] of DEPTH_OPTIONS) {
+      items.push({ label: `${scene} · ${label}`, url: asUrl(await capture({ ...opts, ...o })) });
+      if (scene === 'system') counts.push(`${label} ${(await imageStats([await grabNative()])).uniq[0]}`);
+    }
+  }
+  await contactSheet(items, DEPTH_OPTIONS.length, path.join(outDir, 'depth-options-sheet.png'));
+  console.log(`screenshots/depth-options-sheet.png (system-shot unique colours: ${counts.join(', ')})`);
+}
+
 if (PLANET_MODE) {
   const dir = path.join(outDir, 'planets');
   await rm(dir, { recursive: true, force: true });
@@ -239,6 +259,10 @@ if (PLANET_MODE) {
   // Cloud drift options at 15 fps: the default (24 s, 2:3, clouds 1.5x) and the alternative (36 s, 3:4, 1.33x).
   await renderLoop('cloud-drift-24s', { period: 24, surfaceTurns: 2, cloudTurns: 3 }, '15');
   await renderLoop('cloud-drift-36s', { period: 36, surfaceTurns: 3, cloudTurns: 4 }, '15');
+  // Depth option loops of the system view: 6 s, seamless (one surface and cloud turn per loop), 15 fps.
+  for (const [name, o] of [['depth-6band', { depthMode: 'pixel-stepped', depthBands: '6-band' }], ['depth-8band', { depthMode: 'pixel-stepped', depthBands: '8-band' }], ['depth-smooth', { depthMode: 'pixel-smooth' }]]) {
+    await renderLoop(name, { view: 'system', period: 6, surfaceTurns: 1, cloudTurns: 1, ...o }, '15');
+  }
 
 }
 

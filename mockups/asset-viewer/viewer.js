@@ -122,32 +122,52 @@ const depthCache = new Map();
 // pixel edge between levels. 'pixel-smooth': a continuous per-pixel lerp through the same
 // strengths, for comparison only. 'levels': debug view, every fragment in its level colour.
 export const DEPTH_MODES = ['object', 'pixel-stepped', 'pixel-smooth', 'levels'];
-// Shared by every fading material: mode, thresholds, and per family (0 planet, 1 crew) the
-// tint (rgb) and strength (a) of each level. Filled from the active palette in applyState.
+// Band presets for the per-pixel modes (one data place). '3-band' is the original: levels
+// start at DEPTH_RANGES with the palette's 4 depth steps. The N-band presets put N levels on
+// geometric thresholds from `near` to `far` (thin bands near the camera, wider far away), and
+// interpolate the palette's 4 steps, so the overall near -> far strength range is the same
+// with smaller steps. pixel-smooth grades continuously (log distance) from SMOOTH.near to
+// SMOOTH.far through the same strengths. The object mode always uses the original 4 levels.
+export const DEPTH_BANDS = {
+  '3-band': { from: DEPTH_RANGES },
+  '6-band': { levels: 6, near: 6, far: 44 },
+  '8-band': { levels: 8, near: 6, far: 44 },
+};
+const SMOOTH = { near: 5, far: 44 };
+const MAX_LEVELS = 8;
+const bandThresholds = (b) => b.from ?? Array.from({ length: b.levels - 1 }, (_, i) => b.near * (b.far / b.near) ** (i / (b.levels - 2)));
+// Shared by every fading material: mode, level count, thresholds, smooth range, and per family
+// (0 planet, 1 crew) the tint (rgb) and strength (a) of each level. Filled in applyState.
 const DEPTH_U = {
   uDepthMode: { value: 1 },
-  uDepthFrom: { value: new THREE.Vector3(...DEPTH_RANGES) },
-  uDepthTint: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
+  uDepthLevels: { value: 4 },
+  uDepthFrom: { value: Array.from({ length: MAX_LEVELS - 1 }, (_, i) => DEPTH_RANGES[i] ?? 1e9) },
+  uDepthSmooth: { value: new THREE.Vector2(SMOOTH.near, SMOOTH.far) },
+  uDepthTint: { value: Array.from({ length: MAX_LEVELS * 2 }, () => new THREE.Vector4()) },
 };
 // depthFade(colour, world position, k): k scales the strength (emissive lava glow fades at
 // half strength so a far lava world still glows). uDepthFamily is set per material.
 const DEPTH_GLSL = /* glsl */ `
   uniform int uDepthMode;
   uniform int uDepthFamily;
-  uniform vec3 uDepthFrom;
-  uniform vec4 uDepthTint[8];
+  uniform int uDepthLevels;
+  uniform float uDepthFrom[${MAX_LEVELS - 1}];
+  uniform vec2 uDepthSmooth;
+  uniform vec4 uDepthTint[${MAX_LEVELS * 2}];
   vec3 depthFade(vec3 c, vec3 posW, float k) {
     if (uDepthMode == 0) return c; // object mode: the ramps are already faded on the CPU
     float d = distance(posW, cameraPosition);
-    int f = uDepthFamily * 4;
-    int l = d >= uDepthFrom.z ? 3 : d >= uDepthFrom.y ? 2 : d >= uDepthFrom.x ? 1 : 0;
-    if (uDepthMode == 3) return l == 0 ? vec3(1.0, 0.0, 0.0) : l == 1 ? vec3(0.0, 1.0, 0.0) : l == 2 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 1.0, 0.0);
+    int f = uDepthFamily * ${MAX_LEVELS};
+    int l = 0;
+    for (int i = 0; i < ${MAX_LEVELS - 1}; i++) if (i < uDepthLevels - 1 && d >= uDepthFrom[i]) l = i + 1;
+    if (uDepthMode == 3) { // debug: one colour per level
+      const vec3 IDS[8] = vec3[8](vec3(1, 0, 0), vec3(0, 1, 0), vec3(0, 0, 1), vec3(1, 1, 0), vec3(0, 1, 1), vec3(1, 0, 1), vec3(1, 0.5, 0), vec3(1));
+      return IDS[l];
+    }
     vec4 tint = uDepthTint[f + l];
-    if (uDepthMode == 2) { // smooth: no fade before the first threshold, then a lerp across each band to the next level's tint
-      float x = d < uDepthFrom.x ? 0.0 : d < uDepthFrom.y ? (d - uDepthFrom.x) / (uDepthFrom.y - uDepthFrom.x)
-        : d < uDepthFrom.z ? 1.0 + (d - uDepthFrom.y) / (uDepthFrom.z - uDepthFrom.y)
-        : min(3.0, 2.0 + (d - uDepthFrom.z) / (uDepthFrom.z - uDepthFrom.y));
-      int i = int(min(floor(x), 2.0));
+    if (uDepthMode == 2) { // smooth: log distance from uDepthSmooth.x to .y, through every level's tint
+      float x = clamp(log(max(d, 1e-3) / uDepthSmooth.x) / log(uDepthSmooth.y / uDepthSmooth.x), 0.0, 1.0) * float(uDepthLevels - 1);
+      int i = int(min(floor(x), float(uDepthLevels - 2)));
       tint = mix(uDepthTint[f + i], uDepthTint[f + i + 1], x - float(i));
     }
     return mix(c, tint.rgb, tint.a * k);
@@ -1407,6 +1427,7 @@ const state = {
   view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
   time: null, ui: true, palette: 'final', eyes: 'auto', period: 24, surfaceTurns: 2, cloudTurns: 3, moons: true, halo: false, cloudShadow: true,
   depthMode: 'pixel-stepped', // DEPTH_MODES
+  depthBands: '3-band', // DEPTH_BANDS (per-pixel modes)
   artefacts: false, artCount: 3, artTeal: false, // planet artefacts (artefacts.js)
   cover: null, // cloud-cover override (0..1) for the hero planets; null = the biome's WEATHER cover
 };
@@ -1464,9 +1485,19 @@ function applyState() {
   // Per-pixel depth: the same thresholds and per-level tints/strengths as the object fade.
   const pixelDepth = state.depthMode !== 'object';
   DEPTH_U.uDepthMode.value = state.depth ? DEPTH_MODES.indexOf(state.depthMode) : 0;
+  const bands = DEPTH_BANDS[state.depthBands];
+  const from = bandThresholds(bands);
+  const levels = from.length + 1;
+  DEPTH_U.uDepthLevels.value = levels;
+  DEPTH_U.uDepthFrom.value.forEach((_, i, a) => (a[i] = from[i] ?? 1e9));
   ['planet', 'crew'].forEach((family, f) => {
     const pal = family === 'planet' && PALETTES[paletteName].planetDepth ? PALETTES[paletteName].planetDepth : PALETTES[paletteName];
-    pal.depth.forEach(([tint, t], l) => { const c = new THREE.Color(tint); DEPTH_U.uDepthTint.value[f * 4 + l].set(c.r, c.g, c.b, t); });
+    for (let l = 0; l < levels; l++) {
+      // the palette's 4 steps, interpolated onto this preset's levels (exact for 3-band)
+      const x = (l / (levels - 1)) * 3, i = Math.min(2, Math.floor(x)), u = x - i;
+      const c = new THREE.Color(pal.depth[i][0]).lerp(new THREE.Color(pal.depth[i + 1][0]), u);
+      DEPTH_U.uDepthTint.value[f * MAX_LEVELS + l].set(c.r, c.g, c.b, pal.depth[i][1] + (pal.depth[i + 1][1] - pal.depth[i][1]) * u);
+    }
   });
   if (pixelDepth !== lastPixelDepth) scene.traverse((o) => { if (o.userData.depthLevel !== undefined) o.userData.depthLevel = -1; }); // re-tint: pixel modes keep level-0 ramps
   lastPixelDepth = pixelDepth;
@@ -1523,6 +1554,9 @@ function bindUi() {
   for (const m of DEPTH_MODES) $('depth-mode').add(new Option(m, m));
   $('depth-mode').value = state.depthMode;
   $('depth-mode').addEventListener('change', (e) => { state.depthMode = e.target.value; applyState(); });
+  for (const b of Object.keys(DEPTH_BANDS)) $('depth-bands').add(new Option(b, b));
+  $('depth-bands').value = state.depthBands;
+  $('depth-bands').addEventListener('change', (e) => { state.depthBands = e.target.value; applyState(); });
   $('spin').addEventListener('change', (e) => { state.spin = e.target.checked; });
   $('palette').addEventListener('change', (e) => { state.palette = e.target.value; applyState(); });
   $('moons').addEventListener('change', (e) => { state.moons = e.target.checked; applyState(); });

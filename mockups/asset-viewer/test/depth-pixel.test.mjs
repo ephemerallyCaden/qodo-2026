@@ -11,7 +11,7 @@ import { openViewer } from '../debug/repro-hollow-clouds.mjs';
 
 const GUARD = 'if (uDepthMode == 0) return c;';
 const NO_FADE = (src) => { assert.ok(src.includes(GUARD), 'DEPTH_GLSL changed; update the control patch'); return src.replace(GUARD, 'return c;'); };
-const B = { size: 1, ringMode: 'thin', moons: true, depth: true, pixelH: 180, palette: 'final', spin: true, ui: false, halo: false, biome: 'lush', seed: 7, time: 2 };
+const B = { depthBands: '3-band', size: 1, ringMode: 'thin', moons: true, depth: true, pixelH: 180, palette: 'final', spin: true, ui: false, halo: false, biome: 'lush', seed: 7, time: 2 };
 const FRAMES = [{ view: 'depth' }, { view: 'system' }, { view: 'planet', time: 3 }, { view: 'depth', biome: 'lava', seed: 11 }, { view: 'depth', palette: 'lospec:pico-8' }].map((f) => ({ ...B, ...f, depthMode: 'object' }));
 const grab = (page, o) => page.evaluate((o) => { window.viewer.set(o); return document.getElementById('view').toDataURL('image/png'); }, o);
 
