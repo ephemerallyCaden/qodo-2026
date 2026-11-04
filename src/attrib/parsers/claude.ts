@@ -48,6 +48,8 @@ export interface ClaudeIngest {
   sessions: Map<SessionKey, SessionMeta>;
   /** Commit SHAs (possibly abbreviated) seen in a session's `git commit` results. */
   ranCommits: { sessionKey: SessionKey; sha: string }[];
+  /** Spans of transcripts that vanished or became unreadable after discovery. */
+  unreadable: Interval[];
 }
 
 export interface Interval { from: number; to: number }
@@ -294,10 +296,18 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
   for (const [i, t] of list.entries()) {
     const head = heads[i];
     if (!head || !ours.has(head.cwd)) continue;
-    const size = statSync(t.file).size;
-    const last = (await readLastTs(t.file, size)) ?? head.ts;
-    const span = { from: head.ts - COVERAGE_SLACK_MS, to: Math.max(last, head.ts) + COVERAGE_SLACK_MS };
-    if (size > maxFileBytes) {
+    let size = -1;
+    try {
+      size = statSync(t.file).size;
+    } catch {
+      // Deleted since its head was read: its span stays blind (below).
+    }
+    const last = size < 0 ? null : await readLastTs(t.file, size).catch(() => null);
+    const span = { from: head.ts - COVERAGE_SLACK_MS, to: Math.max(last ?? head.ts, head.ts) + COVERAGE_SLACK_MS };
+    if (size < 0) {
+      d.blind.push(span);
+      d.stats.unavailable++;
+    } else if (size > maxFileBytes) {
       d.blind.push(span);
       d.stats.tooLarge++;
     } else d.transcripts.push({ ...t, cwd: head.cwd, span });
@@ -308,10 +318,17 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
 
 /** Parses this repo's transcripts through the allowlist into hashed edit events and sessions. */
 export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (line: string) => string): Promise<ClaudeIngest> {
-  const out: ClaudeIngest = { events: [], sessions: new Map(), ranCommits: [] };
+  const out: ClaudeIngest = { events: [], sessions: new Map(), ranCommits: [], unreadable: [] };
   const seen = new Set<string>();
   for (const t of d.transcripts) {
-    if (!readable(t.file)) continue;
+    let text: string;
+    try {
+      if (!readable(t.file)) throw new Error('unreadable');
+      text = await readFile(t.file, 'utf8');
+    } catch {
+      out.unreadable.push(t.span);
+      continue;
+    }
     const roots = [...d.liveRoots, ...(existsSync(t.cwd) ? [] : [t.cwd])].sort((a, b) => b.length - a.length);
     const meta = t.subagent ? readMeta(t.file) : null;
     const fileAgentId = /agent-([\w-]+)\.jsonl$/.exec(t.file)?.[1];
@@ -320,7 +337,7 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     // A result is logged when its tool call finishes, possibly after a `git commit` it ran, so
     // edits are timed by when the call was issued (its assistant record), falling back to the result.
     const issuedAt = new Map<string, number>();
-    for (const line of (await readFile(t.file, 'utf8')).split('\n')) {
+    for (const line of text.split('\n')) {
       const isResult = line.includes('"toolUseResult"') && RESULT_KEYS.test(line);
       if (!isResult && !EDIT_CALL.test(line) && (model || !line.includes('"model"'))) continue;
       if (line.length > MAX_LINE || DENIED_TYPE.test(line)) continue;

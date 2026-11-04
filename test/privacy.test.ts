@@ -1,8 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, expect, it } from 'vitest';
-import { DENIED_PATH, discoverClaude, metaToken } from '../src/attrib/parsers/claude.js';
+import { DENIED_PATH, discoverClaude, metaToken, parseClaude } from '../src/attrib/parsers/claude.js';
+import type { SnapshotV01 } from '../src/core/snapshot/types.js';
+import { formatSummary } from '../src/core/summary.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
 import { CANARIES, MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
 import { cli } from './fixtures/cli.js';
@@ -57,4 +59,15 @@ it('never reads denylisted agent-log paths, even through file or directory symli
     '/projects/-unrelated-slug/66666666-6666-4666-8666-666666666666.jsonl',
     '/projects/-unrelated-slug/77777777-7777-4777-8777-777777777777.jsonl',
   ]);
+});
+
+it('skips and counts a transcript deleted between discovery and parsing (Qodo #7)', async () => {
+  const found = await discoverClaude(join(claude.claudeDir, 'projects'), join(repo.dir, '.git'), [repo.dir]);
+  const victim = found.transcripts.find((t) => t.file.endsWith('77777777-7777-4777-8777-777777777777.jsonl'))!;
+  rmSync(victim.file);
+  const ingest = await parseClaude(found, new Set(), (l) => l);
+  expect(ingest.unreadable).toEqual([victim.span]);
+  expect(ingest.events.length).toBeGreaterThan(0);
+  const summary = formatSummary(JSON.parse(outputs['snapshot']!) as SnapshotV01, { tooLarge: 0, unavailable: 1 });
+  expect(summary).toContain('1 transcript(s) skipped (too large 0, unavailable 1); commits during them are never classed human');
 });

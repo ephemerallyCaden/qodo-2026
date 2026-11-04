@@ -69,6 +69,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     found ? parseClaude(found, knownPaths, hash) : null,
   ]);
 
+  const blind = [...(found?.blind ?? []), ...(ingest?.unreadable ?? [])];
   const ranBy = new Map<string, Set<SessionKey>>();
   for (const { sessionKey, sha } of ingest?.ranCommits ?? []) {
     const hit = raw.filter((c) => c.sha.startsWith(sha));
@@ -80,7 +81,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
       if (!excluded(path, c.files.get(path))) added.set(path, hashLines(lines, hash));
     }
     return { sha: c.sha, dateMs: c.dateMs, isSelf: c.email === repo.selfEmail,
-      covered: within(coverage, c.dateMs) && !within(found?.blind ?? [], c.dateMs), added, ranBy: ranBy.get(c.sha) ?? new Set() };
+      covered: within(coverage, c.dateMs) && !within(blind, c.dateMs), added, ranBy: ranBy.get(c.sha) ?? new Set() };
   });
   const results = matchCommits(matchInput, ingest?.events ?? []);
 
@@ -109,6 +110,8 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     commits,
     sessions: buildSessions(ingest?.sessions.values() ?? [], raw.map((c) => c.sha), results),
   };
-  const logs = found && { transcripts: found.transcripts.length, ...found.stats };
+  const unreadable = ingest?.unreadable.length ?? 0;
+  const logs = found && { transcripts: found.transcripts.length - unreadable, tooLarge: found.stats.tooLarge,
+    unavailable: found.stats.unavailable + unreadable };
   return { snapshot, json: canonicalJson(snapshot), commonDir: repo.commonDir, logs };
 }
