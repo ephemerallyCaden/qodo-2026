@@ -46,12 +46,19 @@ describe('scan', () => {
     const { snapshot } = await run();
     const mainKey = sessionKey('claude-code', MAIN_SESSION);
     const subKey = sessionKey('claude-code', MAIN_SESSION, SUBAGENT_ID);
-    expect(snapshot.sessions.map((s) => [s.key, s.kind, s.parentKey])).toEqual([[mainKey, 'main', undefined], [subKey, 'subagent', mainKey]]);
-    const [mainS, subS] = snapshot.sessions;
+    const byKey = new Map(snapshot.sessions.map((s) => [s.key, s]));
+    const [mainS, subS] = [byKey.get(mainKey), byKey.get(subKey)];
+    expect([mainS?.kind, mainS?.parentKey, subS?.kind, subS?.parentKey]).toEqual(['main', undefined, 'subagent', mainKey]);
     expect(mainS).toMatchObject({ linesAdded: 10, filesTouched: 3, model: 'claude-opus-4-1', commits: [repo.commits['c1']!.sha, repo.commits['c2']!.sha] });
     expect(subS).toMatchObject({ agentType: 'general-purpose', commits: [repo.commits['c5']!.sha] });
     const c5 = snapshot.commits.find((c) => c.sha === repo.commits['c5']!.sha)!;
     expect(c5.attribution.sessions).toEqual([{ sessionKey: subKey, lines: 2 }]);
+    // Qodo #3: path-shaped model, branch, version and agentType are dropped, the session kept.
+    const metaKey = sessionKey('claude-code', '66666666-6666-4666-8666-666666666666');
+    for (const k of [metaKey, sessionKey('claude-code', '66666666-6666-4666-8666-666666666666', 'f00d')]) {
+      const m = byKey.get(k)!;
+      expect([m.model, m.branch, m.toolVersion, m.agentType]).toEqual([undefined, undefined, undefined, undefined]);
+    }
   });
 
   it('is byte-identical across runs and independent of the HMAC key', async () => {

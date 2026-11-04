@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, expect, it } from 'vitest';
-import { DENIED_PATH, discoverClaude } from '../src/attrib/parsers/claude.js';
+import { DENIED_PATH, discoverClaude, metaToken } from '../src/attrib/parsers/claude.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
 import { CANARIES, MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
 import { cli } from './fixtures/cli.js';
@@ -32,6 +32,12 @@ it('no canary, cwd or absolute path reaches the snapshot, stdout or stderr', () 
   }
 });
 
+it('metadata fields reject path-shaped values but keep branch names (Qodo #3)', () => {
+  for (const ok of ['main', 'feature/x', 'session/day1-ideation', 'claude-opus-4-1', 'general-purpose', 'plugin:agent']) expect(metaToken(ok)).toBe(ok);
+  const bad = ['/etc/x', '~/x', 'C:/x', 'c:x', 'a/../b', '..', `x${homedir()}/y`, `x${homedir().slice(1)}`, `${tmpdir()}/m`, 'two words'];
+  for (const v of bad) expect(metaToken(v), v).toBeUndefined();
+});
+
 it('no snapshot string value looks like an absolute or home path', () => {
   const strings: string[] = [];
   JSON.parse(outputs['snapshot']!, (_k, v: unknown) => (typeof v === 'string' && strings.push(v), v));
@@ -47,5 +53,7 @@ it('never reads denylisted agent-log paths, even through file or directory symli
     `/projects/-unrelated-slug/${MAIN_SESSION}/subagents/agent-${SUBAGENT_ID}.jsonl`,
     `/projects/-unrelated-slug/${MAIN_SESSION}.jsonl`,
     '/projects/-unrelated-slug/33333333-3333-4333-8333-333333333333.jsonl',
+    '/projects/-unrelated-slug/66666666-6666-4666-8666-666666666666/subagents/agent-f00d.jsonl',
+    '/projects/-unrelated-slug/66666666-6666-4666-8666-666666666666.jsonl',
   ]);
 });

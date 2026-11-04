@@ -1,7 +1,7 @@
 // Synthetic Claude Code transcripts in the v2.1.31x shape (probed key names only), planted with
 // privacy canaries. Generated at test time because `cwd` and file paths must be absolute.
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AGENT_FILE, CORE_AGENT, HELPER, LATE, NOTES, type FixtureRepo } from '../build/basic.js';
 
@@ -15,6 +15,11 @@ export const CANARIES = {
   description: 'CANARY_DESC_44aa',
   home: '/Users/canary-home',
   code: 'const CANARY_CODE = 1;',
+  // Path-shaped metadata (Qodo #3): each must be dropped, never output.
+  metaModel: 'canary-model',
+  metaBranch: 'canary-branch',
+  metaVersion: 'canary-version',
+  metaAgentType: 'canary-agent',
 };
 
 export const MAIN_SESSION = '11111111-1111-4111-8111-111111111111';
@@ -75,6 +80,17 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
   // A transcript-shaped file under the denied file-history/: symlinks must not make it readable.
   const denied = [{ type: 'user', sessionId: '44444444-4444-4444-8444-444444444444', cwd: repo.dir, uuid: 'd1',
     timestamp: '2026-10-04T09:00:00.000Z', toolUseResult: { type: 'create', filePath: at('docs/notes.md'), content: NOTES.join('\n'), structuredPatch: [] } }];
+  // A session whose metadata fields carry paths; its edit is real, so the session is emitted.
+  const metaBase = { ...base, sessionId: '66666666-6666-4666-8666-666666666666', gitBranch: `~/${CANARIES.metaBranch}`,
+    version: `1.0/../${CANARIES.metaVersion}` };
+  const meta = [
+    { ...metaBase, type: 'assistant', uuid: 'm1', timestamp: '2026-10-05T09:00:00.000Z',
+      message: { role: 'assistant', model: `m${homedir()}/${CANARIES.metaModel}`, content: [{ type: 'tool_use', id: 't-m1', name: 'Write', input: {} }] } },
+    { ...metaBase, type: 'user', uuid: 'm2', parentUuid: 'm1', timestamp: '2026-10-05T09:00:01.000Z',
+      toolUseResult: { type: 'create', filePath: at('scratch/meta.txt'), content: 'scratch file written by the agent', structuredPatch: [] } },
+  ];
+  const metaSub = [{ ...metaBase, agentId: 'f00d', isSidechain: true, type: 'user', uuid: 'm3', timestamp: '2026-10-05T09:10:00.000Z',
+    toolUseResult: { type: 'create', filePath: at('scratch/sub.txt'), content: 'scratch file written by a subagent', structuredPatch: [] } }];
   const jsonl = (rows: object[]) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
   const files: [string, string][] = [
     [`projects/-unrelated-slug/${MAIN_SESSION}.jsonl`, jsonl(main)],
@@ -83,6 +99,10 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
     [`projects/-unrelated-slug/${MAIN_SESSION}/subagents/agent-${SUBAGENT_ID}.meta.json`,
       JSON.stringify({ agentType: 'general-purpose', description: CANARIES.description, toolUseId: 't-sub', spawnDepth: 1 })],
     [`projects/-fixture-repo/${OTHER_SESSION}.jsonl`, jsonl(other)],
+    ['projects/-unrelated-slug/66666666-6666-4666-8666-666666666666.jsonl', jsonl(meta)],
+    ['projects/-unrelated-slug/66666666-6666-4666-8666-666666666666/subagents/agent-f00d.jsonl', jsonl(metaSub)],
+    ['projects/-unrelated-slug/66666666-6666-4666-8666-666666666666/subagents/agent-f00d.meta.json',
+      JSON.stringify({ agentType: `C:/${CANARIES.metaAgentType}` })],
     ['history.jsonl', jsonl([{ display: CANARIES.history, project: repo.dir }])],
     ['file-history/x/backup', `${CANARIES.history}\n${CANARIES.code}\n`],
     ['file-history/x/linked.jsonl', jsonl(denied)],

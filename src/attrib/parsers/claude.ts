@@ -3,6 +3,7 @@
 // edit lines hashed immediately. No absolute path, cwd, prompt or code leaves this module.
 import { createReadStream, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { byCodepoint } from '../../core/canonical-json.js';
@@ -24,6 +25,8 @@ const DENIED_TYPE = /"type"\s*:\s*"(last-prompt|attachment|api-request[^"]*|file
 const RESULT_KEYS = /"(structuredPatch|bashEditDiff|gitOperation|stdout)"/;
 const EDIT_CALL = /"name"\s*:\s*"(Edit|Write|MultiEdit|NotebookEdit|Bash)"/;
 const SAFE_TOKEN = /^[\w.:@+/-]{1,128}$/;
+const VERSION_TOKEN = /^[\w.+-]{1,32}$/;
+const PRIVATE_DIRS = [...new Set([homedir(), tmpdir(), realpathSync(tmpdir())])].filter((d) => d.length > 1);
 const HEX = /^[0-9a-f]{7,64}$/;
 
 export interface EditEvent {
@@ -56,6 +59,18 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 const token = (v: unknown): string | undefined => (typeof v === 'string' && SAFE_TOKEN.test(v) ? v : undefined);
+
+/**
+ * Output metadata (model, branch, agentType): a short token that cannot carry a path. Rejects
+ * absolute, home and drive-letter forms, `..` segments, and anything naming the home or temp dir.
+ * Branch names such as `feature/x` pass.
+ */
+export function metaToken(v: unknown): string | undefined {
+  if (typeof v !== 'string' || !SAFE_TOKEN.test(v)) return undefined;
+  if (/^(\/|~|[A-Za-z]:)/.test(v) || v.split('/').includes('..')) return undefined;
+  return PRIVATE_DIRS.some((d) => v.includes(d) || v.includes(d.slice(1))) ? undefined : v;
+}
+const version = (v: unknown): string | undefined => (typeof v === 'string' && VERSION_TOKEN.test(v) ? v : undefined);
 const under = (p: string, root: string) => p === root || p.startsWith(root + '/');
 
 function sortedDir(dir: string): string[] {
@@ -204,7 +219,7 @@ function readMeta(file: string): { agentType: string | undefined; parentAgentId:
   } catch {
     // No meta file: the subagent keeps its key and parent, without an agentType.
   }
-  return { agentType: token(m?.['agentType']), parentAgentId: token(m?.['parentAgentId']) };
+  return { agentType: metaToken(m?.['agentType']), parentAgentId: token(m?.['parentAgentId']) };
 }
 
 /**
@@ -266,7 +281,7 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       const uuid = str(r['uuid']);
       const resultTs = Date.parse(str(r['timestamp']) ?? '');
       if (r['type'] === 'assistant') {
-        model ??= isObj(r['message']) ? token(r['message']['model']) : undefined;
+        model ??= isObj(r['message']) ? metaToken(r['message']['model']) : undefined;
         if (uuid && !Number.isNaN(resultTs)) issuedAt.set(uuid, resultTs);
         continue;
       }
@@ -288,8 +303,8 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
         out.sessions.set(key, s);
       }
       if (ts <= s.firstTs) {
-        s.branch = token(r['gitBranch']) ?? s.branch;
-        s.toolVersion = token(r['version']) ?? s.toolVersion;
+        s.branch = metaToken(r['gitBranch']) ?? s.branch;
+        s.toolVersion = version(r['version']) ?? s.toolVersion;
       }
       s.firstTs = Math.min(s.firstTs, ts);
       s.lastTs = Math.max(s.lastTs, ts);
