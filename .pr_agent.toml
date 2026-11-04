@@ -1,0 +1,14 @@
+# Qodo configuration as code. Reference:
+# https://docs.qodo.ai/configuration/configuration-and-command-reference
+
+[github_app]
+# This project is built by an agent software factory: most PRs are opened by
+# agents or bot accounts, and every one must get a Qodo review (CONSTITUTION.md,
+# quality gates). The default (true) silently skips those PRs. The key only
+# takes effect under the git provider section, here [github_app], not [github].
+ignore_bot_pr = false
+
+[review_agent]
+# Publish Qodo's change-risk (blast radius) classification as a native PR label,
+# so the team lead and the approve/escalate gate can triage by risk at a glance.
+publish_blast_radius_labels = true
