@@ -10,19 +10,14 @@ export function stateDir(commonDir: string): string {
 }
 
 /**
- * Atomic write (tmp + rename) with mode 0600. The temp file is created exclusively (`wx`), so a
- * pre-planted file or symlink at its path is never written through; a stale one is removed
- * (unlinking a symlink, not its target) and creation retried once.
+ * Atomic write (tmp + rename) with mode 0600. Any stale entry at the temp path is unlinked (a
+ * symlink itself, not its target) and the temp file is created exclusively (`wx`), so a planted
+ * file or symlink is never written through.
  */
 export function writeAtomic(file: string, data: string | Uint8Array): void {
   const tmp = `${file}.tmp-${process.pid}`;
-  try {
-    writeFileSync(tmp, data, { mode: 0o600, flag: 'wx' });
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-    rmSync(tmp, { force: true });
-    writeFileSync(tmp, data, { mode: 0o600, flag: 'wx' });
-  }
+  rmSync(tmp, { force: true });
+  writeFileSync(tmp, data, { mode: 0o600, flag: 'wx' });
   chmodSync(tmp, 0o600);
   renameSync(tmp, file);
 }

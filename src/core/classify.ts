@@ -1,7 +1,7 @@
 import type { CommitClass } from './snapshot/types.js';
 
-export const SHARE_AGENT = 900;
-export const SHARE_MIXED = 300;
+const SHARE_AGENT = 900;
+const SHARE_MIXED = 300;
 
 /** Everything the commit class depends on; gathered by the matcher, decided here with no I/O. */
 export interface ClassifyInput {

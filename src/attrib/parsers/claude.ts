@@ -15,7 +15,8 @@ import { gitRunner, tryGit } from '../../scan/git.js';
 const TOOL = 'claude-code';
 const MAX_LINE = 4 << 20;
 const MAX_FILE = 200 << 20;
-const TAIL_CAP = 4 << 20;
+/** First-pass head and tail read budget. A head with no cwd in it is re-read up to the file cap. */
+const HEAD_CAP = 4 << 20;
 const TAIL_CHUNK = 64 << 10;
 /** A transcript covers [first record, last record], widened by this much on each side. */
 export const COVERAGE_SLACK_MS = 5 * 60_000;
@@ -134,6 +135,24 @@ function readable(file: string): boolean {
   }
 }
 
+/** Runs `fn` over `items` with at most READ_CONCURRENCY in flight, keeping results in order. */
+async function pool<T, R>(items: T[], fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: READ_CONCURRENCY }, async () => {
+    for (let i = next++; i < items.length; i = next++) out[i] = await fn(items[i]!);
+  }));
+  return out;
+}
+
+function fileSize(file: string): number | null {
+  try {
+    return statSync(file).size;
+  } catch {
+    return null;
+  }
+}
+
 function realNative(p: string): string | null {
   try {
     return realpathSync.native(p);
@@ -215,7 +234,7 @@ async function readLastTs(file: string, size: number): Promise<number | null> {
         const ts = Date.parse(str(parseLine(line)?.['timestamp']) ?? '');
         if (!Number.isNaN(ts)) return ts;
       }
-      if (n >= size || n >= TAIL_CAP) return null;
+      if (n >= size || n >= HEAD_CAP) return null;
     }
   } finally {
     await fh.close();
@@ -230,13 +249,16 @@ function nearestCheckout(dir: string): string | null {
   }
 }
 
+/** Inside a checkout's own `.git` dir: never part of a commit, so dropping it loses nothing. */
+const inGitDir = (abs: string, root: string) => under(abs, `${root}/.git`);
+
 /** Repo-relative POSIX path, preferring the root under which the path is known to git. */
 function relativise(abs: string, roots: string[], known: Set<string>): string | null {
   let fallback: string | null = null;
   for (const root of roots) {
     if (abs === root || !under(abs, root)) continue;
     const rel = abs.slice(root.length + 1);
-    if (rel.startsWith('.git/') || rel.split('/').includes('..')) return null;
+    if (inGitDir(abs, root) || rel.split('/').includes('..')) return null;
     if (known.has(rel)) return rel;
     fallback ??= rel;
   }
@@ -317,25 +339,25 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
   const place = async (cwd: string): Promise<'ours' | 'other' | 'unplaced'> => {
     if (!cwd.startsWith('/')) return 'unplaced';
     if (!existsSync(cwd)) return liveRoots.some((r) => under(cwd, r)) ? 'ours' : 'other';
-    try {
-      const real = realpathSync.native(cwd);
-      const top = nearestCheckout(real);
-      if (!top || !liveRoots.some((r) => under(real, r))) return 'other';
-      if (liveRoots.includes(top)) return 'ours';
-      const out = await tryGit(gitRunner(real), ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-      if (out === null) return 'unplaced';
-      return realpathSync.native(out.trim()) === commonDir ? 'ours' : 'other';
-    } catch {
-      return 'unplaced';
-    }
+    const real = realNative(cwd);
+    if (real === null) return 'unplaced';
+    if (!liveRoots.some((r) => under(real, r))) return 'other';
+    const top = nearestCheckout(real);
+    if (!top) return 'other';
+    if (liveRoots.includes(top)) return 'ours';
+    const out = await tryGit(gitRunner(real), ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    const common = out === null ? null : realNative(out.trim());
+    if (common === null) return 'unplaced';
+    return common === commonDir ? 'ours' : 'other';
   };
   const list = listTranscripts(projectsDir);
-  // Thousands of small reads: overlap their latency, keeping results in listing order.
-  const heads: (Head | null)[] = new Array(list.length).fill(null);
-  let next = 0;
-  await Promise.all(Array.from({ length: READ_CONCURRENCY }, async () => {
-    for (let i = next++; i < list.length; i = next++) heads[i] = await readHead(list[i]!.file, maxFileBytes).catch(() => null);
-  }));
+  const heads = await pool(list, (t) => readHead(t.file, HEAD_CAP).catch(() => null));
+  // A head with no cwd in its first 4 MiB is read on, up to the file cap. That's rare, so it
+  // runs one at a time, which bounds memory to one long line.
+  for (const [i, h] of heads.entries()) {
+    if (h?.cwd || (fileSize(list[i]!.file) ?? 0) <= HEAD_CAP) continue;
+    heads[i] = await readHead(list[i]!.file, maxFileBytes).catch(() => null);
+  }
   const cwds = [...new Set(heads.flatMap((h) => (h?.cwd ? [h.cwd] : [])))];
   const placed = new Map(await Promise.all(cwds.map(async (c) => [c, await place(c)] as const)));
   const d: Discovery = { transcripts: [], liveRoots, coverage: [], blind: [], stats: { tooLarge: 0, unavailable: 0, unattributed: 0 } };
@@ -343,21 +365,17 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
     const head = heads[i];
     if (!head) return [];
     const where = head.cwd === null ? 'unplaced' : placed.get(head.cwd)!;
-    return where === 'other' ? [] : [{ t, head, cwd: where === 'ours' ? head.cwd : null }];
+    return where === 'other' ? [] : [{ t, head, where }];
   });
-  const tails = await Promise.all(mine.map(async ({ t }) => {
-    let size = -1;
-    try {
-      size = statSync(t.file).size;
-    } catch {
-      // Deleted since its head was read: its span stays blind (below).
-    }
+  const tails = await pool(mine, async ({ t }) => {
+    // -1: deleted since its head was read, so its span stays blind (below).
+    const size = fileSize(t.file) ?? -1;
     return { size, last: size < 0 ? null : await readLastTs(t.file, size).catch(() => null) };
-  }));
-  for (const [i, { t, head, cwd }] of mine.entries()) {
+  });
+  for (const [i, { t, head, where }] of mine.entries()) {
     const { size, last } = tails[i]!;
     const span = { from: head.ts - COVERAGE_SLACK_MS, to: Math.max(last ?? head.ts, head.ts) + COVERAGE_SLACK_MS };
-    if (cwd === null) {
+    if (where === 'unplaced') {
       d.blind.push(span);
       d.stats.unattributed++;
     } else if (size < 0) {
@@ -366,7 +384,7 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
     } else if (size > maxFileBytes) {
       d.blind.push(span);
       d.stats.tooLarge++;
-    } else d.transcripts.push({ ...t, cwd, span });
+    } else d.transcripts.push({ ...t, cwd: head.cwd!, span });
   }
   d.coverage = mergeIntervals(d.transcripts.map((t) => t.span));
   return d;
@@ -400,18 +418,14 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     const realCwd = existsSync(t.cwd) ? realNative(t.cwd) : null;
     const onDisk = (p: string) => (realCwd && under(p, t.cwd) ? realCwd + p.slice(t.cwd.length) : p);
     // Edits under the session's cwd must land in the repo; one that can't be placed is a drop.
-    const inCwd = (p: string) => !p.startsWith('/') || [t.cwd, realCwd].some((c) => c !== null && under(p, c)
-      && !p.slice(c.length).split('/').includes('.git'));
+    const inCwd = (p: string) => !p.startsWith('/')
+      || ([t.cwd, realCwd].some((c) => c !== null && under(p, c)) && !roots.some((r) => inGitDir(p, r)));
     for (const line of text.split('\n')) {
       const isResult = line.includes('"toolUseResult"') && RESULT_KEYS.test(line);
       const editish = isResult || EDIT_CALL.test(line);
       if (!editish && (model || !line.includes('"model"'))) continue;
       if (DENIED_TYPE.test(line)) continue;
-      if (line.length > MAX_LINE) {
-        if (editish) drops++;
-        continue;
-      }
-      const r = parseLine(line);
+      const r = line.length > MAX_LINE ? null : parseLine(line);
       if (!r) {
         if (editish) drops++;
         continue;
@@ -453,9 +467,10 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       for (const sha of shas) out.ranCommits.push({ sessionKey: key, sha });
       edits.forEach((e, i) => {
         const eventId = sha256Hex(`${TOOL}:${key}:${uuid}:${i}`).slice(0, 16);
-        const path = e.filePath.startsWith('/') ? relativise(onDisk(e.filePath), roots, knownPaths) : null;
+        const abs = onDisk(e.filePath);
+        const path = abs.startsWith('/') ? relativise(abs, roots, knownPaths) : null;
         if (!path) {
-          if (inCwd(e.filePath)) drops++;
+          if (inCwd(abs)) drops++;
           return;
         }
         if (seen.has(eventId)) return;

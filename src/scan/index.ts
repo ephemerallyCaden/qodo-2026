@@ -1,5 +1,5 @@
 import { matchCommits, buildSessions, type MatchCommit } from '../attrib/match.js';
-import { discoverClaude, parseClaude, type Interval } from '../attrib/parsers/claude.js';
+import { discoverClaude, mergeIntervals, parseClaude, type Interval } from '../attrib/parsers/claude.js';
 import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import { lineHasher, sha256Hex } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
@@ -70,8 +70,8 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     found ? parseClaude(found, knownPaths, hash) : null,
   ]);
 
-  const blind = [...(found?.blind ?? []), ...(ingest?.unreadable ?? [])];
-  const partial = ingest?.partial ?? [];
+  const blind = mergeIntervals([...(found?.blind ?? []), ...(ingest?.unreadable ?? [])]);
+  const partial = mergeIntervals(ingest?.partial ?? []);
   // One comparison for matching, people and selfPersonIds: all use the mailmapped, lowercased email.
   const isSelf = (c: RawCommit) => repo.selfEmail !== null && c.email === repo.selfEmail;
   const ranBy = new Map<string, Set<SessionKey>>();
