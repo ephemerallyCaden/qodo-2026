@@ -14,7 +14,13 @@ export function stateDir(commonDir: string): string {
     st = lstatSync(dir);
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-    mkdirSync(dir, { mode: 0o700 });
+    try {
+      mkdirSync(dir, { mode: 0o700 });
+    } catch (e2) {
+      // A parallel first scan made it in between (Qodo PR10 #3): check what it made.
+      if ((e2 as NodeJS.ErrnoException).code !== 'EEXIST') throw e2;
+      st = lstatSync(dir);
+    }
   }
   if (st?.isSymbolicLink()) throw new CommetError('state error: .git/commet is a symlink; refusing to write through it', EXIT.state);
   if (st && !st.isDirectory()) throw new CommetError('state error: .git/commet is not a directory', EXIT.state);

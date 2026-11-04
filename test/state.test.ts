@@ -1,10 +1,12 @@
-import { chmodSync, lstatSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { writeAtomic } from '../src/state/io.js';
 import { cli } from './fixtures/cli.js';
 import { miniRepo } from './fixtures/mini.js';
+
+afterEach(() => vi.resetModules());
 
 it('writeAtomic never writes through a file or symlink planted at its temp path (bar raiser #7)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'commet-state-'));
@@ -38,4 +40,39 @@ it('creates .git/commet with mode 0700 when it is absent', async () => {
   expect(r.code).toBe(0);
   expect(lstatSync(join(repo.dir, '.git/commet')).isDirectory()).toBe(true);
   expect(statSync(join(repo.dir, '.git/commet')).mode & 0o777).toBe(0o700);
+});
+
+describe('Qodo PR10 #3: a parallel first scan creating .git/commet first', () => {
+  /** Loads io.js with mkdirSync replaced: `race` runs first (the other scan), then EEXIST is thrown. */
+  async function stateDirRacing(race: (dir: string) => void) {
+    vi.resetModules();
+    vi.doMock('node:fs', async (orig) => {
+      const fs = await orig<typeof import('node:fs')>();
+      return { ...fs, mkdirSync: (p: string) => {
+        race(p);
+        throw Object.assign(new Error(`EEXIST: file already exists, mkdir '${p}'`), { code: 'EEXIST' });
+      } };
+    });
+    try {
+      return (await import('../src/state/io.js')).stateDir;
+    } finally {
+      vi.doUnmock('node:fs');
+    }
+  }
+
+  it('accepts the directory the other scan made', async () => {
+    const common = mkdtempSync(join(tmpdir(), 'commet-race-'));
+    const stateDir = await stateDirRacing((p) => mkdirSync(p, { mode: 0o755 }));
+    expect(stateDir(common)).toBe(join(common, 'commet'));
+    expect(statSync(join(common, 'commet')).mode & 0o777).toBe(0o700);
+  });
+
+  it('still refuses a symlink planted in the race', async () => {
+    const common = mkdtempSync(join(tmpdir(), 'commet-race-'));
+    const target = mkdtempSync(join(tmpdir(), 'commet-race-target-'));
+    chmodSync(target, 0o755);
+    const stateDir = await stateDirRacing((p) => symlinkSync(target, p));
+    expect(() => stateDir(common)).toThrow(/symlink/);
+    expect(statSync(target).mode & 0o777).toBe(0o755);
+  });
 });
