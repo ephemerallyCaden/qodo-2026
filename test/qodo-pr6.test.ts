@@ -1,7 +1,7 @@
 // Qodo PR #6 findings on the Issue #5 fix. Each case scans a tiny repo twice: a control without
 // the triggering record (must be human or agent as stated) and the case itself.
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { discoverClaude, parseClaude, runsGitCommit } from '../src/attrib/parsers/claude.js';
@@ -317,5 +317,42 @@ describe('Qodo PR8 #3: Windows-shaped cwds and edit paths', () => {
   it('a Windows path outside the repo stays outside', async () => {
     const { ingest } = await parsed('C:/Users/Dev/repo', 'C:\\Users\\Dev\\repo', 'C:\\Users\\Dev\\repo-other\\src\\reviewed.ts');
     expect([ingest.events.length, ingest.dropped]).toEqual([0, 0]);
+  });
+});
+
+describe('Qodo PR8 #7 bound: which outside sessions are searched', () => {
+  const day = (d: string, hhmmss: string) => `2026-10-${d}T${hhmmss}.000Z`;
+  /** An outside (parent-dir) session on `d` whose result naming the repo is malformed: searching it marks it unattributed. */
+  const trap = (dir: string, d: string): Row[] => {
+    const s = session(SID, dirname(dir));
+    return [s.user('u1', day(d, '09:00:00')),
+      JSON.stringify(s.result('u3', 'a2', day(d, '09:30:01'), createResult(join(dir, PATH), LINES))).slice(0, -3), s.user('u4', day(d, '10:30:00'))];
+  };
+
+  it('a non-overlapping outside transcript is never read', async () => {
+    const [a, b] = [repoWith(), repoWith()];
+    const overlapping = await scanMini(a, miniClaude({ [IDLE]: idle(a.dir), [SID]: trap(a.dir, '10') }));
+    const later = await scanMini(b, miniClaude({ [IDLE]: idle(b.dir), [SID]: trap(b.dir, '12') }));
+    // Control: the overlapping one is searched (and, being undecidable, blinds the commit).
+    expect(overlapping.logs.unattributed).toBe(1);
+    expect(overlapping.attr('target').class).toBe('unknown');
+    // Started two days after every commit: never searched, so the trap is never seen.
+    expect(later.logs.unattributed).toBe(0);
+    expect(later.attr('target')).toMatchObject({ class: 'human' });
+  });
+
+  it('an outside session that ended before a covered commit is still searched while that commit would be human', async () => {
+    // Its edit is matched by a commit made the next day, after its span; only the post-match
+    // safety net reaches it.
+    const repo = repoWith();
+    const s = session(SID, dirname(repo.dir));
+    const projects = miniClaude({ [IDLE]: idle(repo.dir), [SID]: [s.user('u1', day('09', '09:00:00')),
+      s.call('a2', day('09', '09:30:00'), 'Write', { file_path: join(repo.dir, PATH) }),
+      s.result('u3', 'a2', day('09', '09:30:01'), createResult(join(repo.dir, PATH), LINES)), s.user('u4', day('09', '09:40:00'))] });
+    const ended = new Date('2026-10-09T10:00:00Z');
+    utimesSync(join(projects, '-mini', `${SID}.jsonl`), ended, ended);
+    const { attr, logs } = await scanMini(repo, projects);
+    expect(attr('target')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+    expect(logs.transcripts).toBe(2);
   });
 });

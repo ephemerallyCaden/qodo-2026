@@ -97,6 +97,8 @@ export interface Discovery {
    * transcripts with no usable cwd, which could belong to any repo (unattributed).
    */
   blind: Interval[];
+  /** Transcripts started outside the repo and not yet searched for edits to it (searchOutside). */
+  outside: { t: { file: string; subagent: boolean }; head: { cwd: string | null; ts: number }; start: number; end: number }[];
   stats: { tooLarge: number; unavailable: number; unattributed: number };
 }
 
@@ -537,7 +539,7 @@ function readMeta(file: string): { agentType: string | undefined; parentAgentId:
  * A transcript with no cwd, or one we can't resolve, could be ours: its span becomes blind.
  */
 export async function discoverClaude(projectsDir: string, commonDir: string, worktreeRoots: string[],
-  maxFileBytes = MAX_FILE): Promise<Discovery> {
+  maxFileBytes = MAX_FILE, selfTimes?: Promise<number[]>): Promise<Discovery> {
   // realpath.native also gives the on-disk case on case-insensitive filesystems (Issue #5 case 4).
   const liveRoots = worktreeRoots.map(slash).flatMap((r) => (existsSync(r) ? [r, slash(realpathSync.native(r))] : [r]));
   // 'unplaced': a cwd we can't resolve to a repo, so its transcript could be ours.
@@ -565,34 +567,61 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
   }
   const cwds = [...new Set(heads.flatMap((h) => (h && h !== UNREADABLE && h.cwd ? [h.cwd] : [])))];
   const placed = new Map(await Promise.all(cwds.map(async (c) => [c, await place(c)] as const)));
-  const d: Discovery = { transcripts: [], liveRoots, coverage: [], blind: [], stats: { tooLarge: 0, unavailable: 0, unattributed: 0 } };
-  // A session started outside the repo may still edit it by absolute path (Qodo PR8 #7).
-  const outside = list.flatMap((t, i) => {
-    const h = heads[i];
-    return h && h !== UNREADABLE && h.cwd !== null && placed.get(h.cwd) === 'other' ? [i] : [];
-  });
-  const needles = rootNeedles(liveRoots);
-  const verdicts = new Map((await pool(outside, async (i) => [i, await editsRepo(list[i]!.file, liveRoots, needles, maxFileBytes)
-    .catch(() => 'undecided' as const)] as const)));
+  const d: Discovery = { transcripts: [], liveRoots, coverage: [], blind: [], outside: [],
+    stats: { tooLarge: 0, unavailable: 0, unattributed: 0 } };
   // A transcript we can't read could be this repo's: blind over its stat times (Qodo PR8 #2).
   for (const [i, h] of heads.entries()) {
     if (h !== UNREADABLE) continue;
     d.blind.push(statSpan(list[i]!.file));
     d.stats.unavailable++;
   }
-  const mine = list.flatMap((t, i) => {
+  const mine: Placed[] = [];
+  for (const [i, t] of list.entries()) {
     const head = heads[i];
-    if (!head || head === UNREADABLE) return [];
-    const placedAs = head.cwd === null ? 'unplaced' : placed.get(head.cwd)!;
-    const where = placedAs === 'other' ? OUTSIDE_AS[verdicts.get(i) ?? 'no'] : placedAs;
-    return where === 'other' ? [] : [{ t, head, where }];
-  });
-  const tails = await pool(mine, async ({ t }) => {
+    if (!head || head === UNREADABLE) continue;
+    const where = head.cwd === null ? 'unplaced' : placed.get(head.cwd)!;
+    // A session started outside the repo may still edit it by absolute path (Qodo PR8 #7): it
+    // waits for searchOutside(). `start` bounds its records from below; `end` is its mtime.
+    if (where === 'other') d.outside.push({ t, head, ...outsideBounds(t.file, head.ts) });
+    else mine.push({ t, head, where });
+  }
+  await addPlaced(d, mine, maxFileBytes);
+  // Fast path: search the outside sessions running when one of our commits that could be human
+  // was made (self-authored, not a merge). scan() searches the rest only if a commit still comes
+  // out human after matching, since an earlier session's edits can match a later commit.
+  if (d.outside.length > 0) {
+    const times = selfTimes ? await selfTimes : null;
+    await searchOutside(d, (o) => times === null || times.some((ms) => ms >= o.start && ms <= o.end), maxFileBytes);
+  }
+  return d;
+}
+
+/** A discovered transcript and how it was placed. */
+interface Placed { t: { file: string; subagent: boolean }; head: Head; where: 'ours' | 'unplaced' | 'foreign' }
+
+/**
+ * Records of an outside transcript lie in [start, end]: from its first datable record (or its
+ * birth time, if earlier) to its mtime (unbounded when the mtime predates the first record).
+ */
+function outsideBounds(file: string, firstTs: number): { start: number; end: number } {
+  try {
+    const st = statSync(file);
+    const birth = st.birthtimeMs > 0 && st.birthtimeMs <= firstTs ? st.birthtimeMs : firstTs;
+    return { start: birth - COVERAGE_SLACK_MS, end: st.mtimeMs >= firstTs ? st.mtimeMs + COVERAGE_SLACK_MS : Number.MAX_SAFE_INTEGER };
+  } catch {
+    return { start: 0, end: Number.MAX_SAFE_INTEGER };
+  }
+}
+
+/** Reads each placed transcript's tail and files it as a transcript or a blind span; updates coverage. */
+async function addPlaced(d: Discovery, placedList: Placed[], maxFileBytes: number): Promise<Discovery['transcripts']> {
+  const tails = await pool(placedList, async ({ t }) => {
     // -1: deleted since its head was read, so its span stays blind (below).
     const size = fileSize(t.file) ?? -1;
     return { size, last: size < 0 ? null : await readLastTs(t.file, size).catch(() => null) };
   });
-  for (const [i, { t, head, where }] of mine.entries()) {
+  const added: Discovery['transcripts'] = [];
+  for (const [i, { t, head, where }] of placedList.entries()) {
     const { size, last } = tails[i]!;
     const span = { from: head.ts - COVERAGE_SLACK_MS, to: Math.max(last ?? head.ts, head.ts) + COVERAGE_SLACK_MS };
     if (where === 'unplaced') {
@@ -604,10 +633,29 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
     } else if (size > maxFileBytes) {
       d.blind.push(span);
       d.stats.tooLarge++;
-    } else d.transcripts.push({ ...t, cwd: head.cwd!, span, ...(where === 'foreign' ? { foreign: true } : {}) });
+    } else added.push({ ...t, cwd: head.cwd!, span, ...(where === 'foreign' ? { foreign: true } : {}) });
   }
+  d.transcripts.push(...added);
   d.coverage = mergeIntervals(d.transcripts.map((t) => t.span));
-  return d;
+  return added;
+}
+
+/**
+ * Byte-searches the pending outside transcripts that `pick` selects (Qodo PR8 #7). One that edits
+ * the repo becomes a `foreign` transcript, one that can't be decided a blind span; the rest are
+ * ignored. Returns the transcripts added, for parsing.
+ */
+export async function searchOutside(d: Discovery, pick: (o: Discovery['outside'][number]) => boolean,
+  maxFileBytes = MAX_FILE): Promise<Discovery['transcripts']> {
+  const chosen = d.outside.filter(pick);
+  if (chosen.length === 0) return [];
+  d.outside = d.outside.filter((o) => !pick(o));
+  const needles = rootNeedles(d.liveRoots);
+  const verdicts = await pool(chosen, (o) => editsRepo(o.t.file, d.liveRoots, needles, maxFileBytes).catch(() => 'undecided' as const));
+  return addPlaced(d, chosen.flatMap((o, i) => {
+    const where = OUTSIDE_AS[verdicts[i]!];
+    return where === 'other' ? [] : [{ t: o.t, head: o.head, where }];
+  }), maxFileBytes);
 }
 
 /** Parses this repo's transcripts through the allowlist into hashed edit events and sessions. */

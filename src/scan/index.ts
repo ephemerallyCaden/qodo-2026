@@ -1,5 +1,5 @@
 import { matchCommits, buildSessions, type MatchCommit } from '../attrib/match.js';
-import { discoverClaude, mergeIntervals, parseClaude, redactPaths, type Interval } from '../attrib/parsers/claude.js';
+import { discoverClaude, mergeIntervals, parseClaude, redactPaths, searchOutside, type ClaudeIngest, type Interval } from '../attrib/parsers/claude.js';
 import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import { lineHasher, sha256Hex } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
@@ -39,6 +39,16 @@ const within = (spans: Interval[], t: number) => spans.some((s) => t >= s.from &
 const personId = (email: string): PersonId => `p_${sha256Hex(email).slice(0, 12)}`;
 const excluded = (path: string, row: NumstatRow | undefined) => exclusionOf(path, row?.binary) !== null;
 
+function mergeIngest(into: ClaudeIngest, more: ClaudeIngest): void {
+  into.events.push(...more.events);
+  for (const [k, v] of more.sessions) if (!into.sessions.has(k)) into.sessions.set(k, v);
+  into.ranCommits.push(...more.ranCommits);
+  into.ranWindows.push(...more.ranWindows);
+  into.unreadable.push(...more.unreadable);
+  into.partial.push(...more.partial);
+  into.dropped += more.dropped;
+}
+
 export async function scan(o: ScanOptions): Promise<ScanResult> {
   const git = gitRunner(o.repoDir);
   const repo = await readRepo(git);
@@ -47,10 +57,15 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
 
   const counts: Record<string, number> = {};
   const files: SnapshotV01['files'] = [];
+  // One comparison for matching, people and selfPersonIds: all use the mailmapped, lowercased email.
+  const isSelf = (c: RawCommit) => repo.selfEmail !== null && c.email === repo.selfEmail;
+  const rawP = windowCommits(git, repo.head, since);
+  // Commits that could come out human bound which outside sessions discovery searches first.
+  const selfTimes = rawP.then((cs) => cs.filter((c) => isSelf(c) && !c.isMerge).map((c) => c.dateMs));
   const [head, raw, found] = await Promise.all([
     headFiles(git, repo.head, repo.emptyTree),
-    windowCommits(git, repo.head, since),
-    o.ingest ? discoverClaude(o.claudeProjectsDir, repo.commonDir, repo.worktreeRoots, o.maxTranscriptBytes) : null,
+    rawP,
+    o.ingest ? discoverClaude(o.claudeProjectsDir, repo.commonDir, repo.worktreeRoots, o.maxTranscriptBytes, selfTimes) : null,
   ]);
   for (const [path, row] of head) {
     const rule = exclusionOf(path, row.binary);
@@ -60,8 +75,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   files.sort((a, b) => byCodepoint(a.path, b.path));
 
   const hash = lineHasher(o.keyFor(repo.commonDir));
-  const coverage = found?.coverage ?? [];
-  const fromMs = coverage[0]?.from;
+  const fromMs = found?.coverage[0]?.from;
   const knownPaths = new Set([...head.keys(), ...raw.flatMap((c) => [...c.files.keys()])]);
   // The patch log runs while the transcripts parse; it starts no earlier than the window.
   const [patches, ingest] = await Promise.all([
@@ -70,32 +84,45 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     found ? parseClaude(found, knownPaths, hash) : null,
   ]);
 
-  const blind = mergeIntervals([...(found?.blind ?? []), ...(ingest?.unreadable ?? [])]);
-  const partial = mergeIntervals(ingest?.partial ?? []);
-  // One comparison for matching, people and selfPersonIds: all use the mailmapped, lowercased email.
-  const isSelf = (c: RawCommit) => repo.selfEmail !== null && c.email === repo.selfEmail;
-  const ranBy = new Map<string, Set<SessionKey>>();
-  for (const { sessionKey, sha } of ingest?.ranCommits ?? []) {
-    const hit = raw.filter((c) => c.sha.startsWith(sha));
-    if (hit.length === 1) ranBy.set(hit[0]!.sha, (ranBy.get(hit[0]!.sha) ?? new Set()).add(sessionKey));
-  }
-  // Commits made while a session's commit-creating git command ran, SHA or no SHA.
-  const ranByCommand = new Map<string, Set<SessionKey>>();
-  for (const w of ingest?.ranWindows ?? []) {
-    for (const c of raw) {
-      if (c.dateMs >= w.from && c.dateMs <= w.to) ranByCommand.set(c.sha, (ranByCommand.get(c.sha) ?? new Set()).add(w.sessionKey));
+  // Re-run after the safety net below adds outside transcripts.
+  const attribute = () => {
+    const coverage = found?.coverage ?? [];
+    const blind = mergeIntervals([...(found?.blind ?? []), ...(ingest?.unreadable ?? [])]);
+    const partial = mergeIntervals(ingest?.partial ?? []);
+    const ranBy = new Map<string, Set<SessionKey>>();
+    for (const { sessionKey, sha } of ingest?.ranCommits ?? []) {
+      const hit = raw.filter((c) => c.sha.startsWith(sha));
+      if (hit.length === 1) ranBy.set(hit[0]!.sha, (ranBy.get(hit[0]!.sha) ?? new Set()).add(sessionKey));
     }
-  }
-  const matchInput: MatchCommit[] = raw.map((c) => {
-    const added = new Map<string, string[]>();
-    for (const [path, lines] of patches.get(c.sha) ?? []) {
-      if (!excluded(path, c.files.get(path))) added.set(path, hashLines(lines, hash));
+    // Commits made while a session's commit-creating git command ran, SHA or no SHA.
+    const ranByCommand = new Map<string, Set<SessionKey>>();
+    for (const w of ingest?.ranWindows ?? []) {
+      for (const c of raw) {
+        if (c.dateMs >= w.from && c.dateMs <= w.to) ranByCommand.set(c.sha, (ranByCommand.get(c.sha) ?? new Set()).add(w.sessionKey));
+      }
     }
-    return { sha: c.sha, dateMs: c.dateMs, isSelf: isSelf(c), isMerge: c.isMerge,
-      covered: within(coverage, c.dateMs) && !within(blind, c.dateMs), partial: within(partial, c.dateMs), added,
-      ranBy: ranBy.get(c.sha) ?? new Set(), ranByCommand: ranByCommand.get(c.sha) ?? new Set() };
-  });
-  const results = matchCommits(matchInput, ingest?.events ?? []);
+    const matchInput: MatchCommit[] = raw.map((c) => {
+      const added = new Map<string, string[]>();
+      for (const [path, lines] of patches.get(c.sha) ?? []) {
+        if (!excluded(path, c.files.get(path))) added.set(path, hashLines(lines, hash));
+      }
+      return { sha: c.sha, dateMs: c.dateMs, isSelf: isSelf(c), isMerge: c.isMerge,
+        covered: within(coverage, c.dateMs) && !within(blind, c.dateMs), partial: within(partial, c.dateMs), added,
+        ranBy: ranBy.get(c.sha) ?? new Set(), ranByCommand: ranByCommand.get(c.sha) ?? new Set() };
+    });
+    return matchCommits(matchInput, ingest?.events ?? []);
+  };
+  let results = attribute();
+  // Safety net (Qodo PR8 #7): an outside session's edits can match a commit made after it ended,
+  // so while a commit comes out human, every outside session started by then is searched too.
+  for (let searchedTo = -Infinity; found && ingest;) {
+    const latest = Math.max(...raw.filter((c) => results.get(c.sha)!.attribution.class === 'human').map((c) => c.dateMs));
+    if (!(latest > searchedTo)) break;
+    searchedTo = latest;
+    const added = await searchOutside(found, (x) => x.start <= latest + 1000, o.maxTranscriptBytes);
+    if (added.length > 0) mergeIngest(ingest, await parseClaude({ ...found, transcripts: added }, knownPaths, hash));
+    results = attribute();
+  }
 
   const people = new Map<string, SnapshotV01['people'][number]>();
   const commits: Commit[] = raw.map((c, seq) => {
@@ -116,7 +143,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
       selfPersonIds: repo.selfEmail ? [personId(repo.selfEmail)] : [] },
     window: { months: o.windowMonths, since, until: isoUtc(repo.headMs), firstParent: true },
     exclusions: { rulesetVersion: RULESET_VERSION, rules: RULES, counts },
-    coverage: coverage.map((s) => ({ tool: 'claude-code', from: isoUtc(s.from), to: isoUtc(s.to) })),
+    coverage: (found?.coverage ?? []).map((s) => ({ tool: 'claude-code', from: isoUtc(s.from), to: isoUtc(s.to) })),
     files,
     people: [...people.values()].sort((a, b) => byCodepoint(a.id, b.id)),
     commits,
