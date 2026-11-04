@@ -206,16 +206,17 @@ Determinism applies throughout:
 
 ### 5.2 Attribution matcher
 1. **Discovery.**
-   - Enumerate `~/.claude/projects/*/*.jsonl` and `*/subagents/agent-*.jsonl`.
+   - Enumerate `~/.claude/projects/*/*.jsonl`, `*/subagents/agent-*.jsonl` **and `*/subagents/workflows/*/agent-*.jsonl`** (workflow subagents; found in the Day 1 build).
+   - Before every read: refuse symlinks (`lstat`) and re-check the realpath against the deny list (Qodo PR #3 finding #2).
    - Read only the first line's allowlisted `cwd` field. If that `cwd` still exists, resolve `git -C cwd rev-parse --git-common-dir` and compare it to ours.
    - If the `cwd` is gone (a deleted worktree), match by prefix against our worktree paths from `git worktree list` plus the repo root.
    - Store the match method, never the `cwd`.
-2. **Parse with the allowlist (§6).** Read `Edit`/`Write` `toolUseResult.structuredPatch`, `bashEditDiff`, and `git commit` result SHAs (giving `agent_ran_commit` evidence). Paths are made repo-relative, and anything outside the repo is dropped.
+2. **Parse with the allowlist (§6).** Read `Edit`/`Write` `toolUseResult.structuredPatch`, `toolUseResult.content` (Write `create` only, hashed immediately and never stored), `bashEditDiff`, and `git commit` result SHAs (giving `agent_ran_commit` evidence). Paths are made repo-relative, and anything outside the repo is dropped.
 3. **Normalise and hash.** Trim, collapse whitespace runs to one space, and skip lines under 8 characters or made only of brackets and punctuation. The hash is `HMAC-SHA256(key, line)[:16]`. The key is `.git/commet/key`: 32 random bytes made once by `src/state/key.ts`, the only randomness permitted, and it's an *input*. Tests inject a fixed key.
 4. **Cache.** Events are appended to `events.jsonl` and deduplicated by `eventId`. The scan reads the cache, never the raw logs, so log expiry doesn't change past snapshots.
 5. **Match.**
    - Only commits after `min(coverage.from) − 1 day` are fetched with `git log -p -U0 --first-parent`, which bounds the cost.
-   - For each added line on file F in commit C, the candidates are events on F's lineage paths whose ts falls in `(prevCommitTouching(F).date, C.date]`. If C's date is earlier than every candidate ts, fall back to the author date.
+   - For each added line on file F in commit C, the candidates are events on F's lineage paths whose ts is ≤ `C.committerDate + 1 s`. Event ts is the tool-call record's time, not the result's. **There is no lower bound:** with parallel worktrees and fast-forward integration, the previous commit to F is often authored after C's edits. *(As built on Day 1; Qodo PR #3 #1 removed the author-date fallback.)*
    - **Last writer wins:** the owner is the max ts, with ties broken by `eventId` ascending.
 6. **Line class (v1):** `verbatim` or `unmatched`. **Deferred:** `agent-modified`, through a keyed 64-bit SimHash per line (`addedSimhash?` is reserved in the schema), behind its own property test.
 7. **Commit class.**
@@ -229,6 +230,8 @@ Determinism applies throughout:
    | Share under 300‰, author is self, inside coverage | `human` (share > 0 means "with traces") | high |
    | Author is not self, no trailer, bot or note | `unknown` (R6) | none |
    | Outside coverage | `unknown`, never `human` | none |
+
+   **Coverage** is the union of per-transcript spans `[first record, last record] ± 5 min`. Transcripts that are oversized or unreadable become *blind spans*. A commit can be `human` only if its committer time is inside coverage and inside no blind span. Matched lines count as agent evidence wherever they fall (Qodo PR #3 #6). A commit inside coverage with zero countable lines is `unknown`.
 
    `selfCommittedAgentWritten = author ∈ self && class ∈ {agent, mixed}`.
 8. Heuristics ("possibly agent", low tier) aren't in v1.
