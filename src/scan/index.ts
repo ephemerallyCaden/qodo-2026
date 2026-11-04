@@ -79,13 +79,21 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     const hit = raw.filter((c) => c.sha.startsWith(sha));
     if (hit.length === 1) ranBy.set(hit[0]!.sha, (ranBy.get(hit[0]!.sha) ?? new Set()).add(sessionKey));
   }
+  // Commits made while a session's commit-creating git command ran, SHA or no SHA.
+  const ranByCommand = new Map<string, Set<SessionKey>>();
+  for (const w of ingest?.ranWindows ?? []) {
+    for (const c of raw) {
+      if (c.dateMs >= w.from && c.dateMs <= w.to) ranByCommand.set(c.sha, (ranByCommand.get(c.sha) ?? new Set()).add(w.sessionKey));
+    }
+  }
   const matchInput: MatchCommit[] = raw.map((c) => {
     const added = new Map<string, string[]>();
     for (const [path, lines] of patches.get(c.sha) ?? []) {
       if (!excluded(path, c.files.get(path))) added.set(path, hashLines(lines, hash));
     }
     return { sha: c.sha, dateMs: c.dateMs, isSelf: isSelf(c), isMerge: c.isMerge,
-      covered: within(coverage, c.dateMs) && !within(blind, c.dateMs), partial: within(partial, c.dateMs), added, ranBy: ranBy.get(c.sha) ?? new Set() };
+      covered: within(coverage, c.dateMs) && !within(blind, c.dateMs), partial: within(partial, c.dateMs), added,
+      ranBy: ranBy.get(c.sha) ?? new Set(), ranByCommand: ranByCommand.get(c.sha) ?? new Set() };
   });
   const results = matchCommits(matchInput, ingest?.events ?? []);
 

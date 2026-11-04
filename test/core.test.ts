@@ -41,7 +41,8 @@ describe('matchCommits', () => {
   const ev = (eventId: string, sessionKey: `s_${string}`, ts: number, hashes: string[]): EditEvent =>
     ({ eventId, sessionKey, ts, path: 'f.ts', hashes });
   const commit = (over: Partial<MatchCommit>): MatchCommit => ({ sha: 'c', dateMs: 10_000, isSelf: true, isMerge: false,
-    covered: true, partial: false, added: new Map([['f.ts', ['h1', 'h2', 'h3', 'h4']]]), ranBy: new Set(), ...over });
+    covered: true, partial: false, added: new Map([['f.ts', ['h1', 'h2', 'h3', 'h4']]]), ranBy: new Set(),
+    ranByCommand: new Set(), ...over });
 
   it('last writer before the commit owns the line; later edits do not count', () => {
     const events = [ev('e1', 's_a', 1_000, ['h1', 'h2', 'h3', 'h4']), ev('e2', 's_b', 5_000, ['h1']), ev('e3', 's_c', 20_000, ['h2'])];

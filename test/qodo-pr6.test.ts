@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runsGitCommit } from '../src/attrib/parsers/claude.js';
 import { createResult, miniClaude, miniRepo, scanMini, session, type Row } from './fixtures/mini.js';
 
 const SID = '12121212-1212-4121-8121-121212121212';
@@ -116,5 +117,50 @@ describe('Qodo PR6 #4: edits above a symlinked cwd', () => {
     const { withCase } = await controlAndCase((dir) => ({ [IDLE]: idle(dir), [SID]: writer(join(dir, 'docs'), join(elsewhere, '.zshrc')) }), withDocs);
     expect(withCase.logs.dropped).toBe(0);
     expect(withCase.attr('target')).toMatchObject({ class: 'human' });
+  });
+});
+
+describe('Qodo PR6 #2: an agent git command marks the commits made while it ran', () => {
+  it('recognises commit-creating git commands, including -C, -c, chains and bash -c', () => {
+    const yes = ['git commit -q -m x', 'cd sub && git commit -qm "wip"', 'git -C ../other commit --amend --no-edit',
+      'git -C "dir with space" merge --no-ff topic', 'git -c user.name=x -c commit.gpgsign=false commit -m y',
+      'git --no-pager cherry-pick abc1234', 'git revert --no-edit HEAD', 'git am < series.mbox', 'bash -c "git pull --rebase"',
+      'git rebase main', '/usr/bin/git commit -m x', 'npm test; git commit -am wip', 'make && git merge -q topic | tail -1'];
+    const no = ['git status', 'git log --grep commit', 'git commit-tree HEAD^{tree}', 'git merge-base a b', 'git show HEAD:commit.txt',
+      'legit commit', 'gh pr merge 6', 'git diff --stat', 'echo committed'];
+    expect(yes.filter((c) => !runsGitCommit(c))).toEqual([]);
+    expect(no.filter((c) => runsGitCommit(c))).toEqual([]);
+    // Each token has one parse, so a pathological option run stays fast.
+    const t0 = performance.now();
+    runsGitCommit(`git ${'-C -C '.repeat(20_000)}x`);
+    expect(performance.now() - t0).toBeLessThan(1000);
+  });
+
+  const heredoc = `cat > ${PATH} <<'EOF'\n${LINES.join('\n')}\nEOF`;
+  it('an agent `git commit -q` of heredoc-written files (share 0) is unknown, never human', async () => {
+    const { control, withCase } = await controlAndCase((dir, trigger) => {
+      const s = session(SID, dir);
+      const command = trigger ? `${heredoc} && git add -A && git commit -q -m "feat: reviewed"` : heredoc;
+      return { [SID]: [s.user('u1', at('09:00:00')), s.call('a2', at('09:59:50'), 'Bash', { command }),
+        s.result('u3', 'a2', at('10:00:02'), { stdout: '', stderr: '', interrupted: false }), s.user('u4', at('10:30:00'))] };
+    });
+    expect(control.attr('target')).toMatchObject({ class: 'human' });
+    expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none', agentLineShareMilli: 0,
+      evidence: [{ kind: 'agent_ran_commit', detail: 'git_command' }] });
+    // The session is linked to the commit and emitted, so the reference resolves.
+    const key = withCase.attr('target').sessions[0]!.sessionKey;
+    expect(withCase.snapshot.sessions.find((x) => x.key === key)?.commits).toHaveLength(1);
+    // A commit outside the command's window is untouched.
+    expect(withCase.attr('root').evidence).toEqual([]);
+  });
+
+  it('a git command with no logged result marks commits until the file was last written', async () => {
+    const { control, withCase } = await controlAndCase((dir, trigger) => {
+      const s = session(SID, dir);
+      return { [IDLE]: idle(dir), [SID]: [s.user('u1', at('09:00:00')),
+        s.call('a2', at('09:59:50'), 'Bash', { command: trigger ? 'git -C . commit -q -m x' : 'git status' })] };
+    });
+    expect(control.attr('target')).toMatchObject({ class: 'human' });
+    expect(withCase.attr('target')).toMatchObject({ class: 'unknown', evidence: [{ kind: 'agent_ran_commit', detail: 'git_command' }] });
   });
 });

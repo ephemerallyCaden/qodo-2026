@@ -101,7 +101,9 @@ describe('Issue #5 cases: never human', () => {
   });
 
   it('case 2b: an agent-run git merge whose output names no SHA is never human', () => {
-    expect(attr('agentMerge')).toMatchObject({ class: 'unknown', tier: 'none', evidence: [] });
+    // Qodo PR6 #2: the merge command's window now links it to the session, without a SHA.
+    expect(attr('agentMerge')).toMatchObject({ class: 'unknown', tier: 'none', evidence: [{ kind: 'agent_ran_commit', detail: 'git_command' }] });
+    expect(attr('agentMerge').sessions).toHaveLength(1);
   });
 
   it('case 2c: a merge with self-written resolution lines is never human (decision 3)', () => {

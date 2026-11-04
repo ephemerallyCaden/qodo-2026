@@ -29,6 +29,18 @@ const DENIED_TYPE = /"type"\s*:\s*"(last-prompt|attachment|api-request[^"]*|file
 const RESULT_KEYS = /"(structuredPatch|bashEditDiff|gitOperation|stdout)"/;
 const EDIT_CALL = /"name"\s*:\s*"(Edit|Write|MultiEdit|NotebookEdit|Bash)"/;
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash']);
+/**
+ * A shell command that can create commits: `git commit`, `merge`, `cherry-pick`, `revert`, `am`,
+ * `pull` or `rebase`, after any global options (`-C <dir>`, `-c k=v`, `--no-pager`), anywhere in
+ * a `&&`/`;`/pipe chain or a `bash -c` string. Over-broad is safe: it only rules out human. Each
+ * token has one parse, so matching stays linear. The command text is tested against this and
+ * never stored, hashed or logged (design §6).
+ */
+const GIT_COMMIT_CMD = /(?:^|[\s;&|()"'`/])git(?:\s+-[Cc]\s+(?:"[^"]*"|'[^']*'|[^\s"']\S*)|\s+-(?![Cc]\s)[\w-]+(?:=\S+)?)*\s+(?:commit|merge|cherry-pick|revert|am|pull|rebase)(?![\w-])/;
+/** True when `command` may create a commit (see GIT_COMMIT_CMD). Exported for tests. */
+export const runsGitCommit = (command: string): boolean => GIT_COMMIT_CMD.test(command);
+/** A git command's window is widened by this on each side: commit dates have 1 s resolution. */
+const COMMAND_SLACK_MS = 1000;
 const SAFE_TOKEN = /^[\w.:@+/-]{1,128}$/;
 const VERSION_TOKEN = /^[\w.+-]{1,32}$/;
 /** Home and temp dirs as path segments. `/tmp` is always listed, so `tmp/…` is refused on every platform. */
@@ -52,6 +64,8 @@ export interface ClaudeIngest {
   sessions: Map<SessionKey, SessionMeta>;
   /** Commit SHAs (possibly abbreviated) seen in a session's `git commit` results. */
   ranCommits: { sessionKey: SessionKey; sha: string }[];
+  /** [call − 1 s, result + 1 s] of each commit-creating git command a session ran (Qodo PR6 #2). */
+  ranWindows: { sessionKey: SessionKey; from: number; to: number }[];
   /** Spans of transcripts that vanished or became unreadable after discovery. */
   unreadable: Interval[];
   /** Spans of transcripts that dropped a record which could have held an edit: never human. */
@@ -172,11 +186,16 @@ function aliasesOf(cwd: string, roots: string[]): [string, string][] {
   return out;
 }
 
-/** Tool names of an assistant record's `tool_use` blocks (`message.content[].name`). */
-function toolNames(r: Obj): string[] {
+/** An assistant record's `tool_use` blocks (`message.content[]`). Callers read `name` and, for Bash, test `input.command`. */
+function toolUses(r: Obj): Obj[] {
   const content = isObj(r['message']) ? r['message']['content'] : undefined;
-  if (!Array.isArray(content)) return [];
-  return content.flatMap((c) => (isObj(c) && c['type'] === 'tool_use' && typeof c['name'] === 'string' ? [c['name']] : []));
+  return Array.isArray(content) ? content.filter((c): c is Obj => isObj(c) && c['type'] === 'tool_use') : [];
+}
+
+/** A Bash call whose command may create a commit. `input.command` is only tested, never kept (design §6). */
+function isGitCommitCall(use: Obj): boolean {
+  const input = use['input'];
+  return use['name'] === 'Bash' && isObj(input) && typeof input['command'] === 'string' && runsGitCommit(input['command']);
 }
 
 /** Timestamp of the nearest allowlisted record before (`step` −1) or after (+1) line `i`. */
@@ -451,7 +470,7 @@ export async function discoverClaude(projectsDir: string, commonDir: string, wor
 
 /** Parses this repo's transcripts through the allowlist into hashed edit events and sessions. */
 export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (line: string) => string): Promise<ClaudeIngest> {
-  const out: ClaudeIngest = { events: [], sessions: new Map(), ranCommits: [], unreadable: [], partial: [], dropped: 0 };
+  const out: ClaudeIngest = { events: [], sessions: new Map(), ranCommits: [], ranWindows: [], unreadable: [], partial: [], dropped: 0 };
   const seen = new Set<string>();
   for (const t of d.transcripts) {
     let text: string;
@@ -470,6 +489,25 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     // A result is logged when its tool call finishes, possibly after a `git commit` it ran, so
     // edits are timed by when the call was issued (its assistant record), falling back to the result.
     const issuedAt = new Map<string, number>();
+    // Calls whose git command may commit, by uuid, until their result arrives (Qodo PR6 #2).
+    const gitCalls = new Map<string, { at: number; sid: string; agentId: string | undefined; r: Obj }>();
+    const touch = (sid: string, agentId: string | undefined, ts: number, r: Obj): SessionMeta => {
+      const key = sessionKey(TOOL, sid, agentId);
+      fileKeys.add(key);
+      let s = out.sessions.get(key);
+      if (!s) {
+        s = { key, kind: agentId ? 'subagent' : 'main', parentKey: agentId ? sessionKey(TOOL, sid, meta?.parentAgentId) : undefined,
+          agentType: meta?.agentType, firstTs: ts, lastTs: ts, files: new Set(), linesAdded: 0, linesRemoved: 0 };
+        out.sessions.set(key, s);
+      }
+      if (ts <= s.firstTs) {
+        s.branch = metaToken(r['gitBranch']) ?? s.branch;
+        s.toolVersion = version(r['version']) ?? s.toolVersion;
+      }
+      s.firstTs = Math.min(s.firstTs, ts);
+      s.lastTs = Math.max(s.lastTs, ts);
+      return s;
+    };
     // Every dropped record that could hold (or time) an edit makes the transcript partial. The
     // first and last ones are kept by line so the span can reach their datable neighbours.
     let drops = 0;
@@ -507,38 +545,42 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       const resultTs = Date.parse(str(r['timestamp']) ?? '');
       if (r['type'] === 'assistant') {
         model ??= isObj(r['message']) ? metaToken(r['message']['model']) : undefined;
-        if (uuid && !Number.isNaN(resultTs)) issuedAt.set(uuid, resultTs);
-        // Unlinkable or undated: its edit would be timed by the (later) result (Qodo PR6 #3).
-        else if (toolNames(r).some((n) => EDIT_TOOLS.has(n))) drop(li);
+        const sid = str(r['sessionId']);
+        const uses = toolUses(r);
+        if (!uuid || Number.isNaN(resultTs)) {
+          // Unlinkable or undated: its edit would be timed by the (later) result (Qodo PR6 #3).
+          if (uses.some((u) => EDIT_TOOLS.has(str(u['name']) ?? ''))) drop(li);
+          continue;
+        }
+        issuedAt.set(uuid, resultTs);
+        // `git commit -q`, or discarded output, names no SHA, so the call's window marks the
+        // commits instead (Qodo PR6 #2). The command is tested, never kept.
+        if (uses.some(isGitCommitCall)) {
+          if (sid) gitCalls.set(uuid, { at: resultTs, sid, agentId: meta ? (token(r['agentId']) ?? fileAgentId) : undefined, r });
+          else drop(li);
+        }
         continue;
       }
       const res = r['toolUseResult'];
       const sid = str(r['sessionId']);
       if (r['type'] !== 'user' || !isObj(res)) continue;
+      const callId = str(r['sourceToolAssistantUUID']) ?? str(r['parentUuid']);
+      const gitCall = callId === undefined ? undefined : gitCalls.get(callId);
       const edits = editsOf(res);
       const shas = commitShasOf(res);
-      if (edits.length === 0 && shas.length === 0) continue;
+      if (edits.length === 0 && shas.length === 0 && !gitCall) continue;
       if (!sid || !uuid || Number.isNaN(resultTs)) {
         drop(li);
         continue;
       }
-      const callId = str(r['sourceToolAssistantUUID']) ?? str(r['parentUuid']);
       const ts = Math.min(resultTs, (callId && issuedAt.get(callId)) || resultTs);
       const agentId = meta ? (token(r['agentId']) ?? fileAgentId) : undefined;
-      const key = sessionKey(TOOL, sid, agentId);
-      fileKeys.add(key);
-      let s = out.sessions.get(key);
-      if (!s) {
-        s = { key, kind: agentId ? 'subagent' : 'main', parentKey: agentId ? sessionKey(TOOL, sid, meta?.parentAgentId) : undefined,
-          agentType: meta?.agentType, firstTs: ts, lastTs: ts, files: new Set(), linesAdded: 0, linesRemoved: 0 };
-        out.sessions.set(key, s);
+      const s = touch(sid, agentId, ts, r);
+      const key = s.key;
+      if (gitCall) {
+        gitCalls.delete(callId!);
+        out.ranWindows.push({ sessionKey: key, from: gitCall.at - COMMAND_SLACK_MS, to: resultTs + COMMAND_SLACK_MS });
       }
-      if (ts <= s.firstTs) {
-        s.branch = metaToken(r['gitBranch']) ?? s.branch;
-        s.toolVersion = version(r['version']) ?? s.toolVersion;
-      }
-      s.firstTs = Math.min(s.firstTs, ts);
-      s.lastTs = Math.max(s.lastTs, ts);
       for (const sha of shas) out.ranCommits.push({ sessionKey: key, sha });
       // A record counts as one drop however many of its paths can't be placed (Qodo PR6 #5).
       let recordDropped = false;
@@ -560,6 +602,12 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
         s.linesRemoved += e.removed;
         out.events.push({ eventId, sessionKey: key, ts, path, hashes: hashLines(e.added, hash) });
       });
+    }
+    // A git call with no result (a crash, a truncated log) may have committed any time until the
+    // file was last written.
+    for (const g of gitCalls.values()) {
+      const { key } = touch(g.sid, g.agentId, g.at, g.r);
+      out.ranWindows.push({ sessionKey: key, from: g.at - COMMAND_SLACK_MS, to: edgeTo(t.file) + COMMAND_SLACK_MS });
     }
     if (model) for (const k of fileKeys) out.sessions.get(k)!.model ??= model;
     if (drops > 0) {

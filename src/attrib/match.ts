@@ -19,6 +19,8 @@ export interface MatchCommit {
   added: Map<string, string[]>;
   /** Sessions whose `git commit` output named this commit. */
   ranBy: Set<SessionKey>;
+  /** Sessions running a commit-creating git command when this commit was made (Qodo PR6 #2). */
+  ranByCommand: Set<SessionKey>;
 }
 
 export interface MatchResult {
@@ -63,14 +65,17 @@ export function matchCommits(commits: MatchCommit[], events: EditEvent[]): Map<s
         agentLines.set(path, (agentLines.get(path) ?? 0) + 1);
       }
     }
-    for (const k of c.ranBy) if (!perSession.has(k)) perSession.set(k, 0);
+    for (const k of [...c.ranBy, ...c.ranByCommand]) if (!perSession.has(k)) perSession.set(k, 0);
+    const ranCommit = c.ranBy.size > 0 || c.ranByCommand.size > 0;
     const share = counted > 0 ? Math.floor((matched * 1000) / counted) : 0;
     // Matched lines are evidence wherever they fall; only "human" needs the logs to have been watching.
-    const cls = classify({ counted, shareMilli: share, matched, ranCommit: c.ranBy.size > 0, isMerge: c.isMerge,
+    const cls = classify({ counted, shareMilli: share, matched, ranCommit, isMerge: c.isMerge,
       isSelf: c.isSelf, covered: c.covered, partial: c.partial });
     const evidence: CommitAttribution['evidence'] = [];
     if (matched > 0) evidence.push({ kind: 'transcript_match', detail: 'verbatim' });
+    // One agent_ran_commit entry: the SHA in the command's output when there is one, else the command's window.
     if (c.ranBy.size > 0) evidence.push({ kind: 'agent_ran_commit', detail: 'git_commit_output' });
+    else if (c.ranByCommand.size > 0) evidence.push({ kind: 'agent_ran_commit', detail: 'git_command' });
     out.set(c.sha, {
       agentLines,
       attribution: {

@@ -13,6 +13,8 @@ export const CANARIES = {
   apiRequest: 'CANARY_APIREQ_6d0f',
   history: 'CANARY_HISTORY_2e7b',
   description: 'CANARY_DESC_44aa',
+  // Bash commands are only tested against the git-commit regex, never stored (Qodo PR6 #2).
+  command: 'CANARY_COMMAND_8c4e',
   home: '/Users/canary-home',
   code: 'const CANARY_CODE = 1;',
   // Path-shaped metadata (Qodo #3): each must be dropped, never output.
@@ -45,7 +47,7 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
     call('a2', '2026-10-02T09:59:00.000Z', 'Write', { file_path: at('src/agent.ts'), content: AGENT_FILE.join('\n') }),
     result('u3', 'a2', '2026-10-02T09:59:01.000Z', writeResult),
     // The commit's own Bash result is logged after the commit date: the edit is timed by the call.
-    call('a4', '2026-10-02T09:59:50.000Z', 'Bash', { command: 'git commit -m "feat: agent writes the agent module"' }),
+    call('a4', '2026-10-02T09:59:50.000Z', 'Bash', { command: `git commit -m "feat: agent writes the agent module" # ${CANARIES.command}` }),
     result('u5', 'a4', '2026-10-02T10:00:02.000Z', { stdout: `[main ${repo.commits['c1']!.sha.slice(0, 7)}] feat: agent writes the agent module\n 3 files changed`, stderr: '', interrupted: false }),
     call('a6', '2026-10-03T09:30:00.000Z', 'Edit', { file_path: at('src/core.ts'), old_string: '}', new_string: '}\n...' }),
     result('u7', 'a6', '2026-10-03T09:30:01.000Z', { filePath: at('src/core.ts'), oldString: CANARIES.originalFile, newString: 'x',
