@@ -29,7 +29,9 @@ const RESULT_KEYS = /"(structuredPatch|bashEditDiff|gitOperation|stdout)"/;
 const EDIT_CALL = /"name"\s*:\s*"(Edit|Write|MultiEdit|NotebookEdit|Bash)"/;
 const SAFE_TOKEN = /^[\w.:@+/-]{1,128}$/;
 const VERSION_TOKEN = /^[\w.+-]{1,32}$/;
-const PRIVATE_DIRS = [...new Set([homedir(), tmpdir(), realpathSync(tmpdir())])].filter((d) => d.length > 1);
+/** Home and temp dirs as path segments. `/tmp` is always listed, so `tmp/…` is refused on every platform. */
+const PRIVATE_DIRS = [...new Set([homedir(), tmpdir(), realpathSync(tmpdir()), '/tmp'])]
+  .map((d) => d.split('/').filter(Boolean)).filter((segs) => segs.length > 0);
 const HEX = /^[0-9a-f]{7,64}$/;
 
 export interface EditEvent {
@@ -88,15 +90,26 @@ const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 const token = (v: unknown): string | undefined => (typeof v === 'string' && SAFE_TOKEN.test(v) ? v : undefined);
 
+/** True when `dir`'s segments appear in `parts` as a contiguous run of whole segments. */
+function hasRun(parts: string[], dir: string[]): boolean {
+  for (let i = 0; i + dir.length <= parts.length; i++) if (dir.every((s, j) => parts[i + j] === s)) return true;
+  return false;
+}
+
 /**
  * Output metadata (model, branch, agentType): a short token that cannot carry a path. Rejects
  * absolute, home and drive-letter forms, `..` segments, and anything naming the home or temp dir.
- * Branch names such as `feature/x` pass.
+ * Dirs match by whole segments only, so `fix/tmp-cleanup` passes on every platform (Issue #5
+ * case 6). A multi-segment dir (`/Users/dev`, `/var/folders/…/T`) is refused anywhere in the
+ * value; a single-segment one (`/tmp`, `/root`) only as the first segment of a de-rooted path
+ * (`tmp/x/y`), since on its own it names nothing private. Branch names such as `feature/x` pass.
  */
 export function metaToken(v: unknown): string | undefined {
   if (typeof v !== 'string' || !SAFE_TOKEN.test(v)) return undefined;
-  if (/^(\/|~|[A-Za-z]:)/.test(v) || v.split('/').includes('..')) return undefined;
-  return PRIVATE_DIRS.some((d) => v.includes(d) || v.includes(d.slice(1))) ? undefined : v;
+  const parts = v.split('/');
+  if (/^(\/|~|[A-Za-z]:)/.test(v) || parts.includes('..')) return undefined;
+  const named = PRIVATE_DIRS.some((d) => (d.length > 1 ? hasRun(parts, d) : parts.length > 1 && parts[0] === d[0]));
+  return named ? undefined : v;
 }
 const version = (v: unknown): string | undefined => (typeof v === 'string' && VERSION_TOKEN.test(v) ? v : undefined);
 const under = (p: string, root: string) => p === root || p.startsWith(root + '/');

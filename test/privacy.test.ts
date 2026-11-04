@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from 'node:fs';
+import { readFileSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, expect, it } from 'vitest';
@@ -34,9 +34,14 @@ it('no canary, cwd or absolute path reaches the snapshot, stdout or stderr', () 
   }
 });
 
-it('metadata fields reject path-shaped values but keep branch names (Qodo #3)', () => {
-  for (const ok of ['main', 'feature/x', 'session/day1-ideation', 'claude-opus-4-1', 'general-purpose', 'plugin:agent']) expect(metaToken(ok)).toBe(ok);
-  const bad = ['/etc/x', '~/x', 'C:/x', 'c:x', 'a/../b', '..', `x${homedir()}/y`, `x${homedir().slice(1)}`, `${tmpdir()}/m`, 'two words'];
+it('metadata fields reject path-shaped values but keep branch names (Qodo #3, Issue #5 case 6)', () => {
+  const ok = ['main', 'feature/x', 'session/day1-ideation', 'claude-opus-4-1', 'general-purpose', 'plugin:agent', 'fix/tmp-cleanup',
+    // Whole segments only: a home dir glued onto another segment no longer names the dir.
+    `x${homedir().slice(1)}`];
+  for (const v of ok) expect(metaToken(v), v).toBe(v);
+  const home = homedir().slice(1);
+  const bad = ['/etc/x', '~/x', 'C:/x', 'c:x', 'a/../b', '..', `x${homedir()}/y`, `x/${home}`, `${home}/y`, `${tmpdir()}/m`,
+    `${realpathSync(tmpdir()).slice(1)}/m`, 'tmp/commet-x/y', 'two words'];
   for (const v of bad) expect(metaToken(v), v).toBeUndefined();
 });
 
