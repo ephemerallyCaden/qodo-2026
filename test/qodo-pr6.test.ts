@@ -1,6 +1,8 @@
 // Qodo PR #6 findings on the Issue #5 fix. Each case scans a tiny repo twice: a control without
 // the triggering record (must be human or agent as stated) and the case itself.
 import { describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createResult, miniClaude, miniRepo, scanMini, session, type Row } from './fixtures/mini.js';
 
@@ -75,5 +77,44 @@ describe('Qodo PR6 #3: an edit call that can\'t be linked to its result is a dro
     expect(control.attr('target')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
     expect(withCase.logs.dropped).toBe(1);
     expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none' });
+  });
+});
+
+describe('Qodo PR6 #4: edits above a symlinked cwd', () => {
+  const withDocs = (dir: string) => {
+    mkdirSync(join(dir, 'docs'));
+    writeFileSync(join(dir, 'docs/keep.md'), '# Docs\nKept so the docs dir exists.\n');
+  };
+  /** A Write session in `cwd` (a subdirectory) that creates `file`. */
+  const writer = (cwd: string, file: string): Row[] => {
+    const s = session(SID, cwd);
+    return [s.user('u1', at('09:00:00')), s.call('a2', at('09:30:00'), 'Write', { file_path: file }),
+      s.result('u3', 'a2', at('09:30:01'), createResult(file, LINES)), s.user('u4', at('10:30:00'))];
+  };
+
+  it('a session whose cwd is a subdirectory reached through a symlinked repo root matches edits above the cwd (agent)', async () => {
+    const { control, withCase } = await controlAndCase((dir, trigger) => {
+      const root = trigger ? join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-alias-'))), 'repo-link') : dir;
+      if (trigger) symlinkSync(dir, root);
+      return { [SID]: writer(join(root, 'docs'), join(root, PATH)) };
+    }, withDocs);
+    expect(control.attr('target')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+    expect(withCase.attr('target')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+    expect(withCase.logs.dropped).toBe(0);
+  });
+
+  it('an absolute in-repo edit path outside the cwd that does not relativise is a drop', async () => {
+    const { control, withCase } = await controlAndCase((dir, trigger) => ({ [IDLE]: idle(dir),
+      [SID]: writer(join(dir, 'docs'), trigger ? `${dir}/src/../${PATH}` : join(dir, 'docs/other.md')) }), withDocs);
+    expect(control.attr('target')).toMatchObject({ class: 'human' });
+    expect(withCase.logs.dropped).toBe(1);
+    expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none' });
+  });
+
+  it('an edit clearly outside the repo (a home dotfile, another repo) stays ignored', async () => {
+    const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), 'commet-elsewhere-')));
+    const { withCase } = await controlAndCase((dir) => ({ [IDLE]: idle(dir), [SID]: writer(join(dir, 'docs'), join(elsewhere, '.zshrc')) }), withDocs);
+    expect(withCase.logs.dropped).toBe(0);
+    expect(withCase.attr('target')).toMatchObject({ class: 'human' });
   });
 });

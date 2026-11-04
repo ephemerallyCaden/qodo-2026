@@ -154,6 +154,24 @@ function fileSize(file: string): number | null {
   }
 }
 
+/**
+ * Logical → real path pairs for a session cwd, most specific first: the cwd onto
+ * `realpath.native(cwd)`, and the repo root it implies onto the real root. The root alias is the
+ * logical cwd minus the cwd's real repo-relative subpath, when the cwd ends in that subpath
+ * (compared case-insensitively, for case-variant paths).
+ */
+function aliasesOf(cwd: string, roots: string[]): [string, string][] {
+  const real = existsSync(cwd) ? realNative(cwd) : null;
+  if (real === null) return [];
+  const out: [string, string][] = [[cwd, real]];
+  const root = roots.find((r) => under(real, r)); // roots are sorted longest first
+  if (root === undefined) return out;
+  const sub = real.slice(root.length);
+  const tail = cwd.slice(cwd.length - sub.length);
+  if (sub !== '' && cwd.length > sub.length && tail.toLowerCase() === sub.toLowerCase()) out.push([cwd.slice(0, cwd.length - sub.length), root]);
+  return out;
+}
+
 /** Tool names of an assistant record's `tool_use` blocks (`message.content[].name`). */
 function toolNames(r: Obj): string[] {
   const content = isObj(r['message']) ? r['message']['content'] : undefined;
@@ -463,13 +481,18 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       if (firstDrop < 0) firstDrop = i;
       lastDrop = i;
     };
-    // A symlinked, case-variant or /var-vs-/private/var cwd: edits under it are mapped onto its
-    // real path, which liveRoots also hold.
-    const realCwd = existsSync(t.cwd) ? realNative(t.cwd) : null;
-    const onDisk = (p: string) => (realCwd && under(p, t.cwd) ? realCwd + p.slice(t.cwd.length) : p);
-    // Edits under the session's cwd must land in the repo; one that can't be placed is a drop.
-    const inCwd = (p: string) => !p.startsWith('/')
-      || ([t.cwd, realCwd].some((c) => c !== null && under(p, c)) && !roots.some((r) => inGitDir(p, r)));
+    // A symlinked, case-variant or /var-vs-/private/var cwd: edits are mapped onto real paths,
+    // which liveRoots also hold. The cwd maps onto its realpath, and the root it sits in maps
+    // through the same alias, so edits above a subdirectory cwd land too (Qodo PR6 #4).
+    const aliases = aliasesOf(t.cwd, roots);
+    const onDisk = (p: string) => {
+      const a = aliases.find(([logical]) => under(p, logical));
+      return a ? a[1] + p.slice(a[0].length) : p;
+    };
+    // An edit inside any of this repo's paths (logical or real) must land in it; one that can't
+    // be placed is a drop. Paths outside them all (another repo, a home dotfile) are ignored.
+    const ours = [...aliases.flat(), ...roots];
+    const inCwd = (p: string) => !p.startsWith('/') || (ours.some((c) => under(p, c)) && !roots.some((r) => inGitDir(p, r)));
     for (const [li, line] of lines.entries()) {
       const isResult = line.includes('"toolUseResult"') && RESULT_KEYS.test(line);
       const editish = isResult || EDIT_CALL.test(line);
