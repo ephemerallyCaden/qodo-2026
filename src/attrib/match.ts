@@ -6,8 +6,8 @@ import type { EditEvent, SessionMeta } from './parsers/claude.js';
 
 export interface MatchCommit {
   sha: string;
+  /** Committer time: edits after it can't be in the commit. */
   dateMs: number;
-  authorMs: number;
   isSelf: boolean;
   /** Authored and committed while agent logs could have seen the edits. */
   covered: boolean;
@@ -44,8 +44,9 @@ export function matchCommits(commits: MatchCommit[], events: EditEvent[]): Map<s
   }
   const out = new Map<string, MatchResult>();
   for (const c of commits) {
-    // Commit dates have 1 s resolution; an edit in the same second still precedes the commit.
-    const upper = Math.max(c.dateMs, c.authorMs) + 1000;
+    // The committer time is when the commit was created; later edits can't be in it. Dates have
+    // 1 s resolution, so an edit in the same second still precedes the commit.
+    const upper = c.dateMs + 1000;
     const perSession = new Map<SessionKey, number>();
     const agentLines = new Map<string, number>();
     let counted = 0;

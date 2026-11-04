@@ -34,6 +34,8 @@ describe('scan', () => {
     const cls = (id: string) => bySha.get(repo.commits[id]!.sha)!;
     expect(['c0', 'c1', 'c2', 'c3', 'c4', 'c5'].map((id) => cls(id).class))
       .toEqual(['unknown', 'agent', 'mixed', 'human', 'unknown', 'agent']);
+    // Qodo #1: an edit after the committer time doesn't count, even before a later author date.
+    expect(cls('c6')).toMatchObject({ class: 'human', agentLineShareMilli: 0, sessions: [] });
     expect(cls('c1').selfCommittedAgentWritten).toBe(true);
     expect(cls('c1').evidence.map((e) => e.kind)).toEqual(['transcript_match', 'agent_ran_commit']);
     expect(cls('c2').agentLineShareMilli).toBe(500);
@@ -46,7 +48,7 @@ describe('scan', () => {
     const subKey = sessionKey('claude-code', MAIN_SESSION, SUBAGENT_ID);
     expect(snapshot.sessions.map((s) => [s.key, s.kind, s.parentKey])).toEqual([[mainKey, 'main', undefined], [subKey, 'subagent', mainKey]]);
     const [mainS, subS] = snapshot.sessions;
-    expect(mainS).toMatchObject({ linesAdded: 8, filesTouched: 2, model: 'claude-opus-4-1', commits: [repo.commits['c1']!.sha, repo.commits['c2']!.sha] });
+    expect(mainS).toMatchObject({ linesAdded: 10, filesTouched: 3, model: 'claude-opus-4-1', commits: [repo.commits['c1']!.sha, repo.commits['c2']!.sha] });
     expect(subS).toMatchObject({ agentType: 'general-purpose', commits: [repo.commits['c5']!.sha] });
     const c5 = snapshot.commits.find((c) => c.sha === repo.commits['c5']!.sha)!;
     expect(c5.attribution.sessions).toEqual([{ sessionKey: subKey, lines: 2 }]);
@@ -71,7 +73,7 @@ describe('commet scan CLI', () => {
   it('writes .git/commet/snapshot.json (0600) and prints per-class counts', async () => {
     const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: claude.claudeDir });
     expect(r).toMatchObject({ code: 0, err: '' });
-    expect(r.out).toContain('6 commits: agent 2 · mixed 1 · human 1 · unknown 2');
+    expect(r.out).toContain('7 commits: agent 2 · mixed 1 · human 2 · unknown 2');
     expect(r.out).toContain('committed by you, written by an agent: 3');
     const file = join(repo.dir, '.git/commet/snapshot.json');
     expect(readFileSync(file, 'utf8')).toBe(readFileSync(GOLDEN, 'utf8'));

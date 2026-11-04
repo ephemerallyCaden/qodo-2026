@@ -3,7 +3,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AGENT_FILE, CORE_AGENT, HELPER, NOTES, type FixtureRepo } from '../build/basic.js';
+import { AGENT_FILE, CORE_AGENT, HELPER, LATE, NOTES, type FixtureRepo } from '../build/basic.js';
 
 export const CANARIES = {
   prompt: 'CANARY_PROMPT_7f3a',
@@ -53,6 +53,9 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
       toolUseResult: { type: 'create', filePath: at('docs/notes.md'), content: NOTES.join('\n') } },
     // An edit outside the repo is dropped.
     result('u9', 'a6', '2026-10-04T09:10:00.000Z', { type: 'create', filePath: `${CANARIES.home}/secret.ts`, content: CANARIES.code }),
+    // Written after c6 was committed (but before its later author date): must not count.
+    call('a10', '2026-10-08T09:00:00.000Z', 'Write', { file_path: at('docs/late.md') }),
+    result('u11', 'a10', '2026-10-08T09:00:01.000Z', { type: 'create', filePath: at('docs/late.md'), content: LATE.join('\n'), structuredPatch: [] }),
   ];
   // A resumed session keeps its sessionId and repeats an earlier record: same key, no double count.
   const resumed = [result('u3', 'a2', '2026-10-07T08:00:00.000Z', writeResult)];

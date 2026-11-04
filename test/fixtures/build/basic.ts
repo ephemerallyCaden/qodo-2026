@@ -20,6 +20,7 @@ export const CORE_V1 = ['export function core(): string {', "  return 'human ori
 export const CORE_AGENT = ['export const agentAddedOne = core().length;', 'export const agentAddedTwo = agentAddedOne * 3;'];
 export const CORE_HUMAN = ['export const humanAddedOne = core().toUpperCase();', 'export const humanAddedTwo = humanAddedOne.trim();'];
 export const HELPER = ['export function subagentHelper(): string {', "  return 'written by a subagent via bash';", '}'];
+export const LATE = ['Late notes typed by the human before committing.', 'The author date is set later than the commit.'];
 export const NOTES = ['# Notes', 'These notes were typed by the human author.', 'A second human-written sentence here.'];
 
 export interface FixtureCommit { sha: string; date: string }
@@ -38,10 +39,10 @@ export function buildBasicRepo(): FixtureRepo {
     git(['config', k!, v!]);
   }
   const commits: Record<string, FixtureCommit> = {};
-  const commit = (id: string, date: string, subject: string, who = SELF) => {
+  const commit = (id: string, date: string, subject: string, who = SELF, authorDate = date) => {
     git(['add', '-A']);
     git(['commit', '-q', '-m', subject], {
-      GIT_AUTHOR_NAME: who.name, GIT_AUTHOR_EMAIL: who.email, GIT_AUTHOR_DATE: date,
+      GIT_AUTHOR_NAME: who.name, GIT_AUTHOR_EMAIL: who.email, GIT_AUTHOR_DATE: authorDate,
       GIT_COMMITTER_NAME: who.name, GIT_COMMITTER_EMAIL: who.email, GIT_COMMITTER_DATE: date,
     });
     commits[id] = { sha: git(['rev-parse', 'HEAD']), date };
@@ -68,5 +69,8 @@ export function buildBasicRepo(): FixtureRepo {
   // c5: written by a subagent through a Bash edit → agent.
   write('src/sub/helper.ts', HELPER);
   commit('c5', '2026-10-06T10:00:00Z', 'feat: subagent helper');
+  // c6: author date after the committer date; an agent writes the same lines only after the commit.
+  write('docs/late.md', LATE);
+  commit('c6', '2026-10-07T10:00:00Z', 'docs: late-dated human notes', SELF, '2026-10-09T10:00:00Z');
   return { dir, commits };
 }

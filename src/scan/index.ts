@@ -72,7 +72,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     for (const [path, lines] of (isCovered && patches.get(c.sha)) || []) {
       if (!excluded(path, c.files.get(path))) added.set(path, hashLines(lines, hash));
     }
-    return { sha: c.sha, dateMs: c.dateMs, authorMs: c.authorMs, isSelf: c.email === repo.selfEmail,
+    return { sha: c.sha, dateMs: c.dateMs, isSelf: c.email === repo.selfEmail,
       covered: isCovered, added, ranBy: ranBy.get(c.sha) ?? new Set() };
   });
   const results = matchCommits(matchInput, ingest?.events ?? []);

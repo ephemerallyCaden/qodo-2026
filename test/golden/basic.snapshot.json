@@ -183,12 +183,36 @@
       "seq": 5,
       "sha": "d2ef4727742e1cf0d06cb5a03236de5213179e3e",
       "subject": "feat: subagent helper"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "human",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "high"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-10-09T10:00:00Z",
+      "date": "2026-10-07T10:00:00Z",
+      "files": [
+        [
+          "docs/late.md",
+          2,
+          0,
+          0
+        ]
+      ],
+      "seq": 6,
+      "sha": "d2b280e0b8073600f0c4d0be8bc49ca911981624",
+      "subject": "docs: late-dated human notes"
     }
   ],
   "coverage": [
     {
       "from": "2026-10-02T09:00:00Z",
-      "to": "2026-10-06T10:00:00Z",
+      "to": "2026-10-07T10:00:00Z",
       "tool": "claude-code"
     }
   ],
@@ -238,6 +262,11 @@
       "path": "README.md"
     },
     {
+      "id": "f_b651e26a9c88",
+      "loc": 2,
+      "path": "docs/late.md"
+    },
+    {
       "id": "f_327ffd98a1f7",
       "loc": 3,
       "path": "docs/notes.md"
@@ -281,8 +310,8 @@
   ],
   "repo": {
     "branch": "main",
-    "head": "d2ef4727742e1cf0d06cb5a03236de5213179e3e",
-    "headDate": "2026-10-06T10:00:00Z",
+    "head": "d2b280e0b8073600f0c4d0be8bc49ca911981624",
+    "headDate": "2026-10-07T10:00:00Z",
     "repoId": "47ae229688ab8719",
     "selfPersonIds": [
       "p_391d66efc87e"
@@ -296,12 +325,12 @@
         "f8d55db9df86dbd3ac2207623c08e2522a047d91",
         "e6d929783736248dd0e31412ceb23972bc62e964"
       ],
-      "endedAt": "2026-10-07T08:00:00Z",
-      "filesTouched": 2,
+      "endedAt": "2026-10-08T09:00:00Z",
+      "filesTouched": 3,
       "inferred": false,
       "key": "s_559f47d70d1b76",
       "kind": "main",
-      "linesAdded": 8,
+      "linesAdded": 10,
       "linesRemoved": 0,
       "model": "claude-opus-4-1",
       "seed": 2699774684,
@@ -333,7 +362,7 @@
   "window": {
     "firstParent": true,
     "months": 24,
-    "since": "2024-10-06T10:00:00Z",
-    "until": "2026-10-06T10:00:00Z"
+    "since": "2024-10-07T10:00:00Z",
+    "until": "2026-10-07T10:00:00Z"
   }
 }
