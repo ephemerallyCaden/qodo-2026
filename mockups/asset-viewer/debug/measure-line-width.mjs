@@ -1,6 +1,7 @@
 // Probe: width of lava fissures and ice crevasses, and the area mix, at 180p (studio view,
 // depth off). Pixels are classified by the planet shader's regions debug view (ground blue,
 // crack red, open plate green: lava pools / ice water), so open plates never count as lines.
+// On layered lava (the default) a crack is the gap between two crust plates, so this measures the gap.
 // Width at a crack pixel = min(horizontal run, vertical run) through it; reports the median,
 // the share of isolated pixels (no 4-neighbour on the line), and the shares of the classified
 // surface (pixels not covered by ash or haze) that are ground, crack and open.
@@ -11,7 +12,7 @@ export const LINE_SET = [['lava', 11, 1.0], ['lava', 12, 0.7], ['lava', 58, 1.3]
 
 export async function measureLines(page, biome, seed, size, time = 3) {
   return page.evaluate(({ biome, seed, size, time }) => {
-    window.viewer.set({ view: 'studio', biome, seed, size, time, ringMode: 'off', moons: false, depth: false, pixelH: 180, palette: 'final', spin: true, ui: false, artefacts: false, regions: true });
+    window.viewer.set({ view: 'studio', biome, seed, size, time, ringMode: 'off', moons: false, depth: false, pixelH: 180, palette: 'final', spin: true, ui: false, artefacts: false, lavaMode: 'layered', lavaTime: null, regions: true });
     const src = document.getElementById('view');
     const W = src.width, H = src.height;
     const c = Object.assign(document.createElement('canvas'), { width: W, height: H });

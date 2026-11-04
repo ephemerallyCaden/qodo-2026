@@ -3,6 +3,7 @@
 // Usage: node shots.mjs [name ...]   (no names = all shots)
 //        node shots.mjs --palettes   (25 Lospec palettes + labelled contact sheet)
 //        node shots.mjs --planets    (biome variety sheet, system shot, hero loop GIF, colour counts)
+//        node shots.mjs --planets lava-layered   (the sheets plus only the named loop GIFs)
 import { chromium } from 'playwright';
 import { access, mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
@@ -31,7 +32,7 @@ const SHOTS = {
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-smooth', depthBands: '3-band', artefacts: false, artAuto: true, artCount: 3, artTeal: false, cover: null, lavaMode: 'flow' };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-smooth', depthBands: '3-band', artefacts: false, artAuto: true, artCount: 3, artTeal: false, cover: null, lavaMode: 'layered', lavaTime: null };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
@@ -112,6 +113,8 @@ const imageStats = (pngs) => page.evaluate(async (urls) => {
   const diffs = datas.slice(1).map((d, i) => diff(datas[i], d));
   return { uniq, diffs, seam: datas.length > 1 ? diff(datas[datas.length - 1], datas[0]) : 0 };
 }, pngs.map((p) => `data:image/png;base64,${p.toString('base64')}`));
+const sizeTag = (z) => (z < 0.8 ? 'S' : z < 1.2 ? 'M' : z < 1.6 ? 'L' : 'XL');
+const asUrl = (png) => `data:image/png;base64,${png.toString('base64')}`;
 const capture = async (opts) => {
   await page.evaluate((o) => window.viewer.set(o), { ...BASE, ...opts });
   return page.locator('#view').screenshot();
@@ -142,17 +145,31 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('rings-s
   console.log('screenshots/rings-sheet.png');
 }
 
-// Lava modes side by side on the lava hero: static, flow (default), full-warp, at two loop times.
+// Lava modes side by side on the lava hero: layered (default), static-painted, full-warp, at two loop times.
 if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('lava-modes'))) {
   const items = [];
   for (const time of [3, 9]) {
-    for (const lavaMode of ['static', 'flow', 'full-warp']) {
+    for (const lavaMode of ['layered', 'static-painted', 'full-warp']) {
       const png = await capture({ view: 'planet', time, biome: 'lava', seed: 11, ringMode: 'off', moons: true, lavaMode });
-      items.push({ label: `lava ${lavaMode} · t ${time} s`, url: `data:image/png;base64,${png.toString('base64')}` });
+      items.push({ label: `lava ${lavaMode} · t ${time} s`, url: asUrl(png) });
     }
   }
   await contactSheet(items, 3, path.join(outDir, 'lava-modes.png'));
   console.log('screenshots/lava-modes.png');
+}
+
+// Lava before / after at S/M/L (the variety-sheet tiles): 3b6a482 'flow', i.e. static-painted (top),
+// vs layered crust plates over the molten layer (bottom).
+if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('lava-layers-before-after'))) {
+  const items = [];
+  for (const [label, lavaMode] of [['before (3b6a482 flow)', 'static-painted'], ['after: layered', 'layered']]) {
+    for (const [seed, size] of [[12, 0.7], [11, 1.0], [58, 1.3]]) {
+      const png = await capture({ view: 'studio', time: 3, biome: 'lava', seed, size, ringMode: 'off', moons: false, lavaMode });
+      items.push({ label: `${label} · seed ${seed} · ${sizeTag(size)}`, url: asUrl(png) });
+    }
+  }
+  await contactSheet(items, 3, path.join(outDir, 'lava-layers-before-after.png'));
+  console.log('screenshots/lava-layers-before-after.png');
 }
 
 // Biome variety: each row entry is [label, base biome, [[seed, size, ring], ...]].
@@ -171,8 +188,6 @@ const PLANET_SET = [
   ['moon (extra)', 'moon', [[9, 0.35, 'off'], [2, 0.5, 'off'], [66, 0.42, 'off']]],
   ['toxic (extra)', 'toxic', [[13, 1.0, 'off'], [37, 0.7, 'off'], [81, 1.3, 'off']]],
 ];
-const sizeTag = (z) => (z < 0.8 ? 'S' : z < 1.2 ? 'M' : z < 1.6 ? 'L' : 'XL');
-const asUrl = (png) => `data:image/png;base64,${png.toString('base64')}`;
 
 // Planet artefacts on every biome (plus the teal accent on lush). Each tile uses the
 // loop time (every 2 s) where the artefacts change the most pixels, i.e. a sector faces the camera.
@@ -291,8 +306,9 @@ if (PLANET_MODE) {
   };
   // Hero loop: the lush planet with moons, the default 24 s loop (surface 2 turns, clouds 3) at 100/3 fps.
   await renderLoop('hero-loop', {}, '100/3');
-  // Animated lava (LAVA_MODES): flow (default) and full-warp on the lava hero, one 24 s loop at 15 fps.
-  for (const [name, lavaMode] of [['lava-flow', 'flow'], ['lava-fullwarp', 'full-warp']]) await renderLoop(name, { biome: 'lava', seed: 11, ringMode: 'off', lavaMode }, '15');
+  // Animated lava (LAVA_MODES): layered (default), static-painted (the 3b6a482 flow) and full-warp on the
+  // lava hero, one 24 s loop at 15 fps.
+  for (const [name, lavaMode] of [['lava-layered', 'layered'], ['lava-flow', 'static-painted'], ['lava-fullwarp', 'full-warp']]) await renderLoop(name, { biome: 'lava', seed: 11, ringMode: 'off', lavaMode }, '15');
   // Artefacts loop: the same hero with artefacts on, at 15 fps (one frame per glitch tick, ART_TICKS per surface turn).
   await renderLoop('artefacts-loop', { artefacts: true }, '15');
   // Cloud drift options at 15 fps: the default (24 s, 2:3, clouds 1.5x) and the alternative (36 s, 3:4, 1.33x).

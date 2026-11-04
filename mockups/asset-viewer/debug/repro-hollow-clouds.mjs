@@ -14,7 +14,9 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
 const HOOK = `
 window.__dbg = { THREE, scene, camera, renderer, planets, controls, DEPTH_U,
   // cloud InstancedMesh of a planet, wherever it sits in the group tree
-  puffsOf: (p) => { let m = null; p.group.traverse((o) => { if (!m && o.isInstancedMesh) m = o; }); return m; } };
+  puffsOf: (p) => { let m = null; p.group.traverse((o) => { if (!m && o.isInstancedMesh) m = o; }); return m; },
+  // the view canvas's pixels at its internal resolution
+  readView: () => { const s = document.getElementById('view'); const c = Object.assign(document.createElement('canvas'), { width: s.width, height: s.height }); const x = c.getContext('2d'); x.drawImage(s, 0, 0); return { W: s.width, H: s.height, d: x.getImageData(0, 0, s.width, s.height).data }; } };
 `;
 
 // patch(src) may rewrite viewer.js text in memory (controls / candidate fixes only).
