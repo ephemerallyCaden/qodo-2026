@@ -2,7 +2,7 @@
 
 > A local-first, pixel-art 3D explorer that helps a solo developer working with AI coding agents keep a real mental model of their own codebase. Entry for Qodo's "Build a Software Factory in 30 Days" hackathon (Nov 2 – Dec 2, 2026, solo).
 
-**Read first:** `CONSTITUTION.md` (principles, autonomy, quality gates; currently a draft), `docs/features/codebase-space-explorer.md` (requirements R1–R14, week plan), `JOURNAL.md` (state and decisions), `docs/design/art-direction.md` (the Current spec section is the visual source of truth).
+**Read first:** `AGENTS.md` (house rules shared by every agent and by Qodo), `CONSTITUTION.md` (principles, autonomy, quality gates; approved), `docs/features/codebase-space-explorer.md` (requirements R1–R14, week plan), `JOURNAL.md` (state and decisions), `docs/design/art-direction.md` (the Current spec section is the visual source of truth).
 
 ## Stack (pinned at scaffold; see CONSTITUTION.md)
 - TypeScript (strict), Node ≥ 20, npm.
