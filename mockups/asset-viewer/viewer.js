@@ -112,34 +112,20 @@ const resolve = (key) => {
   return v !== undefined || !key.includes('.') ? v : resolve(key.split('.').slice(0, -1).join('.'));
 };
 
-// Depth colour budgets: the further away something is, the fewer colours it uses. One
-// row per depth level, picked per OBJECT (never per pixel) from its camera distance.
-//   from      camera distance at which an object drops to this level
-//   lut       ramp entry i reads entry lut[length][i], so adjacent tones merge (keyed by
-//             ramp length; missing = identity). tones = distinct entries per ramp
-//   ringLut   the ring's 4 entries (0 = debris in the planet's shadow)
-//   detail    what a planet still draws at this level
-//   maxColours  per-object unique-colour caps, enforced by test/depth-budget.test.mjs
-// Beyond near, each faded colour is the tinted colour snapped onto that ramp's own
-// REDUCED colours (plus the palette's depth tint), so a fade steps down the object's own
-// ramp; there are no lerped in-between colours. Emissive glow (lava fissures) never snaps
-// to the tint, so a far lava world still glows. The silhouette is one flat colour.
-export const DEPTH_LEVELS = [
-  { name: 'near', from: 0, tones: 5, lut: {}, ringLut: [0, 1, 2, 3],
-    detail: { clouds: true, shadow: true, moons: true, artefacts: true, haze: true }, maxColours: { planet: 24, crew: 16 } },
-  { name: 'mid', from: 12, tones: 3, lut: { 5: [0, 1, 1, 3, 3], 4: [0, 1, 1, 3] }, ringLut: [0, 1, 1, 1],
-    detail: { clouds: true, shadow: false, moons: true, artefacts: true, haze: true }, maxColours: { planet: 14, crew: 10 } },
-  { name: 'far', from: 26, tones: 2, lut: { 5: [0, 0, 3, 3, 3], 4: [0, 0, 3, 3], 3: [0, 2, 2] }, ringLut: [1, 1, 1, 1],
-    detail: { clouds: false, shadow: false, moons: false, artefacts: false, haze: true }, maxColours: { planet: 6, crew: 5 } },
-  { name: 'silhouette', from: 44, tones: 1, lut: null, ringLut: null, // null: everything one flat colour
-    detail: { clouds: false, shadow: false, moons: false, artefacts: false, haze: false }, maxColours: { planet: 1, crew: 1 } },
-];
-const levelFor = (d) => DEPTH_LEVELS.filter((l) => d >= l.from).length - 1;
+const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object drops a level
+const depthCache = new Map();
 // `family` lets planets fade through their own shared set (palette.planetDepth)
 // while the crew keeps the palette's depth steps.
-function depthTint(level, family) {
-  const pal = family === 'planet' && PALETTES[paletteName].planetDepth ? PALETTES[paletteName].planetDepth : PALETTES[paletteName];
-  return pal.depth[level];
+function depthColor(hex, level, family = 'crew') {
+  const key = `${paletteName}:${family}:${hex}:${level}`;
+  if (!depthCache.has(key)) {
+    const pal = family === 'planet' && PALETTES[paletteName].planetDepth ? PALETTES[paletteName].planetDepth : PALETTES[paletteName];
+    const [tint, t] = pal.depth[level];
+    const c = new THREE.Color(hex).lerp(new THREE.Color(tint), t);
+    // Published palettes snap each depth step back onto their own (darker) colours.
+    depthCache.set(key, pal.snap?.[level] ? new THREE.Color(snapToPool(c, pal.snap[level])) : c);
+  }
+  return depthCache.get(key);
 }
 
 const LIGHT_DIR = new THREE.Vector3(-0.3, 0.55, 0.78).normalize(); // top-left key ~40° off the view: concentric crescents
@@ -514,36 +500,17 @@ function setDepthLevel(obj, level) {
   if (obj.userData.depthLevel === level) return;
   obj.userData.depthLevel = level;
   const family = obj.userData.depthFamily ?? 'crew';
-  const row = DEPTH_LEVELS[level];
-  // Each ramp entry reads its reduced source hex (adjacent tones merged by the level's LUT).
-  const ramps = []; // per ramp: [[colour to write, reduced hex], ...]
   obj.traverse((o) => {
-    for (const m of o.material ? [o.material].flat() : []) {
+    const mats = o.material ? [o.material].flat() : [];
+    for (const m of mats) {
       for (const [name, key] of Object.entries(m.userData.ramps ?? {})) {
-        const hexes = [resolve(key)].flat();
+        const hexes = resolve(key);
         const arr = m.uniforms[name].value;
-        const emissive = key === 'glow'; // lava fissures glow at any distance: they never snap to the tint
-        if (!Array.isArray(arr)) { ramps.push(Object.assign([[arr, hexes[0]]], { emissive })); continue; }
-        const lut = m.userData.ring ? row.ringLut : row.lut?.[arr.length];
-        ramps.push(Object.assign(arr.map((u, i) => [u, hexes[Math.min(lut ? lut[i] : i, hexes.length - 1)]]), { emissive })); // short ramps repeat their last colour
+        if (Array.isArray(arr)) arr.forEach((u, i) => u.copy(depthColor(hexes[Math.min(i, hexes.length - 1)], level, family))); // short ramps repeat their last colour
+        else arr.copy(depthColor(hexes, level, family));
       }
     }
   });
-  if (!ramps.length) return;
-  const [tint, t] = depthTint(level, family);
-  // Tint toward the depth colour, then snap onto the ramp's own reduced colours (or the
-  // tint itself), so the fade steps down the object's own ramp with no in-between colours.
-  const snap = (hex, pool) => (level === 0 ? hex : snapToPool(new THREE.Color(hex).lerp(new THREE.Color(tint), t), pool));
-  if (!row.lut) {
-    const flat = snap(ramps[0][0][1], [ramps[0][0][1], tint]); // silhouette: one flat colour for the whole object
-    for (const r of ramps) for (const [u] of r) u.set(flat);
-  } else {
-    for (const r of ramps) {
-      const pool = [...new Set([...r.map(([, h]) => h), ...(r.emissive ? [] : [tint])])];
-      for (const [u, hex] of r) u.set(snap(hex, pool));
-    }
-  }
-  obj.userData.onDepth?.(level);
 }
 
 // ---------------------------------------------------------------- planet
@@ -691,7 +658,6 @@ function makePlanet() {
     },
   });
   ringMat.userData.ramps = { uRamp: 'ring' };
-  ringMat.userData.ring = true; // depth levels use DEPTH_LEVELS ringLut
   const ringTilt = new THREE.Group();
   ringTilt.rotation.set(0.2, 0, -0.32); // shallow tilt so the front arc crosses the disc
   const ring = new THREE.Points(new THREE.BufferGeometry(), ringMat);
@@ -727,7 +693,7 @@ function makePlanet() {
     surfaceMat.uniforms.uSea.value = s0 + rnd() * (s1 - s0);
     const [a, b, c, g] = biome.ramps;
     surfaceMat.userData.ramps = { uA: a, uB: b, uC: c, uG: g };
-    hasHaze = !!biome.haze;
+    haze.visible = !!biome.haze;
     if (biome.haze) hazeMat.userData.ramps = { uHaze: biome.haze };
     ringMat.userData.ramps = { uRamp: `ring.${biomeKey}` };
     const weather = WEATHER[biome.weather];
@@ -854,8 +820,7 @@ function makePlanet() {
     }
     massAttr.needsUpdate = true;
     puffs.count = shadow.count = n;
-    hasShadow = !!weather && !weather.fissure;
-    applyDetail();
+    shadow.visible = !!weather && !weather.fissure;
     puffs.instanceMatrix.needsUpdate = true;
 
     // Ring debris (Planetarium): >= 70% chunky 2x2 / plus particles grouped in
@@ -923,23 +888,12 @@ function makePlanet() {
     ringMat.uniforms.uRadius.value = shadowMat.uniforms.uRadius.value = group.scale.x;
     shadowMat.uniforms.uToSurface.value.copy(surface.matrixWorld).invert();
   }
-  // What draws = the viewer's extras AND the depth level's detail schedule (DEPTH_LEVELS).
-  let extras = { moons: false, halo: false, artefacts: 0, teal: false, cloudShadow: true };
-  let hasHaze = false, hasShadow = false;
-  function applyDetail(level = Math.max(0, group.userData.depthLevel ?? 0)) {
-    const d = DEPTH_LEVELS[level].detail;
-    for (const m of MOONS) m.mesh.visible = extras.moons && d.moons;
-    puffs.visible = d.clouds;
-    shadow.visible = hasShadow && extras.cloudShadow && d.shadow && d.clouds;
-    haze.visible = hasHaze && d.haze;
-    halo.visible = extras.halo;
-    surfaceMat.uniforms.uArtN.value = d.artefacts ? Math.min(extras.artefacts, MAX_ART) : 0;
-    surfaceMat.uniforms.uArtTeal.value = extras.teal ? 1 : 0;
-  }
-  group.userData.onDepth = applyDetail;
-  function setExtras(opts = {}) {
-    extras = { ...extras, ...opts };
-    applyDetail();
+  function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false, cloudShadow = true } = {}) {
+    for (const m of MOONS) m.mesh.visible = moons;
+    shadowMat.visible = cloudShadow;
+    halo.visible = showHalo;
+    surfaceMat.uniforms.uArtN.value = Math.min(artefacts, MAX_ART);
+    surfaceMat.uniforms.uArtTeal.value = teal ? 1 : 0;
   }
 
   return { group, rebuild, update, ring, setExtras };
@@ -1386,7 +1340,6 @@ function applyState() {
   resize();
 }
 
-const depthReadout = document.getElementById('depth-readout');
 const clock = new THREE.Clock();
 const tmp = new THREE.Vector3();
 function frame() {
@@ -1398,16 +1351,11 @@ function frame() {
   [...crew, ...solos].forEach((a) => a.update(t));
   setDepthLevel(stars, 0); // stars and sky never fade, but still follow palette switches
   setDepthLevel(sky, 0);
-  const levelCount = DEPTH_LEVELS.map(() => 0);
   for (const obj of [...planets, ...SYSTEM, ...crew, ...solos].map((o) => o.group)) {
     const d = camera.position.distanceTo(obj.getWorldPosition(tmp));
-    const level = !state.depth ? 0 : levelFor(d);
+    const level = !state.depth ? 0 : DEPTH_RANGES.filter((r) => d >= r).length;
     setDepthLevel(obj, level);
-    if (obj.visible) levelCount[level]++;
   }
-  // depth debug: how many visible objects sit at each level
-  const text = DEPTH_LEVELS.map((l, i) => `${l.name} ${levelCount[i]}`).join(' · ');
-  if (depthReadout && depthReadout.textContent !== text) depthReadout.textContent = text;
   renderer.render(scene, camera);
 }
 
