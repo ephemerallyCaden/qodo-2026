@@ -9,7 +9,7 @@ import { isoUtc, minusMonths } from '../core/time.js';
 import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
 import { gitRunner } from './git.js';
-import { addedLines, headFiles, readRepo, windowCommits, type NumstatRow } from './repo.js';
+import { addedLines, headFiles, readRepo, windowCommits, type NumstatRow, type RawCommit } from './repo.js';
 
 export interface ScanOptions {
   repoDir: string;
@@ -72,6 +72,8 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
 
   const blind = [...(found?.blind ?? []), ...(ingest?.unreadable ?? [])];
   const partial = ingest?.partial ?? [];
+  // One comparison for matching, people and selfPersonIds: all use the mailmapped, lowercased email.
+  const isSelf = (c: RawCommit) => repo.selfEmail !== null && c.email === repo.selfEmail;
   const ranBy = new Map<string, Set<SessionKey>>();
   for (const { sessionKey, sha } of ingest?.ranCommits ?? []) {
     const hit = raw.filter((c) => c.sha.startsWith(sha));
@@ -82,7 +84,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     for (const [path, lines] of patches.get(c.sha) ?? []) {
       if (!excluded(path, c.files.get(path))) added.set(path, hashLines(lines, hash));
     }
-    return { sha: c.sha, dateMs: c.dateMs, isSelf: c.email === repo.selfEmail, isMerge: c.isMerge,
+    return { sha: c.sha, dateMs: c.dateMs, isSelf: isSelf(c), isMerge: c.isMerge,
       covered: within(coverage, c.dateMs) && !within(blind, c.dateMs), partial: within(partial, c.dateMs), added, ranBy: ranBy.get(c.sha) ?? new Set() };
   });
   const results = matchCommits(matchInput, ingest?.events ?? []);
@@ -90,7 +92,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const people = new Map<string, SnapshotV01['people'][number]>();
   const commits: Commit[] = raw.map((c, seq) => {
     const author = personId(c.email);
-    if (!people.has(author)) people.set(author, { id: author, displayName: c.name, isSelf: c.email === repo.selfEmail });
+    if (!people.has(author)) people.set(author, { id: author, displayName: c.name, isSelf: isSelf(c) });
     const r = results.get(c.sha)!;
     const rows: Commit['files'] = [...c.files].filter(([p, row]) => !excluded(p, row))
       .sort((a, b) => byCodepoint(a[0], b[0]))

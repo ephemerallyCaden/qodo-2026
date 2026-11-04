@@ -1,10 +1,8 @@
-// Issue #5: "unknown, never human" (design §5.2.7, R6). Each `bug(...)` test asserts what the spec
-// requires and is expected to FAIL on current code, so it is declared with `it.fails` to keep the
-// suite green. The fix task flips `bug` to `it` (or deletes the alias). To see the real failures:
-//   ISSUE5_STRICT=1 npx vitest run test/never-human.test.ts
-// Preconditions are plain `it` tests: they must pass before and after the fix, so a broken
-// fixture can never make an `it.fails` test pass vacuously.
+// Issue #5: "unknown, never human" (design §5.2.7, R6). Each case asserts what the spec requires;
+// all failed before the fix. Preconditions must pass before and after it, so a broken fixture can
+// never make a case pass vacuously.
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,7 +15,6 @@ import { buildNeverHumanRepo, EDGE_CASES, MERGES, type EdgeCase } from './fixtur
 import { writeClaudeFixture } from './fixtures/claude/basic.js';
 import { writeNeverHumanClaude, type NeverHumanClaude } from './fixtures/claude/never-human.js';
 
-const bug = process.env['ISSUE5_STRICT'] === '1' ? it : it.fails;
 /** Case 4b needs a case-insensitive filesystem (macOS APFS default, Windows); skipped elsewhere. */
 const CASE_INSENSITIVE = existsSync(realpathSync(tmpdir()).toUpperCase());
 const KEY = () => new Uint8Array(32).fill(7);
@@ -91,7 +88,7 @@ describe('Issue #5 fixture preconditions (must pass before and after the fix)', 
   });
 });
 
-describe('Issue #5 known bugs (it.fails; the fix flips `bug` to `it`)', () => {
+describe('Issue #5 cases: never human', () => {
   it('case 1: a commit the agent ran (agent_ran_commit) is never human, even when its edits were not parsed', () => {
     // Decision 2: unknown, keeping the evidence and the session link.
     expect(attr('bash')).toMatchObject({ class: 'unknown', tier: 'none', agentLineShareMilli: 0,
@@ -172,30 +169,53 @@ describe('Issue #5 known bugs (it.fails; the fix flips `bug` to `it`)', () => {
 });
 
 describe('Issue #5 case 5: self identity under .mailmap', () => {
-  let basic: FixtureRepo;
-  let mapped: SnapshotV01;
   const CANONICAL = 'ada@canonical.example';
-
-  beforeAll(async () => {
-    basic = buildBasicRepo();
+  /** Scans the basic fixture with a .mailmap and, optionally, a different raw user.email / user.name. */
+  const scanMapped = async (mailmap: string, config: Record<string, string> = {}) => {
+    const basic = buildBasicRepo();
     const c = writeClaudeFixture(basic);
-    // The user commits as their raw user.email; .mailmap canonicalises it (design §5.1.9).
-    writeFileSync(join(basic.dir, '.mailmap'), `Ada Self <${CANONICAL}> <self@example.com>\n`);
-    ({ snapshot: mapped } = await scan({ repoDir: basic.dir, windowMonths: 24, ingest: true,
-      claudeProjectsDir: join(c.claudeDir, 'projects'), keyFor: KEY }));
-  });
-
-  it('setup: the mailmap is applied to commit authors', () => {
-    const c3 = mapped.commits.find((c) => c.sha === basic.commits['c3']!.sha)!;
-    expect(mapped.people.find((p) => p.id === c3.author)).toBeDefined();
-    expect(mapped.repo.selfPersonIds).toHaveLength(1);
-  });
-
-  bug('case 5: a mailmapped self author is still self (people, selfPersonIds, human and self-committed agent work)', () => {
-    const by = (id: string) => mapped.commits.find((c) => c.sha === basic.commits[id]!.sha)!;
-    const self = mapped.people.find((p) => p.id === by('c3').author)!;
-    expect({ isSelf: self.isSelf, selfIds: mapped.repo.selfPersonIds, c3: by('c3').attribution.class,
+    writeFileSync(join(basic.dir, '.mailmap'), mailmap);
+    for (const [k, v] of Object.entries(config)) execFileSync('git', ['config', k, v], { cwd: basic.dir });
+    const { snapshot: s } = await scan({ repoDir: basic.dir, windowMonths: 24, ingest: true,
+      claudeProjectsDir: join(c.claudeDir, 'projects'), keyFor: KEY });
+    const by = (id: string) => s.commits.find((x) => x.sha === basic.commits[id]!.sha)!;
+    return { s, by };
+  };
+  /** people[].isSelf and selfPersonIds agree, and the self commits are self (human c3, self-committed agent c1). */
+  const expectSelf = ({ s, by }: Awaited<ReturnType<typeof scanMapped>>) => {
+    for (const p of s.people) expect(p.isSelf, p.displayName).toBe(s.repo.selfPersonIds.includes(p.id));
+    const self = s.people.find((p) => p.id === by('c3').author)!;
+    expect({ isSelf: self.isSelf, selfIds: s.repo.selfPersonIds, c3: by('c3').attribution.class,
       c1SelfAgent: by('c1').attribution.selfCommittedAgentWritten })
       .toEqual({ isSelf: true, selfIds: [by('c3').author], c3: 'human', c1SelfAgent: true });
+    // The teammate stays someone else.
+    expect(s.people.find((p) => p.id === by('c4').author)!.isSelf).toBe(false);
+  };
+
+  it('setup: the mailmap is applied to commit authors', async () => {
+    const { s, by } = await scanMapped(`Ada Self <${CANONICAL}> <self@example.com>\n`);
+    expect(s.people.find((p) => p.id === by('c3').author)).toBeDefined();
+    expect(s.repo.selfPersonIds).toHaveLength(1);
+  });
+
+  it('case 5: a mailmapped self author is still self (people, selfPersonIds, human and self-committed agent work)', async () => {
+    // The user commits as their raw user.email; .mailmap canonicalises it (design §5.1.9).
+    expectSelf(await scanMapped(`Ada Self <${CANONICAL}> <self@example.com>\n`));
+  });
+
+  it('case 5b: a user.email that differs from the mailmap entry only by case is still self', async () => {
+    expectSelf(await scanMapped(`<${CANONICAL}> <self@example.com>\n`, { 'user.email': 'Self@Example.COM' }));
+  });
+
+  it('case 5c: a mailmap entry that matches on name and email maps self only with the name', async () => {
+    const mapped = await scanMapped(`Ada Canon <${CANONICAL}> Ada Self <self@example.com>\n`);
+    expectSelf(mapped);
+    expect(mapped.s.repo.selfPersonIds).not.toEqual([`p_${createHash('sha256').update('self@example.com').digest('hex').slice(0, 12)}`]);
+  });
+
+  it('case 5d: a mailmap entry that changes only the name keeps the email, so self is unchanged', async () => {
+    const mapped = await scanMapped('Ada Renamed <self@example.com>\n');
+    expectSelf(mapped);
+    expect(mapped.s.people.find((p) => p.isSelf)!.displayName).toBe('Ada Renamed');
   });
 });

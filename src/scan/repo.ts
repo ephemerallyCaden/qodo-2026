@@ -33,9 +33,10 @@ export async function readRepo(git: Git): Promise<RepoInfo> {
   }
   const emptyTree = EMPTY_TREE[format];
   if (!emptyTree) throw new CommetError(`unsupported object format ${JSON.stringify(format)}`, EXIT.internal);
-  const [ct, roots, email, worktrees] = await Promise.all([
+  const [ct, roots, name, email, worktrees] = await Promise.all([
     git(['show', '-s', '--format=%ct', head]),
     git(['rev-list', '--max-parents=0', head]),
+    tryGit(git, ['config', 'user.name']),
     tryGit(git, ['config', 'user.email']),
     git(['worktree', 'list', '--porcelain', '-z']),
   ]);
@@ -46,9 +47,21 @@ export async function readRepo(git: Git): Promise<RepoInfo> {
     headMs: Number(ct.trim()) * 1000,
     branch: ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : 'HEAD',
     repoId: sha256Hex(roots.split('\n').filter(Boolean).sort().join('\n')).slice(0, 16),
-    selfEmail: email?.trim().toLowerCase() || null,
+    selfEmail: await selfEmail(git, name?.trim() ?? '', email?.trim() ?? ''),
     worktreeRoots: worktrees.split('\0').filter((t) => t.startsWith('worktree ')).map((t) => t.slice('worktree '.length)),
   };
+}
+
+/**
+ * `user.email` canonicalised the way `--use-mailmap` canonicalises commit authors, so self
+ * matches mailmapped commits (design §5.1.9). The name goes along because a mailmap entry can
+ * match on name and email together. Lowercased, like every author email.
+ */
+async function selfEmail(git: Git, name: string, email: string): Promise<string | null> {
+  if (!email) return null;
+  const out = await tryGit(git, ['check-mailmap', name ? `${name} <${email}>` : `<${email}>`]);
+  const mapped = out && /<([^<>]*)>\s*$/.exec(out)?.[1];
+  return (mapped || email).toLowerCase();
 }
 
 export interface NumstatRow { added: number; removed: number; binary: boolean }
