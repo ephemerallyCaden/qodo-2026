@@ -256,6 +256,33 @@ function toolUses(r: Obj): Obj[] {
   return Array.isArray(content) ? content.filter((c): c is Obj => isObj(c) && c['type'] === 'tool_use') : [];
 }
 
+/**
+ * Where a shell command points git: `cd`/`pushd` targets, `-C <dir>` (attached or not),
+ * `--git-dir`/`--work-tree` values and `GIT_DIR=`/`GIT_WORK_TREE=` assignments.
+ */
+const CMD_DIR = /(?:(?:^|[;&|(])\s*(?:cd|pushd)\s+|\s-C\s*|\s--(?:git-dir|work-tree)(?:=|\s+)|(?:^|\s)GIT_(?:DIR|WORK_TREE)=)("[^"]*"|'[^']*'|[^\s;&|()'"]+)/g;
+
+/**
+ * Whether a foreign session's commit command could act on this repo. True when any target in
+ * it resolves under a root (relative ones against the cwd and each earlier target), or can't
+ * be resolved (`$VAR`, `~`, globs, substitutions). With no target, git runs in the cwd, which is
+ * outside the repo. The command is only inspected here, never kept (design §6).
+ */
+function gitTargetsRepo(command: string, cwd: string, roots: string[]): boolean {
+  const bases = [cwd];
+  for (const m of command.matchAll(CMD_DIR)) {
+    const dir = m[1]!.replace(/^(["'])(.*)\1$/, '$2');
+    if (dir === '' || /[$`*?~]/.test(dir)) return true;
+    const candidates = isAbs(dir) ? [slash(dir)] : bases.map((b) => slash((WIN_PATH.test(b) ? win32 : posix).join(b, dir)));
+    for (const c of candidates) {
+      const real = existsSync(c) ? realNative(c) : null;
+      if ([c, real].some((p) => p !== null && roots.some((r) => under(p, r)))) return true;
+    }
+    bases.push(...candidates);
+  }
+  return false;
+}
+
 /** `tool_result.tool_use_id`s of a user record (`message.content[]`): which tool uses it answers. */
 function toolResultIds(r: Obj): string[] {
   const content = isObj(r['message']) ? r['message']['content'] : undefined;
@@ -785,6 +812,9 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
           // `git commit -q`, or discarded output, names no SHA, so the call's window marks the
           // commits instead (Qodo PR6 #2). The command is tested, never kept.
           if (!isGitCommitCall(u)) continue;
+          // A foreign session's cwd is outside the repo: its git command marks our commits only
+          // when it points into the repo, or can't be resolved (Qodo PR10 #5).
+          if (t.foreign && !gitTargetsRepo(String((u['input'] as Obj)['command']), t.cwd, roots)) continue;
           if (sid) gitCalls.set(id ? `use:${id}` : `rec:${uuid}`, { at: resultTs, sid, agentId, r });
           else drop(li);
         }

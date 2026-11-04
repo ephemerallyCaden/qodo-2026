@@ -410,3 +410,32 @@ describe('Qodo PR10 #1 and #4: an outside transcript that can\'t be fully inspec
     expect(found.stats.unattributed).toBe(1);
   });
 });
+
+describe('Qodo PR10 #5: a foreign session\'s git command must target this repo', () => {
+  /** A parent-directory session that edits another file in this repo (so it is foreign) and runs `command`. */
+  const foreignCommit = async (command: (dir: string) => string) => {
+    const repo = repoWith();
+    const s = session(SID, dirname(repo.dir));
+    const other = join(repo.dir, 'docs/foreign.md');
+    const { attr } = await scanMini(repo, miniClaude({ [IDLE]: idle(repo.dir), [SID]: [s.user('u1', at('09:00:00')),
+      s.call('a2', at('09:20:00'), 'Write', { file_path: other }), s.result('u3', 'a2', at('09:20:01'), createResult(other, ['Foreign session notes.'])),
+      s.call('a4', at('09:59:50'), 'Bash', { command: command(repo.dir) }),
+      s.result('u5', 'a4', at('10:00:02'), { stdout: '', stderr: '', interrupted: false }), s.user('u6', at('10:30:00'))] }));
+    return attr('target');
+  };
+
+  it('a quiet commit in another directory leaves a concurrent human commit human', async () => {
+    expect(await foreignCommit(() => 'cd elsewhere-repo && git commit -q -m "other work"')).toMatchObject({ class: 'human', evidence: [] });
+  });
+
+  it('a quiet commit pointed into this repo (cd, -C, --git-dir, GIT_DIR) still marks it (absolute or relative to the cwd)', async () => {
+    for (const command of [(d: string) => `cd ${d} && git commit -q -m x`, (d: string) => `git -C ${d.split('/').pop()} commit -q`,
+      (d: string) => `git --git-dir=${d}/.git --work-tree=${d} commit -q`, (d: string) => `GIT_DIR=${d}/.git git commit -q`]) {
+      expect(await foreignCommit(command)).toMatchObject({ class: 'unknown', evidence: [{ kind: 'agent_ran_commit', detail: 'git_command' }] });
+    }
+  });
+
+  it('a commit whose target can\'t be resolved still marks it (conservative)', async () => {
+    expect(await foreignCommit(() => 'git -C "$REPO_DIR" commit -q -m x')).toMatchObject({ class: 'unknown' });
+  });
+});
