@@ -62,3 +62,18 @@ describe('Qodo PR6 #1: a drop outside the datable records still widens the parti
     expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none' });
   });
 });
+
+describe('Qodo PR6 #3: an edit call that can\'t be linked to its result is a drop', () => {
+  it('a Write call with no uuid, whose result lands after the commit, keeps the commit from being human', async () => {
+    // The commit happens while the Write is in flight; only the call's time puts the edit before it.
+    const { control, withCase } = await controlAndCase((dir, trigger) => {
+      const s = session(SID, dir);
+      const callId = trigger ? undefined : 'a2';
+      return { [SID]: [s.user('u1', at('09:00:00')), s.call(callId, at('09:59:50'), 'Write', { file_path: join(dir, PATH) }),
+        s.result('u3', callId, at('10:00:05'), createResult(join(dir, PATH), LINES)), s.user('u4', at('10:30:00'))] };
+    });
+    expect(control.attr('target')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+    expect(withCase.logs.dropped).toBe(1);
+    expect(withCase.attr('target')).toMatchObject({ class: 'unknown', tier: 'none' });
+  });
+});

@@ -28,6 +28,7 @@ const DENIED_TYPE = /"type"\s*:\s*"(last-prompt|attachment|api-request[^"]*|file
 /** Cheap pre-parse filters (over-broad is safe): results holding fields we read, and edit-capable calls. */
 const RESULT_KEYS = /"(structuredPatch|bashEditDiff|gitOperation|stdout)"/;
 const EDIT_CALL = /"name"\s*:\s*"(Edit|Write|MultiEdit|NotebookEdit|Bash)"/;
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash']);
 const SAFE_TOKEN = /^[\w.:@+/-]{1,128}$/;
 const VERSION_TOKEN = /^[\w.+-]{1,32}$/;
 /** Home and temp dirs as path segments. `/tmp` is always listed, so `tmp/…` is refused on every platform. */
@@ -151,6 +152,13 @@ function fileSize(file: string): number | null {
   } catch {
     return null;
   }
+}
+
+/** Tool names of an assistant record's `tool_use` blocks (`message.content[].name`). */
+function toolNames(r: Obj): string[] {
+  const content = isObj(r['message']) ? r['message']['content'] : undefined;
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((c) => (isObj(c) && c['type'] === 'tool_use' && typeof c['name'] === 'string' ? [c['name']] : []));
 }
 
 /** Timestamp of the nearest allowlisted record before (`step` −1) or after (+1) line `i`. */
@@ -477,6 +485,8 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       if (r['type'] === 'assistant') {
         model ??= isObj(r['message']) ? metaToken(r['message']['model']) : undefined;
         if (uuid && !Number.isNaN(resultTs)) issuedAt.set(uuid, resultTs);
+        // Unlinkable or undated: its edit would be timed by the (later) result (Qodo PR6 #3).
+        else if (toolNames(r).some((n) => EDIT_TOOLS.has(n))) drop(li);
         continue;
       }
       const res = r['toolUseResult'];
