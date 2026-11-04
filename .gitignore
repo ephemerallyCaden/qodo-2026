@@ -13,6 +13,8 @@ __pycache__/
 # Build
 dist/
 build/
+# Fixture repo builders (design §3), not build output
+!test/fixtures/build/
 .next/
 out/
 
@@ -29,3 +31,11 @@ Thumbs.db
 secrets/
 *.pem
 *.key
+
+# Internal archive: iterations, mockups and design/research docs (local only)
+.archive/
+# Mockup iteration screenshots dropped by design sessions
+docs/design/iterations/
+
+# Team-lead working journal (local only)
+JOURNAL.md
