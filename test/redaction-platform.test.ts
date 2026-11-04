@@ -7,9 +7,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /** Loads a fresh copy of the parser with the given home and temp dirs (temp must exist). */
 async function metaTokenWith(dirs: { home: string; tmp: string }) {
+  return (await parserWith(dirs)).metaToken;
+}
+
+async function parserWith(dirs: { home: string; tmp: string }) {
   vi.resetModules();
   vi.doMock('node:os', async (orig) => ({ ...(await orig<typeof import('node:os')>()), homedir: () => dirs.home, tmpdir: () => dirs.tmp }));
-  return (await import('../src/attrib/parsers/claude.js')).metaToken;
+  return import('../src/attrib/parsers/claude.js');
 }
 
 const LINUX = { home: '/home/dev', tmp: '/tmp' };
@@ -67,5 +71,18 @@ describe('Issue #5 case 6: metaToken redaction is segment-based and platform-ind
     const mac = await metaTokenWith(MACOS);
     expect(['m/Users/dev/model', 'Users/dev', `${MACOS.tmp.slice(1)}/y`].map((v) => mac(v))).toEqual([undefined, undefined, undefined]);
     expect((await metaTokenWith(LINUX_ROOT))('root/notes')).toBeUndefined();
+  });
+});
+
+describe('Qodo PR10 #2: Windows home and temp dirs', () => {
+  const WINDOWS = { home: 'C:\\Users\\Alice', tmp: MACOS.tmp };
+
+  it('a de-rooted Windows home path in a subject is redacted, in any case and either separator', async () => {
+    const { redactPaths, metaToken } = await parserWith(WINDOWS);
+    expect(redactPaths('copy Users\\Alice\\secret.txt, users\\alice\\b.txt and Users/Alice/c.txt'))
+      .toBe('copy <path>, <path> and <path>');
+    expect(metaToken('Users/Alice/model')).toBeUndefined();
+    // Other users and ordinary names are untouched.
+    expect(redactPaths('fix Users\\Bob notes and src/x.ts')).toBe('fix Users\\Bob notes and src/x.ts');
   });
 });

@@ -50,9 +50,17 @@ export const runsGitCommit = (command: string): boolean => GIT_COMMIT_CMD.test(c
 const COMMAND_SLACK_MS = 1000;
 const SAFE_TOKEN = /^[\w.:@+/-]{1,128}$/;
 const VERSION_TOKEN = /^[\w.+-]{1,32}$/;
-/** Home and temp dirs as path segments. `/tmp` is always listed, so `tmp/…` is refused on every platform. */
-const PRIVATE_DIRS = [...new Set([homedir(), tmpdir(), realpathSync(tmpdir()), '/tmp'])]
-  .map((d) => d.split('/').filter(Boolean)).filter((segs) => segs.length > 0);
+/**
+ * Home and temp dirs as path segments, split on `/` and `\\`. A Windows-shaped dir drops its drive
+ * and compares case-insensitively (Qodo PR10 #2). `/tmp` is always listed, so `tmp/…` is refused
+ * on every platform.
+ */
+const PRIVATE_DIRS = [...new Set([homedir(), tmpdir(), realpathSync(tmpdir()), '/tmp'])].map((d) => {
+  const win = /^([A-Za-z]:[\\/]|[\\/]{2})/.test(d);
+  const segs = d.split(/[\\/]/).filter(Boolean);
+  const bare = win && /^[A-Za-z]:$/.test(segs[0] ?? '') ? segs.slice(1) : segs;
+  return { segs: win ? bare.map((x) => x.toLowerCase()) : bare, fold: win };
+}).filter((d) => d.segs.length > 0);
 const HEX = /^[0-9a-f]{7,64}$/;
 
 export interface EditEvent {
@@ -118,6 +126,17 @@ const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 const token = (v: unknown): string | undefined => (typeof v === 'string' && SAFE_TOKEN.test(v) ? v : undefined);
 
+/**
+ * Whether path segments name a private dir: a multi-segment dir as a contiguous run anywhere, a
+ * single-segment one (`/tmp`, `/root`) only as the first of several.
+ */
+function namesPrivateDir(parts: string[]): boolean {
+  return PRIVATE_DIRS.some(({ segs, fold }) => {
+    const p = fold ? parts.map((x) => x.toLowerCase()) : parts;
+    return segs.length > 1 ? hasRun(p, segs) : p.length > 1 && p[0] === segs[0];
+  });
+}
+
 /** True when `dir`'s segments appear in `parts` as a contiguous run of whole segments. */
 function hasRun(parts: string[], dir: string[]): boolean {
   for (let i = 0; i + dir.length <= parts.length; i++) if (dir.every((s, j) => parts[i + j] === s)) return true;
@@ -136,8 +155,7 @@ export function metaToken(v: unknown): string | undefined {
   if (typeof v !== 'string' || !SAFE_TOKEN.test(v)) return undefined;
   const parts = v.split('/');
   if (/^(\/|~|[A-Za-z]:)/.test(v) || parts.includes('..')) return undefined;
-  const named = PRIVATE_DIRS.some((d) => (d.length > 1 ? hasRun(parts, d) : parts.length > 1 && parts[0] === d[0]));
-  return named ? undefined : v;
+  return namesPrivateDir(parts) ? undefined : v;
 }
 /** Starts an absolute, home, drive-letter or UNC path. */
 const PATH_START = /^(\/.|~|[A-Za-z]:[\\/]|\\\\)/;
@@ -152,9 +170,7 @@ export function redactPaths(text: string): string {
   return text.replace(/\S+/g, (word) => {
     const [, pre, core, post] = /^([("'`[<{]*)(.*?)([)"'`\]>},.;:!?]*)$/.exec(word)!;
     if (!core) return word;
-    const parts = core.replace(/\\/g, '/').split('/');
-    const named = PATH_START.test(core) || PRIVATE_DIRS.some((d) => (d.length > 1 ? hasRun(parts, d) : parts.length > 1 && parts[0] === d[0]));
-    return named ? `${pre}<path>${post}` : word;
+    return PATH_START.test(core) || namesPrivateDir(core.split(/[\\/]/)) ? `${pre}<path>${post}` : word;
   });
 }
 const version = (v: unknown): string | undefined => (typeof v === 'string' && VERSION_TOKEN.test(v) ? v : undefined);
