@@ -153,6 +153,39 @@ function fileSize(file: string): number | null {
   }
 }
 
+/** Timestamp of the nearest allowlisted record before (`step` −1) or after (+1) line `i`. */
+function stampNear(lines: string[], i: number, step: 1 | -1): number | null {
+  for (let j = i + step; j >= 0 && j < lines.length; j += step) {
+    const l = lines[j]!;
+    if (l.length > MAX_LINE || !l.includes('"timestamp"') || DENIED_TYPE.test(l)) continue;
+    const ts = Date.parse(str(parseLine(l)?.['timestamp']) ?? '');
+    if (!Number.isNaN(ts)) return ts;
+  }
+  return null;
+}
+
+/**
+ * Earliest time a record before a transcript's first datable one (`firstTs`) could have: the
+ * file's birth time when the platform records one no later than that, else the epoch.
+ */
+function edgeFrom(file: string, firstTs: number): number {
+  try {
+    const birth = statSync(file).birthtimeMs;
+    return birth > 0 && birth <= firstTs ? birth : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Latest time a record after a transcript's last datable one could have: its modification time. */
+function edgeTo(file: string): number {
+  try {
+    return statSync(file).mtimeMs;
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+}
+
 function realNative(p: string): string | null {
   try {
     return realpathSync.native(p);
@@ -411,8 +444,17 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     // A result is logged when its tool call finishes, possibly after a `git commit` it ran, so
     // edits are timed by when the call was issued (its assistant record), falling back to the result.
     const issuedAt = new Map<string, number>();
-    // Every dropped record that could hold (or time) an edit makes the whole transcript partial.
+    // Every dropped record that could hold (or time) an edit makes the transcript partial. The
+    // first and last ones are kept by line so the span can reach their datable neighbours.
     let drops = 0;
+    let firstDrop = -1;
+    let lastDrop = -1;
+    const lines = text.split('\n');
+    const drop = (i: number) => {
+      drops++;
+      if (firstDrop < 0) firstDrop = i;
+      lastDrop = i;
+    };
     // A symlinked, case-variant or /var-vs-/private/var cwd: edits under it are mapped onto its
     // real path, which liveRoots also hold.
     const realCwd = existsSync(t.cwd) ? realNative(t.cwd) : null;
@@ -420,14 +462,14 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     // Edits under the session's cwd must land in the repo; one that can't be placed is a drop.
     const inCwd = (p: string) => !p.startsWith('/')
       || ([t.cwd, realCwd].some((c) => c !== null && under(p, c)) && !roots.some((r) => inGitDir(p, r)));
-    for (const line of text.split('\n')) {
+    for (const [li, line] of lines.entries()) {
       const isResult = line.includes('"toolUseResult"') && RESULT_KEYS.test(line);
       const editish = isResult || EDIT_CALL.test(line);
       if (!editish && (model || !line.includes('"model"'))) continue;
       if (DENIED_TYPE.test(line)) continue;
       const r = line.length > MAX_LINE ? null : parseLine(line);
       if (!r) {
-        if (editish) drops++;
+        if (editish) drop(li);
         continue;
       }
       const uuid = str(r['uuid']);
@@ -444,7 +486,7 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
       const shas = commitShasOf(res);
       if (edits.length === 0 && shas.length === 0) continue;
       if (!sid || !uuid || Number.isNaN(resultTs)) {
-        drops++;
+        drop(li);
         continue;
       }
       const callId = str(r['sourceToolAssistantUUID']) ?? str(r['parentUuid']);
@@ -474,7 +516,7 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
         if (!path) {
           if (inCwd(abs) && !recordDropped) {
             recordDropped = true;
-            drops++;
+            drop(li);
           }
           return;
         }
@@ -488,7 +530,11 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
     }
     if (model) for (const k of fileKeys) out.sessions.get(k)!.model ??= model;
     if (drops > 0) {
-      out.partial.push(t.span);
+      // A dropped record's time lies between the nearest datable records around it; past either
+      // end, the file's birth and modification times bound it (Qodo PR6 #1). Wider is safe.
+      const from = stampNear(lines, firstDrop, -1) ?? edgeFrom(t.file, t.span.from + COVERAGE_SLACK_MS);
+      const to = stampNear(lines, lastDrop, 1) ?? edgeTo(t.file);
+      out.partial.push({ from: Math.min(t.span.from, from - COVERAGE_SLACK_MS), to: Math.max(t.span.to, to + COVERAGE_SLACK_MS) });
       out.dropped += drops;
     }
   }
