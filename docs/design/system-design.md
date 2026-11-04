@@ -226,7 +226,9 @@ Determinism applies throughout:
      - A `cd`/`pushd` at a segment's start moves later segments. That covers after `(`, `{` or whitespace, and inside a quoted `bash|sh|zsh -c` string.
      - A segment that runs a commit-creating git command targets its own `-C` (attached or not), `--git-dir`/`--work-tree` and `GIT_DIR=`/`GIT_WORK_TREE=` values, else the current directory. Those values never carry to other segments, so `git -C <repo> status && git commit` run from outside doesn't count (issue #11).
      - The window is added when a target resolves under a root (absolute or relative, also through its realpath).
-     - It is also added, conservatively, when a directory can't be resolved (`$VAR`, `~`, globs, bare `cd`, `cd -`), or when no single segment runs the commit because quoting split it.
+     - Each target option resolves against the segment's directory and every earlier option, and any one inside the repo counts (Qodo local review r3 #1). `GIT_DIR=`/`GIT_WORK_TREE=` set or exported in an earlier segment carry to later commits (r3 #2).
+     - It is also added, conservatively, in these cases: a directory can't be resolved (`$VAR`, `~`, globs, bare `cd`, `cd -`); no single segment runs the commit because quoting split it; or the command holds a `$(…)` or backtick substitution, which isn't followed (r3 #3).
+     - Known over-marking: a `cd` inside a subshell (`(cd <repo>); git commit`) still moves later segments, so the commit counts as agent-run. That errs toward unknown, never toward human.
      - With no target, git runs in the outside `cwd`, so no window is added.
    - **Path mapping.** Edit paths are mapped onto real paths before being made repo-relative: under the session's `cwd`, onto `realpath.native(cwd)`; above it, onto the real root through the logical root alias. The alias is the logical `cwd` minus the `cwd`'s real repo-relative subpath, compared case-insensitively. So `/link/repo/README.md` lands from a `/link/repo/sub` session.
    - **Partial transcripts.** Some drops lose a record that could hold or time an edit. Each one is counted once per record and makes the transcript *partial*:
