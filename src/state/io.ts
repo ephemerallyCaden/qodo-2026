@@ -1,10 +1,23 @@
-import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { CommetError, EXIT } from '../core/errors.js';
 
-/** `<git-common-dir>/commet`, mode 0700. Shared by every worktree of the repo. */
+/**
+ * `<git-common-dir>/commet`, mode 0700. Shared by every worktree of the repo. Created when absent;
+ * a symlink or non-directory there is refused (exit 5), so state is never written or chmodded
+ * through a planted link (Qodo PR8 #5).
+ */
 export function stateDir(commonDir: string): string {
   const dir = join(commonDir, 'commet');
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  let st: ReturnType<typeof lstatSync> | undefined;
+  try {
+    st = lstatSync(dir);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    mkdirSync(dir, { mode: 0o700 });
+  }
+  if (st?.isSymbolicLink()) throw new CommetError('state error: .git/commet is a symlink; refusing to write through it', EXIT.state);
+  if (st && !st.isDirectory()) throw new CommetError('state error: .git/commet is not a directory', EXIT.state);
   chmodSync(dir, 0o700);
   return dir;
 }
