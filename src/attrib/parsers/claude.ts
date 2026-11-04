@@ -279,31 +279,60 @@ function toolUses(r: Obj): Obj[] {
   return Array.isArray(content) ? content.filter((c): c is Obj => isObj(c) && c['type'] === 'tool_use') : [];
 }
 
+/** Command boundaries: newline, `;`, `&&`, `||` and `|` (quotes aren't tracked; see below). */
+const SEGMENT = /\r?\n|;|&&|\|\||\|/;
+/** One shell word: a quoted run or bare characters. */
+const DIR_ARG = `("[^"]*"|'[^']*'|[^\\s;&|(){}'"]+)`;
 /**
- * Where a shell command points git: `cd`/`pushd` targets, `-C <dir>` (attached or not),
- * `--git-dir`/`--work-tree` values and `GIT_DIR=`/`GIT_WORK_TREE=` assignments.
+ * A `cd`/`pushd` starting a segment, after any `(`, `{` or whitespace, and inside a quoted
+ * `bash -c '…'` / `sh -c "…"` string. The directory is optional (`cd` alone goes home).
  */
-const CMD_DIR = /(?:(?:^|[;&|(])\s*(?:cd|pushd)\s+|\s-C\s*|\s--(?:git-dir|work-tree)(?:=|\s+)|(?:^|\s)GIT_(?:DIR|WORK_TREE)=)("[^"]*"|'[^']*'|[^\s;&|()'"]+)/g;
+const CD_AT_START = new RegExp(`^[\\s({]*(?:(?:bash|sh|zsh)\\s+(?:-\\w+\\s+)*)?["']?\\s*(?:cd|pushd)(?:\\s+${DIR_ARG})?\\s*(?:$|[)}"'&\\s])`);
+/** Where one git invocation points: `-C` (attached or not), `--git-dir`/`--work-tree`, `GIT_DIR=`/`GIT_WORK_TREE=`. */
+const GIT_TARGET = new RegExp(`(?:\\s-C\\s*|\\s--(?:git-dir|work-tree)(?:=|\\s+)|(?:^|\\s)GIT_(?:DIR|WORK_TREE)=)${DIR_ARG}`, 'g');
+
+/** A directory word resolved against the current directories; null when it can't be resolved. */
+function resolveDir(arg: string | undefined, bases: string[]): string[] | null {
+  const dir = arg?.replace(/^(["'])(.*)\1$/, '$2');
+  if (!dir || dir === '-' || /[$`*?~]/.test(dir)) return null;
+  if (isAbs(dir)) return [slash(dir)];
+  return bases.map((b) => slash((WIN_PATH.test(b) ? win32 : posix).join(b, dir)));
+}
 
 /**
- * Whether a foreign session's commit command could act on this repo. True when any target in
- * it resolves under a root (relative ones against the cwd and each earlier target), or can't
- * be resolved (`$VAR`, `~`, globs, substitutions). With no target, git runs in the cwd, which is
- * outside the repo. The command is only inspected here, never kept (design §6).
+ * Whether a foreign session's commit command could act on this repo (Qodo PR10 #5, local #1).
+ * The command is split into segments at newlines, `;`, `&&`, `||` and `|`. A `cd`/`pushd` at a
+ * segment's start moves later segments. A segment that runs a commit-creating git command
+ * targets its own `-C`/`--git-dir`/`--work-tree`/`GIT_DIR` values, else the current directory;
+ * those values never carry to other segments (issue #11). True when such a target lies under a
+ * root, also through its realpath. Also true, conservatively, when a directory can't be resolved
+ * (`$VAR`, `~`, globs, bare `cd`), or when no single segment runs the commit (quoting split it).
+ * The command is only inspected here, never kept (design §6).
  */
 function gitTargetsRepo(command: string, cwd: string, roots: string[]): boolean {
-  const bases = [cwd];
-  for (const m of command.matchAll(CMD_DIR)) {
-    const dir = m[1]!.replace(/^(["'])(.*)\1$/, '$2');
-    if (dir === '' || /[$`*?~]/.test(dir)) return true;
-    const candidates = isAbs(dir) ? [slash(dir)] : bases.map((b) => slash((WIN_PATH.test(b) ? win32 : posix).join(b, dir)));
-    for (const c of candidates) {
-      const real = existsSync(c) ? realNative(c) : null;
-      if ([c, real].some((p) => p !== null && roots.some((r) => under(p, r)))) return true;
+  const inRepo = (ps: string[]) => ps.some((p) => {
+    const real = existsSync(p) ? realNative(p) : null;
+    return [p, real].some((x) => x !== null && roots.some((r) => under(x, r)));
+  });
+  let dirs: string[] | null = [cwd];
+  let placed = false;
+  for (const seg of command.split(SEGMENT)) {
+    const cd = CD_AT_START.exec(seg);
+    if (cd) dirs = dirs && resolveDir(cd[1], dirs);
+    if (!runsGitCommit(seg)) continue;
+    placed = true;
+    if (dirs === null) return true;
+    let targets = dirs;
+    let pointed = false;
+    for (const m of seg.matchAll(GIT_TARGET)) {
+      const next = resolveDir(m[1], targets);
+      if (next === null || inRepo(next)) return true;
+      targets = next;
+      pointed = true;
     }
-    bases.push(...candidates);
+    if (!pointed && inRepo(dirs)) return true;
   }
-  return false;
+  return !placed;
 }
 
 /** `tool_result.tool_use_id`s of a user record (`message.content[]`): which tool uses it answers. */

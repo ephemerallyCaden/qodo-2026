@@ -438,4 +438,27 @@ describe('Qodo PR10 #5: a foreign session\'s git command must target this repo',
   it('a commit whose target can\'t be resolved still marks it (conservative)', async () => {
     expect(await foreignCommit(() => 'git -C "$REPO_DIR" commit -q -m x')).toMatchObject({ class: 'unknown' });
   });
+  it('a cd into this repo at any command boundary marks it (Qodo local #1)', async () => {
+    const forms = [
+      (d: string) => `echo start\ncd ${d}\ngit commit -q -m x`,
+      (d: string) => `bash -c 'cd ${d} && git commit -q -m x'`,
+      (d: string) => `sh -c "cd ${d}; git commit -q -m x"`,
+      (d: string) => `false || cd ${d} && git commit -q -m x`,
+      (d: string) => `ls | { cd ${d}; git commit -q -m x; }`,
+      (d: string) => `(cd ${d} && git commit -q -m x)`,
+      (d: string) => `true; pushd ${d} && git commit -q -m x`,
+    ];
+    for (const command of forms) {
+      expect(await foreignCommit(command), command('<repo>')).toMatchObject({ class: 'unknown', evidence: [{ kind: 'agent_ran_commit', detail: 'git_command' }] });
+    }
+  });
+
+  it('a -C target applies only to the git invocation in its own segment (issue #11)', async () => {
+    // `git -C <repo> status` doesn't move the later commit, which runs in the outside cwd.
+    expect(await foreignCommit((d) => `git -C ${d} status && git commit -q -m x`)).toMatchObject({ class: 'human', evidence: [] });
+    // A cd does carry over to later segments.
+    expect(await foreignCommit((d) => `cd ${d} && git status && git commit -q -m x`)).toMatchObject({ class: 'unknown' });
+    // An unresolvable cd leaves the commit's directory unknown: conservative.
+    expect(await foreignCommit(() => 'cd "$WORK" && git commit -q -m x')).toMatchObject({ class: 'unknown' });
+  });
 });
