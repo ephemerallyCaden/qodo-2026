@@ -24,6 +24,9 @@ export const LATE = ['Late notes typed by the human before committing.', 'The au
 /** A line with U+0001 (Qodo #4): it must not split the patch stream. */
 export const CONTROL = ['export const marker = "\u0001 control char";', 'export const afterMarkerOne = marker.length;',
   'export const afterMarkerTwo = afterMarkerOne + 1;'];
+/** Paths git decorates in patch headers (Qodo #5): a space (trailing tab) and C-style quoting. */
+export const SPACED = { plain: 'dir/my file.ts', quoted: 'dir/naïve "q".ts', lock: 'sub dir/package-lock.json' };
+export const SPACED_LINES = ['export const spacedPathValue = 41;', 'export const spacedPathNext = spacedPathValue + 1;'];
 export const NOTES = ['# Notes', 'These notes were typed by the human author.', 'A second human-written sentence here.'];
 
 export interface FixtureCommit { sha: string; date: string }
@@ -78,5 +81,10 @@ export function buildBasicRepo(): FixtureRepo {
   // c7: agent-written lines around a U+0001 → agent.
   write('src/ctrl.ts', CONTROL);
   commit('c7', '2026-10-08T10:00:00Z', 'feat: control-character module');
+  // c8: agent files at decorated paths, plus a lockfile under a spaced dir (excluded) → agent.
+  write(SPACED.plain, SPACED_LINES);
+  write(SPACED.quoted, SPACED_LINES);
+  write(SPACED.lock, ['{', '  "name": "fixture-lock-entry",', '  "lockfileVersion": 3', '}']);
+  commit('c8', '2026-10-09T10:00:00Z', 'feat: files at awkward paths');
   return { dir, commits };
 }

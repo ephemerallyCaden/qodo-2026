@@ -241,19 +241,59 @@
       "seq": 7,
       "sha": "c354b5ae3e3c3e8778788bddf15931eb2997a6fe",
       "subject": "feat: control-character module"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 1000,
+        "class": "agent",
+        "evidence": [
+          {
+            "detail": "verbatim",
+            "kind": "transcript_match"
+          }
+        ],
+        "selfCommittedAgentWritten": true,
+        "sessions": [
+          {
+            "lines": 4,
+            "sessionKey": "s_559f47d70d1b76"
+          }
+        ],
+        "tier": "high"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-10-09T10:00:00Z",
+      "date": "2026-10-09T10:00:00Z",
+      "files": [
+        [
+          "dir/my file.ts",
+          2,
+          0,
+          2
+        ],
+        [
+          "dir/naïve \"q\".ts",
+          2,
+          0,
+          2
+        ]
+      ],
+      "seq": 8,
+      "sha": "3cf0531849a196cc532f1e92be34bb126af9651b",
+      "subject": "feat: files at awkward paths"
     }
   ],
   "coverage": [
     {
       "from": "2026-10-02T09:00:00Z",
-      "to": "2026-10-08T10:00:00Z",
+      "to": "2026-10-09T10:00:00Z",
       "tool": "claude-code"
     }
   ],
   "exclusions": {
     "counts": {
       "binary": 1,
-      "lockfile": 1
+      "lockfile": 2
     },
     "rules": [
       {
@@ -294,6 +334,16 @@
       "id": "f_b33563055168",
       "loc": 2,
       "path": "README.md"
+    },
+    {
+      "id": "f_00b4e89d4aaa",
+      "loc": 2,
+      "path": "dir/my file.ts"
+    },
+    {
+      "id": "f_ba1a4e79419f",
+      "loc": 2,
+      "path": "dir/naïve \"q\".ts"
     },
     {
       "id": "f_b651e26a9c88",
@@ -349,8 +399,8 @@
   ],
   "repo": {
     "branch": "main",
-    "head": "c354b5ae3e3c3e8778788bddf15931eb2997a6fe",
-    "headDate": "2026-10-08T10:00:00Z",
+    "head": "3cf0531849a196cc532f1e92be34bb126af9651b",
+    "headDate": "2026-10-09T10:00:00Z",
     "repoId": "47ae229688ab8719",
     "selfPersonIds": [
       "p_391d66efc87e"
@@ -363,14 +413,15 @@
       "commits": [
         "f8d55db9df86dbd3ac2207623c08e2522a047d91",
         "e6d929783736248dd0e31412ceb23972bc62e964",
-        "c354b5ae3e3c3e8778788bddf15931eb2997a6fe"
+        "c354b5ae3e3c3e8778788bddf15931eb2997a6fe",
+        "3cf0531849a196cc532f1e92be34bb126af9651b"
       ],
-      "endedAt": "2026-10-08T09:30:00Z",
-      "filesTouched": 4,
+      "endedAt": "2026-10-09T09:30:00Z",
+      "filesTouched": 6,
       "inferred": false,
       "key": "s_559f47d70d1b76",
       "kind": "main",
-      "linesAdded": 13,
+      "linesAdded": 17,
       "linesRemoved": 0,
       "model": "claude-opus-4-1",
       "seed": 2699774684,
@@ -429,7 +480,7 @@
   "window": {
     "firstParent": true,
     "months": 24,
-    "since": "2024-10-08T10:00:00Z",
-    "until": "2026-10-08T10:00:00Z"
+    "since": "2024-10-09T10:00:00Z",
+    "until": "2026-10-09T10:00:00Z"
   }
 }

@@ -7,7 +7,7 @@ import { sessionKey } from '../src/core/hash.js';
 import { gitRunner } from '../src/scan/git.js';
 import { scan, type ScanOptions } from '../src/scan/index.js';
 import { addedLines } from '../src/scan/repo.js';
-import { buildBasicRepo, CONTROL, type FixtureRepo } from './fixtures/build/basic.js';
+import { buildBasicRepo, CONTROL, SPACED, type FixtureRepo } from './fixtures/build/basic.js';
 import { cli } from './fixtures/cli.js';
 import { MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
 
@@ -40,6 +40,8 @@ describe('scan', () => {
     expect(cls('c6')).toMatchObject({ class: 'human', agentLineShareMilli: 0, sessions: [] });
     // Qodo #4: a U+0001 inside a line doesn't split the patch stream.
     expect(cls('c7')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
+    // Qodo #5: decorated header paths match agent edits, and the spaced-dir lockfile is excluded.
+    expect(cls('c8')).toMatchObject({ class: 'agent', agentLineShareMilli: 1000 });
     expect(cls('c1').selfCommittedAgentWritten).toBe(true);
     expect(cls('c1').evidence.map((e) => e.kind)).toEqual(['transcript_match', 'agent_ran_commit']);
     expect(cls('c2').agentLineShareMilli).toBe(500);
@@ -53,7 +55,7 @@ describe('scan', () => {
     const byKey = new Map(snapshot.sessions.map((s) => [s.key, s]));
     const [mainS, subS] = [byKey.get(mainKey), byKey.get(subKey)];
     expect([mainS?.kind, mainS?.parentKey, subS?.kind, subS?.parentKey]).toEqual(['main', undefined, 'subagent', mainKey]);
-    expect(mainS).toMatchObject({ linesAdded: 13, filesTouched: 4, model: 'claude-opus-4-1', commits: ['c1', 'c2', 'c7'].map((id) => repo.commits[id]!.sha) });
+    expect(mainS).toMatchObject({ linesAdded: 17, filesTouched: 6, model: 'claude-opus-4-1', commits: ['c1', 'c2', 'c7', 'c8'].map((id) => repo.commits[id]!.sha) });
     expect(subS).toMatchObject({ agentType: 'general-purpose', commits: [repo.commits['c5']!.sha] });
     const c5 = snapshot.commits.find((c) => c.sha === repo.commits['c5']!.sha)!;
     expect(c5.attribution.sessions).toEqual([{ sessionKey: subKey, lines: 2 }]);
@@ -84,8 +86,8 @@ describe('commet scan CLI', () => {
   it('writes .git/commet/snapshot.json (0600) and prints per-class counts', async () => {
     const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: claude.claudeDir });
     expect(r).toMatchObject({ code: 0, err: '' });
-    expect(r.out).toContain('8 commits: agent 3 · mixed 1 · human 2 · unknown 2');
-    expect(r.out).toContain('committed by you, written by an agent: 4');
+    expect(r.out).toContain('9 commits: agent 4 · mixed 1 · human 2 · unknown 2');
+    expect(r.out).toContain('committed by you, written by an agent: 5');
     const file = join(repo.dir, '.git/commet/snapshot.json');
     expect(readFileSync(file, 'utf8')).toBe(readFileSync(GOLDEN, 'utf8'));
     expect(statSync(file).mode & 0o777).toBe(0o600);
@@ -111,7 +113,15 @@ describe('commet scan CLI', () => {
 describe('git patch parsing', () => {
   it('keys patches by real commit SHAs even when content holds U+0001 (Qodo #4)', async () => {
     const patches = await addedLines(gitRunner(repo.dir), repo.commits['c7']!.sha, '2026-01-01T00:00:00Z');
-    expect(new Set(patches.keys())).toEqual(new Set(Object.values(repo.commits).map((c) => c.sha)));
+    expect(new Set(patches.keys())).toEqual(new Set(['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'].map((id) => repo.commits[id]!.sha)));
     expect(patches.get(repo.commits['c7']!.sha)!.get('src/ctrl.ts')).toEqual(CONTROL);
+  });
+
+  it('reads paths with spaces (trailing tab) and C-quoted paths from patch headers (Qodo #5)', async () => {
+    const patches = await addedLines(gitRunner(repo.dir), repo.commits['c8']!.sha, '2026-10-09T00:00:00Z');
+    expect([...patches.get(repo.commits['c8']!.sha)!.keys()].sort()).toEqual([SPACED.quoted, SPACED.plain, SPACED.lock].sort());
+    const { snapshot } = await run();
+    const c8 = snapshot.commits.find((c) => c.sha === repo.commits['c8']!.sha)!;
+    expect(c8.files.map((f) => f[0])).toEqual([SPACED.plain, SPACED.quoted]);
   });
 });

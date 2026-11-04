@@ -116,13 +116,24 @@ export async function windowCommits(git: Git, head: string, sinceIso: string): P
   return out.reverse();
 }
 
-function unquote(p: string): string {
-  if (!p.startsWith('"')) return p;
-  try {
-    return JSON.parse(p) as string;
-  } catch {
-    return p;
+const C_ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
+
+/** A patch-header path: drops git's trailing tab (paths with spaces) and undoes its C-style quoting. */
+export function headerPath(raw: string): string {
+  const p = raw.endsWith('\t') ? raw.slice(0, -1) : raw;
+  if (p.length < 2 || !p.startsWith('"') || !p.endsWith('"')) return p;
+  const chars = Array.from(p.slice(1, -1));
+  const bytes: number[] = [];
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i]!;
+    const oct = chars.slice(i + 1, i + 4).join('');
+    if (ch !== '\\') bytes.push(...Buffer.from(ch));
+    else if (/^[0-7]{3}$/.test(oct)) {
+      bytes.push(parseInt(oct, 8));
+      i += 3;
+    } else bytes.push(C_ESCAPES[chars[++i] ?? ''] ?? chars[i]!.charCodeAt(0));
   }
+  return Buffer.from(bytes).toString('utf8');
 }
 
 /** Raw added lines per path for first-parent commits since `sinceIso`, from `-U0` patches. */
@@ -149,7 +160,7 @@ export async function addedLines(git: Git, head: string, sinceIso: string): Prom
         continue;
       }
       if (l.startsWith('+++ ')) {
-        const p = unquote(l.slice(4));
+        const p = headerPath(l.slice(4));
         cur = p === '/dev/null' ? null : (files.get(p.slice(2)) ?? []);
         if (cur) files.set(p.slice(2), cur);
       } else if (l.startsWith('@@ ')) {

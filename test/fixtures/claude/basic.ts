@@ -3,7 +3,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AGENT_FILE, CONTROL, CORE_AGENT, HELPER, LATE, NOTES, type FixtureRepo } from '../build/basic.js';
+import { AGENT_FILE, CONTROL, CORE_AGENT, HELPER, LATE, NOTES, SPACED, SPACED_LINES, type FixtureRepo } from '../build/basic.js';
 
 export const CANARIES = {
   prompt: 'CANARY_PROMPT_7f3a',
@@ -62,6 +62,9 @@ export function writeClaudeFixture(repo: FixtureRepo): ClaudeFixture {
     call('a10', '2026-10-08T09:00:00.000Z', 'Write', { file_path: at('docs/late.md') }),
     call('a12', '2026-10-08T09:30:00.000Z', 'Write', { file_path: at('src/ctrl.ts') }),
     result('u13', 'a12', '2026-10-08T09:30:01.000Z', { type: 'create', filePath: at('src/ctrl.ts'), content: CONTROL.join('\n'), structuredPatch: [] }),
+    call('a14', '2026-10-09T09:30:00.000Z', 'Bash', { command: 'write awkward paths' }),
+    result('u15', 'a14', '2026-10-09T09:30:01.000Z', { stdout: '', bashEditDiff: { files: [SPACED.plain, SPACED.quoted].map((p) => ({
+      filePath: at(p), created: true, hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: SPACED_LINES.map((l) => `+${l}`) }] })) } }),
     result('u11', 'a10', '2026-10-08T09:00:01.000Z', { type: 'create', filePath: at('docs/late.md'), content: LATE.join('\n'), structuredPatch: [] }),
   ];
   // A resumed session keeps its sessionId and repeats an earlier record: same key, no double count.

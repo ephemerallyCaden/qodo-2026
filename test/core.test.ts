@@ -6,6 +6,7 @@ import { byCodepoint, canonicalJson } from '../src/core/canonical-json.js';
 import { sessionKey } from '../src/core/hash.js';
 import { normaliseLine } from '../src/core/lines.js';
 import { isoUtc, minusMonths } from '../src/core/time.js';
+import { headerPath } from '../src/scan/repo.js';
 
 describe('core', () => {
   it('canonicalJson sorts keys, drops undefined and rejects floats', () => {
@@ -56,5 +57,15 @@ describe('matchCommits', () => {
     expect(cls({ added: new Map([['f.ts', ['h1', 'h2', 'h3']]]) })).toBe('mixed');
     expect(cls({ isSelf: false })).toBe('unknown');
     expect(cls({ covered: false })).toBe('unknown');
+  });
+});
+
+describe('headerPath', () => {
+  it('drops the trailing tab and undoes C-style quoting (Qodo #5)', () => {
+    expect(headerPath('b/dir/my file.ts\t')).toBe('b/dir/my file.ts');
+    expect(headerPath('"b/dir/q\\"uote.ts"')).toBe('b/dir/q"uote.ts');
+    expect(headerPath('"b/dir/ctl\\001x.ts"')).toBe('b/dir/ctl\u0001x.ts');
+    expect(headerPath('"b/caf\\303\\251 \\\\ x.ts"')).toBe('b/café \\ x.ts');
+    expect(headerPath('"b/naïve \\"q\\".ts"\t')).toBe('b/naïve "q".ts');
   });
 });
