@@ -12,7 +12,7 @@ const OUT = path.join(ROOT, 'debug');
 const ORIGIN = 'http://viewer.local';
 const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
 const HOOK = `
-window.__dbg = { THREE, scene, camera, renderer, planets, controls,
+window.__dbg = { THREE, scene, camera, renderer, planets, controls, crew, solos, SYSTEM, DEPTH_LEVELS,
   // cloud InstancedMesh of a planet, wherever it sits in the group tree
   puffsOf: (p) => { let m = null; p.group.traverse((o) => { if (!m && o.isInstancedMesh) m = o; }); return m; } };
 `;
