@@ -38,6 +38,11 @@ const GLYPHS = {
 const mask = (rows) => rows.join('').split('').reduce((m, ch, i) => (ch === '#' ? m | (1 << i) : m), 0);
 const BUGS = ['cross', 'times', 'hash', 'semi', 'bang', 'lbrace', 'rbrace', 'star', 'zero', 'one'];
 
+// Planet size range (the viewer's size slider; size = LOC). Sector count by size: the
+// smallest planets get 1, the biggest MAX_ART, linear in radius, rounded to whole sectors.
+export const ART_SIZE = { min: 0.25, max: 2.2 };
+export const artefactCount = (size) => Math.round(1 + (MAX_ART - 1) * Math.min(1, Math.max(0, (size - ART_SIZE.min) / (ART_SIZE.max - ART_SIZE.min))));
+
 /** Sector centres (unit directions in the planet's own frame) and sizes in glyph cells.
  *  Longitudes step by the golden angle, so any first n sectors are spread around the
  *  planet and one is usually facing the camera as it turns. */
@@ -83,7 +88,9 @@ export const ARTEFACTS_GLSL = /* glsl */ `
       vec2 s = vec2(clip.x / clip.w + 1.0, 1.0 - clip.y / clip.w) * 0.5 * uViewSize;
       float facing = dot(normalize(mat3(modelMatrix) * dir), normalize(cameraPosition - w.xyz));
       if (facing < 0.2) continue;
-      float cells = uArtSec[i].w * radiusPx / (50.0 * k); // half-width in cells: ~half the disc across
+      // half-width in cells: ~half the disc across on big planets, a smaller share on small ones
+      // (down to 0.6x below ~25 px radius), so one sector never swamps a small disc
+      float cells = uArtSec[i].w * radiusPx / (50.0 * k) * mix(0.6, 1.0, clamp((radiusPx - 25.0) / 35.0, 0.0, 1.0));
       if (cells < 1.0) continue; // too small to read (distant planets)
       float seed = float(i) * 17.3 + 3.1;
       // whole-sector row slip on a few ticks

@@ -13,7 +13,7 @@ const NO_ART = (src) => {
   return src.replace(CALL, 'gl_FragColor = vec4(surface(p, b), 1.0);');
 };
 const BIOMES = { lush: 7, ocean: 5, ice: 19, desert: 3, lava: 11, gas: 5, moon: 2, toxic: 13 };
-const BASE = { view: 'planet', size: 1, ringMode: 'thin', moons: true, depth: true, pixelH: 180, palette: 'final', spin: true, ui: false, period: 24, surfaceTurns: 2, cloudTurns: 3, halo: false, artCount: 5, artTeal: true };
+const BASE = { view: 'planet', size: 1, ringMode: 'thin', moons: true, depth: true, pixelH: 180, palette: 'final', spin: true, ui: false, period: 24, surfaceTurns: 2, cloudTurns: 3, halo: false, artAuto: false, artCount: 5, artTeal: true };
 const grab = (page, o) => page.evaluate((o) => { window.viewer.set(o); return document.getElementById('view').toDataURL('image/png'); }, o);
 const FRAMES = [...Object.entries(BIOMES).map(([biome, seed]) => ({ ...BASE, biome, seed, time: 3 })), { ...BASE, view: 'system', time: 2 }];
 
@@ -60,6 +60,26 @@ test('artefacts on: visible, deterministic and loop-locked', async () => {
     }
     console.table(rows);
     assert.deepEqual(rows.filter((r) => r.changed < 40 || r.deterministic === false || r.loopLocked === false), []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('artefact sector count by size: 1 at the smallest, 5 at the biggest, never decreasing', async () => {
+  const { browser, page } = await openViewer();
+  try {
+    const sizes = [0.25, 0.4, 0.6, 0.8, 1, 1.2, 1.5, 1.8, 2, 2.2];
+    const counts = await page.evaluate(({ sizes, base }) => sizes.map((size) => {
+      window.viewer.set({ ...base, size, artefacts: true, artAuto: true });
+      let n = null;
+      window.__dbg.planets[0].group.traverse((o) => { if (n === null && o.material?.uniforms?.uArtN) n = o.material.uniforms.uArtN.value; });
+      return n;
+    }), { sizes, base: { ...BASE, biome: 'lush', seed: 7, time: 3 } });
+    console.log(JSON.stringify(Object.fromEntries(sizes.map((s, i) => [s, counts[i]]))));
+    assert.ok(counts.every((n) => Number.isInteger(n)), `no sector count read: ${counts}`);
+    assert.equal(counts[0], 1);
+    assert.equal(counts[counts.length - 1], 5);
+    assert.ok(counts.every((n, i) => i === 0 || n >= counts[i - 1]), `count decreases with size: ${counts}`);
   } finally {
     await browser.close();
   }

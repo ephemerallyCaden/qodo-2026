@@ -10,7 +10,7 @@ import { mapPalette, mapColors, snapToPool } from './palette-map.js';
 import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH, ACCENTS } from './planet-ramps.js';
 import { tangentFrame } from './cloud-frame.js';
 import { voronoiEdge, crackMask } from './snoise.js';
-import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors } from './artefacts.js';
+import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors, artefactCount } from './artefacts.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -1027,6 +1027,7 @@ function makePlanet() {
     sky.rotation.y = -phase * Math.PI * 2 * LOOP.cloudTurns; // clouds drift ahead of the ground
     const ticks = ART_TICKS * LOOP.surfaceTurns;
     surfaceMat.uniforms.uArtTick.value = Math.floor(phase * ticks + 1e-6) % ticks; // glitches re-roll on loop-locked ticks
+    artUpdate();
     ring.rotation.y = -turn / RING_SECTORS; // debris flow: one sector per surface turn
     for (const m of MOONS) {
       const a = turn + m.offset * Math.PI * 2; // one orbit per surface turn; no easing
@@ -1040,13 +1041,18 @@ function makePlanet() {
     ringMat.uniforms.uRadius.value = shadowMat.uniforms.uRadius.value = group.scale.x;
     shadowMat.uniforms.uToSurface.value.copy(surface.matrixWorld).invert();
   }
+  // artefacts: 0 = off, 1..5 = that many sectors, 'auto' = by planet size (artefactCount).
+  let artefactsOpt = 0;
   function setExtras({ moons = false, halo: showHalo = false, artefacts = 0, teal = false, cloudShadow = true } = {}) {
     for (const m of MOONS) m.mesh.visible = moons;
     shadowMat.visible = cloudShadow;
     halo.visible = showHalo;
-    surfaceMat.uniforms.uArtN.value = Math.min(artefacts, MAX_ART);
+    artefactsOpt = artefacts;
     surfaceMat.uniforms.uArtTeal.value = teal ? 1 : 0;
   }
+  const artUpdate = () => { // per frame: the planet's size (scale) may change after setExtras
+    surfaceMat.uniforms.uArtN.value = artefactsOpt === 'auto' ? artefactCount(group.scale.x) : Math.min(artefactsOpt, MAX_ART);
+  };
 
   return { group, rebuild, update, ring, setExtras };
 }
@@ -1426,9 +1432,9 @@ const VIEWS = {
 const state = {
   view: 'planet', seed: 7, biome: 'lush', size: 1, ringMode: 'thin', color: 'coral', pixelH: 180, depth: true, spin: true,
   time: null, ui: true, palette: 'final', eyes: 'auto', period: 24, surfaceTurns: 2, cloudTurns: 3, moons: true, halo: false, cloudShadow: true,
-  depthMode: 'pixel-stepped', // DEPTH_MODES
+  depthMode: 'pixel-smooth', // DEPTH_MODES (the human's pick)
   depthBands: '3-band', // DEPTH_BANDS (per-pixel modes)
-  artefacts: false, artCount: 3, artTeal: false, // planet artefacts (artefacts.js)
+  artefacts: false, artAuto: true, artCount: 3, artTeal: false, // planet artefacts (artefacts.js); artAuto: sector count by planet size
   cover: null, // cloud-cover override (0..1) for the hero planets; null = the biome's WEATHER cover
 };
 
@@ -1463,7 +1469,8 @@ function applyState() {
   LOOP.period = Math.max(1, state.period);
   LOOP.surfaceTurns = Math.max(1, Math.round(state.surfaceTurns));
   LOOP.cloudTurns = Math.max(0, Math.round(state.cloudTurns));
-  const art = { artefacts: state.artefacts ? state.artCount : 0, teal: state.artTeal, cloudShadow: state.cloudShadow };
+  const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow };
+  document.getElementById('art-auto').checked = state.artAuto;
   planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   controls.minDistance = minOrbit();
@@ -1562,7 +1569,8 @@ function bindUi() {
   $('moons').addEventListener('change', (e) => { state.moons = e.target.checked; applyState(); });
   $('halo').addEventListener('change', (e) => { state.halo = e.target.checked; applyState(); });
   $('artefacts').addEventListener('change', (e) => { state.artefacts = e.target.checked; applyState(); });
-  $('art-count').addEventListener('input', (e) => { state.artCount = +e.target.value; $('art-count-readout').textContent = state.artCount; applyState(); });
+  $('art-count').addEventListener('input', (e) => { state.artCount = +e.target.value; state.artAuto = false; $('art-count-readout').textContent = state.artCount; applyState(); });
+  $('art-auto').addEventListener('change', (e) => { state.artAuto = e.target.checked; applyState(); });
   $('art-teal').addEventListener('change', (e) => { state.artTeal = e.target.checked; applyState(); });
   $('period').addEventListener('change', (e) => { state.period = +e.target.value || 24; applyState(); });
   $('surface-turns').addEventListener('change', (e) => { state.surfaceTurns = +e.target.value || 1; applyState(); });

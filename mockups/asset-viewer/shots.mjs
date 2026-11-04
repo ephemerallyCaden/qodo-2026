@@ -31,7 +31,7 @@ const SHOTS = {
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
   'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-stepped', depthBands: '3-band', artefacts: false, artCount: 3, artTeal: false, cover: null };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-smooth', depthBands: '3-band', artefacts: false, artAuto: true, artCount: 3, artTeal: false, cover: null };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
@@ -148,21 +148,23 @@ const asUrl = (png) => `data:image/png;base64,${png.toString('base64')}`;
 
 // Planet artefacts on every biome (plus the teal accent on lush). Each tile uses the
 // loop time (every 2 s) where the artefacts change the most pixels, i.e. a sector faces the camera.
-const ART_SET = [['lush', 7], ['ocean', 5], ['ice', 19], ['desert', 3], ['lava', 11], ['gas', 5], ['moon', 2], ['toxic', 13], ['lush', 7, true]];
+// Sector count is automatic by size (artefactCount): lush at S/M/L/XL shows 1..5 sectors.
+const ART_SET = [['lush', 7, false, 0.4], ['lush', 7, false, 1.0], ['lush', 7, false, 1.5], ['lush', 7, false, 2.2],
+  ['ocean', 5], ['ice', 19], ['desert', 3], ['lava', 11], ['gas', 5], ['moon', 2], ['toxic', 13], ['lush', 7, true]];
 const setNative = async (opts) => { await page.evaluate((o) => window.viewer.set(o), { ...BASE, ...opts }); return grabNative(); };
 if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('artefacts'))) {
   const items = [];
-  for (const [biome, seed, teal = false] of ART_SET) {
-    const base = { view: 'planet', biome, seed, ringMode: 'off', moons: false, artCount: 3, artTeal: teal };
+  for (const [biome, seed, teal = false, size = 1] of ART_SET) {
+    const base = { view: 'planet', biome, seed, size, ringMode: 'off', moons: false, artAuto: true, artTeal: teal };
     let best = { n: -1 };
     for (let time = 0; time < 12; time += 2) {
       const on = await setNative({ ...base, time, artefacts: true });
       const n = (await imageStats([await setNative({ ...base, time, artefacts: false }), on])).diffs[0];
       if (n > best.n) best = { n, time, on };
     }
-    items.push({ label: `${biome} · seed ${seed} · t ${best.time} s${teal ? ' · teal accent' : ''}`, url: asUrl(best.on) });
+    items.push({ label: `${biome} · ${size < 0.8 ? 'S' : size < 1.2 ? 'M' : size < 1.6 ? 'L' : 'XL'} · t ${best.time} s${teal ? ' · teal' : ''}`, url: asUrl(best.on) });
   }
-  await contactSheet(items, 3, path.join(outDir, 'artefacts.png'));
+  await contactSheet(items, 4, path.join(outDir, 'artefacts.png'));
   console.log('screenshots/artefacts.png');
 }
 
