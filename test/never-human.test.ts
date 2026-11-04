@@ -81,8 +81,11 @@ describe('Issue #5 fixture preconditions (must pass before and after the fix)', 
 });
 
 describe('Issue #5 known bugs (it.fails; the fix flips `bug` to `it`)', () => {
-  bug('case 1: a commit the agent ran (agent_ran_commit) is never human, even when its edits were not parsed', () => {
-    expect(attr('bash').class).not.toBe('human');
+  it('case 1: a commit the agent ran (agent_ran_commit) is never human, even when its edits were not parsed', () => {
+    // Decision 2: unknown, keeping the evidence and the session link.
+    expect(attr('bash')).toMatchObject({ class: 'unknown', tier: 'none', agentLineShareMilli: 0,
+      evidence: [{ kind: 'agent_ran_commit', detail: 'git_commit_output' }] });
+    expect(attr('bash').sessions).toHaveLength(1);
   });
 
   bug('case 2: a self-authored merge that brings in a teammate\'s lines is never human', () => {

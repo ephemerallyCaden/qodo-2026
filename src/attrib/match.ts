@@ -1,6 +1,7 @@
 import { byCodepoint } from '../core/canonical-json.js';
+import { classify } from '../core/classify.js';
 import { u32 } from '../core/hash.js';
-import type { CommitAttribution, CommitClass, Session, SessionKey } from '../core/snapshot/types.js';
+import type { CommitAttribution, Session, SessionKey } from '../core/snapshot/types.js';
 import { isoUtc } from '../core/time.js';
 import type { EditEvent, SessionMeta } from './parsers/claude.js';
 
@@ -9,8 +10,11 @@ export interface MatchCommit {
   /** Committer time: edits after it can't be in the commit. */
   dateMs: number;
   isSelf: boolean;
+  isMerge: boolean;
   /** Committed inside a span the agent logs cover, and outside any span they couldn't read. */
   covered: boolean;
+  /** Committed inside a transcript that dropped a record which could have held an edit. */
+  partial: boolean;
   /** Countable added-line hashes per non-excluded path (empty before the logs begin). */
   added: Map<string, string[]>;
   /** Sessions whose `git commit` output named this commit. */
@@ -21,9 +25,6 @@ export interface MatchResult {
   attribution: CommitAttribution;
   agentLines: Map<string, number>;
 }
-
-const SHARE_AGENT = 900;
-const SHARE_MIXED = 300;
 
 /**
  * Verbatim line matching (design §5.2). A commit line is agent-written when an edit event on the
@@ -65,10 +66,8 @@ export function matchCommits(commits: MatchCommit[], events: EditEvent[]): Map<s
     for (const k of c.ranBy) if (!perSession.has(k)) perSession.set(k, 0);
     const share = counted > 0 ? Math.floor((matched * 1000) / counted) : 0;
     // Matched lines are evidence wherever they fall; only "human" needs the logs to have been watching.
-    const cls: CommitClass = counted === 0 ? 'unknown'
-      : share >= SHARE_AGENT ? 'agent'
-      : share >= SHARE_MIXED ? 'mixed'
-      : c.isSelf && c.covered ? 'human' : 'unknown';
+    const cls = classify({ counted, shareMilli: share, matched, ranCommit: c.ranBy.size > 0, isMerge: c.isMerge,
+      isSelf: c.isSelf, covered: c.covered, partial: c.partial });
     const evidence: CommitAttribution['evidence'] = [];
     if (matched > 0) evidence.push({ kind: 'transcript_match', detail: 'verbatim' });
     if (c.ranBy.size > 0) evidence.push({ kind: 'agent_ran_commit', detail: 'git_commit_output' });
