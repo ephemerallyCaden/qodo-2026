@@ -91,6 +91,8 @@ export interface RawCommit {
   name: string;
   email: string;
   subject: string;
+  /** More than one parent (`%P`); its first-parent diff carries the merged-in lines. */
+  isMerge: boolean;
   files: Map<string, NumstatRow>;
 }
 
@@ -98,7 +100,7 @@ export interface RawCommit {
 export async function windowCommits(git: Git, head: string, sinceIso: string): Promise<RawCommit[]> {
   const since = `--since=${sinceIso}`;
   const [metaOut, statOut] = await Promise.all([
-    git(['log', '--first-parent', '--use-mailmap', '-z', '--format=%H%x00%ct%x00%at%x00%aN%x00%aE%x00%s', since, head]),
+    git(['log', '--first-parent', '--use-mailmap', '-z', '--format=%H%x00%ct%x00%at%x00%aN%x00%aE%x00%P%x00%s', since, head]),
     git(['log', ...LOG_OPTS, '--numstat', '-z', '--format=%x01%H', since, head]),
   ]);
   const meta = metaOut.split('\0');
@@ -108,10 +110,10 @@ export async function windowCommits(git: Git, head: string, sinceIso: string): P
     if (tokens[0]) stats.set(tokens[0], parseNumstat(tokens.slice(1)));
   }
   const out: RawCommit[] = [];
-  for (let i = 0; i + 6 <= meta.length; i += 6) {
-    const [sha, ct, at, name, email, subject] = meta.slice(i, i + 6) as [string, string, string, string, string, string];
+  for (let i = 0; i + 7 <= meta.length; i += 7) {
+    const [sha, ct, at, name, email, parents, subject] = meta.slice(i, i + 7) as [string, string, string, string, string, string, string];
     out.push({ sha, dateMs: Number(ct) * 1000, authorMs: Number(at) * 1000, name, email: email.toLowerCase(),
-      subject, files: stats.get(sha) ?? new Map() });
+      subject, isMerge: parents.trim().includes(' '), files: stats.get(sha) ?? new Map() });
   }
   return out.reverse();
 }

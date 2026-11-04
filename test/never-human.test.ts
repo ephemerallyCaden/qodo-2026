@@ -13,7 +13,7 @@ import type { CommitAttribution, SnapshotV01 } from '../src/core/snapshot/types.
 import { formatSummary } from '../src/core/summary.js';
 import { scan, type LogStats } from '../src/scan/index.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
-import { buildNeverHumanRepo, EDGE_CASES, type EdgeCase } from './fixtures/build/never-human.js';
+import { buildNeverHumanRepo, EDGE_CASES, MERGES, type EdgeCase } from './fixtures/build/never-human.js';
 import { writeClaudeFixture } from './fixtures/claude/basic.js';
 import { writeNeverHumanClaude, type NeverHumanClaude } from './fixtures/claude/never-human.js';
 
@@ -52,10 +52,12 @@ describe('Issue #5 fixture preconditions (must pass before and after the fix)', 
       expect(covered(c!.date), `${id} inside coverage`).toBe(true);
       expect(c!.files.some((f) => f[0] === EDGE_CASES[id][1] && f[1] > 0), `${id} adds lines to its file`).toBe(true);
     }
-    // The teammate's commit is off the first-parent chain; the merge really has two parents.
-    expect(snapshot.commits.some((c) => c.sha === repo.commits['friend']!.sha)).toBe(false);
-    const parents = execFileSync('git', ['rev-list', '--parents', '-n', '1', repo.commits['merge']!.sha], { cwd: repo.dir, encoding: 'utf8' });
-    expect(parents.trim().split(' ')).toHaveLength(3);
+    // The teammates' commits are off the first-parent chain; each merge really has two parents.
+    for (const id of ['friend', 'friend3', 'friend4']) expect(snapshot.commits.some((c) => c.sha === repo.commits[id]!.sha), id).toBe(false);
+    for (const id of MERGES) {
+      const parents = execFileSync('git', ['rev-list', '--parents', '-n', '1', repo.commits[id]!.sha], { cwd: repo.dir, encoding: 'utf8' });
+      expect(parents.trim().split(' '), id).toHaveLength(3);
+    }
   });
 
   it('positive control: human text in an idle session is human, so the setup can produce human at all', () => {
@@ -88,8 +90,16 @@ describe('Issue #5 known bugs (it.fails; the fix flips `bug` to `it`)', () => {
     expect(attr('bash').sessions).toHaveLength(1);
   });
 
-  bug('case 2: a self-authored merge that brings in a teammate\'s lines is never human', () => {
-    expect(attr('merge').class).not.toBe('human');
+  it('case 2: a self-authored merge that brings in a teammate\'s lines is never human', () => {
+    expect(attr('merge')).toMatchObject({ class: 'unknown', tier: 'none' });
+  });
+
+  it('case 2b: an agent-run git merge whose output names no SHA is never human', () => {
+    expect(attr('agentMerge')).toMatchObject({ class: 'unknown', tier: 'none', evidence: [] });
+  });
+
+  it('case 2c: a merge with self-written resolution lines is never human (decision 3)', () => {
+    expect(attr('resolvedMerge')).toMatchObject({ class: 'unknown', tier: 'none' });
   });
 
   bug('case 3a: a commit inside a transcript that dropped an over-cap (>4 MiB) record is never human', () => {

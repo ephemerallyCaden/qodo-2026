@@ -17,6 +17,9 @@ export const EDGE_LINES = {
   symlinked: ['export const symlinkedWriteOne = 601;', 'export const symlinkedWriteTwo = symlinkedWriteOne + 1;'],
   caseVariant: ['export const caseVariantWriteOne = 701;', 'export const caseVariantWriteTwo = caseVariantWriteOne + 1;'],
   control: ['# Control', 'Typed by the human while an idle agent session was open.'],
+  agentMerge: ['export const thirdLineOne = 801;', 'export const thirdLineTwo = thirdLineOne + 1;'],
+  resolvedTeam: ['export const resolvedTeamOne = 901;', 'export const resolvedTeamTwo = resolvedTeamOne + 1;'],
+  resolvedSelf: ['export const resolvedBySelfOne = 911;', 'export const resolvedBySelfTwo = resolvedBySelfOne + 1;'],
 };
 
 /** Case id → [day, repo path]. Each commit lands at <day>T10:00:00Z. */
@@ -29,7 +32,11 @@ export const EDGE_CASES = {
   symlinked: ['2026-10-07', 'src/symlinked.ts'],
   caseVariant: ['2026-10-08', 'src/case-variant.ts'],
   control: ['2026-10-09', 'docs/control.md'],
+  agentMerge: ['2026-10-10', 'lib/third.ts'],
+  resolvedMerge: ['2026-10-11', 'lib/resolved.ts'],
 } as const;
+/** Edge cases that are merge commits (two parents). */
+export const MERGES: EdgeCase[] = ['merge', 'agentMerge', 'resolvedMerge'];
 export type EdgeCase = keyof typeof EDGE_CASES;
 
 export function buildNeverHumanRepo(): FixtureRepo {
@@ -82,5 +89,20 @@ export function buildNeverHumanRepo(): FixtureRepo {
   // Positive control: human text inside an idle session's coverage → human.
   write(EDGE_CASES.control[1], EDGE_LINES.control);
   commit('control', at('control'), 'docs: human control notes');
+  // Case 2b: an agent-run `git merge` of a teammate branch; merge output names no SHA.
+  const teammateBranch = (branch: string, id: string, c: EdgeCase, lines: string[]) => {
+    git(['checkout', '-q', '-b', branch]);
+    write(EDGE_CASES[c][1], lines);
+    commit(id, `${EDGE_CASES[c][0]}T08:00:00Z`, `feat: ${branch} module`, TEAMMATE);
+    git(['checkout', '-q', 'main']);
+  };
+  teammateBranch('teammate3', 'friend3', 'agentMerge', EDGE_LINES.agentMerge);
+  git(['merge', '-q', '--no-ff', '-m', "Merge branch 'teammate3'", 'teammate3'], as(SELF, at('agentMerge')));
+  commits['agentMerge'] = { sha: git(['rev-parse', 'HEAD']), date: at('agentMerge') };
+  // Case 2c: a merge where self adds resolution lines no parent has (an "evil merge").
+  teammateBranch('teammate4', 'friend4', 'resolvedMerge', EDGE_LINES.resolvedTeam);
+  git(['merge', '-q', '--no-ff', '--no-commit', 'teammate4'], as(SELF, at('resolvedMerge')));
+  write(EDGE_CASES.resolvedMerge[1], [...EDGE_LINES.resolvedTeam, ...EDGE_LINES.resolvedSelf]);
+  commit('resolvedMerge', at('resolvedMerge'), "Merge branch 'teammate4'");
   return { dir, commits };
 }

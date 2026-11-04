@@ -123,10 +123,23 @@ export function writeNeverHumanClaude(repo: FixtureRepo): NeverHumanClaude {
   // Positive control: idle session, human commit → human.
   const control = idle('control', 0, 'control');
 
+  // Case 2b: the agent runs `git merge`; its output names no commit, so nothing links the merge.
+  const am = session('agentMerge', 10, repo.dir);
+  const agentMerge = [
+    am.user('u1', t('agentMerge', '09:00:00')),
+    am.call('a2', t('agentMerge', '09:59:50'), 'Bash', { command: 'git merge --no-ff teammate3' }),
+    am.result('u3', 'a2', t('agentMerge', '10:00:02'), { stdout: "Merge made by the 'ort' strategy.\n lib/third.ts | 2 ++\n 1 file changed, 2 insertions(+)",
+      stderr: '', interrupted: false }),
+    am.user('u4', t('agentMerge', '10:30:00')),
+  ];
+  // Case 2c: an idle session open while self resolves a merge by hand.
+  const resolvedMerge = idle('resolvedMerge', 11, 'resolvedMerge');
+
   const jsonl = (rows: (object | string)[]) => rows.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n') + '\n';
   const files: [string, (object | string)[]][] = [
     ['bash', bash], ['merge', merge], ['oversized', oversized], ['malformed', malformed], ['noCwdIdle', noCwdIdle],
     ['noCwd', noCwd], ['symlinked', symlinked], ['caseIdle', caseIdle], ['caseVariant', caseRows], ['control', control],
+    ['agentMerge', agentMerge], ['resolvedMerge', resolvedMerge],
   ];
   const dir = join(claudeDir, 'projects', '-edge-slug');
   mkdirSync(dir, { recursive: true });
