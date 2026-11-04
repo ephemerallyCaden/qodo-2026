@@ -208,7 +208,7 @@ Determinism applies throughout:
 1. **Discovery.**
    - Enumerate `~/.claude/projects/*/*.jsonl`, `*/subagents/agent-*.jsonl` **and `*/subagents/workflows/*/agent-*.jsonl`** (workflow subagents; found in the Day 1 build).
    - Before every read: refuse symlinks (`lstat`) and re-check the realpath against the deny list (Qodo PR #3 finding #2).
-   - Read the first allowlisted record carrying `cwd`, past the first line if needed. The head read is bounded by the 200 MiB file cap and skips lines over the 4 MiB line cap. The span starts at the first timestamped record.
+   - Read the first allowlisted record carrying `cwd`, past the first line if needed. The head read covers the first 4 MiB; only a transcript with no `cwd` there is read on, one at a time, up to the 200 MiB file cap. Lines over the 4 MiB line cap are skipped. The span starts at the first timestamped record.
    - If that `cwd` still exists, resolve it with `realpath.native` (which also gives the on-disk case and resolves `/var` to `/private/var`). It's ours when its checkout is one of our worktrees, also compared by native realpath, or when `git -C cwd rev-parse --git-common-dir` resolves to our common dir.
    - If the `cwd` is gone (a deleted worktree), match by prefix against our worktree paths from `git worktree list` plus the repo root. A gone `cwd` outside them counts as another repo's.
    - **Unattributed:** a transcript with no `cwd` in any record, or whose `cwd` can't be resolved (relative, realpath failure, or a git failure inside our tree), could belong to any repo. Its span, from its first and last timestamps, becomes a blind span and is counted in the summary.
