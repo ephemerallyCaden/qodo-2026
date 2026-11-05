@@ -1,0 +1,18 @@
+{
+  "name": "day2-compare",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Day 2 comparison: the hero scene built with three.js defaults vs the Commet house rules, plus a checker that turns each render into text numbers.",
+  "type": "module",
+  "scripts": {
+    "render": "node render.mjs",
+    "check": "node check.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}

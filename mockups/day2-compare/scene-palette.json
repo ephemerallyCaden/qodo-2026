@@ -1,0 +1,27 @@
+{
+  "source": "asset-viewer viewer.js PALETTES.final (v2 space, stars, depth); written by render.mjs",
+  "space": "#0d0b16",
+  "stars": [
+    "#3b3866",
+    "#9a90e0",
+    "#fff8ff"
+  ],
+  "depth": [
+    [
+      "#1b1f4a",
+      0
+    ],
+    [
+      "#1b1f4a",
+      0.38
+    ],
+    [
+      "#1b1f4a",
+      0.72
+    ],
+    [
+      "#17172f",
+      0.88
+    ]
+  ]
+}

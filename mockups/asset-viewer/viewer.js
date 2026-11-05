@@ -1691,3 +1691,6 @@ window.viewer = {
     frame(); // second pass so depth tints set during the first one are drawn
   },
 };
+
+// Internals for the comparison mockups (../camera-modes, ../day2-compare), which pose the camera, hide objects and wrap the render passes.
+window.viewer.internals = { renderer, scene, camera, controls, sky, stars, state, frame, SYSTEM, planets, crew, solos };

@@ -1,0 +1,4 @@
+defaults.png: 1280x720, unique colours 62780, on palette 0.08%, depth fade 5.24% (tol ±1.5/255 per channel), off palette 94.69%, pure black 22.35%, near black (<= 8/255) 62.34%, teal 0.00%
+house.png: 1280x720, unique colours 457, on palette 88.91%, depth fade 11.09% (tol ±1.5/255 per channel), off palette 0.00%, pure black 0.00%, near black (<= 8/255) 0.00%, teal 0.00%
+defaults.png (eased tweens, scene.js model) motion: surface spin 0.00..1.05 rad/s, clouds 0.00..1.57 rad/s, moons 0.00..0.82 rad/s
+house.png (viewer LOOP, constant rates, scene.js model) motion: surface spin 0.52..0.52 rad/s, clouds 0.79..0.79 rad/s, moons 0.52..0.52 rad/s

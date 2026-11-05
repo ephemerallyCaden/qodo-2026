@@ -1,0 +1,4 @@
+node_modules/
+frames-tmp/
+# the repo root ignores out/; these renders are the deliverable
+!out/
