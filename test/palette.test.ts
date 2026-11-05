@@ -124,12 +124,23 @@ function ringAndCloudViolations(p: { readonly world: object }): string[] {
 // ---------------------------------------------------------------- colour literals in source
 
 /**
- * Hex colours (#rgb, #rgba, #rrggbb, #rrggbbaa) right after a quote or a colon, so TS `#private`
- * members and issue refs like "Qodo #123" in comments don't count; 0xrrggbb; CSS rgb()/rgba()/hsl()/hsla().
+ * Colour literals: hex (#rgb, #rgba, #rrggbb, #rrggbbaa) anywhere a value can stand, including unquoted
+ * CSS like `linear-gradient(#f00, #000)` and `1px solid #fff` (Qodo PR #13); 0xrrggbb; CSS
+ * rgb()/rgba()/hsl()/hsla(). Not counted: comments (so "Qodo #123" is fine); `#` glued to a name or
+ * path (`this.#fade`, `&#123;`, a URL fragment `/#top`); and a `#name` that opens a declaration (a TS
+ * `#private` member or a CSS id selector: first on its line or after `{`, `}` or `;`, past modifiers).
  * Not covered: colours written as GLSL vec3/vec4 floats, which need a shader-aware check.
  */
-const COLOUR_LITERAL = /(?<=['"`]|:\s*)#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})\b|\b0x[0-9a-f]{6}\b|\b(?:rgba?|hsla?)\(/gi;
-const colourLiterals = (text: string) => [...text.matchAll(COLOUR_LITERAL)].map((m) => m[0]);
+const COLOUR_LITERAL = /(?<![\w.$#&/])#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})\b|\b0x[0-9a-f]{6}\b|\b(?:rgba?|hsla?)\(/gi;
+const DECLARATION = /(?:^|[{};])\s*(?:(?:static|readonly|async|get|set|declare|override|accessor|\*)\s+)*$/;
+// Block, HTML and line comments; `//` right after `:` is a URL, not a comment.
+const COMMENT = /\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|(?<!:)\/\/.*$/gm;
+function colourLiterals(text: string): string[] {
+  const code = text.replace(COMMENT, '');
+  return [...code.matchAll(COLOUR_LITERAL)]
+    .filter((m) => !m[0].startsWith('#') || !DECLARATION.test(code.slice(code.lastIndexOf('\n', m.index - 1) + 1, m.index)))
+    .map((m) => m[0]);
+}
 const PALETTE_MODULE = 'src/core/palette.ts';
 const SOURCE = /\.(?:[cm]?[jt]sx?|glsl|vert|frag|css|html)$/;
 
@@ -246,6 +257,9 @@ describe('palette', () => {
     expect(offenders).toEqual([]);
     expect(colourLiterals("renderer.setClearColor(0x000000); const c = '#FF00FF', d = \"#fff\";\nbody { color: #0d0b16; fill: rgb(0, 0, 0); }"))
       .toEqual(['0x000000', '#FF00FF', '#fff', '#0d0b16', 'rgb(']);
-    expect(colourLiterals('// Qodo #123, issue #5\nclass A { #decade = 1; #fade() { this.#facade(); } }')).toEqual([]);
+    expect(colourLiterals('background: linear-gradient(#ff0000, #000000);\nborder: 1px solid #fff;\nconst c = [#0d0b16];'))
+      .toEqual(['#ff0000', '#000000', '#fff', '#0d0b16']);
+    expect(colourLiterals('// Qodo #123, issue #5\n/* see #abc */ <!-- #fed -->\nclass A { #decade = 1;\n  static #fade() { return this.#facade ?? &#123; }\n  #bad?: string;\n}\n#face { color: red; }\nconst u = "https://x.test/#add";'))
+      .toEqual([]);
   });
 });
