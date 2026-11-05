@@ -98,3 +98,9 @@ export function poolField(cx, cy, cz, ox, oy, oz, scale) {
 
 /** The shader's crackMask: which crack edges show, and how wide (0..1). */
 export const crackMask = (x, y, z, freq, ox, oy, oz) => snoise(x * freq * 0.35 + oy, y * freq * 0.35 + oz, z * freq * 0.35 + ox) * 0.5 + 0.5;
+/** The shader's crackHero ramp: the share (0..1) of the widest crack at a point with crack mask
+ *  `mask`; the shader draws a crack there when share * half >= tip (viewer.js CRACKS). */
+export function crackShare(mask, cut, lift) {
+  const t = Math.min(1, Math.max(0, (mask - cut - lift) / 0.25));
+  return t * t * (3 - 2 * t);
+}

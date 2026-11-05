@@ -5,16 +5,20 @@
 // Width at a crack pixel = min(horizontal run, vertical run) through it; reports the median,
 // the share of isolated pixels (no 4-neighbour on the line), and the shares of the classified
 // surface (pixels not covered by ash or haze) that are ground, crack and open.
+// dist moves the camera along the studio direction (default: the studio framing, distance 7), so the
+// planet's projected radius sweeps with size x distance (radiusPx in the result).
 // Usage: node debug/measure-line-width.mjs
 import { openViewer } from './repro-hollow-clouds.mjs';
 
 export const LINE_SET = [['lava', 11, 1.0], ['lava', 12, 0.7], ['lava', 58, 1.3], ['ice', 8, 0.7], ['ice', 19, 1.0], ['ice', 77, 1.3]];
 
-export async function measureLines(page, biome, seed, size, time = 3) {
-  return page.evaluate(({ biome, seed, size, time }) => {
-    window.viewer.set({ view: 'studio', biome, seed, size, time, ringMode: 'off', moons: false, depth: false, pixelH: 180, palette: 'final', spin: true, ui: false, artefacts: false, lavaMode: 'layered', lavaTime: null, regions: true });
+export async function measureLines(page, biome, seed, size, { time = 3, dist = null } = {}) {
+  return page.evaluate(({ biome, seed, size, time, dist }) => {
+    const { cameraAt, planets, VIEWS } = window.__dbg;
+    window.viewer.set({ view: 'studio', biome, seed, size, time, ringMode: 'off', moons: false, depth: false, pixelH: 180, palette: 'final', spin: true, ui: false, artefacts: false, lavaMode: 'layered', lavaTime: null, regions: true, camera: dist ? cameraAt('studio', dist) : VIEWS.studio });
     const src = document.getElementById('view');
     const W = src.width, H = src.height;
+    const radiusPx = window.__dbg.radiusPx(planets[0].group); // group: unit sphere at the planet's scale
     const c = Object.assign(document.createElement('canvas'), { width: W, height: H });
     const x = c.getContext('2d');
     x.drawImage(src, 0, 0);
@@ -46,8 +50,8 @@ export async function measureLines(page, biome, seed, size, time = 3) {
     widths.sort((a, b) => a - b);
     const surf = Math.max(1, ground + open + n);
     const share = (v) => +(v / surf).toFixed(3);
-    return { biome, seed, size, linePx: n, median: widths.length ? widths[widths.length >> 1] : 0, p75: widths.length ? widths[Math.floor(widths.length * 0.75)] : 0, isolated: +(isolated / Math.max(1, n)).toFixed(3), ground: share(ground), crack: share(n), open: share(open) };
-  }, { biome, seed, size, time });
+    return { biome, seed, size, radiusPx, linePx: n, median: widths.length ? widths[widths.length >> 1] : 0, p75: widths.length ? widths[Math.floor(widths.length * 0.75)] : 0, isolated: +(isolated / Math.max(1, n)).toFixed(3), ground: share(ground), crack: share(n), open: share(open) };
+  }, { biome, seed, size, time, dist });
 }
 
 if (process.argv[1]?.endsWith('measure-line-width.mjs')) {

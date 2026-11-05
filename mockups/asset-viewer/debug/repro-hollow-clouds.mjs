@@ -12,7 +12,11 @@ const OUT = path.join(ROOT, 'debug');
 const ORIGIN = 'http://viewer.local';
 const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
 const HOOK = `
-window.__dbg = { THREE, scene, camera, renderer, planets, controls, DEPTH_U,
+window.__dbg = { THREE, scene, camera, renderer, planets, controls, DEPTH_U, CRACKS, VIEWS,
+  // the camera on a view's direction at this distance from its target
+  cameraAt: (view, dist) => { const { pos, target } = VIEWS[view], k = dist / Math.hypot(...pos.map((x, i) => x - target[i])); return { pos: pos.map((x, i) => target[i] + (x - target[i]) * k), target }; },
+  // a sphere's radius in px of the view canvas (the shader's gRadiusPx); obj: a mesh of unit radius
+  radiusPx: (obj) => { const c = new THREE.Vector3().setFromMatrixPosition(obj.matrixWorld).applyMatrix4(camera.matrixWorldInverse); const R = new THREE.Vector3().setFromMatrixScale(obj.matrixWorld).x; return +((R * camera.projectionMatrix.elements[5]) / -c.z * document.getElementById('view').height * 0.5).toFixed(1); },
   // cloud InstancedMesh of a planet, wherever it sits in the group tree
   puffsOf: (p) => { let m = null; p.group.traverse((o) => { if (!m && o.isInstancedMesh) m = o; }); return m; },
   // the view canvas's pixels at its internal resolution

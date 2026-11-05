@@ -19,21 +19,21 @@
 // everything would match at every zoom (up to pixel quantisation).
 // Findings (2026-11-04): pools exact at every zoom (openMiss 0); the crack edge set and crack width
 // both change with the planet's screen radius (crackWidth's `small` and the dFdx-based gPx). PATCH=
-// nosmall / world below confirm which term does what. test/lava-zoom.test.mjs is the regression test.
+// nosmall / world confirmed which term does what (in-memory patches of the pre-fix shader; see PATCHES at 9377adf).
+// test/lava-zoom.test.mjs is the regression test.
+// Fix (art-direction §6 Scale): the crack set and width are world-space, with a 1 px half-width
+// screen floor where the planet is small on screen. predict() is the CPU model of that rule, so the
+// test can tell the floor's legitimate thickening from the rock changing.
 // Usage: node debug/repro-lava-zoom.mjs [lava|ice] [seed]
 import { openViewer } from './repro-hollow-clouds.mjs';
-import { voronoiCells, poolField } from '../snoise.js';
-
-export const CRACK_FREQ = { lava: 3.2, ice: 3.8 }; // viewer.js CRACKS.<biome>.freq
-const POOL_SCALE = { lava: 0.3, ice: 0.35 }; // viewer.js CRACKS.<biome>.pool.scale
-const VIEW_DIR = (() => { const v = [1.92, 1.12, 6.69], l = Math.hypot(...v); return v.map((x) => x / l); })(); // VIEWS.planet direction
+import { voronoiCells, poolField, crackMask, crackShare } from '../snoise.js';
 
 /** One framing: render the regions view and return, for pixels whose surface point lies inside the
  *  cap (capDeg around the planet-local point under the camera), the region code and local point. */
 export async function renderCap(page, { biome, seed, size = 1, dist, pixelH = 180, time = 3, capDeg = 20 }) {
-  return page.evaluate(({ biome, seed, size, dist, pixelH, time, capDeg, VIEW_DIR }) => {
-    const { THREE, camera, planets } = window.__dbg;
-    window.viewer.set({ view: 'studio', biome, seed, size, time, pixelH, ringMode: 'off', moons: false, depth: false, palette: 'final', spin: true, ui: false, artefacts: false, lavaMode: 'layered', lavaTime: null, cover: 0, regions: true, camera: { pos: VIEW_DIR.map((x) => x * dist), target: [0, 0, 0] } });
+  return page.evaluate(({ biome, seed, size, dist, pixelH, time, capDeg }) => {
+    const { THREE, camera, planets, CRACKS } = window.__dbg;
+    window.viewer.set({ view: 'studio', biome, seed, size, time, pixelH, ringMode: 'off', moons: false, depth: false, palette: 'final', spin: true, ui: false, artefacts: false, lavaMode: 'layered', lavaTime: null, cover: 0, regions: true, camera: window.__dbg.cameraAt('studio', dist) });
     const { W, H, d } = window.__dbg.readView();
     window.viewer.set({ regions: false });
     let surf = null;
@@ -44,20 +44,22 @@ export async function renderCap(page, { biome, seed, size = 1, dist, pixelH = 18
     const inv = surf.matrixWorld.clone().invert();
     const sub = camera.position.clone().applyMatrix4(inv).normalize(); // planet-local point under the camera
     const cosCap = Math.cos((capDeg * Math.PI) / 180);
-    const ray = new THREE.Ray(), hit = new THREE.Vector3(), ndc = new THREE.Vector2();
+    const hit = new THREE.Vector3(), ndc = new THREE.Vector2();
     const sphere = new THREE.Sphere(centre, R);
     const caster = new THREE.Raycaster();
-    const out = { W, H, pts: [], radiusPx: 0, seedOff: surf.material.uniforms.uSeedOff.value.toArray() };
-    // the shader's gRadiusPx (setScreenScale)
-    const cv = centre.clone().applyMatrix4(camera.matrixWorldInverse);
-    out.radiusPx = +((R * camera.projectionMatrix.elements[5]) / -cv.z * H * 0.5).toFixed(1);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      ndc.set(((x + 0.5) / W) * 2 - 1, 1 - ((y + 0.5) / H) * 2);
+    const local = (sx, sy) => { // planet-local surface point under screen position (sx, sy) in px, or null
+      ndc.set((sx / W) * 2 - 1, 1 - (sy / H) * 2);
       caster.setFromCamera(ndc, camera);
-      ray.copy(caster.ray);
-      if (!ray.intersectSphere(sphere, hit)) continue;
-      const p = hit.clone().applyMatrix4(inv).normalize();
-      if (p.dot(sub) < cosCap) continue;
+      return caster.ray.intersectSphere(sphere, hit) ? hit.clone().applyMatrix4(inv).normalize() : null;
+    };
+    const u = surf.material.uniforms;
+    const out = {
+      W, H, pts: [], radiusPx: window.__dbg.radiusPx(surf), seedOff: u.uSeedOff.value.toArray(), poolCut: u.uPoolCut.value,
+      size: R, lift: u.uCrackLift.value, cracks: { ...CRACKS[biome], HERO_PX: CRACKS.HERO_PX, FLOOR_PX: CRACKS.FLOOR_PX },
+    };
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const p = local(x + 0.5, y + 0.5);
+      if (!p || p.dot(sub) < cosCap) continue;
       const i = (y * W + x) * 4, k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
       const region = k === 0x0000ff ? 0 : k === 0xff0000 ? 1 : k === 0x00ff00 ? 2 : 3; // 3 = covered (ash, haze)
       out.pts.push([x, y, region, p.x, p.y, p.z]);
@@ -66,7 +68,7 @@ export async function renderCap(page, { biome, seed, size = 1, dist, pixelH = 18
     // region the render shows at each one's pixel, so framings compare point by point
     out.samples = [];
     out.samplePts = [];
-    out.poolCut = surf.material.uniforms.uPoolCut.value;
+    out.sampleGPx = []; // the shader's gPx there: sphere units per screen px along the more foreshortened axis
     const N = 40000, q = new THREE.Vector3();
     for (let i = 0; i < N; i++) {
       const sy = 1 - ((i + 0.5) / N) * 2, r = Math.sqrt(1 - sy * sy), lon = i * 2.39996;
@@ -74,13 +76,50 @@ export async function renderCap(page, { biome, seed, size = 1, dist, pixelH = 18
       if (q.dot(sub) < cosCap) continue;
       out.samplePts.push([q.x, q.y, q.z]);
       const s = q.clone().applyMatrix4(surf.matrixWorld).project(camera);
-      const x = Math.floor((s.x + 1) * 0.5 * W), y = Math.floor((1 - s.y) * 0.5 * H);
-      if (x < 0 || y < 0 || x >= W || y >= H) { out.samples.push(4); continue; } // off screen
+      const fx = (s.x + 1) * 0.5 * W, fy = (1 - s.y) * 0.5 * H;
+      const x = Math.floor(fx), y = Math.floor(fy);
+      if (x < 0 || y < 0 || x >= W || y >= H) { out.samples.push(4); out.sampleGPx.push(Infinity); continue; } // off screen
+      const ax = local(fx + 1, fy), ay = local(fx, fy + 1);
+      out.sampleGPx.push(ax && ay ? Math.max(ax.distanceTo(q), ay.distanceTo(q)) : Infinity);
       const j = (y * W + x) * 4, k = (d[j] << 16) | (d[j + 1] << 8) | d[j + 2];
       out.samples.push(k === 0x0000ff ? 0 : k === 0xff0000 ? 1 : k === 0x00ff00 ? 2 : 3);
     }
     return out;
-  }, { biome, seed, size, dist, pixelH, time, capDeg, VIEW_DIR });
+  }, { biome, seed, size, dist, pixelH, time, capDeg });
+}
+
+/** The CPU model of the shader's crack rule (PLANET_FRAG crackHero / crackPx, art-direction §6 Scale) at
+ *  each fixed sample: crack[i] = drawn as a crack with the screen floor, world[i] = drawn as a crack
+ *  by the world-space width alone (no floor). Open plates are never cracks. */
+export function predict(frame, biome) {
+  const { freq, cut, half, tip, pool, HERO_PX, FLOOR_PX } = frame.cracks;
+  const [ox, oy, oz] = frame.seedOff;
+  const off = biome === 'ice' ? [oy, oz, ox] : [ox, oy, oz];
+  const crack = [], world = [];
+  frame.samplePts.forEach(([px, py, pz], i) => {
+    const { own, across, edge } = voronoiCells(px * freq + off[0], py * freq + off[1], pz * freq + off[2]);
+    const open = (c) => poolField(...c, ...off, pool.scale) > frame.poolCut;
+    const wHero = half * crackShare(crackMask(px, py, pz, freq, ...off), cut, frame.lift);
+    const on = !open(own) && !open(across) && wHero >= tip;
+    const wWorld = wHero / (HERO_PX * frame.size); // sphere units
+    world.push(on && edge / freq < wWorld);
+    crack.push(on && edge / freq < Math.max(wWorld, FLOOR_PX * frame.sampleGPx[i]));
+  });
+  return { crack, world };
+}
+
+/** What the floor alone should do to a framing vs the reference, over the samples both classify:
+ *  ratio = predicted crack area (framing / reference), flip = predicted share of points that switch
+ *  crack / crust, floorShare = the framing's predicted crack area that only the floor draws. */
+export function floorEffect(a, b, pa, pb) {
+  let n = 0, ca = 0, cb = 0, flip = 0, wa = 0;
+  for (let i = 0; i < a.samples.length; i++) {
+    if (a.samples[i] > 2 || b.samples[i] > 2) continue;
+    n++;
+    ca += pa.crack[i]; cb += pb.crack[i]; wa += pa.world[i];
+    if (pa.crack[i] !== pb.crack[i]) flip++;
+  }
+  return { ratio: +(ca / Math.max(1, cb)).toFixed(2), flip: +(flip / Math.max(1, n)).toFixed(3), floorShare: +(1 - wa / Math.max(1, ca)).toFixed(2) };
 }
 
 const key = (c) => c.join(',');
@@ -88,7 +127,7 @@ const edgeKey = (a, b) => [key(a), key(b)].sort().join('|');
 
 /** Zoom-independent facts about the rock in one framing (see the header). */
 export function analyse(frame, biome) {
-  const freq = CRACK_FREQ[biome];
+  const { freq, pool } = frame.cracks;
   const [ox, oy, oz] = frame.seedOff;
   const off = biome === 'ice' ? [oy, oz, ox] : [ox, oy, oz]; // ice passes uSeedOff.yzx
   const crackKeys = [], crackEdges = new Set(), poolCells = new Set(), halfW = new Map();
@@ -132,7 +171,7 @@ export function analyse(frame, biome) {
     const { own, edge } = voronoiCells(px * freq + off[0], py * freq + off[1], pz * freq + off[2]);
     if ((edge / freq) * frame.radiusPx < 2) return;
     far++;
-    if ((poolField(...own, ...off, POOL_SCALE[biome]) > frame.poolCut) !== (r === 2)) openMiss++;
+    if ((poolField(...own, ...off, pool.scale) > frame.poolCut) !== (r === 2)) openMiss++;
   });
   const tot = Math.max(1, n[0] + n[1] + n[2]);
   const hw = [...halfW.values()].sort((a, b) => a - b);
@@ -185,19 +224,9 @@ export async function sweep(page, { biome = 'lava', seed = 11, size = 1, dists =
   };
 }
 
-// In-memory candidate patches (viewer.js on disk is untouched), to confirm which term moves the rock:
-//   nosmall  drop the small-planet mask cut (crackWidth's `small`, from gRadiusPx)
-//   world    nosmall, and crack width in sphere units (gPx pinned to its value at radius 40.8 px)
-export const PATCHES = {
-  nosmall: (src) => must(src, 'float small = 1.0 - clamp((gRadiusPx - 18.0) / 50.0, 0.0, 1.0);', 'float small = 0.0;'),
-  world: (src) => must(PATCHES.nosmall(src), 'gPx = max(1e-5, max(length(dx), length(dy)));', 'gPx = 1.0 / 40.8;'),
-};
-function must(src, a, b) { if (!src.includes(a)) throw new Error(`patch target not found: ${a}`); return src.replace(a, b); }
-
 if (process.argv[1]?.endsWith('repro-lava-zoom.mjs')) {
-  const biome = process.argv[2] ?? 'lava', seed = +(process.argv[3] ?? 11), patch = process.env.PATCH;
-  if (patch) console.log(`in-memory patch: ${patch}`);
-  const { browser, page } = await openViewer({ patch: patch ? PATCHES[patch] : undefined });
+  const biome = process.argv[2] ?? 'lava', seed = +(process.argv[3] ?? 11);
+  const { browser, page } = await openViewer();
   try {
     const { zoom, pixel } = await sweep(page, { biome, seed });
     console.log(`${biome} seed ${seed}: camera distance sweep at 180p (reference = closest)`);

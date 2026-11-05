@@ -9,7 +9,7 @@ import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
 import { mapPalette, mapColors, snapToPool } from './palette-map.js';
 import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH, ACCENTS } from './planet-ramps.js';
 import { tangentFrame } from './cloud-frame.js';
-import { voronoiCells, poolField, crackMask } from './snoise.js';
+import { voronoiCells, poolField, crackMask, crackShare } from './snoise.js';
 import { ASTRO_SDF_GLSL, BMIN as ASTRO_BMIN, BMAX as ASTRO_BMAX, SCALE as ASTRO_SCALE, LIFT as ASTRO_LIFT, layout as astroLayout, pose as astroPose } from './astronaut.js';
 import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors, artefactCount } from './artefacts.js';
 
@@ -336,7 +336,21 @@ const CLOUD_FRAG = /* glsl */ `
 // pool: which whole plates are open (lava pools, ice water). scale = the cluster field's
 // frequency in cells (lower = bigger lakes and seas); share = the open share of the whole
 // sphere, held per seed by a quantile (poolCut), like cloud cover.
-const CRACKS = { lava: { freq: 3.2, cut: 0.25, pool: { scale: 0.3, share: 0.3 } }, ice: { freq: 3.8, cut: 0.23, pool: { scale: 0.35, share: 0.27 } } };
+// Scale (art-direction §6): the crack set and widths are fixed on the planet, so zoom only makes
+// the same rock bigger or smaller. Widths are given in px at the hero framing (HERO_PX: a size-1
+// planet at distance 7, 180p) and scale with the planet on screen, with a screen floor (FLOOR_PX
+// half-width) that only bites when the planet is small on screen. half = the widest crack's
+// half-width; a crack ends where its mask-driven width drops below tip (hero px), on every zoom.
+// lift: small planets show fewer cracks, as the mask cut rises by up to `max`, keyed to the planet's
+// SIZE (LOC, a data value), never its projected size: `max` at size <= from, 0 from size `to`. (The
+// old screen-radius ramp, 18 -> 68 px, at the hero framing, so hero planets keep their crack sets.)
+const CRACKS = {
+  lava: { freq: 3.2, cut: 0.25, half: 1.5, tip: 0.55, pool: { scale: 0.3, share: 0.3 } },
+  ice: { freq: 3.8, cut: 0.23, half: 1.2, tip: 0.55, pool: { scale: 0.35, share: 0.27 } },
+  lift: { max: 0.35, from: 0.44, to: 1.67 },
+  HERO_PX: 40.8, FLOOR_PX: 1.0,
+};
+const crackLift = (size) => { const { max, from, to } = CRACKS.lift; return max * (1 - THREE.MathUtils.clamp((size - from) / (to - from), 0, 1)); };
 // The field cut that opens `share` of the sphere's area (Fibonacci samples through the CPU port).
 // off is the offset the shader passes for that biome's plates.
 function poolCut({ freq, pool }, off) {
@@ -423,6 +437,9 @@ const WORLEY_GLSL = /* glsl */ `
   const float LAVA_CRACK_FREQ = ${CRACKS.lava.freq.toFixed(2)}, LAVA_CRACK_CUT = ${CRACKS.lava.cut.toFixed(2)};
   const float ICE_CRACK_FREQ = ${CRACKS.ice.freq.toFixed(2)}, ICE_CRACK_CUT = ${CRACKS.ice.cut.toFixed(2)};
   const float LAVA_POOL_SCALE = ${CRACKS.lava.pool.scale.toFixed(3)}, ICE_POOL_SCALE = ${CRACKS.ice.pool.scale.toFixed(3)};
+  const float LAVA_CRACK_HALF = ${CRACKS.lava.half.toFixed(2)}, ICE_CRACK_HALF = ${CRACKS.ice.half.toFixed(2)};
+  const float LAVA_CRACK_TIP = ${CRACKS.lava.tip.toFixed(2)}, ICE_CRACK_TIP = ${CRACKS.ice.tip.toFixed(2)};
+  const float CRACK_HERO_PX = ${CRACKS.HERO_PX.toFixed(2)}, CRACK_FLOOR_PX = ${CRACKS.FLOOR_PX.toFixed(2)};
 `;
 // Loop-locked domain-warped FBM (Inigo Quilez, "warp"): f(p + w * r), r = fbm(p + w * q + drift(t)),
 // q = fbm(p + drift(t)), with each pass's input riding its own circle (uLavaTime = cos, sin of the
@@ -463,6 +480,7 @@ const PLANET_FRAG = /* glsl */ `
   uniform mat4 projectionMatrix; // for the planet's screen size (cracks, artefacts)
   uniform vec2 uViewSize;        // drawing-buffer size in px
   uniform float uPoolCut;        // open plates: poolField above this (lava pools, ice water)
+  uniform float uCrackLift;      // crack mask-cut lift from the planet's size (crackLift, CPU)
   uniform int uRegions;          // 1 = debug view: ground blue, crack red, open plates green (measurement)
   in vec3 vNormalW;
   in vec3 vLocal;
@@ -485,28 +503,38 @@ const PLANET_FRAG = /* glsl */ `
   float ridge(vec3 p) { return 1.0 - abs(snoise(p)); } // 1.0 along a network of thin lines
 
   // Screen scale, set once per fragment in main() (uniform control flow) and read by surface():
-  // gPx = sphere units per screen pixel here, gRadiusPx = the planet's radius in screen px.
-  float gPx = 0.01, gRadiusPx = 60.0;
+  // gPx = sphere units per screen pixel here, gRadiusPx = the planet's radius in screen px (artefact
+  // cells only), gHero = screen px per hero-framing px here (world-space widths, CRACKS.HERO_PX).
+  float gPx = 0.01, gRadiusPx = 60.0, gHero = 1.0;
   void setScreenScale(vec3 p) {
     vec3 dx = dFdx(p), dy = dFdy(p);
     gPx = max(1e-5, max(length(dx), length(dy))); // the foreshortened axis: lines never swell at the limb
+    float size = length(modelMatrix[0].xyz); // the planet's size (its group scale, ~ LOC)
     vec4 centreV = viewMatrix * modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-    gRadiusPx = length(modelMatrix[0].xyz) * projectionMatrix[1][1] / -centreV.z * uViewSize.y * 0.5;
+    gRadiusPx = size * projectionMatrix[1][1] / -centreV.z * uViewSize.y * 0.5;
+    gHero = 1.0 / (CRACK_HERO_PX * gPx * size);
   }
+  // A width fixed on the planet (heroPx at the hero framing) in screen px here, never under floorPx.
+  float worldPx(float heroPx, float floorPx) { return max(heroPx * gHero, floorPx); }
   // Jagged cracks (lava fissures, ice crevasses): Voronoi cell edges, i.e. straight segments
   // meeting at pointed junctions. A mask (crackMask) picks which edges show and how wide, so
-  // cracks branch and taper; below ~1 px a crack simply ends, so tips never break into dots.
-  // Width is in SCREEN px (halfPx at the widest), so lines stay bold at any size; small
-  // planets raise the mask cut instead, so they show fewer cracks rather than solid fissure.
+  // cracks branch and taper. Both are fixed on the planet (art-direction §6 Scale): which edges
+  // show depends only on the mask and the planet's size (uCrackLift: small planets raise the cut,
+  // so they show fewer cracks), and the width is world-space (halfPx at the widest, in hero px), so
+  // zooming only makes the same rock bigger or smaller. A crack ends where its world width drops
+  // below tipPx; where the planet is small on screen the width is floored at CRACK_FLOOR_PX, so far
+  // planets get relatively thicker cracks instead of tips breaking into dots. The 1 px lip on
+  // plate edges (lava) stays a screen-px outline: it never changes which plates or cracks exist.
   // plates() returns the px distance to the nearest cell edge, and the plates on either side of
-  // it; crackWidth() the crack's half-width there in px (0 where no crack shows). Inside a crack
-  // when dpx < w; core = dpx / w is how central the pixel is (0 centre .. 1 edge).
+  // it; crackHero() the crack's half-width there in hero px (0 where no crack shows), crackPx() the
+  // same in screen px here, floored. Inside a crack when dpx < w (screen px); core = dpx / w is how
+  // central the pixel is (0 centre .. 1 edge).
   float plates(vec3 p, float freq, vec3 off, out vec3 own, out vec3 across) { return voronoiCells(p * freq + off, own, across) / (freq * gPx); }
-  float crackWidth(vec3 p, float freq, vec3 off, float cut, float halfPx) {
-    float small = 1.0 - clamp((gRadiusPx - 18.0) / 50.0, 0.0, 1.0); // 1 for tiny planets, 0 from ~70 px radius
-    float w = halfPx * smoothstep(cut + small * 0.35, cut + small * 0.35 + 0.25, crackMask(p, freq, off));
-    return w < 0.55 ? 0.0 : w; // below ~1 px a crack ends
+  float crackHero(vec3 p, float freq, vec3 off, float cut, float halfPx, float tipPx) {
+    float w = halfPx * smoothstep(cut + uCrackLift, cut + uCrackLift + 0.25, crackMask(p, freq, off)); // crackShare (CPU)
+    return w < tipPx ? 0.0 : w;
   }
+  float crackPx(float hero) { return hero > 0.0 ? worldPx(hero, CRACK_FLOOR_PX) : 0.0; }
   // Region of the last surface() sample, for the regions debug view: 0 ground, 1 crack, 2 open (pool / water).
   int gRegion = 0;
   // The animated lava field at this fragment. lavaFlow() is evaluated once per fragment in main(),
@@ -551,10 +579,10 @@ const PLANET_FRAG = /* glsl */ `
       if (poolField(own, uSeedOff.yzx, ICE_POOL_SCALE) > uPoolCut) {
         // open dark-blue water between the sheets, with a paler submerged-ice fringe at the shore
         gRegion = 2;
-        bool shore = poolField(across, uSeedOff.yzx, ICE_POOL_SCALE) <= uPoolCut && dpx < 1.5;
+        bool shore = poolField(across, uSeedOff.yzx, ICE_POOL_SCALE) <= uPoolCut && dpx < worldPx(1.5, 1.5);
         c = shore ? uC[min(b, 2)] : uC[max(min(b, 2) - 1, 0)]; // two dark steps; the lit fringe one up
       } else {
-        float w = crackWidth(p, ICE_CRACK_FREQ, uSeedOff.yzx, ICE_CRACK_CUT, 1.2);
+        float w = crackPx(crackHero(p, ICE_CRACK_FREQ, uSeedOff.yzx, ICE_CRACK_CUT, ICE_CRACK_HALF, ICE_CRACK_TIP));
         // no crack along a shore: the water's fringe marks that edge (a clipped half-crack is a 1 px sliver)
         if (dpx < w && poolField(across, uSeedOff.yzx, ICE_POOL_SCALE) <= uPoolCut) { gRegion = 1; c = dpx < w * 0.5 ? uB[max(b - 1, 0)] : uB[min(b, 4)]; }
       }
@@ -572,14 +600,14 @@ const PLANET_FRAG = /* glsl */ `
       int crust = min(b, 2) + (h > 0.58 ? 1 : 0);
       c = uA[crust]; // crust stays in the darkest steps
       vec3 own, across;
-      float dpx = 9.0, w = 0.0;
+      float dpx = 9.0, w = 0.0, wHero = 0.0;
       bool pool = false, shore = false, fissure = false;
       if (uLavaMode != 2) {
         dpx = plates(p, LAVA_CRACK_FREQ, uSeedOff, own, across);
         pool = poolField(own, uSeedOff, LAVA_POOL_SCALE) > uPoolCut;
         shore = poolField(across, uSeedOff, LAVA_POOL_SCALE) <= uPoolCut; // the edge here faces solid crust
         // no crack along a shore: the pool itself opens that edge (a clipped half-crack is a 1 px sliver)
-        if (!pool) { w = crackWidth(p, LAVA_CRACK_FREQ, uSeedOff, LAVA_CRACK_CUT, 1.5); fissure = dpx < w && shore; }
+        if (!pool) { wHero = crackHero(p, LAVA_CRACK_FREQ, uSeedOff, LAVA_CRACK_CUT, LAVA_CRACK_HALF, LAVA_CRACK_TIP); w = crackPx(wHero); fissure = dpx < w && shore; }
       }
       float v = gLavaV; // the warped field at this fragment (set once in main(); artefact resamples reuse it)
       if (uLavaMode == 0) {
@@ -588,7 +616,7 @@ const PLANET_FRAG = /* glsl */ `
         const vec3 L = vec3(${LAVA_FLOW.layer.map((x) => x.toFixed(3)).join(', ')});
         if (pool || fissure) {
           gRegion = pool ? 2 : 1;
-          bool deep = pool && (!shore || dpx > 2.0);
+          bool deep = pool && (!shore || dpx > worldPx(2.0, 2.0)); // skins stay > 2 px (hero px, scaling up close) from shore
           c = v < L.x && deep ? uA[crust + 1] : v < L.y ? uG[0] : v < L.z ? uG[1] : uG[2];
         } else if ((w > 0.0 && shore && dpx < w + 1.0) || (!shore && dpx < 1.0)) {
           // the plate's 1 px edge facing a gap or a pool, lit by the lava: the crust's warm top step
@@ -611,7 +639,7 @@ const PLANET_FRAG = /* glsl */ `
         // yellow only down the core of the widest; the field slides the core, so pulses course along
         gRegion = 1;
         float k = dpx / w - (v - 0.5) * ${LAVA_FLOW.crack.toFixed(3)};
-        c = k < 0.25 && w > 1.4 ? uG[2] : k < 0.7 ? uG[1] : uG[0];
+        c = k < 0.25 && wHero > 1.4 ? uG[2] : k < 0.7 ? uG[1] : uG[0]; // yellow down the widest (world width)
       }
     } else {
       // gas giant: turbulent alternating bands and a storm
@@ -900,7 +928,7 @@ function makePlanet() {
   group.userData.depthFamily = 'planet'; // fades through the planet set, not the crew's
   const surfaceMat = paletteMaterial(PLANET_FRAG, {}, {
     uBiome: { value: 0 }, uA: ramp5(), uB: ramp5(), uC: ramp5(), uG: { value: [0, 1, 2].map(() => new THREE.Color()) },
-    uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 }, uPoolCut: { value: 9 }, uRegions: { value: 0 },
+    uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 }, uPoolCut: { value: 9 }, uRegions: { value: 0 }, uCrackLift: { value: 0 },
     uBands: { value: new THREE.Vector3(0.2, 0.58, 0.86) }, // lit directional terminator, crescent bands
     // artefacts (artefacts.js): off while uArtN = 0
     uArtN: { value: 0 }, uArtTick: { value: 0 }, uArtTeal: { value: 0 }, uArtDebug: { value: 0 }, uLavaMode: { value: 0 }, uLavaTime: { value: new THREE.Vector2(1, 0) }, uArtTealC: { value: new THREE.Color(ACCENTS.reveal[3]) }, // [OIII] teal, garnish only
@@ -981,8 +1009,12 @@ function makePlanet() {
   let moonReach = 1; // moon orbits scale out with a ring pushed past the thin preset's distance
   // cover: optional override of the biome's WEATHER cover (the viewer's cloud slider).
   // ringGeo: { inner, width } (RING); defaults to the ringMode preset.
-  function rebuild(seed, biomeKey = 'lush', ringMode = 'thin', cover = null, ringGeo = RING_PRESETS[ringMode]) {
-    const key = `${seed}|${biomeKey}|${ringMode}|${cover}|${ringGeo?.inner}|${ringGeo?.width}`;
+  // size: the planet's size (~ LOC), its group scale; it also sets how many cracks show (crackLift).
+  function rebuild(seed, biomeKey = 'lush', ringMode = 'thin', cover = null, ringGeo = RING_PRESETS[ringMode], size = 1) {
+    const lift = crackLift(size);
+    group.scale.setScalar(size);
+    surfaceMat.uniforms.uCrackLift.value = lift;
+    const key = `${seed}|${biomeKey}|${ringMode}|${cover}|${ringGeo?.inner}|${ringGeo?.width}|${biomeKey === 'lava' ? lift : ''}`; // size only moves lava ash (crack set)
     if (key === built) return;
     built = key;
     const biome = BIOMES[biomeKey];
@@ -1054,14 +1086,14 @@ function makePlanet() {
         // crackMask, poolField), plus a patch field so only some of them smoke. Sites off the
         // visible fissures and shores (solid crust, the open middle of a lake) never qualify.
         const o = surfaceMat.uniforms.uSeedOff.value;
-        const { freq, cut, pool } = CRACKS.lava;
+        const { freq, cut, half, tip, pool } = CRACKS.lava;
         const openCut = surfaceMat.uniforms.uPoolCut.value;
         const patch = makeFbm3(seed * 23 + 3);
         raw = dirs.map((d) => {
           const { edge, own, across } = voronoiCells(d.x * freq + o.x, d.y * freq + o.y, d.z * freq + o.z);
           const open = [own, across].filter((c) => poolField(...c, o.x, o.y, o.z, pool.scale) > openCut).length;
           if (open === 2) return -1; // inside a lake: no edge shows here
-          if (open === 0 && THREE.MathUtils.smoothstep(crackMask(d.x, d.y, d.z, freq, o.x, o.y, o.z), cut, cut + 0.25) < 0.4) return -1; // the shader draws no crack here
+          if (open === 0 && crackShare(crackMask(d.x, d.y, d.z, freq, o.x, o.y, o.z), cut, lift) * half < tip) return -1; // the shader draws no crack here (crackHero)
           return 1 - (edge / freq) * 8 + (patch(d.x * 1.6, d.y * 1.6, d.z * 1.6) - 0.5) * 0.25; // edge / freq: sphere units to the fissure or shore
         });
       } else {
@@ -1498,9 +1530,8 @@ const SYSTEM = [
   { biome: 'toxic', seed: 13, size: 1.1, ring: 'off', pos: [13, 1.2, -36] },
 ].map((cfg) => {
   const p = makePlanet();
-  p.rebuild(cfg.seed, cfg.biome, cfg.ring); // ring geometry: the preset of cfg.ring
+  p.rebuild(cfg.seed, cfg.biome, cfg.ring, null, RING_PRESETS[cfg.ring], cfg.size);
   p.group.position.set(...cfg.pos);
-  p.group.scale.setScalar(cfg.size);
   scene.add(p.group);
   return p;
 });
@@ -1572,10 +1603,7 @@ function applyState() {
   planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   controls.minDistance = minOrbit();
-  planets.forEach((p) => {
-    p.rebuild(state.seed, state.biome, state.ringMode, state.cover, { inner: state.ringInner, width: state.ringWidth });
-    p.group.scale.setScalar(state.size);
-  });
+  planets.forEach((p) => p.rebuild(state.seed, state.biome, state.ringMode, state.cover, { inner: state.ringInner, width: state.ringWidth }, state.size));
   // Which objects a view shows: showcase (hero + depth copies + crew), solo planet, or the system.
   const sceneMode = VIEWS[state.view]?.scene ?? 'showcase';
   planets.forEach((p, i) => (p.group.visible = sceneMode === 'showcase' || (sceneMode === 'solo' && i === 0)));
