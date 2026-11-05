@@ -1,0 +1,213 @@
+// The committed palette (AGENTS.md Rule 5): pinned to a fixture so it only changes on purpose,
+// plus invariant checks that each run against the real palette and against a broken copy.
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { palette, type Palette } from '../src/core/palette.js';
+
+const ROOT = join(import.meta.dirname, '..');
+const GOLDEN = join(import.meta.dirname, 'golden/palette.v1.json');
+const BLK_36: string[] = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/blk-36.published.json'), 'utf8')).colors;
+const TEAL = ['#004538', '#007c66', '#00bc9c', '#00ffd5'];
+
+// The palette's own type pins each literal; a broken copy widens them so a test can write other values.
+type Mutable<T> = T extends string ? string : T extends number ? number : T extends readonly (infer U)[] ? Mutable<U>[] : { -readonly [K in keyof T]: Mutable<T[K]> };
+/** A writable deep copy to break on purpose (the real palette is frozen). */
+const broken = (): Mutable<Palette> => structuredClone(palette) as unknown as Mutable<Palette>;
+
+/** Every string leaf, with its path (e.g. `world.ocean[2]`). */
+function strings(v: unknown, at = ''): [string, string][] {
+  if (typeof v === 'string') return [[at, v]];
+  if (Array.isArray(v)) return v.flatMap((x, i) => strings(x, `${at}[${i}]`));
+  if (typeof v === 'object' && v !== null) return Object.entries(v).flatMap(([k, x]) => strings(x, at ? `${at}.${k}` : k));
+  return [];
+}
+const hexes = (v: unknown) => strings(v).map(([, h]) => h);
+
+/**
+ * Sorted-keys JSON with a two-space indent and a trailing newline. Byte-stable like canonicalJson,
+ * but keeps the depth strengths as the floats §5 states (canonicalJson only takes integers).
+ */
+const sortedJson = (v: unknown) => JSON.stringify(v, (_, x: unknown) => typeof x === 'object' && x !== null && !Array.isArray(x)
+  ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x, 2) + '\n';
+
+// ---------------------------------------------------------------- invariants
+
+const notLowerRgb = (p: unknown) => strings(p).filter(([, h]) => !/^#[0-9a-f]{6}$/.test(h)).map(([at]) => at);
+const pureBlack = (p: unknown) => strings(p).filter(([, h]) => h.toLowerCase() === '#000000').map(([at]) => at);
+const notBlk36 = (p: { readonly crew: unknown }) => strings(p.crew).filter(([, h]) => !BLK_36.includes(h)).map(([at]) => `crew.${at}`);
+/** Depth strengths are fractions (0..1, never 380 for 0.38) that only grow with distance. */
+const depthViolations = (p: { readonly world: { readonly depth: readonly { readonly strength: number }[] } }) =>
+  p.world.depth.flatMap(({ strength }, i, all) => strength < 0 || strength > 1 || strength < (all[i - 1]?.strength ?? 0)
+    ? [`world.depth[${i}].strength ${strength}`] : []);
+const tealMismatch = (p: { readonly accent: unknown }) => JSON.stringify(p.accent) === JSON.stringify({ teal: TEAL }) ? [] : ['accent'];
+
+/** OKLCH lightness, chroma and hue (degrees) of an sRGB hex. */
+function oklch(hex: string): { L: number; C: number; H: number } {
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (c: number) => (c /= 255) <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  const [r, g, b] = [lin((n >> 16) & 255), lin((n >> 8) & 255), lin(n & 255)];
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
+  const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+  const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  return { L, C: Math.hypot(A, B), H: ((Math.atan2(B, A) * 180) / Math.PI + 360) % 360 };
+}
+
+/**
+ * The hue bands rings and clouds may never use (art-direction §4), in OKLCH hue degrees:
+ * pink [330, 30), violet [285, 330), yellow [75, 115). A colour only counts as one of them if it
+ * visibly carries the hue, at chroma ≥ 0.08, so creams like #f2d8b8 (C 0.05) and #fffaf0 pass.
+ * Calibrated on the rejected v2 ring #ff86bf (pink, H 352), #8463e6 (violet, H 291), #ffd38a
+ * (yellow, H 79) and the removed cloud mid-shadow #8f74b0 (violet, H 304).
+ */
+function bannedHue(hex: string): string | undefined {
+  const { C, H } = oklch(hex);
+  if (C < 0.08) return undefined;
+  if (H >= 330 || H < 30) return 'pink';
+  if (H >= 285) return 'violet';
+  if (H >= 75 && H < 115) return 'yellow';
+  return undefined;
+}
+/**
+ * The one named exception: the cloud's warm-shadow ramp step #30285a (L 0.31, C 0.09, H 288), a deep
+ * navy-plum one step above space that art-direction §4 sets explicitly (Cloud ramp, Halo).
+ */
+const APPROVED_SHADOWS = new Set(['#30285a']);
+
+type RingAndCloud = { readonly world: { readonly [K in 'ring' | 'cloud' | 'ocean']: readonly string[] } };
+/**
+ * The ring's family. What ships is one ring ramp shared by every biome, built from lush colours
+ * (art-direction §4 Rings: ocean darkest, cloud cream, ocean step, pale ocean), so the ring may only
+ * use ocean and cloud colours. Clouds are a family ramp themselves (§4), so the hue ban is their check.
+ */
+function ringAndCloudViolations(p: RingAndCloud): string[] {
+  const family = new Set([...p.world.ocean, ...p.world.cloud]);
+  const out: string[] = [];
+  for (const [i, h] of p.world.ring.entries()) if (!family.has(h)) out.push(`world.ring[${i}] ${h} is not an ocean or cloud colour`);
+  for (const role of ['ring', 'cloud'] as const) {
+    for (const [i, h] of p.world[role].entries()) {
+      const band = APPROVED_SHADOWS.has(h) ? undefined : bannedHue(h);
+      if (band) out.push(`world.${role}[${i}] ${h} is ${band}`);
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- colour literals in source
+
+/**
+ * Hex colours (#rgb, #rgba, #rrggbb, #rrggbbaa) right after a quote or a colon, so TS `#private`
+ * members and issue refs like "Qodo #123" in comments don't count; 0xrrggbb; CSS rgb()/rgba()/hsl()/hsla().
+ * Not covered: colours written as GLSL vec3/vec4 floats, which need a shader-aware check.
+ */
+const COLOUR_LITERAL = /(?<=['"`]|:\s*)#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})\b|\b0x[0-9a-f]{6}\b|\b(?:rgba?|hsla?)\(/gi;
+const colourLiterals = (text: string) => [...text.matchAll(COLOUR_LITERAL)].map((m) => m[0]);
+const PALETTE_MODULE = 'src/core/palette.ts';
+const SOURCE = /\.(?:[cm]?[jt]sx?|glsl|vert|frag|css|html)$/;
+
+/** Source files under `dir`, repo-relative with '/' separators; never enters node_modules or dist. */
+function sourceFiles(dir: string): string[] {
+  if (!existsSync(join(ROOT, dir))) return [];
+  return readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap((e) => {
+    const path = `${dir}/${e.name}`;
+    if (e.isDirectory()) return e.name === 'node_modules' || e.name === 'dist' ? [] : sourceFiles(path);
+    return SOURCE.test(e.name) ? [path] : [];
+  });
+}
+
+// ---------------------------------------------------------------- tests
+
+describe('palette', () => {
+  it('matches the pinned fixture (update deliberately with UPDATE_GOLDEN=1 and a Golden-Update: reason)', () => {
+    const json = sortedJson(palette);
+    if (process.env['UPDATE_GOLDEN'] === '1') writeFileSync(GOLDEN, json);
+    expect(json).toBe(readFileSync(GOLDEN, 'utf8'));
+  });
+
+  it('is frozen, so nothing can retune it at runtime', () => {
+    expect(() => { (palette.world.ocean as unknown as string[])[2] = '#ff00ff'; }).toThrow(TypeError);
+    expect(palette.world.ocean[2]).toBe('#2b6ee0');
+  });
+
+  it('writes every colour as lowercase #rrggbb', () => {
+    expect(hexes(palette).length).toBeGreaterThan(100);
+    expect(notLowerRgb(palette)).toEqual([]);
+    const b = broken();
+    b.world.cap[3] = '#FFFFFF';
+    b.world.halo = '#fff';
+    expect(notLowerRgb(b)).toEqual(['world.cap[3]', 'world.halo']);
+  });
+
+  it('has no pure black anywhere', () => {
+    expect(pureBlack(palette)).toEqual([]);
+    const b = broken();
+    b.world.space = '#000000';
+    b.crew.visor[0] = '#000000';
+    expect(pureBlack(b)).toEqual(['world.space', 'crew.visor[0]']);
+  });
+
+  it('takes every crew colour unchanged from published BLK 36', () => {
+    expect(notBlk36(palette)).toEqual([]);
+    const b = broken();
+    b.crew.suit[0] = '#4186d8'; // retuned by one step
+    expect(notBlk36(b)).toEqual(['crew.suit[0]']);
+  });
+
+  it('has exactly the four [OIII] teal accent values', () => {
+    expect(tealMismatch(palette)).toEqual([]);
+    const extra = broken();
+    extra.accent.teal.push('#9cfff0');
+    expect(tealMismatch(extra)).toEqual(['accent']);
+    const retuned = broken();
+    retuned.accent.teal[3] = '#00ffd4';
+    expect(tealMismatch(retuned)).toEqual(['accent']);
+  });
+
+  it('gives depth strengths as the §5 fractions, rising with distance', () => {
+    expect(palette.world.depth.map((s) => s.strength)).toEqual([0, 0.38, 0.72, 0.88]);
+    expect(depthViolations(palette)).toEqual([]);
+    const b = broken();
+    b.world.depth[1]!.strength = 380; // a permille value slipped in
+    b.world.depth[3]!.strength = 0.5; // fades less than the step before it
+    expect(depthViolations(b)).toEqual(['world.depth[1].strength 380', 'world.depth[2].strength 0.72', 'world.depth[3].strength 0.5']);
+  });
+
+  it('draws rings from the planet family and keeps rings and clouds off pink, violet and yellow', () => {
+    expect(ringAndCloudViolations(palette)).toEqual([]);
+    const b = broken();
+    b.world.ring[2] = '#ff86bf'; // the rejected v2 pink ring
+    b.world.ring[3] = '#ffd38a'; // the rejected v2 yellow speck
+    b.world.cloud[1] = '#8f74b0'; // the removed purple cloud mid-shadow
+    expect(ringAndCloudViolations(b)).toEqual([
+      'world.ring[2] #ff86bf is not an ocean or cloud colour',
+      'world.ring[3] #ffd38a is not an ocean or cloud colour',
+      'world.ring[2] #ff86bf is pink',
+      'world.ring[3] #ffd38a is yellow',
+      'world.cloud[1] #8f74b0 is violet',
+    ]);
+    const fungus = broken();
+    fungus.world.ring[0] = '#381444'; // dark toxic-fungus violet: another biome's colour
+    fungus.world.ring[2] = '#c678d2'; // light toxic-fungus violet
+    fungus.world.cloud[0] = '#29174c'; // a dark violet in place of the approved shadow
+    expect(ringAndCloudViolations(fungus)).toEqual([
+      'world.ring[0] #381444 is not an ocean or cloud colour', 'world.ring[2] #c678d2 is not an ocean or cloud colour',
+      'world.ring[0] #381444 is violet', 'world.ring[2] #c678d2 is violet', 'world.cloud[0] #29174c is violet',
+    ]);
+  });
+
+  it('is the only source file with colour literals', () => {
+    const files = [...sourceFiles('src'), ...sourceFiles('web')];
+    expect(files.length).toBeGreaterThan(10);
+    expect(files).toContain(PALETTE_MODULE);
+    expect(colourLiterals(readFileSync(join(ROOT, PALETTE_MODULE), 'utf8')).length).toBeGreaterThan(100);
+    const offenders = files.filter((f) => f !== PALETTE_MODULE)
+      .flatMap((f) => colourLiterals(readFileSync(join(ROOT, f), 'utf8')).map((c) => `${f}: ${c}`));
+    expect(offenders).toEqual([]);
+    expect(colourLiterals("renderer.setClearColor(0x000000); const c = '#FF00FF', d = \"#fff\";\nbody { color: #0d0b16; fill: rgb(0, 0, 0); }"))
+      .toEqual(['0x000000', '#FF00FF', '#fff', '#0d0b16', 'rgb(']);
+    expect(colourLiterals('// Qodo #123, issue #5\nclass A { #decade = 1; #fade() { this.#facade(); } }')).toEqual([]);
+  });
+});
