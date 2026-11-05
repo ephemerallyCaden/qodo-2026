@@ -47,7 +47,12 @@ export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
 const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
 let paletteName = 'final';
 // Ramp keys are paths into the active palette, e.g. 'ocean' or 'contributors.mint'.
-const resolve = (key) => key.split('.').reduce((o, k) => o?.[k], PALETTES[paletteName]);
+// A missing sub-key falls back to its parent (e.g. 'ring.lush' -> 'ring' on palettes
+// that have one ring ramp for every biome).
+const resolve = (key) => {
+  const v = key.split('.').reduce((o, k) => o?.[k], PALETTES[paletteName]);
+  return v !== undefined || !key.includes('.') ? v : resolve(key.split('.').slice(0, -1).join('.'));
+};
 
 const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object (or, per pixel, a fragment) drops a level
 const depthCache = new Map();
@@ -963,6 +968,7 @@ function makePlanet() {
     surfaceMat.userData.ramps = { uA: a, uB: b, uC: c, uG: g };
     haze.visible = !!biome.haze;
     if (biome.haze) hazeMat.userData.ramps = { uHaze: biome.haze };
+    ringMat.userData.ramps = { uRamp: `ring.${biomeKey}` };
     const weather = WEATHER[biome.weather];
     if (weather) cloudMat.userData.ramps = { uRamp: weather.ramp };
     group.userData.depthLevel = -1; // re-tint with the new ramps
