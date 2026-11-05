@@ -42,7 +42,7 @@ npm test         # cloud regression tests: puff handedness (det > 0), hollow-rin
 | artefacts | Planet artefacts (off by default): corrupted sectors that glitch the planet's own colours, on every planet. **auto (by size)** (default) scales the sector count with planet size: 1 on the smallest (0.25) up to 5 on the biggest (2.2), linear in radius and rounded; **sectors** is a manual override (1–5); sector positions are seeded from the planet seed. **teal accent** adds the optional [OIII] teal on a few core glyphs |
 | loop (s), surface turns, cloud turns | The shared loop: period (default 24 s) and whole surface and cloud-layer turns per loop (default 2 and 3, so clouds drift at 1.5× the ground). Every layer completes whole cycles per loop |
 | cloud shadow | A faint one-step-darker shadow of the clouds on the terrain, offset along the light (on by default) |
-| palette | **final** (default: BLK 36 crew and space + Earth-like planets), v2, v1, or any of the 25 Lospec palettes (plus spares) |
+| palette | **final** (default: BLK 36 crew and space + Earth-like planets) or any of the 25 Lospec palettes (plus spares) |
 | drag / scroll | Orbits and zooms the camera |
 
 ## How it's built (`viewer.js`)
@@ -57,27 +57,6 @@ npm test         # cloud regression tests: puff handedness (det > 0), hollow-rin
 - **Artefacts** (`artefacts.js`, ported from the ASCII FX round 2 pick, concept 3 "planet artefacts" in its filter form; `feature/ascii-fx` 29c64a1): `ARTEFACTS_GLSL` runs inside the planet surface shader, whose colour is now a `surface(p, band)` function. Sectors are fixed directions in the planet's own frame, so they turn with it and pass under the clouds. Each sector is a screen-aligned grid of 6 px glyph cells (×2 at 360p) anchored at its projected centre, squashed by how much it faces the camera. **Glyph clamp** (`ART_CELLS`, 3–10): a sector always spans 3 to 10 cells across. Zooming in grows the glyph pixel by whole internal pixels (6, 12, 18 px cells…) instead of adding cells, and zooming out holds a sector at 3 cells; discs too small to hold that (under 13.5 px radius at 180p) are skipped. Without the clamp, the very close zoom in `test/artefact-clamp.test.mjs` drew a 33 × 27 grid of 6 px cells; now it draws about 10 × 9 cells of 18 px (36 px at 360p). The default hero is pixel-identical. That test reads the shader's artefact debug view (`viewer.set({ artDebug: true })`: each cell painted with its index, row slip off) at far, default and very close zoom (180p and 360p), and checks the bounds, the rendered extent and whole-pixel square cells. Every cell calls `surface()` again: a bug glyph in the terrain's inverted lightness on a darker band, a flat terrain block, terrain moshed in from elsewhere, flipped light bands, or torn rows. Changes from the reference: projection, sector size and cell scale are worked out in the shader, so it works for any planet and camera (planets too small for a 3-cell sector are skipped); sector longitudes step by the golden angle so one usually faces the camera; and a glyph that would vanish into its band (lava's near-black crust) switches to inverted lightness, so lava stays legible. Glitches re-roll on a loop-locked tick (180 per surface turn; every per-cell rate, 2–6 ticks, divides it). With artefacts off the output is pixel-identical to the shader without them (`npm test`).
 - **Depth darkening**: each whole object picks one of four levels from its camera distance (switch points at 12, 26 and 44). Its ramps are swapped for precomputed steps: `lerp(colour, #1b1f4a, 0 / 0.38 / 0.72)`, then `lerp(colour, #17172f, 0.88)` for the last step. That gives about -35% value at mid, about -70% far, and a dark navy silhouette with a faint hint of colour furthest out. The silhouette tint sits a touch above the near-black space so it still reads. Every step is a fixed palette colour; there are no gradients. **Depth mode** (`DEPTH_MODES`, viewer control): `pixel-smooth` (**default**, the human's pick) grades continuously per pixel on log distance from 5 to 44 through the palette's depth steps, so distance reads across every planet. `pixel-stepped` picks the level per fragment from its own camera distance, with the same thresholds, tints and strengths, so a planet, ring, cloud layer or astronaut that straddles a threshold shows its near part at the nearer level with a crisp pixel edge (a big planet's limb vs its centre, a ring's far arc vs its near arc). `object` is the original per-object fade (ramps pre-faded on the CPU; pixel-identical to 735b3b5). `levels` paints each fragment in its level colour (red, green, blue, yellow) for debugging. Every fading shader (surface, artefacts, clouds, cloud shadow, ring, moons, haze, halo, astronauts) calls the same `depthFade()` (`DEPTH_GLSL`); the thresholds are `DEPTH_RANGES` and the strengths come from the palette's `depth` table. Lava glow fades at half strength, so a far lava world still glows. In the pixel modes, Lospec palettes are lerped but not snapped back onto their own colours (snapping is per object only). **Depth bands** (`DEPTH_BANDS`, viewer control, per-pixel modes only): `3-band` (default, the original thresholds), `6-band` and `8-band` (levels on geometric thresholds from 6 to 44, thin near and wide far, interpolating the palette's 4 steps for the same overall strength range). pixel-smooth grades on log distance from 5 to 44. `screenshots/depth-options-sheet.png` compares object, 3-, 6-, 8-band and smooth across the depth scene, system and hero frames; `planets/depth-6band.gif`, `depth-8band.gif` and `depth-smooth.gif` are 6 s system-view loops.
 
-## Palette
-
-v2 is the current palette. v1 (the batch 1 pastels) stays selectable from the `palette` control for comparison; `screenshots/palette-before-after.png` shows v1 on the left and v2 on the right.
-
-| Ramp (dark → light) | v2 (current) | v1 (batch 1) |
-|---|---|---|
-| space | `#0d0b16` | `#2b2535` |
-| stars | `#3b3866` `#9a90e0` `#fff8ff` | `#5d5372` `#a99cbf` `#f4ecf7` |
-| ocean | `#141d5c` `#1d3fa6` `#2b6ee0` `#4ea3f7` `#94dcff` | `#2f3a62` `#3f5794` `#5a7fc0` `#80a9dc` `#acd3ee` |
-| land | `#123d33` `#1d7350` `#38a85a` `#7cd65a` `#d0f56c` | `#33504a` `#4c7a5a` `#6fa36a` `#9cc678` `#cfe39a` |
-| polar cap | `#3f4590` `#98a3e8` `#dfe5ff` `#ffffff` | `#6e6a86` `#b9b3c9` `#e6e0ee` `#fbf8ff` |
-| cloud | `#30285a` `#8f74b0` `#f2d8b8` `#fffaf0` | `#6e6274` `#b39c94` `#e3cdb0` `#fff6e4` |
-| ring | `#3a2a78` `#8463e6` `#ff86bf` `#ffd38a` | `#5d4e72` `#8f7fae` `#d8a9b8` `#f2d6b3` |
-| contributor coral | `#5c1838` `#cc3f4f` `#ff7663` `#ffbb8c` | `#6e3a4c` `#b85c66` `#f08e7f` `#ffc4a8` |
-| contributor mint | `#0e4247` `#0fa384` `#33e6a8` `#a6ffd8` | `#2c5a5a` `#3f9886` `#6fd1b0` `#bff2da` |
-| contributor lilac | `#2a1a74` `#6948ea` `#a27aff` `#dac9ff` | `#433a74` `#7563bd` `#a993ec` `#dccfff` |
-| depth tints | `#1b1f4a` (0.38, 0.72), `#17172f` (0.88) | `#262a46` (0.35, 0.7), `#110f18` (0.88) |
-| suit (cool white, both) | `#68718f` `#a3aec8` `#d3dcea` `#f2f6fc` | |
-| gear: mitts, boots, backpack, visor rim (both) | `#4a5170` `#77819f` `#a2adc6` `#c4cee0` | |
-| visor (both) | `#0f1329` `#232f58`, glint `#f4f8ff` | |
-
 ## The "final" palette
 
 `final` (the default, the human's call after revision 5):
@@ -88,9 +67,7 @@ v2 is the current palette. v1 (the batch 1 pastels) stays selectable from the `p
 - **Lava:** the crust is truly near-black, with cool blue-grey shadows (`#0b0a10` `#17151d` `#262129`, warming to `#382c30` in full light). The glow is orange with yellow only as an accent: rim `#c9361a`, body `#ff761a`, hottest cores `#ffc93c` (was `#d63c1a` `#ff8a1e` `#ffe066`).
 - **Toxic:** ochre sludge seas, acid-lime growth and purple fungus, so it can't be read as lush.
 
-`final-blk` keeps the revision 5 mix for comparison: BLK 36 crew, banded BLK 36 space, and the research ×2 13-colour shared planet set with its own planet depth family (`RESEARCH_RAMPS` and `PLANET_DEPTH`; the OKLCH/source table is in `planet-ramps.js`).
-
-Non-colour revision 5 work applies to both presets:
+Non-colour revision 5 work:
 - **Rings:** chunky 2×2/plus clustered debris, with the front arc over the disc and the back arc hidden.
 - **Hero:** ~45% of frame height in close-ups.
 - **Stars:** sparse and static.
@@ -219,4 +196,3 @@ Every tile is the same shot: the `depth` view (crew in front, hero planet, then 
 | `screenshots/lush-before-after.png` | Lush planet close-up at ea84759 (v2 ramps) vs the research ×2 set |
 | `screenshots/planet-halo.png` | The optional dark-halo toggle |
 | `screenshots/planets/system-shot.png` | 8 mixed planets at several depths and sizes plus the crew (previews the GIF composition) |
-| `screenshots/palette-before-after.png` | Depth scene, v1 palette (left) vs v2 (right). `palette-v1-depth.png` is its input |

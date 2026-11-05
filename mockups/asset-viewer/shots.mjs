@@ -5,7 +5,7 @@
 //        node shots.mjs --planets    (biome variety sheet, system shot, hero loop GIF, colour counts)
 //        node shots.mjs --planets lava-layered   (the sheets plus only the named loop GIFs)
 import { chromium } from 'playwright';
-import { access, mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,7 +30,6 @@ const SHOTS = {
   'clouds-zoom': { view: 'planet', time: 3, camera: { pos: [0.95, 0.55, 3.3], target: [0, -0.1, 0] } }, // the user's report framing
   'pixel-120': { view: 'planet', time: 3, pixelH: 120 },
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
-  'palette-v1-depth': { view: 'depth', time: 2, palette: 'v1' }, // input for the before/after
 };
 const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-smooth', depthBands: '3-band', artefacts: false, artAuto: true, artCount: 3, artTeal: false, cover: null, lavaMode: 'layered', lavaTime: null };
 
@@ -339,14 +338,3 @@ if (PALETTE_MODE) {
 }
 await browser.close();
 if (errors.length) throw errors[0];
-
-// Before/after palette strip (v1 left, v2 right), if ffmpeg is around.
-const FFMPEG = process.env.FFMPEG ?? '/opt/homebrew/bin/ffmpeg';
-const before = path.join(outDir, 'palette-v1-depth.png');
-const after = path.join(outDir, 'depth-scene.png');
-const ok = await Promise.all([FFMPEG, before, after].map((f) => access(f).then(() => true, () => false)));
-if (!PALETTE_MODE && !PLANET_MODE && ok.every(Boolean)) {
-  execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-i', before, '-i', after, '-filter_complex',
-    '[0]scale=640:360:flags=neighbor[a];[1]scale=640:360:flags=neighbor[b];[a][b]hstack', path.join(outDir, 'palette-before-after.png')]);
-  console.log('screenshots/palette-before-after.png');
-}

@@ -98,7 +98,7 @@ export function mapPalette(slug, hints = {}) {
   return mapColors(src.colors, { name: src.name, url: src.url }, hints);
 }
 
-/** Map any list of hexes onto every role (used for Lospec palettes and to extend v1/v2). */
+/** Map any list of hexes onto every role (used for Lospec palettes). */
 export function mapColors(hexes, { name = '', url = '' } = {}, hints = {}) {
   const cols = [...new Set(hexes.map((h) => h.replace('#', '').toLowerCase()))].map(oklab);
   const byL = [...cols].sort((a, b) => a.L - b.L);

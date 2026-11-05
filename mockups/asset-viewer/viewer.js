@@ -6,8 +6,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EYE_DESIGNS, EYES_GLSL, eyesFor } from './faces.js';
 import { LOSPEC, LOSPEC_ORDER, SPARES } from './palettes.js';
-import { mapPalette, mapColors, snapToPool } from './palette-map.js';
-import { V2_PLANET_RAMPS, RESEARCH_RAMPS, PLANET_DEPTH, ACCENTS } from './planet-ramps.js';
+import { mapPalette, snapToPool } from './palette-map.js';
+import { V2_PLANET_RAMPS, ACCENTS } from './planet-ramps.js';
 import { tangentFrame } from './cloud-frame.js';
 import { voronoiCells, poolField, crackMask, crackShare } from './snoise.js';
 import { ASTRO_SDF_GLSL, BMIN as ASTRO_BMIN, BMAX as ASTRO_BMAX, SCALE as ASTRO_SCALE, LIFT as ASTRO_LIFT, layout as astroLayout, pose as astroPose } from './astronaut.js';
@@ -16,86 +16,27 @@ import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors, artefactCount } fr
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
 // ---------------------------------------------------------------- palette
-// Ramps run dark -> light. v2 is current: punchier Planetarium-derived colours on
-// near-black blue-plum space. v1 (the batch 1 pastels) is kept for the before/after.
-// Each depth entry is [tint, amount]. Level 0 is near, 1 is mid (about -35% value),
+// Ramps run dark -> light. Each depth entry is [tint, amount]. Level 0 is near, 1 is mid (about -35% value),
 // 2 is far (about -70%), and 3 is a dark silhouette that keeps a faint hint of colour.
 // On near-black space the silhouette tint sits a little above the background so it still reads.
-const SUIT = {
-  suit: ['#68718f', '#a3aec8', '#d3dcea', '#f2f6fc'], // cool white (approved, unchanged)
-  gear: ['#4a5170', '#77819f', '#a2adc6', '#c4cee0'], // mitts, boots, backpack, visor rim
-  visor: ['#0f1329', '#232f58'], // near-black blue, two tones
-  glint: '#f4f8ff',
-};
-export const PALETTES = {
-  v1: {
-    ...SUIT,
-    space: '#2b2535',
-    stars: ['#5d5372', '#a99cbf', '#f4ecf7'],
-    ocean: ['#2f3a62', '#3f5794', '#5a7fc0', '#80a9dc', '#acd3ee'],
-    land: ['#33504a', '#4c7a5a', '#6fa36a', '#9cc678', '#cfe39a'],
-    cap: ['#6e6a86', '#b9b3c9', '#e6e0ee', '#fbf8ff'],
-    cloud: ['#6e6274', '#b39c94', '#e3cdb0', '#fff6e4'],
-    ring: ['#5d4e72', '#8f7fae', '#d8a9b8', '#f2d6b3'],
-    contributors: {
-      coral: ['#6e3a4c', '#b85c66', '#f08e7f', '#ffc4a8'],
-      mint: ['#2c5a5a', '#3f9886', '#6fd1b0', '#bff2da'],
-      lilac: ['#433a74', '#7563bd', '#a993ec', '#dccfff'],
-    },
-    depth: [['#262a46', 0], ['#262a46', 0.35], ['#262a46', 0.7], ['#110f18', 0.88]],
-  },
-  v2: {
-    ...SUIT,
-    space: '#0d0b16',
-    stars: ['#3b3866', '#9a90e0', '#fff8ff'],
-    ocean: ['#141d5c', '#1d3fa6', '#2b6ee0', '#4ea3f7', '#94dcff'],
-    land: ['#123d33', '#1d7350', '#38a85a', '#7cd65a', '#d0f56c'],
-    cap: ['#3f4590', '#98a3e8', '#dfe5ff', '#ffffff'],
-    cloud: ['#30285a', '#8f74b0', '#f2d8b8', '#fffaf0'],
-    ring: ['#3a2a78', '#8463e6', '#ff86bf', '#ffd38a'],
-    contributors: {
-      coral: ['#5c1838', '#cc3f4f', '#ff7663', '#ffbb8c'],
-      mint: ['#0e4247', '#0fa384', '#33e6a8', '#a6ffd8'],
-      lilac: ['#2a1a74', '#6948ea', '#a27aff', '#dac9ff'],
-    },
-    depth: [['#1b1f4a', 0], ['#1b1f4a', 0.38], ['#1b1f4a', 0.72], ['#17172f', 0.88]],
-  },
-};
+export const PALETTES = {};
 // Published palettes, mapped onto our roles using only their own colours.
 for (const slug of [...LOSPEC_ORDER, ...SPARES]) PALETTES[`lospec:${slug}`] = mapPalette(slug);
-// v1/v2 get the biome roles mapped from their own colours; their hand-made ramps win.
-const hexesIn = (o) => (typeof o === 'string' ? (o.startsWith('#') ? [o] : []) : o && typeof o === 'object' ? Object.values(o).flatMap(hexesIn) : []);
-for (const k of ['v1', 'v2']) PALETTES[k] = { ...mapColors(hexesIn(PALETTES[k])), ...PALETTES[k], snap: null };
-// "final": the human's pick. Crew, space, stars and depth exactly as BLK 36 (tile 19);
-// planets, rings and accents from the swappable PLANET_RAMPS data.
+// "final" (the human's call): astronauts BLK 36 exactly (tile 19); space, stars and depth
+// from v2; planets, clouds, caps, haze and rings from V2_PLANET_RAMPS.
 {
   const blk = PALETTES['lospec:blk-36'];
-  // Space is BLK 36's darkest navy (not black), banding down to a lighter navy-violet.
-  const BANDS = ['#12173d', '#29174c', '#412866']; // OKLCH L .23 -> .26 -> .34, H 273 -> 295 -> 299: monotonic, no hue reversal
-  // With navy space, BLK 36 black becomes available to the crew's far silhouettes;
-  // the background colours are kept out of the snap pools so silhouettes never vanish.
-  const snap = blk.snap.map((pool, i) => (pool ? [...new Set([...(i >= 2 ? ['#000000'] : []), ...pool])].filter((h) => !BANDS.includes(h)) : pool));
-  // Revision 5 mix, kept selectable: BLK 36 crew + space, research ×2 planet set.
-  PALETTES['final-blk'] = {
-    ...blk,
-    ...RESEARCH_RAMPS,
-    space: BANDS[0],
-    spaceBands: BANDS,
-    snap,
-    planetDepth: PLANET_DEPTH,
-    name: 'final-blk (BLK 36 crew + space, research x2 planets)',
-  };
-  // "final" (the human's call): astronauts BLK 36 exactly; space, stars, depth,
-  // planets, clouds, caps and haze back to v2; ring from v2 planet colours only.
   const CREW = ['suit', 'gear', 'visor', 'glint', 'contributors'];
   PALETTES.final = {
-    ...PALETTES.v2,
+    space: '#0d0b16',
+    stars: ['#3b3866', '#9a90e0', '#fff8ff'],
+    depth: [['#1b1f4a', 0], ['#1b1f4a', 0.38], ['#1b1f4a', 0.72], ['#17172f', 0.88]],
     ...V2_PLANET_RAMPS,
     ...Object.fromEntries(CREW.map((k) => [k, blk[k]])),
     name: 'final (BLK 36 crew + v2 world)',
   };
 }
-// Other palettes keep a flat background.
+// Every palette keeps a flat background.
 for (const pal of Object.values(PALETTES)) {
   pal.spaceBands ??= [pal.space, pal.space, pal.space];
   // Roles added in revision 5 get stand-ins from each palette's own ramps.
@@ -104,14 +45,9 @@ for (const pal of Object.values(PALETTES)) {
 }
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
 const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
-let paletteName = 'v2';
+let paletteName = 'final';
 // Ramp keys are paths into the active palette, e.g. 'ocean' or 'contributors.mint'.
-// A missing sub-key falls back to its parent (e.g. 'ring.lush' -> 'ring' on palettes
-// that have one ring ramp for every biome).
-const resolve = (key) => {
-  const v = key.split('.').reduce((o, k) => o?.[k], PALETTES[paletteName]);
-  return v !== undefined || !key.includes('.') ? v : resolve(key.split('.').slice(0, -1).join('.'));
-};
+const resolve = (key) => key.split('.').reduce((o, k) => o?.[k], PALETTES[paletteName]);
 
 const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object (or, per pixel, a fragment) drops a level
 const depthCache = new Map();
@@ -175,12 +111,10 @@ const DEPTH_GLSL = /* glsl */ `
   }
 `;
 const depthUniforms = (family = 0) => ({ ...DEPTH_U, uDepthFamily: { value: family } });
-// `family` lets planets fade through their own shared set (palette.planetDepth)
-// while the crew keeps the palette's depth steps.
-function depthColor(hex, level, family = 'crew') {
-  const key = `${paletteName}:${family}:${hex}:${level}`;
+function depthColor(hex, level) {
+  const key = `${paletteName}:${hex}:${level}`;
   if (!depthCache.has(key)) {
-    const pal = family === 'planet' && PALETTES[paletteName].planetDepth ? PALETTES[paletteName].planetDepth : PALETTES[paletteName];
+    const pal = PALETTES[paletteName];
     const [tint, t] = pal.depth[level];
     const c = new THREE.Color(hex).lerp(new THREE.Color(tint), t);
     // Published palettes snap each depth step back onto their own (darker) colours.
@@ -813,8 +747,8 @@ function setDepthLevel(obj, level) {
       for (const [name, key] of Object.entries(m.userData.ramps ?? {})) {
         const hexes = resolve(key);
         const arr = m.uniforms[name].value;
-        if (Array.isArray(arr)) arr.forEach((u, i) => u.copy(depthColor(hexes[Math.min(i, hexes.length - 1)], level, family))); // short ramps repeat their last colour
-        else arr.copy(depthColor(hexes, level, family));
+        if (Array.isArray(arr)) arr.forEach((u, i) => u.copy(depthColor(hexes[Math.min(i, hexes.length - 1)], level))); // short ramps repeat their last colour
+        else arr.copy(depthColor(hexes, level));
       }
     }
   });
@@ -925,7 +859,7 @@ const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size
 
 function makePlanet() {
   const group = new THREE.Group();
-  group.userData.depthFamily = 'planet'; // fades through the planet set, not the crew's
+  group.userData.depthFamily = 'planet'; // planet tint slot of the per-pixel depth fade
   const surfaceMat = paletteMaterial(PLANET_FRAG, {}, {
     uBiome: { value: 0 }, uA: ramp5(), uB: ramp5(), uC: ramp5(), uG: { value: [0, 1, 2].map(() => new THREE.Color()) },
     uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 }, uPoolCut: { value: 9 }, uRegions: { value: 0 }, uCrackLift: { value: 0 },
@@ -1029,7 +963,6 @@ function makePlanet() {
     surfaceMat.userData.ramps = { uA: a, uB: b, uC: c, uG: g };
     haze.visible = !!biome.haze;
     if (biome.haze) hazeMat.userData.ramps = { uHaze: biome.haze };
-    ringMat.userData.ramps = { uRamp: `ring.${biomeKey}` };
     const weather = WEATHER[biome.weather];
     if (weather) cloudMat.userData.ramps = { uRamp: weather.ramp };
     group.userData.depthLevel = -1; // re-tint with the new ramps
@@ -1623,8 +1556,8 @@ function applyState() {
   const levels = from.length + 1;
   DEPTH_U.uDepthLevels.value = levels;
   DEPTH_U.uDepthFrom.value.forEach((_, i, a) => (a[i] = from[i] ?? 1e9));
-  ['planet', 'crew'].forEach((family, f) => {
-    const pal = family === 'planet' && PALETTES[paletteName].planetDepth ? PALETTES[paletteName].planetDepth : PALETTES[paletteName];
+  const pal = PALETTES[paletteName];
+  ['planet', 'crew'].forEach((_, f) => {
     for (let l = 0; l < levels; l++) {
       // the palette's 4 steps, interpolated onto this preset's levels (exact for 3-band)
       const x = (l / (levels - 1)) * 3, i = Math.min(2, Math.floor(x)), u = x - i;
