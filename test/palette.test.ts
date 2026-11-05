@@ -77,21 +77,46 @@ function bannedHue(hex: string): string | undefined {
  */
 const APPROVED_SHADOWS = new Set(['#30285a']);
 
-type RingAndCloud = { readonly world: { readonly [K in 'ring' | 'cloud' | 'ocean']: readonly string[] } };
+/**
+ * Each biome's own ramps, as the asset viewer assigns them (viewer.js BIOMES, WEATHER and haze):
+ * surface ramps, weather and lit-limb haze. Glow is in every biome's surface set.
+ */
+const BIOME_RAMPS = {
+  lush: ['ocean', 'land', 'cap', 'glow', 'cloud'],
+  ocean: ['water', 'land', 'cap', 'glow', 'cloud', 'haze.ocean'],
+  ice: ['ice', 'crevasse', 'water', 'glow', 'haze.ice'],
+  desert: ['sand', 'rock', 'cap', 'glow'],
+  lava: ['crust', 'ash', 'glow'],
+  gas: ['gasA', 'gasB', 'cap', 'glow'],
+  moon: ['moon', 'glow'],
+  toxic: ['sludge', 'toxic', 'fungus', 'glow', 'spore', 'haze.toxic'],
+} as const;
+const isBiome = (b: string): b is keyof typeof BIOME_RAMPS => Object.hasOwn(BIOME_RAMPS, b);
+
 /**
  * The ring's family. What ships is one ring ramp shared by every biome, built from lush colours
- * (art-direction §4 Rings: ocean darkest, cloud cream, ocean step, pale ocean), so the ring may only
- * use ocean and cloud colours. Clouds are a family ramp themselves (§4), so the hue ban is their check.
+ * (art-direction §4 Rings: ocean darkest, cloud cream, ocean step, pale ocean), so it may only use
+ * ocean and cloud colours. Per-biome rings (`ring.<biome>`, the human's planned direction) may only
+ * use that biome's own ramps. Clouds are a family ramp themselves (§4), so the hue ban is their check.
  */
-function ringAndCloudViolations(p: RingAndCloud): string[] {
-  const family = new Set([...p.world.ocean, ...p.world.cloud]);
+function ringAndCloudViolations(p: { readonly world: object }): string[] {
+  const w = p.world as Readonly<Record<string, unknown>>;
+  const colours = (role: string) => hexes(role.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], w));
+  const ring = w['ring'];
   const out: string[] = [];
-  for (const [i, h] of p.world.ring.entries()) if (!family.has(h)) out.push(`world.ring[${i}] ${h} is not an ocean or cloud colour`);
-  for (const role of ['ring', 'cloud'] as const) {
-    for (const [i, h] of p.world[role].entries()) {
-      const band = APPROVED_SHADOWS.has(h) ? undefined : bannedHue(h);
-      if (band) out.push(`world.${role}[${i}] ${h} is ${band}`);
-    }
+  // [path, ramp, owner, owner's colours]
+  const owned: [string, unknown, string, Set<string>][] = Array.isArray(ring)
+    ? [['world.ring', ring, 'ocean or cloud', new Set([...colours('ocean'), ...colours('cloud')])]]
+    : Object.entries(ring ?? {}).map(([b, ramp]) => {
+      if (!isBiome(b)) out.push(`world.ring.${b} is not a biome`);
+      return [`world.ring.${b}`, ramp, `the ${b} biome`, new Set(isBiome(b) ? BIOME_RAMPS[b].flatMap(colours) : [])];
+    });
+  for (const [path, ramp, owner, family] of owned) {
+    for (const [at, h] of strings(ramp, path)) if (!family.has(h)) out.push(`${at} ${h} is not from ${owner}`);
+  }
+  for (const [at, h] of [...strings(ring, 'world.ring'), ...strings(w['cloud'], 'world.cloud')]) {
+    const band = APPROVED_SHADOWS.has(h) ? undefined : bannedHue(h);
+    if (band) out.push(`${at} ${h} is ${band}`);
   }
   return out;
 }
@@ -182,8 +207,8 @@ describe('palette', () => {
     b.world.ring[3] = '#ffd38a'; // the rejected v2 yellow speck
     b.world.cloud[1] = '#8f74b0'; // the removed purple cloud mid-shadow
     expect(ringAndCloudViolations(b)).toEqual([
-      'world.ring[2] #ff86bf is not an ocean or cloud colour',
-      'world.ring[3] #ffd38a is not an ocean or cloud colour',
+      'world.ring[2] #ff86bf is not from ocean or cloud',
+      'world.ring[3] #ffd38a is not from ocean or cloud',
       'world.ring[2] #ff86bf is pink',
       'world.ring[3] #ffd38a is yellow',
       'world.cloud[1] #8f74b0 is violet',
@@ -193,9 +218,22 @@ describe('palette', () => {
     fungus.world.ring[2] = '#c678d2'; // light toxic-fungus violet
     fungus.world.cloud[0] = '#29174c'; // a dark violet in place of the approved shadow
     expect(ringAndCloudViolations(fungus)).toEqual([
-      'world.ring[0] #381444 is not an ocean or cloud colour', 'world.ring[2] #c678d2 is not an ocean or cloud colour',
+      'world.ring[0] #381444 is not from ocean or cloud', 'world.ring[2] #c678d2 is not from ocean or cloud',
       'world.ring[0] #381444 is violet', 'world.ring[2] #c678d2 is violet', 'world.cloud[0] #29174c is violet',
     ]);
+  });
+
+  it('checks a per-biome ring (ring.<biome>) against that biome\'s own ramps', () => {
+    const withRings = (ring: unknown) => {
+      const b = broken();
+      (b.world as unknown as { ring: unknown }).ring = ring;
+      return ringAndCloudViolations(b);
+    };
+    // Built from each biome's own ramps: rock and sand; crevasse and ice. Not proposed colours, just test data.
+    expect(withRings({ desert: ['#2e1c14', '#7a4c30', '#d8944a'], ice: ['#16234e', '#3a64b0', '#e6f4ff'] })).toEqual([]);
+    expect(withRings({ desert: ['#2e1c14', '#2b6ee0', '#a4744c'] })).toEqual(['world.ring.desert[1] #2b6ee0 is not from the desert biome']);
+    expect(withRings({ swamp: ['#2e1c14'] })).toEqual(['world.ring.swamp is not a biome', 'world.ring.swamp[0] #2e1c14 is not from the swamp biome']);
+    expect(withRings({ toxic: ['#381444', '#c678d2'] })).toEqual(['world.ring.toxic[0] #381444 is violet', 'world.ring.toxic[1] #c678d2 is violet']);
   });
 
   it('is the only source file with colour literals', () => {
