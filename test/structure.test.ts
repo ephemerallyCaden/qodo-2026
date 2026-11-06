@@ -291,25 +291,25 @@ describe('scan from a subdirectory', () => {
   });
 });
 
-describe('local Qodo review (#16 r1)', () => {
-  /** A throwaway repo whose commits run in order at fixed dates. */
-  function scratch() {
-    const d = mkdtempSync(join(tmpdir(), 'commet-scratch-'));
-    let n = 0;
-    const env = { ...process.env, GIT_AUTHOR_NAME: 'Ada Self', GIT_AUTHOR_EMAIL: 'self@example.com',
-      GIT_COMMITTER_NAME: 'Ada Self', GIT_COMMITTER_EMAIL: 'self@example.com' };
-    const git = (...args: string[]) => {
-      const at = `2026-07-${String(++n).padStart(2, '0')}T10:00:00Z`;
-      return execFileSync('git', args, { cwd: d, encoding: 'utf8', env: { ...env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } }).trim();
-    };
-    const write = (path: string, body: string | Buffer) => {
-      execFileSync('mkdir', ['-p', join(d, path, '..')]);
-      writeFileSync(join(d, path), body);
-    };
-    git('init', '-q', '-b', 'main');
-    return { dir: d, git, write, scan: async () => (await run({ repoDir: d })).snapshot };
-  }
+/** A throwaway repo whose commits run in order at fixed dates. */
+function scratch() {
+  const d = mkdtempSync(join(tmpdir(), 'commet-scratch-'));
+  let n = 0;
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'Ada Self', GIT_AUTHOR_EMAIL: 'self@example.com',
+    GIT_COMMITTER_NAME: 'Ada Self', GIT_COMMITTER_EMAIL: 'self@example.com' };
+  const git = (...args: string[]) => {
+    const at = `2026-07-${String(++n).padStart(2, '0')}T10:00:00Z`;
+    return execFileSync('git', args, { cwd: d, encoding: 'utf8', env: { ...env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } }).trim();
+  };
+  const write = (path: string, body: string | Buffer) => {
+    execFileSync('mkdir', ['-p', join(d, path, '..')]);
+    writeFileSync(join(d, path), body);
+  };
+  git('init', '-q', '-b', 'main');
+  return { dir: d, git, write, scan: async () => (await run({ repoDir: d })).snapshot };
+}
 
+describe('local Qodo review (#16 r1)', () => {
   it('#1: a binary left behind does not stop a folder\'s only source file from carrying its id', async () => {
     const r = scratch();
     r.write('art/draw.ts', Array.from({ length: 6 }, (_, i) => `export const draw${i} = ${i};`).join('\n') + '\n');
@@ -356,5 +356,31 @@ describe('local Qodo review (#16 r1)', () => {
     const s = await r.scan();
     expect(s.dirs.map((x) => x.path)).toEqual(['\nnl']);
     expect(s.branches.map((b) => [b.name, b.dirIds])).toEqual([['touch-nl', [s.dirs[0]!.id]]]);
+  });
+});
+
+describe('local Qodo review (#16 r2)', () => {
+  it('#1: files new at the old path in the same commit do not keep the id from the moved files', () => {
+    const lineage = buildLineage([
+      { sha: 'a', dateMs: 0, changes: [{ status: 'A', path: 'p/1' }, { status: 'A', path: 'p/2' }] },
+      { sha: 'b', dateMs: 1000, changes: [{ status: 'R', from: 'p/1', path: 'q/1' }, { status: 'R', from: 'p/2', path: 'q/2' },
+        { status: 'A', path: 'p/3' }, { status: 'A', path: 'p/4' }, { status: 'A', path: 'p/5' }] },
+    ], () => false);
+    expect(lineage.dirs.get('q')).toMatchObject({ id: birthId('p'), bornSeq: 0 });
+    expect(lineage.dirs.get('p')).toMatchObject({ id: birthId('p', 1), bornSeq: 1 });
+  });
+
+  it('#2: a U+0001 in a path does not split a commit in the lineage log', async () => {
+    const r = scratch();
+    r.write('d/a\u0001b.ts', 'export const a = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'one');
+    r.git('commit', '-q', '--allow-empty', '-m', 'empty');
+    r.write('e/x.ts', 'export const x = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'three');
+    const s = await r.scan();
+    expect(s.commits.map((c) => c.seq)).toEqual([0, 1, 2]);
+    expect(s.dirs.map((x) => [x.path, x.bornSeq])).toEqual([['d', 0], ['e', 2]]);
   });
 });
