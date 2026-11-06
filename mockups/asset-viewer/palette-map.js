@@ -201,6 +201,18 @@ export function mapColors(hexes, { name = '', url = '' } = {}, hints = {}) {
   };
 }
 
+/**
+ * n-colour ramp (dark -> light) through anchorHex, walked over `hexes` the way mapColors walks a
+ * palette (the asset library's free contributor colour: its darker and lighter steps come from the
+ * palette, so a colour already in the palette gets exactly the ramp mapColors gives it).
+ */
+export function rampThrough(hexes, anchorHex, n, pos) {
+  const norm = (h) => h.replace('#', '').toLowerCase();
+  const cols = [...new Set([...hexes, anchorHex].map(norm))].map(oklab);
+  const anchor = cols.find((c) => c.hex === `#${norm(anchorHex)}`);
+  return rampFrom(cols, anchor, n, pos).map((c) => c.hex);
+}
+
 /** Nearest colour (OKLab) in `pool` to an sRGB 0..1 triple. */
 export function snapToPool(rgb, pool) {
   const toHex = (v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0');

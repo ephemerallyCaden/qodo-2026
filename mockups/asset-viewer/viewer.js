@@ -15,6 +15,11 @@ import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors, artefactCount } fr
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
+// Library mode: ../asset-library sets window.ASSET_VIEWER_LIBRARY = true before this module loads.
+// The viewer then builds no showcase scene, binds no UI and starts no loop; the library drives the
+// shared renderer, camera and factories (exported below), so its assets are these exact meshes and shaders.
+const LIBRARY = globalThis.ASSET_VIEWER_LIBRARY === true;
+
 // ---------------------------------------------------------------- palette
 // Ramps run dark -> light. Each depth entry is [tint, amount]. Level 0 is near, 1 is mid (about -35% value),
 // 2 is far (about -70%), and 3 is a dark silhouette that keeps a faint hint of colour.
@@ -44,17 +49,25 @@ for (const pal of Object.values(PALETTES)) {
   pal.halo ??= pal.stars[0];
 }
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
-const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
+export const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
 let paletteName = 'final';
 // Ramp keys are paths into the active palette, e.g. 'ocean' or 'contributors.mint'.
 // A missing sub-key falls back to its parent (e.g. 'ring.lush' -> 'ring' on palettes
 // that have one ring ramp for every biome).
-const resolve = (key) => {
+export const resolve = (key) => {
   const v = key.split('.').reduce((o, k) => o?.[k], PALETTES[paletteName]);
   return v !== undefined || !key.includes('.') ? v : resolve(key.split('.').slice(0, -1).join('.'));
 };
+/** Makes `name` (a PALETTES key) the active palette; true if it changed, and the caller must retint. */
+export function usePalette(name) {
+  if (name === paletteName) return false;
+  paletteName = name;
+  return true;
+}
+/** Makes every palette material under root re-resolve its ramps on its next setDepthLevel. */
+export const retint = (root) => root.traverse((o) => { if (o.userData.depthLevel !== undefined) o.userData.depthLevel = -1; });
 
-const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object (or, per pixel, a fragment) drops a level
+export const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object (or, per pixel, a fragment) drops a level
 const depthCache = new Map();
 
 // Depth mode. 'object' (the original): each whole object picks a level from its distance
@@ -741,7 +754,7 @@ function paletteMaterial(frag, ramps, extra = {}, opts = {}) {
   return mat;
 }
 
-function setDepthLevel(obj, level) {
+export function setDepthLevel(obj, level) {
   if (obj.userData.depthLevel === level) return;
   obj.userData.depthLevel = level;
   const family = obj.userData.depthFamily ?? 'crew';
@@ -781,7 +794,7 @@ export const BIOMES = {
 //   flat, stretch       radial squash and east-west elongation
 //   float   gap between the surface and the puff bases (a separate layer hovering above the terrain)
 //   fissure lava: short smoke plumes rise only off the glowing fissures, trailing downwind
-const WEATHER = {
+export const WEATHER = {
   cloud: { ramp: 'cloud', cover: 0.27, gain: 0.57, float: 0.055, mass: 2.0, size: 1, lift: 1, strays: 0.012 }, // Planetarium: ~25-30%
   thin: { ramp: 'cloud', cover: 0.27, gain: 0.63, float: 0.05, mass: 2.2, size: 0.7, lift: 0.5, strays: 0.012 },
   spore: { ramp: 'spore', cover: 0.27, gain: 0.62, float: 0.05, mass: 2.2, size: 0.7, lift: 1.1, strays: 0.05 },
@@ -860,9 +873,14 @@ const RING_CHUNK_FRAG = /* glsl */ `
 `;
 const FLAT_FRAG = /* glsl */ `${DEPTH_GLSL} uniform vec3 uColor; in vec3 vPosW; void main() { gl_FragColor = vec4(depthFade(uColor, vPosW, 1.0), 1.0); }`;
 const MOON_GEO = new THREE.SphereGeometry(1, 20, 14);
-const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size, shared by every planet surface (artefact cells)
+// The two moons of every planet (sizes and orbits in planet radii; offset = orbit phase, 0..1).
+export const MOON_ORBITS = [
+  { size: 0.11, orbit: 1.75, incl: 0.34, yaw: 0.25, offset: 0.15 },
+  { size: 0.062, orbit: 1.36, incl: 0.5, yaw: -0.4, offset: 0.62 },
+];
+export const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size, shared by every planet surface (artefact cells)
 
-function makePlanet() {
+export function makePlanet() {
   const group = new THREE.Group();
   group.userData.depthFamily = 'planet'; // planet tint slot of the per-pixel depth fade
   const surfaceMat = paletteMaterial(PLANET_FRAG, {}, {
@@ -932,10 +950,7 @@ function makePlanet() {
   // Moons: a big (~9 px) and a small (~5 px) warm sphere on inclined orbits that pass
   // in front at the bottom and fully behind the disc (depth-sorted by the z-buffer).
   const moonMat = paletteMaterial(TOON_FRAG, { uRamp: 'moonBody' }, { uBands: { value: new THREE.Vector3(-0.15, 0.35, 0.7) } });
-  const MOONS = [
-    { size: 0.11, orbit: 1.75, incl: 0.34, yaw: 0.25, offset: 0.15 },
-    { size: 0.062, orbit: 1.36, incl: 0.5, yaw: -0.4, offset: 0.62 },
-  ].map((m) => ({ ...m, mesh: Object.assign(new THREE.Mesh(MOON_GEO, moonMat), { visible: false }) }));
+  const MOONS = MOON_ORBITS.map((m) => ({ ...m, mesh: Object.assign(new THREE.Mesh(MOON_GEO, moonMat), { visible: false }) }));
   for (const m of MOONS) {
     m.mesh.scale.setScalar(m.size);
     group.add(m.mesh);
@@ -949,11 +964,12 @@ function makePlanet() {
   // cover: optional override of the biome's WEATHER cover (the viewer's cloud slider).
   // ringGeo: { inner, width } (RING); defaults to the ringMode preset.
   // size: the planet's size (~ LOC), its group scale; it also sets how many cracks show (crackLift).
-  function rebuild(seed, biomeKey = 'lush', ringMode = 'thin', cover = null, ringGeo = RING_PRESETS[ringMode], size = 1) {
+  // float: optional override of the weather's WEATHER.float (the asset library's cloud control).
+  function rebuild(seed, biomeKey = 'lush', ringMode = 'thin', cover = null, ringGeo = RING_PRESETS[ringMode], size = 1, floatOverride = null) {
     const lift = crackLift(size);
     group.scale.setScalar(size);
     surfaceMat.uniforms.uCrackLift.value = lift;
-    const key = `${seed}|${biomeKey}|${ringMode}|${cover}|${ringGeo?.inner}|${ringGeo?.width}|${biomeKey === 'lava' ? lift : ''}`; // size only moves lava ash (crack set)
+    const key = `${seed}|${biomeKey}|${ringMode}|${cover}|${ringGeo?.inner}|${ringGeo?.width}|${biomeKey === 'lava' ? lift : ''}|${floatOverride ?? ''}`; // size only moves lava ash (crack set)
     if (key === built) return;
     built = key;
     const biome = BIOMES[biomeKey];
@@ -983,7 +999,7 @@ function makePlanet() {
     let masses = [];
     let mass = -1; // index of the mass the next puffs belong to (-1 = no mass shading)
     const puffMass = [];
-    const float = weather?.float ?? 0;
+    const float = floatOverride ?? weather?.float ?? 0;
     // Bases float at about 1 + float; lift raises dense cores so they dome.
     const put = (dir, size, lift, flat = 0.6, stretch = 1) => {
       if (n >= MAX_PUFFS) return;
@@ -1191,7 +1207,9 @@ function makePlanet() {
     surfaceMat.uniforms.uArtN.value = artefactsOpt === 'auto' ? artefactCount(group.scale.x) : Math.min(artefactsOpt, MAX_ART);
   };
 
-  return { group, rebuild, update, ring, setExtras };
+  // parts and moons: for the asset library, which shows layers on their own and edits moon orbits.
+  const parts = { surface, haze, halo, sky, puffs, shadow, ringTilt };
+  return { group, rebuild, update, ring, setExtras, parts, moons: MOONS };
 }
 
 // ---------------------------------------------------------------- astronaut
@@ -1210,6 +1228,7 @@ const ASTRO_FRAG = /* glsl */ `
   uniform vec3 uAccent[4];
   uniform vec3 uVisor[2];
   uniform vec3 uGlint;
+  uniform vec3 uEyeGlow; // the eye light: the contributor ramp's step 2 unless the library overrides it
   ${DEPTH_GLSL}
   ${EYES_GLSL}
   ${ASTRO_SDF_GLSL}
@@ -1272,7 +1291,7 @@ const ASTRO_FRAG = /* glsl */ `
       // Eyes: evaluated analytically at the hit point, glowing unlit in the contributor
       // colour; the internal-resolution render is what pixelates them.
       vec2 uv = visorUV(p).xy;
-      if (eyeLit(uv)) c = uAccent[2];
+      if (eyeLit(uv)) c = uEyeGlow;
       if (glintLit(uv)) c = uGlint;
     } else if (r == 2) c = uAccent[b];
     else if (r == 1) c = uGear[b];
@@ -1288,7 +1307,7 @@ const PROXY_GEO = new THREE.BoxGeometry(ASTRO_BMAX[0] - ASTRO_BMIN[0], ASTRO_BMA
   .translate((ASTRO_BMAX[0] + ASTRO_BMIN[0]) / 2, (ASTRO_BMAX[1] + ASTRO_BMIN[1]) / 2, (ASTRO_BMAX[2] + ASTRO_BMIN[2]) / 2);
 const ASTRO_LAYOUT = astroLayout();
 
-function makeAstronaut(colorKey) {
+export function makeAstronaut(colorKey) {
   // root (placement, yaw) -> lift (boot sole at LIFT) -> body (bob, sway, SCALE) -> proxy
   const root = new THREE.Group();
   const lift = new THREE.Group();
@@ -1300,7 +1319,7 @@ function makeAstronaut(colorKey) {
   const joints = Array.from({ length: 12 }, () => new THREE.Vector3());
   const rings = [];
   const mat = paletteMaterial(ASTRO_FRAG, {
-    uSuit: 'suit', uGear: 'gear', uAccent: `contributors.${colorKey}`, uVisor: 'visor', uGlint: 'glint',
+    uSuit: 'suit', uGear: 'gear', uAccent: `contributors.${colorKey}`, uEyeGlow: `contributors.${colorKey}.2`, uVisor: 'visor', uGlint: 'glint',
   }, {
     uInvModel: { value: new THREE.Matrix4() }, uModel: { value: null }, uProj: { value: camera.projectionMatrix },
     uLightLocal: { value: new THREE.Vector3() }, uJ: { value: joints }, uEyes: { value: 0 }, uBlink: { value: 1 },
@@ -1330,6 +1349,7 @@ function makeAstronaut(colorKey) {
   }
   function setColor(key) {
     mat.userData.ramps.uAccent = `contributors.${key}`;
+    mat.userData.ramps.uEyeGlow = `contributors.${key}.2`;
     root.userData.depthLevel = -1; // force a re-tint
   }
   function setFace(idx) {
@@ -1344,7 +1364,7 @@ function makeAstronaut(colorKey) {
     return 1 - Math.sin((k / BLINK_LEN) * Math.PI) * 0.88;
   }
   root.userData.phase = 0; // callers stagger this so the crew doesn't bob in sync
-  return { group: root, update, setColor, setFace };
+  return { group: root, update, setColor, setFace, material: mat };
 }
 
 // ---------------------------------------------------------------- sky
@@ -1359,7 +1379,7 @@ const SKY_FRAG = /* glsl */ `
     gl_FragColor = vec4(uBands[y < 0.6 ? 0 : y < 0.84 ? 1 : 2], 1.0);
   }
 `;
-function makeSky() {
+export function makeSky() {
   const mat = new THREE.ShaderMaterial({
     vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, depthTest: false, depthWrite: false,
     uniforms: { uBands: { value: resolve('spaceBands').map((h) => new THREE.Color(h)) }, uHeight: { value: 180 } },
@@ -1372,7 +1392,7 @@ function makeSky() {
 }
 
 // ---------------------------------------------------------------- stars
-function makeStars() {
+export function makeStars() {
   const rnd = mulberry32(4242);
   const pts = [];
   const shade = [];
@@ -1402,13 +1422,13 @@ function makeStars() {
 
 // ---------------------------------------------------------------- world
 const canvas = document.getElementById('view');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
+export const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(35, 16 / 9, 0.05, 1200);
-const controls = new OrbitControls(camera, canvas);
+export const camera = new THREE.PerspectiveCamera(35, 16 / 9, 0.05, 1200);
+export const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 
 const sky = makeSky();
@@ -1417,7 +1437,7 @@ const stars = makeStars();
 scene.add(stars);
 
 // Hero planet at the origin, plus mid, far and silhouette copies (same seed) to prove depth.
-const planets = [
+const planets = LIBRARY ? [] : [
   { pos: [0, 0, 0] },
   { pos: [-6.5, 1.2, -13] },
   { pos: [9, 2.2, -27] },
@@ -1430,8 +1450,8 @@ const planets = [
 });
 
 // Crew line-up for the close-up, off to the side of the hero planet.
-const CREW_SPOT = new THREE.Vector3(-1.35, -0.2, 4.6); // in front of the hero planet, so one shot shows crew + planet + depth
-const crew = CONTRIBUTOR_KEYS.map((key, i) => {
+export const CREW_SPOT = new THREE.Vector3(-1.35, -0.2, 4.6); // in front of the hero planet, so one shot shows crew + planet + depth
+const crew = LIBRARY ? [] : CONTRIBUTOR_KEYS.map((key, i) => {
   const a = makeAstronaut(key);
   a.group.position.set(CREW_SPOT.x + (i - 1) * 0.72, CREW_SPOT.y, CREW_SPOT.z);
   a.group.rotation.y = [0.4, 0.05, -0.4][i];
@@ -1442,7 +1462,7 @@ const crew = CONTRIBUTOR_KEYS.map((key, i) => {
 });
 
 // Solo astronauts at the mid, far and silhouette steps (the crew covers near); they wear the selected contributor colour.
-const solos = [
+const solos = LIBRARY ? [] : [
   { pos: [4.6, -0.4, -8], ry: -0.3 },
   { pos: [-1.5, 2.6, -21], ry: 0.4 },
   { pos: [6.5, 4.2, -38], ry: -0.5 },
@@ -1458,7 +1478,7 @@ const solos = [
 
 // System scene: mixed biomes, sizes (size ~ LOC) and depths with the crew in front.
 // Hidden unless the 'system' view is active; it previews the GIF composition.
-const SYSTEM = [
+const SYSTEM = LIBRARY ? [] : [
   { biome: 'lush', seed: 7, size: 1.0, ring: 'thin', pos: [0.75, 0.15, 0] },
   { biome: 'gas', seed: 5, size: 2.2, ring: 'off', pos: [-10.5, 2.4, -17] },
   { biome: 'ice', seed: 21, size: 0.62, ring: 'off', pos: [5.4, 0.1, -3.2] },
@@ -1475,7 +1495,7 @@ const SYSTEM = [
   return p;
 });
 
-const VIEWS = {
+export const VIEWS = {
   // Hero close-ups: distance 7 puts a size-1 planet at ~45% of frame height (Planetarium 42-50%).
   planet: { pos: [1.92, 1.12, 6.69], target: [0, 0, 0], scene: 'solo' },
   studio: { pos: [1.92, 1.12, 6.69], target: [0, 0, 0], scene: 'solo' }, // same framing, for biome sheets
@@ -1511,14 +1531,20 @@ function applyView(name) {
   controls.update();
 }
 
-function resize() {
-  const h = state.pixelH;
-  const w = Math.floor((h * 16) / 9); // floor so e.g. 240 tall -> 426 wide still fits x3 on 1280
+export const frameWidth = (h) => Math.floor((h * 16) / 9); // floor so e.g. 240 tall -> 426 wide still fits x3 on 1280
+/** Sizes the drawing buffer (the internal pixels) and everything that reads it: artefact cells, sky bands, the camera. */
+export function setPixelSize(w, h, skies = [sky]) {
   renderer.setSize(w, h, false);
   VIEW_SIZE.value.set(w, h);
-  sky.material.uniforms.uHeight.value = h;
+  for (const s of skies) s.material.uniforms.uHeight.value = h;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+}
+
+function resize() {
+  const h = state.pixelH;
+  const w = frameWidth(h);
+  setPixelSize(w, h);
   const scale = Math.max(1, Math.floor(Math.min(innerWidth / w, innerHeight / h)));
   canvas.style.width = `${w * scale}px`;
   canvas.style.height = `${h * scale}px`;
@@ -1533,31 +1559,19 @@ function ringPreset() {
   if (pre) Object.assign(state, { ringInner: pre.inner, ringWidth: pre.width });
 }
 
-function applyState() {
-  LOOP.period = Math.max(1, state.period);
-  LOOP.surfaceTurns = Math.max(1, Math.round(state.surfaceTurns));
-  LOOP.cloudTurns = Math.max(0, Math.round(state.cloudTurns));
-  const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow, regions: state.regions, artDebug: state.artDebug, lavaMode: state.lavaMode };
-  document.getElementById('art-auto').checked = state.artAuto;
-  planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
-  SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
-  controls.minDistance = minOrbit();
-  planets.forEach((p) => p.rebuild(state.seed, state.biome, state.ringMode, state.cover, { inner: state.ringInner, width: state.ringWidth }, state.size));
-  // Which objects a view shows: showcase (hero + depth copies + crew), solo planet, or the system.
-  const sceneMode = VIEWS[state.view]?.scene ?? 'showcase';
-  planets.forEach((p, i) => (p.group.visible = sceneMode === 'showcase' || (sceneMode === 'solo' && i === 0)));
-  SYSTEM.forEach((p) => (p.group.visible = sceneMode === 'system'));
-  crew.forEach((a) => (a.group.visible = sceneMode !== 'solo'));
-  solos.forEach((a) => (a.group.visible = sceneMode === 'showcase'));
-  if (state.palette !== paletteName) {
-    paletteName = state.palette;
-    scene.traverse((o) => { if (o.userData.depthLevel !== undefined) o.userData.depthLevel = -1; }); // force a re-tint
-  }
-  renderer.setClearColor(resolve('space'));
-  // Per-pixel depth: the same thresholds and per-level tints/strengths as the object fade.
-  const pixelDepth = state.depthMode !== 'object';
-  DEPTH_U.uDepthMode.value = state.depth ? DEPTH_MODES.indexOf(state.depthMode) : 0;
-  const bands = DEPTH_BANDS[state.depthBands];
+/** The shared loop from the loop controls (whole turns, a period of at least 1 s). */
+export function setLoop({ period, surfaceTurns, cloudTurns }) {
+  LOOP.period = Math.max(1, period);
+  LOOP.surfaceTurns = Math.max(1, Math.round(surfaceTurns));
+  LOOP.cloudTurns = Math.max(0, Math.round(cloudTurns));
+}
+
+/** Depth-fade uniforms for every fading material, for the active palette. True when objects must retint
+ *  (the switch between object and per-pixel modes: pixel modes keep level-0 ramps). */
+export function applyDepth({ depth, depthMode, depthBands }) {
+  const pixelDepth = depthMode !== 'object';
+  DEPTH_U.uDepthMode.value = depth ? DEPTH_MODES.indexOf(depthMode) : 0;
+  const bands = DEPTH_BANDS[depthBands];
   const from = bandThresholds(bands);
   const levels = from.length + 1;
   DEPTH_U.uDepthLevels.value = levels;
@@ -1571,8 +1585,41 @@ function applyState() {
       DEPTH_U.uDepthTint.value[f * MAX_LEVELS + l].set(c.r, c.g, c.b, pal.depth[i][1] + (pal.depth[i + 1][1] - pal.depth[i][1]) * u);
     }
   });
-  if (pixelDepth !== lastPixelDepth) scene.traverse((o) => { if (o.userData.depthLevel !== undefined) o.userData.depthLevel = -1; }); // re-tint: pixel modes keep level-0 ramps
+  const changed = pixelDepth !== lastPixelDepth;
   lastPixelDepth = pixelDepth;
+  return changed;
+}
+
+/** An object's depth level (object mode) at camera distance d; 0 in the per-pixel modes or with the fade off. */
+export const depthLevelAt = (d, { depth, depthMode }) => (!depth || depthMode !== 'object' ? 0 : DEPTH_RANGES.filter((r) => d >= r).length);
+
+/** Poses planets and astronauts at time t (s) on the shared loop, as the viewer's frame does. */
+export function poseWorld(t, { planets: ps = [], astronauts = [], spin = true, lavaTime = null }) {
+  const wrap = (s) => (((s / LOOP.period) % 1) + 1) % 1;
+  const phase = wrap(t);
+  const lavaPhase = lavaTime == null ? (spin ? phase : 0) : wrap(lavaTime);
+  ps.forEach((p) => p.update(spin ? phase : 0, lavaPhase));
+  astronauts.forEach((a) => a.update(t));
+}
+
+function applyState() {
+  setLoop(state);
+  const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow, regions: state.regions, artDebug: state.artDebug, lavaMode: state.lavaMode };
+  document.getElementById('art-auto').checked = state.artAuto;
+  planets.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
+  SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
+  controls.minDistance = minOrbit();
+  planets.forEach((p) => p.rebuild(state.seed, state.biome, state.ringMode, state.cover, { inner: state.ringInner, width: state.ringWidth }, state.size));
+  // Which objects a view shows: showcase (hero + depth copies + crew), solo planet, or the system.
+  const sceneMode = VIEWS[state.view]?.scene ?? 'showcase';
+  planets.forEach((p, i) => (p.group.visible = sceneMode === 'showcase' || (sceneMode === 'solo' && i === 0)));
+  SYSTEM.forEach((p) => (p.group.visible = sceneMode === 'system'));
+  crew.forEach((a) => (a.group.visible = sceneMode !== 'solo'));
+  solos.forEach((a) => (a.group.visible = sceneMode === 'showcase'));
+  if (usePalette(state.palette)) retint(scene); // force a re-tint
+  renderer.setClearColor(resolve('space'));
+  // Per-pixel depth: the same thresholds and per-level tints/strengths as the object fade.
+  if (applyDepth(state)) retint(scene); // re-tint: pixel modes keep level-0 ramps
   document.body.style.background = resolve('space');
   solos.forEach((s) => s.setColor(state.color));
   // Faces: hashed from each contributor's handle unless the UI overrides the eye design.
@@ -1599,22 +1646,14 @@ function frame() {
   const t = state.time ?? clock.getElapsedTime();
   controls.update();
   stars.position.copy(camera.position);
-  const wrap = (s) => (((s / LOOP.period) % 1) + 1) % 1;
-  const phase = wrap(t);
-  const lavaPhase = state.lavaTime == null ? (state.spin ? phase : 0) : wrap(state.lavaTime);
-  [...planets, ...SYSTEM].forEach((p) => p.update(state.spin ? phase : 0, lavaPhase));
-  [...crew, ...solos].forEach((a) => a.update(t));
+  poseWorld(t, { planets: [...planets, ...SYSTEM], astronauts: [...crew, ...solos], spin: state.spin, lavaTime: state.lavaTime });
   setDepthLevel(stars, 0); // stars and sky never fade, but still follow palette switches
   setDepthLevel(sky, 0);
   for (const obj of [...planets, ...SYSTEM, ...crew, ...solos].map((o) => o.group)) {
-    const d = camera.position.distanceTo(obj.getWorldPosition(tmp));
-    const level = !state.depth || state.depthMode !== 'object' ? 0 : DEPTH_RANGES.filter((r) => d >= r).length;
-    setDepthLevel(obj, level);
+    setDepthLevel(obj, depthLevelAt(camera.position.distanceTo(obj.getWorldPosition(tmp)), state));
   }
   renderer.render(scene, camera);
 }
-
-renderer.setAnimationLoop(frame);
 
 // ---------------------------------------------------------------- UI
 function bindUi() {
@@ -1669,13 +1708,16 @@ function bindUi() {
   addEventListener('resize', resize);
 }
 
-bindUi();
-applyView(state.view);
-applyState();
-document.getElementById('palette').value = state.palette;
+if (!LIBRARY) {
+  renderer.setAnimationLoop(frame);
+  bindUi();
+  applyView(state.view);
+  applyState();
+  document.getElementById('palette').value = state.palette;
+}
 
-// Hook for the screenshot script: set state, pin time, render one frame synchronously.
-window.viewer = {
+// Hook for the screenshot script: set state, pin time, render one frame synchronously. (Not in library mode.)
+if (!LIBRARY) window.viewer = {
   ready: true,
   set(opts) {
     Object.assign(state, opts);
@@ -1693,4 +1735,4 @@ window.viewer = {
 };
 
 // Internals for the comparison mockups (../camera-modes, ../day2-compare), which pose the camera, hide objects and wrap the render passes.
-window.viewer.internals = { renderer, scene, camera, controls, sky, stars, state, frame, SYSTEM, planets, crew, solos };
+if (!LIBRARY) window.viewer.internals = { renderer, scene, camera, controls, sky, stars, state, frame, SYSTEM, planets, crew, solos };
