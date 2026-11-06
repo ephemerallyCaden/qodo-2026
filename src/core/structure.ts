@@ -101,9 +101,14 @@ export function buildLineage(commits: LineageCommit[], excluded: (path: string) 
       }
     }
     const before = new Map([...tally.keys()].map((d) => [d, count.get(d) ?? 0]));
-    // Files each folder lost this commit (moved or deleted); files new to it don't count as staying.
+    // Files each folder lost this commit (moved out or deleted); files new to it don't count as
+    // staying, and a file moved into one of its own subfolders never left it (PR #20 Qodo r1 #1).
+    const movedTo = new Map(moves);
     const lost = new Map<string, number>();
-    for (const p of removed) for (const d of ancestors(p)) lost.set(d, (lost.get(d) ?? 0) + 1);
+    for (const p of removed) {
+      const to = movedTo.get(p);
+      for (const d of ancestors(p)) if (to === undefined || !to.startsWith(`${d}/`)) lost.set(d, (lost.get(d) ?? 0) + 1);
+    }
     const touched = new Set<DirId>();
     for (const p of [...removed, ...changed]) for (const d of ancestors(p)) touched.add(dirs.get(d)!.id);
 
