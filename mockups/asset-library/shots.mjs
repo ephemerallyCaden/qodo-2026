@@ -1,0 +1,60 @@
+// Review screenshots of the library UI in headless Chromium (no socket, no network: the page is
+// served by request interception). Usage: node shots.mjs [name ...]  (no names = all) -> out/<name>.png
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
+import { launch, openLibrary, LIBRARY_ROOT } from './test/harness.mjs';
+import { crewScene } from './catalogue.js';
+
+const OUT = path.join(LIBRARY_ROOT, 'out');
+const VIEWPORT = { width: 1920, height: 1080 };
+const paused = (t = 3) => ({ t, play: false });
+
+// Each shot: open a catalogue item (or set a state), optionally act, then capture.
+const SHOTS = {
+  catalogue: { viewport: { width: 1920, height: 4200 }, open: 'planets-0' },
+  'inspector-astronaut': { open: 'astronauts-3', extra: { render: paused(1.2) } },
+  'inspector-astronaut-face': { open: 'astronauts-4', extra: { render: paused(0.4) } },
+  'inspector-planet': { open: 'planets-4' },
+  'inspector-moon': { open: 'moons-0', extra: { render: paused(4.6) } },
+  'inspector-ring': { open: 'rings-1' },
+  'inspector-clouds': { open: 'clouds-4' },
+  'inspector-fx': { open: 'fx-1', extra: { render: paused(5.1) } },
+  'inspector-exploration': { open: 'explorations-2' },
+  'palette-editor': { open: 'planets-0', act: async (page) => {
+    await page.evaluate(() => window.library.set({ ...window.library.state(), palette: { 'land.2': '#c16a7d', 'land.3': '#e5959f', 'ocean.2': '#22896e' }, render: { ...window.library.state().render, t: 3, play: false } }));
+    await page.evaluate(() => window.library.editColour('land.2'));
+  } },
+  scene: { set: { mode: 'scene', scene: crewScene(), render: paused(2) }, act: async (page) => {
+    await page.evaluate(() => window.library.set({ ...window.library.state(), scene: { ...window.library.state().scene, selected: 2 } }));
+  } },
+};
+
+const wanted = process.argv.slice(2);
+const names = wanted.length ? wanted.filter((n) => SHOTS[n]) : Object.keys(SHOTS);
+await mkdir(OUT, { recursive: true });
+const browser = await launch();
+try {
+  const pages = new Map(); // one page per viewport: the catalogue thumbnails render once
+  for (const name of names) {
+    const shot = SHOTS[name];
+    const vp = shot.viewport ?? VIEWPORT;
+    const key = `${vp.width}x${vp.height}`;
+    if (!pages.has(key)) {
+      const p = await openLibrary(browser, { viewport: vp });
+      await p.waitForFunction(() => window.library.thumbsDone, null, { timeout: 300000 });
+      pages.set(key, p);
+    }
+    const page = pages.get(key);
+    await page.evaluate(() => { window.library.set({ palette: {}, render: { t: 3, play: false } }); window.library.tab('inspect'); });
+    if (shot.open) await page.evaluate(({ id, extra }) => window.library.open(id, extra ?? {}), { id: shot.open, extra: { render: paused(), ...shot.extra } });
+    if (shot.set) await page.evaluate((s) => window.library.set(s), shot.set);
+    if (shot.act) await shot.act(page);
+    await page.waitForFunction(() => window.library.thumbsDone, null, { timeout: 300000 }); // palette edits re-render the thumbnails
+    await page.evaluate(() => window.library.set(window.library.state())); // one settled frame
+    await page.screenshot({ path: path.join(OUT, `${name}.png`) });
+    if (page.errors.length) throw page.errors[0];
+    console.log(`out/${name}.png`);
+  }
+} finally {
+  await browser.close();
+}
