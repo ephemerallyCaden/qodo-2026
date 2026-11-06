@@ -10,7 +10,7 @@ import { CREW, SPACE } from '../explorations/astronaut-lab/crew.js';
 import { makeDrone, extents, intendedPieces } from './drone.js';
 import { PALETTES, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS } from './params.js';
-import { VARIANTS, RECOMMENDED } from './variants.js';
+import { VARIANTS, FINAL } from './variants.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -46,7 +46,7 @@ const paletteOf = (key) => PALETTES[key] ?? PALETTES.base;
 // density (zoom 2 brings the camera twice as close). cell.crew renders the crew shot instead:
 // astronaut, drone, astronaut, as the viewer lines up its crew (0.72 apart, turned 0.4 / 0.05 / -0.4).
 function renderTile(cell, w, h) {
-  const { params = {}, yaw = 0, t = 0, zoom = 1, palette = 'base', motion = false, blink = null, smoke = true } = cell;
+  const { params = {}, yaw = 0, t = 0, zoom = 1, palette = 'base', motion = false, blink = null, smoke = true, faceDebug = false } = cell;
   const pixK = PIXK / zoom;
   if (gl.width !== w || gl.height !== h) renderer.setSize(w, h, false);
   drone.setParams(params);
@@ -62,14 +62,14 @@ function renderTile(cell, w, h) {
       a.update(t + i * 3.4, { yaw: i === 0 ? 0.4 : -0.4, sway: 1, blink: 1 });
     });
     drone.group.position.set(0, DRONE_HOVER, 0);
-    drone.update(t, { yaw: 0.05 + yaw, motion, blink, smoke, pixK: PIXK });
+    drone.update(t, { yaw: 0.05 + yaw, motion, blink, smoke, pixK: PIXK, faceDebug });
     camera.position.copy(CREW_CAM.pos);
     camera.lookAt(CREW_CAM.target);
   } else {
     crew.forEach((a) => (a.group.visible = false));
     const { top, bottom } = extents(drone.layout);
     drone.group.position.set(0, 0, 0);
-    drone.update(t, { yaw, motion, blink, smoke, pixK });
+    drone.update(t, { yaw, motion, blink, smoke, pixK, faceDebug });
     const cy = (top + bottom) / 2 - 0.07 - (cell.frameLow ?? 0); // a little low, to leave room for the smoke
     camera.position.copy(CAM).multiplyScalar(1 / zoom).add(new THREE.Vector3(0, cy, 0));
     camera.lookAt(0, cy, 0);
@@ -226,11 +226,25 @@ function snapLabels(ctx, W, H, rows, { w, h, rowLabelW, gap, top, capH }) {
 }
 
 /** Direction params by id. */
-const paramsOf = (id) => ({ ...DEFAULTS, ...VARIANTS.find((v) => v.id === id).params });
+const ALL = [...VARIANTS, FINAL];
+const paramsOf = (id) => ({ ...DEFAULTS, ...ALL.find((v) => v.id === id).params });
 
 window.lab = {
   ready: true,
-  variants: VARIANTS.map((v) => ({ id: v.id, name: v.name, leaning: v.leaning, params: paramsOf(v.id) })),
+  variants: ALL.map((v) => ({ id: v.id, name: v.name, leaning: v.leaning, params: paramsOf(v.id) })),
+  /** Face probe: renders one tile with eyes painted pure red and glyphs pure green; returns their pixel counts. */
+  faceProbe(cell, w, h) {
+    renderTile({ ...cell, params: cell.variant ? { ...paramsOf(cell.variant), ...(cell.params ?? {}) } : cell.params, faceDebug: true }, w, h);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(gl, 0, 0);
+    const d = x.getImageData(0, 0, w, h).data;
+    let eyes = 0, glyphs = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] === 255 && d[i + 1] === 0 && d[i + 2] === 0) eyes++;
+      if (d[i] === 0 && d[i + 1] === 255 && d[i + 2] === 0) glyphs++;
+    }
+    return { eyes, glyphs };
+  },
   /** Renders a sheet spec (cells name directions by `variant`) and returns a PNG data URL and stats. */
   sheet(spec) {
     const rows = spec.rows.map((r) => ({ ...r, cells: r.cells.map((c) => ({ ...c, params: c.variant ? { ...paramsOf(c.variant), ...(c.params ?? {}) } : c.params })) }));
@@ -245,13 +259,13 @@ if (ui) {
   const view = document.getElementById('view');
   const stage = document.getElementById('stage');
   const vctx = view.getContext('2d');
-  const state = { params: paramsOf(RECOMMENDED), variant: RECOMMENDED, mode: 'views', animate: true, motion: true, smoke: true, spin: false, palette: 'base' };
+  const state = { params: paramsOf(FINAL.id), variant: FINAL.id, mode: 'views', animate: true, motion: true, smoke: true, spin: false, palette: 'base' };
   const picker = document.getElementById('variants');
   const sliders = document.getElementById('sliders');
   const json = document.getElementById('json');
   const controls = {};
 
-  for (const v of VARIANTS) {
+  for (const v of ALL) {
     const b = document.createElement('button');
     b.textContent = v.id;
     b.title = `${v.name}: ${v.leaning}`;
@@ -304,7 +318,7 @@ if (ui) {
     }
     const diff = Object.fromEntries(Object.entries(state.params).filter(([k, v]) => v !== DEFAULTS[k]));
     json.value = JSON.stringify(diff, null, 1);
-    document.getElementById('current').textContent = state.variant === 'mix' ? 'mix (edited)' : `${state.variant} · ${VARIANTS.find((v) => v.id === state.variant).name}`;
+    document.getElementById('current').textContent = state.variant === 'mix' ? 'mix (edited)' : `${state.variant} · ${ALL.find((v) => v.id === state.variant).name}`;
   }
   sync();
 

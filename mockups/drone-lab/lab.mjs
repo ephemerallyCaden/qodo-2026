@@ -1,6 +1,6 @@
 // Regenerates every lab output in out/ with headless Chromium (SwiftShader). The page is served
 // through Playwright request interception, so no socket is opened and nothing touches the network.
-// Usage: node lab.mjs [lineup] [crew] [closeups] [turntable] [motion] [params]   (no names = all)
+// Usage: node lab.mjs [lineup] [crew] [closeups] [turntable] [motion] [final] [working] [params]   (no names = all)
 // Every rendered tile is checked: only the drone's palette + space (+ BLK 36 crew in the crew
 // shot), so no antialiasing or dithering; the intended number of silhouette pieces (1, plus any
 // free-floating halos); not empty; not clipped by the tile edge. Each turntable's frame one loop
@@ -15,7 +15,7 @@ import { mapPalette } from '../asset-viewer/palette-map.js';
 import { CREW, SPACE } from '../explorations/astronaut-lab/crew.js';
 import { PALETTES, SLOTS, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS, showValue } from './params.js';
-import { VARIANTS, RECOMMENDED } from './variants.js';
+import { VARIANTS, PICKED, FINAL, FINAL_PARAMS } from './variants.js';
 import { LOOP, MOTION_LOOP, CYCLES } from './drone.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -25,8 +25,8 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
 const VIEWS = [['front', 0], ['3/4', -0.75], ['side', -Math.PI / 2]];
 const FPS = 15;
 const wanted = process.argv.slice(2);
+const tag = (v) => `${v.id} · ${v.name}${v.id === PICKED ? ' (picked: see D-final)' : ''}`;
 const want = (n) => !wanted.length || wanted.includes(n);
-const rec = VARIANTS.find((v) => v.id === RECOMMENDED);
 
 // The crew colours must be what the asset viewer resolves for BLK 36; palettes must fill every slot.
 const blk = mapPalette('blk-36');
@@ -84,15 +84,15 @@ try {
     }
     return { stats, png };
   }
-  const heads = VARIANTS.map((v) => [`${v.id} · ${v.name}${v.id === RECOMMENDED ? ' (recommended)' : ''}`, v.leaning, v.id === RECOMMENDED]);
+  const heads = VARIANTS.map((v) => [tag(v), v.leaning, v.id === PICKED]);
   const STILL_T = 0.9; // idle loop time for stills: mid-sputter, eyes open
 
   if (want('lineup')) {
     // Front, 3/4 and side at the standard close-up pixel density (crops of 320x180), x3.
     const { stats } = await render('lineup', {
-      title: `drone lab · base variants A–E · 180p crops at x3 · base palette · idle t = ${STILL_T} s · recommended: ${rec.id} (teal frame)`,
+      title: `drone lab · base variants A–E · 180p crops at x3 · base palette · idle t = ${STILL_T} s · the human's pick: ${PICKED} (teal frame)`,
       w: 100, h: 100, scale: 3, rowLabelW: 56, headH: 96, heads,
-      rows: VIEWS.map(([label, yaw]) => ({ label, cells: VARIANTS.map((v) => ({ variant: v.id, yaw, t: STILL_T, mark: v.id === RECOMMENDED })) })),
+      rows: VIEWS.map(([label, yaw]) => ({ label, cells: VARIANTS.map((v) => ({ variant: v.id, yaw, t: STILL_T, mark: v.id === PICKED })) })),
     }, path.join(OUT, 'base-lineup.png'));
     const hs = stats.filter((s) => s.row === 0).map((s, i) => `${VARIANTS[i].id} ${s.heightPx}px`);
     console.log(`  drone heights at 180p (front, smoke off): ${hs.join(', ')}  (a K astronaut is ~100px)`);
@@ -100,7 +100,7 @@ try {
 
   if (want('crew')) {
     // The viewer's crew close-up, full 320x180 frames, x2: K astronaut, drone, K astronaut.
-    const cells = VARIANTS.map((v) => ({ variant: v.id, crew: true, t: STILL_T, caption: `${v.id} · ${v.name}${v.id === RECOMMENDED ? ' (recommended)' : ''}` }));
+    const cells = VARIANTS.map((v) => ({ variant: v.id, crew: true, t: STILL_T, caption: tag(v) }));
     await render('crew', {
       title: "each variant hovering between two K astronauts · the viewer's crew close-up, 320x180 at x3 · idle",
       w: 320, h: 180, scale: 3,
@@ -170,12 +170,63 @@ try {
     }
   }
 
+  // ---------------------------------------------------------------- D-final, the human's pick
+  const F = FINAL.id;
+  if (want('final')) {
+    await render('final closeup', {
+      title: `${F} · ${FINAL.name} · 2.5x close-up, x4 · idle t = ${STILL_T} s`,
+      w: 170, h: 180, scale: 4,
+      rows: [{ cells: [[-0.75, '3/4'], [0, 'front'], [-Math.PI / 2, 'side']].map(([yaw, caption]) => ({ variant: F, yaw, t: STILL_T, zoom: 2.5, caption })) }],
+    }, path.join(OUT, 'final-closeup.png'));
+    await render('final crew', {
+      title: `${F} hovering between two K astronauts · the viewer's crew close-up, 320x180 at x4 · idle`,
+      w: 320, h: 180, scale: 4,
+      rows: [{ cells: [{ variant: F, crew: true, t: STILL_T }] }],
+    }, path.join(OUT, 'final-with-crew.png'));
+    await loopGif('final-turntable', LOOP, (f) => ({
+      w: 220, h: 220, scale: 3, crispLabels: true,
+      rows: [{ cells: [{ variant: F, yaw: -0.75 - (Math.PI * 2 * f) / (LOOP * FPS), t: f / FPS, zoom: 2, caption: `${F} · turntable, 6 s` }] }],
+    }));
+    await loopGif('final-motion', MOTION_LOOP, (f) => ({
+      w: 280, h: 220, scale: 2, crispLabels: true,
+      rows: [{ cells: [{ variant: F, yaw: -0.5, t: f / FPS, zoom: 2, motion: true, caption: `${F} · motion loop, 12 s` }] }],
+    }));
+  }
+
+  if (want('working')) {
+    // The working face, frame by frame: the eyes blink shut, glyphs fill the screen and flash as
+    // it types, then clear in a scramble and the eyes blink open. Drift and banking are held
+    // still here so the face stays put; everything else is the motion loop.
+    const ts = [5.5, 5.7, 5.85, 6.0, 6.5, 6.75, 7.0, 7.25, 9.9, 10.25, 10.4, 10.5, 10.6, 10.9];
+    await render('working face', {
+      title: `${F} · the working face, front, 2.2x close-up, x3 · motion-loop time under each frame (drift held still)`,
+      w: 120, h: 104, scale: 3,
+      rows: [ts.slice(0, 7), ts.slice(7)].map((row) => ({ cells: row.map((t) => ({ variant: F, params: { drift: 0, bank: 0, lookYaw: 0, bobAmp: 0 }, frameLow: -0.07, yaw: 0, t, zoom: 2.2, motion: true, smoke: false, caption: `t = ${t} s` })) })),
+    }, path.join(OUT, 'working-face.png'));
+  }
+
+  if (want('working') || want('final')) {
+    // Face probe: eyes painted red, glyphs green. While working there must be glyphs and no
+    // eye pixels; at rest, eyes and no glyphs. Every variant, front view, 2x.
+    for (const v of [...VARIANTS, FINAL]) {
+      for (const [t, working] of [[0.5, false], [3.2, false], [7.0, true], [8.6, true]]) {
+        const p = await page.evaluate(([id, tt]) => window.lab.faceProbe({ variant: id, t: tt, yaw: 0, zoom: 2, motion: true, smoke: false }, 160, 160), [v.id, t]);
+        const ok = working ? p.eyes === 0 && p.glyphs > 20 : p.eyes > 10 && p.glyphs === 0;
+        if (!ok) problems.push(`face probe ${v.id} t = ${t}: ${p.eyes} eye px, ${p.glyphs} glyph px (${working ? 'working: want 0 eyes, glyphs' : 'idle: want eyes, 0 glyphs'})`);
+      }
+    }
+    console.log('  face probe: working = glyphs and no eyes, idle = eyes and no glyphs (A–E and D-final)');
+  }
+
   if (want('params')) await writeFile(path.join(OUT, 'params.md'), await paramsDoc());
 } finally {
   await browser.close();
 }
 
 async function paramsDoc() {
+  const COLS = [...VARIANTS, FINAL];
+  const fromD = Object.keys(VARIANTS.find((v) => v.id === PICKED).params).filter((k) => !(k in FINAL_PARAMS));
+  const fromDefault = PARAMS.map((p) => p.key).filter((k) => !(k in FINAL.params));
   const notes = await readFile(path.join(ROOT, 'params-notes.md'), 'utf8');
   const lines = [
     '# Drone lab: parameters',
@@ -184,17 +235,20 @@ async function paramsDoc() {
     '',
     '## Variants',
     '',
-    ...VARIANTS.map((v) => `- **${v.id} · ${v.name}${v.id === RECOMMENDED ? ' (recommended)' : ''}:** ${v.leaning}`),
+    ...VARIANTS.map((v) => `- **${tag(v)}:** ${v.leaning}`),
+    `- **${FINAL.id} · ${FINAL.name}:** ${FINAL.leaning}`,
+    '',
+    `D-final is D with the human's exact set laid over it. Not named in that set, so kept from D: ${fromD.map((k) => `\`${k}\` = ${showValue(k, FINAL.params[k])}`).join(', ')}. Not set by either, so at the default: ${fromDefault.map((k) => `\`${k}\``).join(', ')}.`,
     '',
     '## Parameters',
     '',
-    `| Parameter | Meaning | Default | ${VARIANTS.map((v) => v.id).join(' | ')} |`,
-    `|---|---|---|${VARIANTS.map(() => '---').join('|')}|`,
+    `| Parameter | Meaning | Default | ${COLS.map((v) => v.id).join(' | ')} |`,
+    `|---|---|---|${COLS.map(() => '---').join('|')}|`,
   ];
   let group = '';
   for (const p of PARAMS) {
-    if (p.group !== group) { group = p.group; lines.push(`| *${group}* | | | ${VARIANTS.map(() => '').join(' | ')} |`); }
-    const cells = VARIANTS.map((v) => {
+    if (p.group !== group) { group = p.group; lines.push(`| *${group}* | | | ${COLS.map(() => '').join(' | ')} |`); }
+    const cells = COLS.map((v) => {
       const val = v.params[p.key] ?? DEFAULTS[p.key];
       const s = showValue(p.key, val);
       return val !== DEFAULTS[p.key] ? `**${s}**` : s;

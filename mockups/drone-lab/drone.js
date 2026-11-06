@@ -47,7 +47,8 @@ const FRAG = /* glsl */ `
   uniform vec4 uScreen; // half-width tan, half-height tan, centre height, superellipse exponent
   uniform float uBezel; uniform vec2 uEyePhys;
   uniform vec4 uEyeXf; // eye offset x, y (eye-box px), scale, blink
-  uniform vec4 uWork; // code rows shown, lines done, typing progress of the newest line, row count
+  uniform vec4 uGlyph; // working face: glyph coverage 0..1, time into the work (s), flashes per second, glyph pixel size (eye-box px)
+  uniform int uEyesOn, uFaceDebug;
   uniform int uEars; uniform vec3 uEarC[2]; uniform float uEarR, uEarT, uEarSweep;
   uniform int uTopper; uniform vec3 uGogC[2], uGogX[2], uGogY[2], uGogZ[2], uGogB; uniform float uGogR;
   uniform vec3 uCrestC, uCrestB;
@@ -197,21 +198,36 @@ const FRAG = /* glsl */ `
   }
   float hash1(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
   float hash2(vec2 v) { return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453); }
-  // Working state: lines of code typed in at the bottom of the screen and scrolling up.
-  // Rows 3 px tall on a 4.5 px pitch; the newest row grows as it is typed.
-  bool codeLit(vec2 P) {
-    if (uWork.x <= 0.0) return false;
-    float base = 23.0 - 1.0; // bottom of the newest row
-    float i = floor((base - P.y) / 4.5);
-    if (i < 0.0 || i >= uWork.x) return false;
-    if (base - P.y - i * 4.5 >= 3.0) return false;
-    float n = uWork.y - i;
-    float indent = floor(hash1(n) * 3.0) * 3.0;
-    float len = 9.0 + floor(hash1(n + 31.0) * 12.0);
-    if (i == 0.0) len = floor(len * uWork.z);
-    float x = P.x - 6.0 - indent;
-    if (x < 0.0 || x >= len) return false;
-    return mod(x, 5.0) < 4.0 && hash2(vec2(n, floor(x / 5.0))) > 0.18;
+  // Working face: the eyes go and the whole screen flashes with typed ASCII glyphs, a 5 x 7
+  // pixel font (the ASCII FX vocabulary: bullseye, x, box, plus, dot, slashes, braces, semicolon,
+  // angle brackets, hash, equals, star, 0 and 1). Glyph pixels are
+  // squares in eye-box units, so the shape is resolution-independent and only the pixel pass
+  // pixelates it. Each cell flips to a new hashed glyph a few times a second on its own phase
+  // (typing); coverage fills cells in and clears them out in a hashed order (the scramble).
+  const int GLYPH_N = 17;
+  const int GLYPHS[119] = int[119](0, 14, 17, 21, 17, 14, 0, 0, 17, 10, 4, 10, 17, 0, 0, 31, 17, 17, 17, 31, 0, 0, 4, 4, 31, 4, 4, 0, 0, 0, 0, 4, 0, 0, 0, 1, 2, 2, 4, 8, 8, 16, 16, 8, 8, 4, 2, 2, 1, 6, 4, 4, 8, 4, 4, 6, 12, 4, 4, 2, 4, 4, 12, 0, 4, 0, 0, 4, 4, 8, 2, 4, 8, 16, 8, 4, 2, 8, 4, 2, 1, 2, 4, 8, 10, 10, 31, 10, 31, 10, 10, 0, 0, 31, 0, 31, 0, 0, 0, 4, 21, 14, 21, 4, 0, 14, 17, 19, 21, 25, 17, 14, 4, 12, 4, 4, 4, 4, 14);
+  bool glyphLit(vec2 q, out int tone) {
+    tone = 3;
+    if (uGlyph.x <= 0.0) return false;
+    float u = eyeUnit(), gp = uGlyph.w;
+    vec2 S = uEyePhys / u; // screen half-size in eye-box px
+    vec2 cell = vec2(6.0, 8.0) * gp; // 5 x 7 glyph plus a 1 px gap
+    vec2 n = max(floor(2.0 * S / cell), vec2(1.0));
+    vec2 P = vec2(q.x * S.x, -q.y * S.y) + n * cell * 0.5; // from the grid's top-left
+    vec2 ci = floor(P / cell);
+    if (ci.x < 0.0 || ci.y < 0.0 || ci.x >= n.x || ci.y >= n.y) return false;
+    vec2 cq = ((ci + 0.5) * cell - n * cell * 0.5) / S * 1.2; // keep cells well inside the screen
+    if (pow(abs(cq.x), uScreen.w) + pow(abs(cq.y), uScreen.w) > 1.0) return false;
+    float id = ci.x + ci.y * 17.0;
+    if (hash1(id + 3.1) >= uGlyph.x) return false;
+    float flip = floor(uGlyph.y * uGlyph.z + hash1(id + 7.7) * 4.0);
+    float h = hash2(vec2(id, flip));
+    if (h > 0.86) return false; // now and then a blank: the cursor moving on
+    int g = int(hash2(vec2(id + 0.5, flip + 0.25)) * float(GLYPH_N)) % GLYPH_N;
+    ivec2 b = ivec2(floor((P - ci * cell) / gp - 0.5));
+    if (b.x < 0 || b.x > 4 || b.y < 0 || b.y > 6) return false;
+    tone = h < 0.22 ? 1 : h < 0.6 ? 2 : 3;
+    return ((GLYPHS[g * 7 + b.y] >> (4 - b.x)) & 1) == 1;
   }
   bool glint(vec2 q) {
     float u = eyeUnit();
@@ -303,9 +319,9 @@ const FRAG = /* glsl */ `
             vec3 refl = reflect(rd, n);
             c = (refl.y > 0.18 && b >= 2) ? uScr[1] : uScr[0];
             if (r == 3) {
-              vec2 P = boxP(sq);
-              if (codeLit(P)) c = uGlow[2];
-              if (eyesLit(P)) c = uGlow[3];
+              int tone;
+              if (glyphLit(sq, tone)) c = uFaceDebug == 1 ? vec3(0.0, 1.0, 0.0) : uGlow[tone];
+              else if (uEyesOn == 1 && eyesLit(boxP(sq))) c = uFaceDebug == 1 ? vec3(1.0, 0.0, 0.0) : uGlow[3];
               if (glint(sq)) c = uScr[2];
             } else if (sq.x < -0.35 && sq.y > 0.2 && sq.y < 0.62 && sq.x > -0.7) c = uScr[2];
           } else if (r == 2) c = uAcc[b];
@@ -468,6 +484,17 @@ export function behaviour(t, motion) {
   return { glance, work, workT: Math.max(0, k - 5.8), blink: Math.min(blinkAt(k, 1.0), blinkAt(k, 5.2), blinkAt(k, 10.7)) };
 }
 
+/**
+ * The face from the behaviour: eyes, or the working glyphs, never both. Going to work the eyes
+ * blink shut and the glyphs fill in cell by cell; leaving, the glyphs clear in a scramble and
+ * the eyes blink open again. glyphs: share of glyph cells shown; eyeOpen caps the blink.
+ */
+export function faceAt(beh) {
+  const T = 0.35; // the share of the work ramp spent on the blink
+  const glyphs = clamp01((beh.work - T) / (1 - T));
+  return { glyphs, eyes: glyphs <= 0, eyeOpen: beh.work > 0 ? clamp01(1 - beh.work / T) : 1 };
+}
+
 const W12 = TAU / MOTION_LOOP;
 /** The body's place and attitude at time t, in the root frame: drift, bob, banking and head turn. */
 export function bodyAt(P, t, motion) {
@@ -574,7 +601,7 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     uChin: { value: 0 }, uChinC: { value: V() }, uChinR: { value: 0 },
     uRim: { value: 0 }, uRimC: { value: V() }, uRimR: { value: new THREE.Vector2(1, 1) }, uRimT: { value: 0 },
     uScreen: { value: new THREE.Vector4() }, uBezel: { value: 0 }, uEyePhys: { value: new THREE.Vector2() },
-    uEyeXf: { value: new THREE.Vector4(0, 0, 1, 1) }, uWork: { value: new THREE.Vector4() },
+    uEyeXf: { value: new THREE.Vector4(0, 0, 1, 1) }, uGlyph: { value: new THREE.Vector4() }, uEyesOn: { value: 1 }, uFaceDebug: { value: 0 },
     uEars: { value: 0 }, uEarC: { value: vecs(2) }, uEarR: { value: 0 }, uEarT: { value: 0 }, uEarSweep: { value: 0 },
     uTopper: { value: 0 }, uGogC: { value: vecs(2) }, uGogX: { value: vecs(2) }, uGogY: { value: vecs(2) }, uGogZ: { value: vecs(2) }, uGogB: { value: V() }, uGogR: { value: 0 },
     uCrestC: { value: V() }, uCrestB: { value: V(1, 1, 1) },
@@ -627,18 +654,18 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
    * (drift, banking, looking around, working); smoke false hides smoke and sparkles; pixK is
    * one pixel's world size per unit of depth, 2 tan(fov / 2) / height (for crisp sparkles).
    */
-  function update(t, { yaw = 0, motion = false, smoke = true, blink = null, pixK = 0.0035 } = {}) {
+  function update(t, { yaw = 0, motion = false, smoke = true, blink = null, pixK = 0.0035, faceDebug = false } = {}) {
     const P = params;
     const B = bodyAt(P, t, motion);
     B.m.decompose(body.position, body.quaternion, body.scale);
     root.rotation.y = yaw;
     const beh = behaviour(t, motion);
-    const w = beh.work;
-    U.uBlink.value = Math.min(blink ?? beh.blink, 1 - 0.4 * w);
-    const lift = mix(3.5, 6, clamp01((P.screenRound - 2) / 3)); // round screens have less room up top
-    U.uEyeXf.value.set(P.glance * beh.glance, P.gaze * (1 - w) + lift * w, P.eyeScale * (1 - 0.35 * w), U.uBlink.value);
-    const lines = beh.workT * P.codeRate;
-    U.uWork.value.set(w > 0.5 ? Math.min(P.codeRows, Math.floor(lines) + 1) : 0, Math.floor(lines), lines - Math.floor(lines), P.codeRows);
+    const face = faceAt(beh);
+    U.uBlink.value = Math.min(blink ?? beh.blink, face.eyeOpen);
+    U.uEyesOn.value = face.eyes ? 1 : 0;
+    U.uEyeXf.value.set(P.glance * beh.glance, P.gaze, P.eyeScale, U.uBlink.value);
+    U.uGlyph.value.set(face.glyphs, beh.workT, P.glyphRate, P.glyphPx);
+    U.uFaceDebug.value = faceDebug ? 1 : 0;
     U.uSmokeOn.value = smoke ? 1 : 0;
     const { puffs, sparks } = smokeAt(Lay, t, motion);
     U.uPuffN.value = smoke ? puffs.length : 0;

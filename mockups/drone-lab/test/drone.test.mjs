@@ -6,22 +6,22 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PARAMS, PARAM_BY_KEY, DEFAULTS } from '../params.js';
-import { VARIANTS, RECOMMENDED } from '../variants.js';
+import { VARIANTS, PICKED, FINAL, FINAL_PARAMS } from '../variants.js';
 import { PALETTES, SLOTS, TEAL } from '../palette.js';
-import { layout, extents, bodyAt, behaviour, smokeAt, LOOP, MOTION_LOOP, CYCLES, PUFF_PERIOD, MAX_PUFFS, MAX_SPARKS } from '../drone.js';
+import { layout, extents, bodyAt, behaviour, smokeAt, faceAt, LOOP, MOTION_LOOP, CYCLES, PUFF_PERIOD, MAX_PUFFS, MAX_SPARKS } from '../drone.js';
 import { resolveFile } from '../serve.mjs';
 import { CREW } from '../../explorations/astronaut-lab/crew.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const K_HEIGHT = 0.95; // a K astronaut
-const sets = VARIANTS.map((v) => [v.id, { ...DEFAULTS, ...v.params }]);
+const sets = [...VARIANTS, FINAL].map((v) => [v.id, { ...DEFAULTS, ...v.params }]);
 // Every select option at least once, on the defaults, so unused parts are covered too.
 for (const p of PARAMS.filter((q) => q.type === 'select')) p.options.forEach((_, i) => sets.push([`${p.key}=${i}`, { ...DEFAULTS, [p.key]: i }]));
 
 test('five variants use known parameters inside their ranges, and none has arms', () => {
   assert.equal(VARIANTS.length, 5);
   assert.deepEqual(VARIANTS.map((v) => v.id), ['A', 'B', 'C', 'D', 'E']);
-  assert.ok(VARIANTS.some((v) => v.id === RECOMMENDED));
+  assert.ok(VARIANTS.some((v) => v.id === PICKED));
   assert.ok(!PARAM_BY_KEY.arms, 'the brief says no arms');
   for (const v of VARIANTS) {
     assert.ok(v.leaning && v.name, v.id);
@@ -57,7 +57,7 @@ test('every add-on is anchored on the head surface (one connected piece)', () =>
 });
 
 test('drones are about half an astronaut tall', () => {
-  for (const [id, P] of sets.slice(0, VARIANTS.length)) {
+  for (const [id, P] of sets.slice(0, VARIANTS.length)) { // the five explorations; D-final is the human's own size
     const { top, bottom } = extents(layout(P));
     const share = (top - bottom) / K_HEIGHT;
     assert.ok(share > 0.42 && share < 0.58, `${id}: ${(share * 100).toFixed(0)}% of an astronaut`);
@@ -133,4 +133,33 @@ test('the dev server serves the lab and only the allowlisted shared modules', ()
   assert.equal(resolveFile('/%2e%2e/package.json'), null);
   assert.equal(resolveFile('/%E0%A4%A'), null);
   assert.ok(resolveFile('/asset-viewer/viewer.js').startsWith(ROOT + path.sep), 'non-allowlisted siblings resolve inside the lab (404), never outside');
+});
+
+test("D-final is D with the human's parameter set laid over it, verbatim", () => {
+  const D = VARIANTS.find((v) => v.id === PICKED).params;
+  for (const [k, v] of Object.entries(FINAL_PARAMS)) {
+    assert.equal(FINAL.params[k], v, k);
+    const p = PARAM_BY_KEY[k];
+    assert.ok(p, `unknown parameter ${k}`);
+    if (p.type !== 'select') assert.ok(v >= p.min && v <= p.max, `${k} = ${v} outside ${p.min}..${p.max}`);
+  }
+  for (const k of Object.keys(D)) if (!(k in FINAL_PARAMS)) assert.equal(FINAL.params[k], D[k], `${k} keeps D's value`);
+  assert.equal(FINAL.id, 'D-final');
+});
+
+test('working face: the eyes are gone while glyphs show, and come back after', () => {
+  const ts = Array.from({ length: 1200 }, (_, i) => (i / 1200) * MOTION_LOOP);
+  let working = 0, idle = 0;
+  for (const t of ts) {
+    const f = faceAt(behaviour(t, true));
+    assert.ok(!(f.eyes && f.glyphs > 0), `eyes and glyphs together at t = ${t}`);
+    if (f.glyphs >= 1) working++;
+    if (f.eyes && f.eyeOpen === 1) idle++;
+  }
+  assert.ok(working > 400 && idle > 500, `${working} full-glyph samples, ${idle} open-eye samples`);
+  const at = (t) => faceAt(behaviour(t, true));
+  assert.equal(at(8).glyphs, 1); assert.equal(at(8).eyes, false);
+  assert.equal(at(3).glyphs, 0); assert.equal(at(3).eyes, true);
+  assert.equal(at(11.5).glyphs, 0); assert.equal(at(11.5).eyes, true);
+  assert.equal(faceAt(behaviour(8, false)).glyphs, 0, 'the idle loop never works');
 });

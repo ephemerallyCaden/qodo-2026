@@ -27,7 +27,7 @@ export const VARIANTS = [
       size: 1.05,
       headW: 0.13, headH: 0.18, headD: 0.135, headRound: 1, headTaper: 1.3,
       screenW: 0.62, screenH: 0.45, screenY: 0.2, screenRound: 2, bezel: 0.34, eyes: 0, eyeScale: 1.05, gaze: -2.5, glance: 3,
-      ears: 1, earR: 0.04, earT: 0.016, earY: 0.15, codeRows: 2,
+      ears: 1, earR: 0.04, earT: 0.016, earY: 0.15,
       thrusters: 1, thrR: 0.034, thrL: 0.03, thrFlare: 1.15,
       smoke: 0, puffSize: 1.05, puffRate: 0.5,
       bobAmp: 0.012, drift: 0.1, bank: 0.2, lookYaw: 0.18,
@@ -77,5 +77,12 @@ export const VARIANTS = [
   },
 ];
 
-// The recommended base model (marked in the lineup).
-export const RECOMMENDED = 'A';
+// The human's pick: D. D-final is D with the human's exact parameter set laid over it
+// (verbatim, 2026-11-06); anything the set doesn't name keeps D's value, then the default.
+export const PICKED = 'D';
+export const FINAL_PARAMS = {"headW":0.1275,"headH":0.095,"headD":0.125,"headRound":0.83,"headCorner":0.1,"headTaper":0.99,"headFlat":0.4,"rim":1,"rimY":-0.45,"rimT":0.019,"earR":0.03,"antenna":1,"antL":0.045,"antTilt":0.15,"size":1.36,"screenW":1.17,"screenH":0.77,"screenY":0.18,"screenRound":3,"bezel":0.18,"eyes":3,"thrusters":1,"thrR":0.0525,"thrL":0.015,"thrFlare":0.85,"thrSpread":0.9,"puffSize":0.95,"puffRate":0.32,"sparkles":3,"bobAmp":0.043,"drift":0.165,"bank":0.32,"lookYaw":0.5,"accentY":1,"accentW":0.4};
+export const FINAL = {
+  id: 'D-final', name: 'Saucer scout, final',
+  leaning: "The human's pick: D's brimmed saucer, smaller and rounder, with a wide oval screen, binocular eyes, one stubby under-jet and a bouncier bob.",
+  params: { ...VARIANTS.find((v) => v.id === PICKED).params, ...FINAL_PARAMS },
+};

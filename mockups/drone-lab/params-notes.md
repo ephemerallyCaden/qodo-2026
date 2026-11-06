@@ -7,7 +7,7 @@
 - **The idle loop,** all of it on a 12 s behaviour loop that divides 24 s; the turntable and stills use the 6 s idle loop:
   - a hover bob with puffs;
   - looking around and blinking;
-  - a working face (eyes lift and narrow while lines of code are typed in and scroll up);
+  - a working face (the eyes go and the whole screen flashes with typed ASCII glyphs);
   - banking into the drift.
 
 ## Behaviour timeline (12 s motion loop)
@@ -18,7 +18,11 @@
 | 1.0 | Blink |
 | 1.6–4.8 | Looks to its left, then right, then back (eyes glance and the head turns with them) |
 | 5.2 | Blink |
-| 5.6–10.6 | Working: eyes lift and narrow, and code lines are typed in at `codeRate` lines per second and scroll up |
+| 5.6–5.8 | The eyes blink shut |
+| 5.8–6.0 | Glyphs fill the screen, cell by cell in a hashed order |
+| 6.0–10.2 | Working: every cell flips to a new hashed glyph `glyphRate` times a second on its own phase (typing), with the odd blank |
+| 10.2–10.45 | The glyphs clear in a scramble |
+| 10.45–10.6 | The eyes blink open |
 | 10.7 | Blink |
 | 10.9–11.95 | A small glance, then settles |
 
@@ -30,14 +34,34 @@ Smoke puffs and sparkles float free by design. Every tile is therefore rendered 
 
 Each animated GIF must also show smoke in at least half its frames.
 
-## Recommendation: A · Monitor buddy
+## The pick: D-final
 
-- **It is the brief's "floating monitor buddy" exactly.** A rounded-cube head that is all screen reads as a computer at a glance, which is what an AI agent session is.
-- **The best face for the face channel.** The screen is the largest of the five, so V2 eyes and the working state (code streaming) read even at the 1x crew distance. That's where an agent's activity will be shown.
-- **The best base for brand heads.** A rounded cube morphs into the others by sliding `headRound`, `headTaper` and `headFlat`, so most logo heads (Copilot's included) are short slider moves from A.
-- **Puffs read from every angle.** The four corner nozzles sit under the head, so the smoke shows from the front, the side and the back. Eager personality: the biggest bob, the busiest sputter, sparkles.
+The human picked **D · Saucer scout** with an exact parameter set. That set is laid over D verbatim, as **D-final** (`variants.js` `FINAL_PARAMS`). A–E stay in the lab as explorations.
+- **Kept from D** (D sets it, the human's set doesn't): `smoke` = round puffs.
+- **At the default** (neither sets it): listed under "Variants" above. Notably `glyphRate` 4 and `glyphPx` 1.4 (the new working face), `glance` 4.5, `gaze` 0, `eyeScale` 1, `antTip` 0.018, `ears` none, `topper` none, `accent` none.
+- **Set but without visible effect:**
+  - `earR` (0.03), because `ears` is none;
+  - `accentY` / `accentW` (1 / 0.4), because `accent` is none;
+  - `thrSpread` (0.9), because the single under-jet has no spread.
 
-Runner-up: **D · Saucer scout.** Its chunky round puffs from twin under-pods are the cutest smoke of the five, and the brim gives it the most retro charm. But a short wide head leaves the least screen height for faces and code.
+  Turning on ears or an accent would use them as set.
+- **Size:** D-final is 39% of a K astronaut's height (the five explorations are 47–48%). It's the human's own size, so the "about half" test covers A–E only.
+
+My earlier recommendation was A · Monitor buddy: the biggest screen and the closest to the "floating monitor buddy". It stands as context only.
+
+## The working face
+
+When the drone works, the eyes blink shut and disappear entirely. The whole screen then flashes with ASCII glyphs as it types:
+- **The glyphs:** a 5 × 7 pixel font from the ASCII FX vocabulary (◎ ✕ ▢ + · / \ { } ; < > # = * 0 1), laid out in a grid fitted to the screen. Cells near the screen's rim are left out, so the glyphs stay whole.
+- **Rendering:** glyph pixels are squares in eye-box units, evaluated per fragment like the eyes. They're resolution-independent, and only the pixel pass pixelates them.
+- **Colour:** each lit glyph takes a hashed tone of the teal glow ramp (`glow[1]`–`glow[3]`) on the dark screen, with no antialiasing (the palette check would catch it).
+- **Typing:** each cell flips `glyphRate` times a second on its own hashed phase, and now and then a cell goes blank, like a cursor moving on. Every choice is hashed on the cell and the flip count within the loop, so it's deterministic and loop-locked.
+- **Coming back:** the glyphs clear in a hashed scramble, then the eyes blink open.
+- **Checks:**
+  - `npm test` checks that the eyes and the glyphs never show together, that the work window is all glyphs, and that the rest of the loop is eyes.
+  - `npm run lab` probes the rendered face of every variant: eyes are painted red and glyphs green in a debug render. While working there must be glyph pixels and no eye pixels; at rest, eye pixels and no glyph pixels.
+
+`out/working-face.png` steps through it frame by frame.
 
 ## The reference (Snowball), and what we didn't copy
 
@@ -71,7 +95,7 @@ A white-blue shell melts into the K suits at 180p: the phase-1 `frost` slot test
 
 **The logo** (`github-copilot-logo.svg`): a wide, rounded helmet head that widens toward the cheeks; two big rounded-rectangle goggle lenses across the top half, almost touching at the bridge; round ear pads low on each side; a wide lower face plate with two upright pill eyes.
 
-**The mapping,** starting from A:
+**The mapping,** from the base (the values are absolute, so they apply from D-final or any variant):
 - **Head:** soften the cube into the helmet: `headW 0.2`, `headH 0.15`, `headD 0.16`, `headRound 0.55`, `headCorner 0.85`, `headTaper 1.12` (wider at the cheeks), `headFlat 0.15` (a flatter chin).
 - **Goggles:** `topper goggles`, `gogW 0.075`, `gogH 0.05`, `gogX 0.4` (the lenses nearly meet at the bridge), `gogY 0.45`. The frames take the trim slot (the logo's black outline); the lenses take the screen tones and a glint.
 - **Ear pads:** `ears pods`, `earR 0.06`, `earT 0.025`, `earY -0.35` (low, like the logo's).

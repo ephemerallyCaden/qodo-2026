@@ -49,8 +49,8 @@ export const PARAMS = [
   { key: 'eyeScale', group: 'face', min: 0.5, max: 1.5, step: 0.01, def: 1, words: 'Eye size' },
   { key: 'gaze', group: 'face', min: -5, max: 5, step: 0.1, def: 0, words: 'Resting eye height on the screen, in eye-box pixels (+ up; a shy drone looks down)' },
   { key: 'glance', group: 'face', min: 0, max: 8, step: 0.1, def: 4.5, words: 'How far the eyes glance side to side when looking around (eye-box pixels)' },
-  { key: 'codeRows', group: 'face', min: 2, max: 5, step: 1, def: 3, words: 'Working state: rows of code streaming up the screen' },
-  { key: 'codeRate', group: 'face', min: 1, max: 6, step: 1, def: 3, words: 'Working state: lines typed per second' },
+  { key: 'glyphRate', group: 'face', min: 1, max: 10, step: 0.5, def: 4, words: 'Working face: glyph flips per second in each cell (typing speed)' },
+  { key: 'glyphPx', group: 'face', min: 0.8, max: 2.5, step: 0.05, def: 1.4, words: 'Working face: size of one glyph pixel, in eye-box px (bigger = fewer, chunkier glyphs)' },
   // Thrusters and smoke.
   { key: 'thrusters', group: 'thrusters', type: 'select', options: THRUSTERS, def: 0, words: 'Thruster layout' },
   { key: 'thrR', group: 'thrusters', min: 0.015, max: 0.07, step: 0.0025, def: 0.035, words: 'Nozzle radius' },
