@@ -4,6 +4,7 @@ import { CommetError, EXIT } from '../core/errors.js';
 import { sha256Hex } from '../core/hash.js';
 import { formatSummary } from '../core/summary.js';
 import { scan } from '../scan/index.js';
+import { QODO_CACHE_FILE } from '../scan/qodo.js';
 import { loadOrCreateKey } from '../state/key.js';
 import { stateDir, writeAtomic } from '../state/io.js';
 
@@ -38,6 +39,16 @@ function parseScanArgs(args: string[]): ScanArgs | string {
   return o;
 }
 
+/** Saves the counts-only Qodo cache; a failure is reported, not fatal: the snapshot already has the counts. */
+function saveQodoCache(commonDir: string, text: string): boolean {
+  try {
+    writeAtomic(join(stateDir(commonDir), QODO_CACHE_FILE), text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Runs the CLI and returns the exit code (design §8; see EXIT). */
 export async function main(argv: string[], io: Io): Promise<number> {
   const [cmd, ...rest] = argv;
@@ -56,13 +67,16 @@ export async function main(argv: string[], io: Io): Promise<number> {
   }
   try {
     const claudeDir = io.env['CLAUDE_CONFIG_DIR'] || join(homedir(), '.claude');
-    const { snapshot, json, commonDir, logs } = await scan({
+    const { snapshot, json, commonDir, logs, qodoCache } = await scan({
       repoDir: io.cwd, windowMonths: args.window, ingest: args.ingest,
       claudeProjectsDir: join(claudeDir, 'projects'), keyFor: (dir) => loadOrCreateKey(stateDir(dir)),
       qodo: { fetch: args.withQodo, stateDir },
     });
     writeAtomic(args.out ? resolve(io.cwd, args.out) : join(stateDir(commonDir), 'snapshot.json'), json);
     io.stdout(formatSummary(snapshot, logs, !args.withQodo));
+    if (qodoCache !== null && !saveQodoCache(commonDir, qodoCache)) {
+      io.stdout('qodo findings cache could not be written; a scan without --with-qodo will not see these counts\n');
+    }
     const where = args.out ? 'the --out file' : '<git-common-dir>/commet/snapshot.json';
     io.stdout(`snapshot written to ${where} (${Buffer.byteLength(json)} bytes, sha256 ${sha256Hex(json).slice(0, 16)})\n`);
     return 0;

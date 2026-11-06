@@ -100,7 +100,10 @@ export interface FileEntry {
    * source it most often changes with; null if none.
    */
   testOf: FileId | DirId | null;
-  /** Open Qodo review findings on this file. null: unknown (not read, failed, or no reviewed PR), never 0. */
+  /**
+   * Open Qodo review findings on this file. null: unknown (not read, failed, no reviewed PR, or
+   * changed by a PR without a complete review), never 0.
+   */
   qodo: FileQodo | null;
 }
 
@@ -115,12 +118,13 @@ export type QodoReason = 'qodo not installed' | 'gh not installed' | 'not logged
 
 /**
  * Where files[].qodo came from (#17). `none`: not opted in and no cache. `read`: from a fetch or the
- * cache it wrote, as of `head` (the HEAD it was fetched at); `prs` were fetched, `unreviewed` of them
- * had no Qodo review, and `offHead` open findings sat on no file at this HEAD.
+ * cache it wrote, as of `head` (the HEAD it was fetched at); `prs` were read and `skipped` (closed,
+ * never merged) were not; `unreviewed` of those read had no complete Qodo review, so the files they
+ * change are null; `offHead` open findings sat on no file at this HEAD.
  */
 export type QodoSource =
   | { status: 'none' }
-  | { status: 'read'; head: Sha; prs: number; unreviewed: number; offHead: number }
+  | { status: 'read'; head: Sha; prs: number; skipped: number; unreviewed: number; offHead: number }
   | { status: 'unavailable'; reason: QodoReason };
 
 /** An unmerged local or remote-tracking branch (no network: only refs already on disk). */

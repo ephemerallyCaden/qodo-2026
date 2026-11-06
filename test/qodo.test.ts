@@ -1,7 +1,7 @@
 // Issue #17: opt-in Qodo findings as a code-health input. One describe per acceptance criterion.
 // `gh` and `qodo` are fake binaries on an isolated PATH, so no test touches the network.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -29,15 +29,25 @@ const finding = ({ id, status, level, path }: Finding) => ({
   location: path === null ? null : { file_path: path, start_line: 3, end_line: 4, side: 'right', snippet: CANARY.snippet },
   evidence: { citations: [{ source_type: 'web', source: `https://example.com/${CANARY.url}` }] },
 });
+const session = (n: number, status = 'completed', complete = true) =>
+  ({ run_id: n, status, commit_sha: 'b'.repeat(40), started_at: '2026-10-05T10:00:00Z', review_complete: complete });
 const response = (n: number, findings: Finding[] | null, extra: object = {}) => ({
-  pr_url: PR(n), git_provider: null, finding_count: findings?.length ?? 0,
-  review_session: findings === null ? null : { run_id: n, status: 'completed', commit_sha: 'b'.repeat(40), review_complete: true },
+  pr_url: PR(n), git_provider: null, finding_count: findings?.length ?? 0, review_session: findings === null ? null : session(n),
   findings: (findings ?? []).map(finding), ...extra,
 });
 
-/** The fixture's PRs: #3 is closed unmerged (never fetched), #4 has no review yet. */
+/**
+ * The fixture's PRs: #3 is closed unmerged (never fetched, but counted), #4 has no review yet and #5's
+ * review is still running, so the files they change are unknown.
+ */
 const PRS = [{ number: 1, url: PR(1), state: 'MERGED' }, { number: 2, url: PR(2), state: 'OPEN' },
-  { number: 3, url: PR(3), state: 'CLOSED' }, { number: 4, url: PR(4), state: 'MERGED' }];
+  { number: 3, url: PR(3), state: 'CLOSED' }, { number: 4, url: PR(4), state: 'MERGED' }, { number: 5, url: PR(5), state: 'OPEN' }];
+/** `gh pr view --json files,changedFiles` for the PRs without a complete review. */
+const VIEWS: Record<number, object> = {
+  4: { changedFiles: 2, files: [{ path: 'README.md', additions: 1, deletions: 0, changeType: 'MODIFIED' },
+    { path: 'src/gone.ts', additions: 1, deletions: 0, changeType: 'ADDED' }] },
+  5: { changedFiles: 1, files: [{ path: 'src/new.ts', additions: 1, deletions: 0, changeType: 'MODIFIED' }] },
+};
 const FINDINGS: Record<number, object> = {
   1: response(1, [
     { id: 'f1', status: 'pending', level: 'action_required', path: 'src/a.ts' },
@@ -63,6 +73,8 @@ const FINDINGS: Record<number, object> = {
   ]),
   3: response(3, [{ id: 'h1', status: 'pending', level: 'action_required', path: 'src/a.ts' }]),
   4: response(4, null),
+  // Running, with no findings yet: not a clean review (Qodo local r1 #2).
+  5: response(5, [], { review_session: session(5, 'running', false) }),
 };
 const levels = (actionRequired: number, remediationRecommended: number, informational: number, other: number) =>
   ({ actionRequired, remediationRecommended, informational, other });
@@ -74,17 +86,17 @@ interface Stubs { bin: string; log: string; calls: () => { tool: string; args: s
  * argv. `gh` prints `prs`; `qodo` prints the findings for its `--pr-url`. `fail` replaces a fake's
  * body with a Node snippet (it may use `log` and `args`).
  */
-function stubs(o: { prs?: unknown; findings?: Record<number, unknown>; omit?: ('gh' | 'qodo')[]; fail?: Partial<Record<'gh' | 'qodo', string>> } = {}): Stubs {
+function stubs(o: { prs?: unknown; findings?: Record<number, unknown>; views?: Record<number, unknown>; omit?: ('gh' | 'qodo')[]; fail?: Partial<Record<'gh' | 'qodo', string>> } = {}): Stubs {
   const bin = mkdtempSync(join(tmpdir(), 'commet-qodo-bin-'));
   const log = join(bin, 'calls.jsonl');
   symlinkSync(REAL_GIT, join(bin, 'git'));
   const data = join(bin, 'data.json');
-  writeFileSync(data, JSON.stringify({ prs: o.prs ?? PRS, findings: o.findings ?? FINDINGS }));
+  writeFileSync(data, JSON.stringify({ prs: o.prs ?? PRS, findings: o.findings ?? FINDINGS, views: o.views ?? VIEWS }));
   const head = (tool: string) => `#!${process.execPath}\nconst fs = require('node:fs');\nconst args = process.argv.slice(2);\n`
     + `fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ tool: ${JSON.stringify(tool)}, args }) + '\\n');\n`
     + `const data = JSON.parse(fs.readFileSync(${JSON.stringify(data)}, 'utf8'));\n`;
   const body = {
-    gh: 'process.stdout.write(JSON.stringify(data.prs));\n',
+    gh: 'process.stdout.write(JSON.stringify(args[1] === "view" ? data.views[args[2].split("/").pop()] : data.prs));\n',
     qodo: 'const url = args[args.indexOf("--pr-url") + 1];\nprocess.stdout.write(JSON.stringify(data.findings[url.split("/").pop()]));\n'
       + `process.stderr.write("  trace ${CANARY.stderr}\\n");\n`,
   };
@@ -177,37 +189,50 @@ describe('#17 AC1: --with-qodo is off by default and the default scan spawns no 
 });
 
 describe('#17 AC2: read-only tools only, unresolved findings on files at HEAD only', () => {
-  it('calls only `gh pr list` and `qodo read … findings`, and skips closed unmerged PRs', async () => {
+  it('calls only `gh pr list`, `gh pr view` and `qodo read … findings`, and skips closed unmerged PRs', async () => {
     const s = stubs();
     expect((await onPath(s, () => scanCli(repo, ['--with-qodo']))).code).toBe(0);
     const calls = s.calls();
-    expect(calls.filter((c) => c.tool === 'gh')).toEqual([{ tool: 'gh', args: ['pr', 'list', '--state', 'all', '--limit', '1000',
-      '--json', 'number,url,state'] }]);
+    const gh = calls.filter((c) => c.tool === 'gh');
+    expect(gh[0]).toEqual({ tool: 'gh', args: ['pr', 'list', '--state', 'all', '--limit', '1000', '--json', 'number,url,state'] });
+    // Only the PRs without a complete review get their file list read.
+    expect(gh.slice(1).map((c) => c.args).sort()).toEqual([4, 5].map((n) => ['pr', 'view', PR(n), '--json', 'files,changedFiles']));
     const qodo = calls.filter((c) => c.tool === 'qodo');
     for (const c of qodo) expect(c.args.slice(0, 4)).toEqual(['--no-onboarding', 'read', 'pr-review-session', 'findings']);
-    expect(qodo.map((c) => c.args[c.args.indexOf('--pr-url') + 1]).sort()).toEqual([PR(1), PR(2), PR(4)]);
-    expect(calls.length).toBe(4);
+    expect(qodo.map((c) => c.args[c.args.indexOf('--pr-url') + 1]).sort()).toEqual([PR(1), PR(2), PR(4), PR(5)]);
+    expect(calls.length).toBe(7);
   });
 
   it('counts only open findings, per file per level, deduplicated by id', async () => {
     const s = stubs();
     await onPath(s, () => scanCli(repo, ['--with-qodo']));
     expect(qodoOf(readSnap(repo))).toEqual({
-      'README.md': open(levels(0, 0, 0, 0)),
+      'README.md': null,
       'src/a.ts': open(levels(1, 1, 1, 1)),
       'src/b.ts': open(levels(0, 1, 0, 0)),
-      'src/new.ts': open(levels(0, 0, 0, 0)),
+      'src/new.ts': null,
     });
+  });
+
+  it('a file changed by a PR with no complete review is unknown, not 0 (Qodo local r1 #2)', async () => {
+    const r = await onPath(stubs(), () => scanCli(repo, ['--with-qodo']));
+    expect(r.out).toContain('2 PR(s) have no complete Qodo review; the 2 file(s) at HEAD they change are unknown, not 0');
+    // With #5's review complete, its file is evidence-backed again.
+    const done = stubs({ findings: { ...FINDINGS, 5: response(5, []) } });
+    await onPath(done, () => scanCli(repo, ['--with-qodo']));
+    expect(qodoOf(readSnap(repo))['src/new.ts']).toEqual(open(levels(0, 0, 0, 0)));
+    expect(done.calls().filter((c) => c.args[1] === 'view').map((c) => c.args[2])).toEqual([PR(4)]);
   });
 
   it('a finding on a renamed, deleted, absolute or missing path is left out and counted, never moved', async () => {
     const s = stubs();
     const r = await onPath(s, () => scanCli(repo, ['--with-qodo']));
     const snap = readSnap(repo);
-    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 3, unreviewed: 1, offHead: 4 });
+    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 4, skipped: 1, unreviewed: 2, offHead: 4 });
     expect(r.out).toContain('qodo findings: 5 open on 2 file(s) (action_required 1 · remediation_recommended 2 · informational 1 · other 1), '
       + `from 2 reviewed PR(s) as of ${snap.repo.head.slice(0, 7)}`);
-    expect(r.out).toContain('1 PR(s) have no Qodo review yet; findings on their files are not counted');
+    // Skipped PRs are counted, not dropped silently (Qodo local r1 #1).
+    expect(r.out).toContain('1 closed PR(s) that never merged were not read');
     expect(r.out).toContain('4 open finding(s) are on files not at HEAD (deleted, renamed, excluded or none) and are left out');
   });
 
@@ -217,7 +242,7 @@ describe('#17 AC2: read-only tools only, unresolved findings on files at HEAD on
     expect(r.code).toBe(0);
     expect(s.calls().map((c) => c.tool)).toEqual(['gh']);
     const snap = readSnap(repo);
-    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 0, unreviewed: 0, offHead: 0 });
+    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 0, skipped: 0, unreviewed: 0, offHead: 0 });
     expect(snap.files.map((f) => f.qodo)).toEqual([null, null, null, null]);
     expect(r.out).toContain('qodo findings: unknown (no PR has a Qodo review)');
   });
@@ -234,8 +259,8 @@ describe('#17 AC3: the cache holds counts per file per level only; finding text 
     await onPath(s, () => scanCli(repo, ['--with-qodo']));
     const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo.dir, encoding: 'utf8' }).trim();
     expect(JSON.parse(readFileSync(CACHE(repo), 'utf8'))).toEqual({
-      schema: 'commet.qodo-findings.v1', head, prs: 3, unreviewed: 1, offHead: 4,
-      files: { 'src/a.ts': levels(1, 1, 1, 1), 'src/b.ts': levels(0, 1, 0, 0) },
+      schema: 'commet.qodo-findings.v1', head, prs: 4, skipped: 1, unreviewed: 2, offHead: 4,
+      files: { 'src/a.ts': levels(1, 1, 1, 1), 'src/b.ts': levels(0, 1, 0, 0) }, unknown: ['README.md', 'src/new.ts'],
     });
   });
 
@@ -277,19 +302,23 @@ describe('#17 AC4: files[].qodo, and a scan without the flag reads the cache', (
     commit(repo, '2026-10-06T10:00:00Z', ['rm', '-q', 'src/b.ts'], 'chore: drop b');
     const r = await onPath(stubs({ omit: ['gh', 'qodo'] }), () => scanCli(repo));
     const snap = readSnap(repo);
-    expect(qodoOf(snap)).toEqual({ 'README.md': open(levels(0, 0, 0, 0)), 'src/a.ts': open(levels(1, 1, 1, 1)), 'src/new.ts': open(levels(0, 0, 0, 0)) });
-    expect(snap.qodo).toEqual({ status: 'read', head: fetchHead, prs: 3, unreviewed: 1, offHead: 5 });
+    expect(qodoOf(snap)).toEqual({ 'README.md': null, 'src/a.ts': open(levels(1, 1, 1, 1)), 'src/new.ts': null });
+    expect(snap.qodo).toEqual({ status: 'read', head: fetchHead, prs: 4, skipped: 1, unreviewed: 2, offHead: 5 });
     expect(r.out).toContain(`as of ${fetchHead.slice(0, 7)} (HEAD has moved since)`);
   });
 
   it('a malformed, oversized-count or symlinked cache is unknown, not 0', async () => {
     const s = stubs({ omit: ['gh', 'qodo'] });
+    const cache = (o: object) => JSON.stringify({ schema: 'commet.qodo-findings.v1', head: 'a'.repeat(40), prs: 1, skipped: 0, unreviewed: 0,
+      offHead: 0, files: {}, unknown: [], ...o });
+    const big = 2 ** 52;
     const bad = [
-      '{not json', JSON.stringify({ schema: 'commet.qodo-findings.v1', head: 'x', prs: 1, unreviewed: 0, offHead: 0, files: {} }),
-      JSON.stringify({ schema: 'commet.qodo-findings.v1', head: 'a'.repeat(40), prs: 1, unreviewed: 0, offHead: 0,
-        files: { 'src/a.ts': { ...levels(1, 0, 0, 0), actionRequired: -1 } } }),
-      JSON.stringify({ schema: 'commet.qodo-findings.v1', head: 'a'.repeat(40), prs: 1, unreviewed: 0, offHead: 0,
-        files: { 'src/a.ts': { ...levels(1, 0, 0, 0), title: CANARY.title } } }),
+      '{not json', cache({ head: 'x' }), cache({ files: { 'src/a.ts': { ...levels(1, 0, 0, 0), actionRequired: -1 } } }),
+      cache({ files: { 'src/a.ts': { ...levels(1, 0, 0, 0), title: CANARY.title } } }), cache({ unknown: [CANARY.title, 7] }),
+      cache({ skipped: undefined }),
+      // Each count is a safe integer, but a file's total or the off-HEAD sum is not (Qodo local r1 #4).
+      cache({ files: { 'src/a.ts': levels(big, big, 0, 0) } }),
+      cache({ offHead: big, files: { 'src/gone.ts': levels(big, 0, 0, 0) } }),
     ];
     await onPath(s, () => scanCli(repo));
     for (const text of bad) {
@@ -301,7 +330,7 @@ describe('#17 AC4: files[].qodo, and a scan without the flag reads the cache', (
       expect(r.out).toContain('qodo findings: unavailable (cache unreadable)');
     }
     const target = join(mkdtempSync(join(tmpdir(), 'commet-qodo-target-')), 'x.json');
-    writeFileSync(target, JSON.stringify({ schema: 'commet.qodo-findings.v1', head: 'a'.repeat(40), prs: 1, unreviewed: 0, offHead: 0, files: {} }));
+    writeFileSync(target, cache({}));
     rmSync(CACHE(repo));
     symlinkSync(target, CACHE(repo));
     expect((await onPath(s, () => scanCli(repo))).out).toContain('qodo findings: unavailable (cache unreadable)');
@@ -322,6 +351,8 @@ describe('#17 AC5: a failed fetch exits 0 with qodo null and an "unavailable (<r
     ['a malformed PR list', { prs: [{ number: 1, url: '--exec=evil', state: 'OPEN' }] }, 'malformed response'],
     ['a truncated read', { findings: { ...FINDINGS, 2: { ...(FINDINGS[2] as object), qar_operation_result_truncated: true } } }, 'truncated result'],
     ['a finding count that disagrees with the list', { findings: { ...FINDINGS, 1: { ...(FINDINGS[1] as object), finding_count: 99 } } }, 'truncated result'],
+    ['a PR file list cut short', { views: { ...VIEWS, 4: { changedFiles: 3, files: (VIEWS[4] as { files: object[] }).files } } }, 'truncated result'],
+    ['a malformed PR file list', { views: { ...VIEWS, 5: { changedFiles: 1, files: [{ path: 7 }] } } }, 'malformed response'],
     ['too many PRs to list', { prs: Array.from({ length: 1000 }, (_, i) => ({ number: i + 1, url: PR(i + 1), state: 'CLOSED' })) }, 'too many PRs'],
   ];
   for (const [name, o, reason] of failing) {
@@ -355,6 +386,25 @@ describe('#17 AC5: a failed fetch exits 0 with qodo null and an "unavailable (<r
       qodo: { fetch: true, stateDir: () => join(repo.dir, '.git/commet'), timeoutMs: 20_000 } }));
     expect(snapshot.qodo).toEqual({ status: 'unavailable', reason: 'not logged in' });
     expect(Date.now() - t0).toBeLessThan(10_000);
+  });
+
+  it('scan() itself never writes the cache; the CLI does (altitude review #1)', async () => {
+    const { snapshot } = await onPath(stubs(), () => scan({ repoDir: repo.dir, windowMonths: 24, ingest: false,
+      claudeProjectsDir: join(NO_LOGS, 'projects'), keyFor: () => new Uint8Array(32).fill(7),
+      qodo: { fetch: true, stateDir: () => join(repo.dir, '.git/commet') } }));
+    expect(snapshot.qodo).toMatchObject({ status: 'read', prs: 4 });
+    expect(existsSync(CACHE(repo))).toBe(false);
+  });
+
+  it('a cache that cannot be written still gives the snapshot and says so (Qodo local r1 #3)', async () => {
+    await onPath(stubs({ omit: ['gh', 'qodo'] }), () => scanCli(repo));
+    mkdirSync(CACHE(repo));
+    const out = join(mkdtempSync(join(tmpdir(), 'commet-qodo-out-')), 'snap.json');
+    const r = await onPath(stubs(), () => scanCli(repo, ['--with-qodo', '--out', out]));
+    expect(r.code).toBe(0);
+    expect((JSON.parse(readFileSync(out, 'utf8')) as SnapshotV02).qodo).toMatchObject({ status: 'read', prs: 4 });
+    expect(r.out).toContain('qodo findings: 5 open on 2 file(s)');
+    expect(r.out).toContain('qodo findings cache could not be written; a scan without --with-qodo will not see these counts');
   });
 
   it('a failed fetch keeps the earlier cache instead of overwriting it with nothing', async () => {

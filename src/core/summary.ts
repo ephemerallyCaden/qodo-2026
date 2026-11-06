@@ -84,7 +84,11 @@ function qodoLines(s: SnapshotV02, cached: boolean): string[] {
   const stale = q.head === s.repo.head ? '' : ' (HEAD has moved since)';
   const out = [`${label}: ${qodoTotal(sum)} open on ${withOpen.length} file(s) (${levels}), `
     + `from ${q.prs - q.unreviewed} reviewed PR(s) as of ${q.head.slice(0, 7)}${stale}`];
-  if (q.unreviewed) out.push(`${q.unreviewed} PR(s) have no Qodo review yet; findings on their files are not counted`);
+  if (q.unreviewed) {
+    const unknown = s.files.filter((f) => f.qodo === null).length;
+    out.push(`${q.unreviewed} PR(s) have no complete Qodo review; the ${unknown} file(s) at HEAD they change are unknown, not 0`);
+  }
+  if (q.skipped) out.push(`${q.skipped} closed PR(s) that never merged were not read`);
   if (q.offHead) out.push(`${q.offHead} open finding(s) are on files not at HEAD (deleted, renamed, excluded or none) and are left out`);
   return out;
 }

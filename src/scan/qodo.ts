@@ -1,19 +1,19 @@
 // Opt-in Qodo reads for #17 (CONSTITUTION principle 1: read-only network calls only as an explicit
-// opt-in). Outbound only, through two read-only commands: `gh pr list` and Qodo's non-mutating
-// `qodo read` gateway. No listener, no writes to Qodo or GitHub. Tool output is parsed for ids,
+// opt-in). Outbound only, through read-only commands: `gh pr list`, `gh pr view` and Qodo's
+// non-mutating `qodo read` gateway. No listener, no writes to Qodo or GitHub. Tool output is parsed for ids,
 // statuses, levels and paths only and is never printed; a failure maps to a fixed reason.
 import { execFile } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseCache, parsePrFindings, serializeCache, type PrFindings, type QodoCache } from '../core/qodo.js';
+import { parseCache, parsePrFindings, type PrFindings, type QodoCache, type QodoFetch } from '../core/qodo.js';
 import type { QodoReason } from '../core/snapshot/types.js';
-import { writeAtomic } from '../state/io.js';
 
 /** More PRs than this can't be listed in one read, so the list may be incomplete: unknown. */
 export const PR_LIMIT = 1000;
 export const QODO_TIMEOUT_MS = 60_000;
 const PARALLEL = 4;
-const CACHE_FILE = 'qodo-findings.json';
+/** The counts-only cache, in the repo's state dir. */
+export const QODO_CACHE_FILE = 'qodo-findings.json';
 // The form `gh` prints for a PR; also keeps anything option-shaped out of qodo's argv.
 const PR_URL = /^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/[^\s?#]+\/pull\/\d+$/;
 
@@ -57,12 +57,22 @@ const parseJson = (text: string): unknown => {
   }
 };
 
+/** The paths a PR changes, from `gh pr view`; a list shorter than the PR's file count is truncated. */
+function parseFiles(v: unknown): string[] | 'malformed response' | 'truncated result' {
+  const { files, changedFiles } = (v ?? {}) as { files?: unknown; changedFiles?: unknown };
+  if (!Array.isArray(files) || typeof changedFiles !== 'number') return 'malformed response';
+  const paths = files.map((f) => (f as { path?: unknown } | null)?.path);
+  if (!paths.every((p): p is string => typeof p === 'string')) return 'malformed response';
+  return paths.length < changedFiles ? 'truncated result' : paths;
+}
+
 /**
  * Lists this repo's PRs with `gh` and reads each one's stored Qodo findings. Closed PRs that never
- * merged are skipped: their code reached no branch. Never rejects; any failure is a reason, and the
- * whole read is then unknown (a partial read could hide a file's findings).
+ * merged are skipped (their code reached no branch) and counted. For a PR without a complete review
+ * the files it changes are read too, so they become unknown rather than clean. Never rejects; any
+ * failure is a reason, and the whole read is then unknown (a partial read could hide findings).
  */
-export async function fetchQodo(repoDir: string, timeoutMs = QODO_TIMEOUT_MS): Promise<PrFindings[] | QodoReason> {
+export async function fetchQodo(repoDir: string, timeoutMs = QODO_TIMEOUT_MS): Promise<QodoFetch | QodoReason> {
   const listed = await run('gh', ['pr', 'list', '--state', 'all', '--limit', String(PR_LIMIT), '--json', 'number,url,state'], repoDir, timeoutMs);
   if ('reason' in listed) return listed.reason;
   const prs = parseJson(listed.stdout);
@@ -76,6 +86,7 @@ export async function fetchQodo(repoDir: string, timeoutMs = QODO_TIMEOUT_MS): P
   }
   // PARALLEL workers take the next PR; the first failure stops them and kills the calls in flight.
   const out: PrFindings[] = [];
+  const unreviewedPaths: string[] = [];
   const stop = new AbortController();
   let failed: QodoReason | undefined;
   let next = 0;
@@ -84,21 +95,28 @@ export async function fetchQodo(repoDir: string, timeoutMs = QODO_TIMEOUT_MS): P
       const i = next++;
       const r = await run('qodo', ['--no-onboarding', 'read', 'pr-review-session', 'findings', '--pr-url', urls[i]!, '--json'], repoDir,
         timeoutMs, stop.signal);
-      const parsed = 'reason' in r ? r.reason : parsePrFindings(parseJson(r.stdout));
-      if (typeof parsed !== 'string') out[i] = parsed;
-      else if (failed === undefined) {
+      let parsed: PrFindings | string[] | QodoReason = 'reason' in r ? r.reason : parsePrFindings(parseJson(r.stdout));
+      if (typeof parsed !== 'string') {
+        out[i] = parsed;
+        if (!parsed.reviewed) {
+          const v = await run('gh', ['pr', 'view', urls[i]!, '--json', 'files,changedFiles'], repoDir, timeoutMs, stop.signal);
+          parsed = 'reason' in v ? v.reason : parseFiles(parseJson(v.stdout));
+          if (typeof parsed !== 'string') unreviewedPaths.push(...parsed);
+        }
+      }
+      if (typeof parsed === 'string' && failed === undefined) {
         failed = parsed;
         stop.abort();
       }
     }
   };
   await Promise.all(Array.from({ length: Math.min(PARALLEL, urls.length) }, worker));
-  return failed ?? out;
+  return failed ?? { prs: out, skipped: prs.length - urls.length, unreviewedPaths };
 }
 
 /** The cached counts, null when there is no cache, or a reason when it can't be trusted. */
 export function readQodoCache(stateDir: string): QodoCache | null | 'cache unreadable' {
-  const file = join(stateDir, CACHE_FILE);
+  const file = join(stateDir, QODO_CACHE_FILE);
   try {
     // Never read through a planted link (as for every file in the state dir).
     if (!lstatSync(file).isFile()) return 'cache unreadable';
@@ -106,8 +124,4 @@ export function readQodoCache(stateDir: string): QodoCache | null | 'cache unrea
   } catch (e) {
     return (e as NodeJS.ErrnoException).code === 'ENOENT' ? null : 'cache unreadable';
   }
-}
-
-export function writeQodoCache(stateDir: string, c: QodoCache): void {
-  writeAtomic(join(stateDir, CACHE_FILE), serializeCache(c));
 }

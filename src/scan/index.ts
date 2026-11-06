@@ -4,14 +4,14 @@ import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import { lineHasher, sha256Hex } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
 import { hashLines } from '../core/lines.js';
-import { applyCache, tallyFindings, type QodoCache } from '../core/qodo.js';
+import { applyCache, serializeCache, tallyFindings, type QodoCache } from '../core/qodo.js';
 import type { Commit, FileQodo, PersonId, QodoReason, QodoSource, SessionKey, SnapshotV02 } from '../core/snapshot/types.js';
 import { binaryNames, buildLineage, debtCounted, dirsAtHead, matchTests, zeroDebt } from '../core/structure.js';
 import { isoUtc, minusMonths } from '../core/time.js';
 import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
 import { gitRunner } from './git.js';
-import { fetchQodo, readQodoCache, writeQodoCache } from './qodo.js';
+import { fetchQodo, readQodoCache } from './qodo.js';
 import { addedLines, headFiles, readRepo, windowCommits, type NumstatRow, type RawCommit } from './repo.js';
 import { debtCounts, lineageLog, unmergedBranches } from './structure.js';
 
@@ -27,8 +27,9 @@ export interface ScanOptions {
   /** Transcripts larger than this are skipped (their span becomes blind). */
   maxTranscriptBytes?: number;
   /**
-   * Qodo findings (#17). `fetch` (the --with-qodo opt-in) reads them over the network and caches
-   * the counts in `stateDir`; otherwise only that cache is read. Absent: neither (files[].qodo null).
+   * Qodo findings (#17). `fetch` (the --with-qodo opt-in) reads them over the network and returns
+   * the counts for the caller to cache; otherwise only the cache in `stateDir` is read. Absent:
+   * neither (files[].qodo null).
    */
   qodo?: { fetch: boolean; stateDir: (commonDir: string) => string; timeoutMs?: number };
 }
@@ -41,6 +42,8 @@ export interface ScanResult {
   json: string;
   commonDir: string;
   logs: LogStats;
+  /** Counts-only cache to save after a successful fetch (the caller writes it); null otherwise. */
+  qodoCache: string | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -199,25 +202,24 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const unreadable = ingest?.unreadable.length ?? 0;
   const logs = found && { transcripts: found.transcripts.length - unreadable, tooLarge: found.stats.tooLarge,
     unavailable: found.stats.unavailable + unreadable, dropped: ingest?.dropped ?? 0, unattributed: found.stats.unattributed };
-  return { snapshot, json: canonicalJson(snapshot), commonDir: repo.commonDir, logs };
+  return { snapshot, json: canonicalJson(snapshot), commonDir: repo.commonDir, logs, qodoCache: qodo.fetched ? serializeCache(qodo.fetched) : null };
 }
 
 /**
- * files[].qodo and its source: fetched (then cached) with the opt-in, else from the cache. A failed
- * fetch is unknown, never 0 (Rule 1), and leaves an earlier cache as it was.
+ * files[].qodo and its source: fetched with the opt-in (`fetched` is then the cache to save), else
+ * from the cache. A failed fetch is unknown, never 0 (Rule 1), and leaves an earlier cache as it was.
  */
-async function readQodo(o: ScanOptions, commonDir: string, head: string, headPaths: string[],
-  fetched: ReturnType<typeof fetchQodo> | null): Promise<{ perFile: Map<string, FileQodo | null>; source: QodoSource }> {
-  const none = { perFile: new Map<string, FileQodo | null>() };
+async function readQodo(o: ScanOptions, commonDir: string, head: string, headPaths: string[], fetching: ReturnType<typeof fetchQodo> | null):
+  Promise<{ perFile: Map<string, FileQodo | null>; source: QodoSource; fetched: QodoCache | null }> {
+  const none = { perFile: new Map<string, FileQodo | null>(), fetched: null };
   if (!o.qodo) return { ...none, source: { status: 'none' } };
   let cache: QodoCache | null | QodoReason;
-  if (fetched) {
-    const prs = await fetched;
-    // Only paths at HEAD are kept, so no path Qodo sent that isn't in the repo reaches disk.
-    cache = typeof prs === 'string' ? prs : tallyFindings(prs, new Set(headPaths), head);
-    if (typeof cache !== 'string') writeQodoCache(o.qodo.stateDir(commonDir), cache);
+  if (fetching) {
+    const read = await fetching;
+    // Only paths at HEAD are kept, so no path Qodo or gh sent that isn't in the repo reaches disk.
+    cache = typeof read === 'string' ? read : tallyFindings(read, new Set(headPaths), head);
   } else cache = readQodoCache(o.qodo.stateDir(commonDir));
   if (cache === null) return { ...none, source: { status: 'none' } };
   if (typeof cache === 'string') return { ...none, source: { status: 'unavailable', reason: cache } };
-  return applyCache(cache, headPaths);
+  return { ...applyCache(cache, headPaths), fetched: fetching ? cache : null };
 }

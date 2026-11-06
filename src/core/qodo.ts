@@ -1,7 +1,7 @@
 // Pure logic for #17: which Qodo findings count, and the counts-only cache. The reads are in
 // src/scan/qodo.ts. Only a finding's id, status, level and file path are ever looked at; titles,
 // descriptions, snippets and URLs are never read out of the parsed response.
-import { canonicalJson } from './canonical-json.js';
+import { byCodepoint, canonicalJson } from './canonical-json.js';
 import type { FileQodo, QodoByLevel, QodoSource } from './snapshot/types.js';
 
 /** Each level's name in Qodo's responses (and the summary); `other` holds levels Commet doesn't know. */
@@ -18,7 +18,10 @@ export const qodoTotal = (l: QodoByLevel) => QODO_LEVELS.reduce((n, k) => n + l[
 /** At least one fetched PR has a Qodo review; without one, no file's count is evidence. */
 export const hasReview = (c: { prs: number; unreviewed: number }) => c.prs - c.unreviewed > 0;
 
-/** One PR's open findings: `path` is Qodo's file path, untrusted until matched against HEAD. */
+/**
+ * One PR's open findings: `path` is Qodo's file path, untrusted until matched against HEAD.
+ * `reviewed`: Qodo reports a completed review; a missing or still-running one is not evidence.
+ */
 export interface PrFindings { reviewed: boolean; open: { id: string | null; level: keyof QodoByLevel; path: string | null }[] }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -38,14 +41,30 @@ export function parsePrFindings(v: unknown): PrFindings | 'malformed response' |
     const path = isObj(loc) && typeof loc['file_path'] === 'string' ? loc['file_path'] : null;
     open.push({ id: typeof f['id'] === 'string' ? f['id'] : null, level: LEVEL_OF.get(f['action_level']) ?? 'other', path });
   }
-  return { reviewed: v['review_session'] !== null && v['review_session'] !== undefined, open };
+  const session = v['review_session'];
+  // Anything short of a completed review leaves the PR's files unknown (Qodo local r1 #2).
+  const reviewed = isObj(session) && session['status'] === 'completed' && session['review_complete'] === true;
+  return { reviewed, open };
 }
 
-/** What the cache holds: counts per HEAD file per level (files with open findings only). */
-export interface QodoCache { head: string; prs: number; unreviewed: number; offHead: number; files: Map<string, QodoByLevel> }
+/**
+ * What the cache holds, all counts: per HEAD file per level (files with open findings only), and the
+ * HEAD files a PR without a complete review changes (`unknown`, which carry no count). `skipped`
+ * PRs were closed without merging and not read.
+ */
+export interface QodoCache {
+  head: string; prs: number; skipped: number; unreviewed: number; offHead: number; files: Map<string, QodoByLevel>; unknown: string[];
+}
 
-/** Counts open findings per file at `head`, once per finding id; the rest is `offHead`. */
-export function tallyFindings(prs: PrFindings[], headPaths: ReadonlySet<string>, head: string): QodoCache {
+/** What a fetch read: each PR's findings, the PRs skipped, and the paths unreviewed PRs change. */
+export interface QodoFetch { prs: PrFindings[]; skipped: number; unreviewedPaths: string[] }
+
+/**
+ * Counts open findings per file at `head`, once per finding id; the rest is `offHead`. A file an
+ * unreviewed PR changes is unknown and gets no count.
+ */
+export function tallyFindings({ prs, skipped, unreviewedPaths }: QodoFetch, headPaths: ReadonlySet<string>, head: string): QodoCache {
+  const unknown = new Set(unreviewedPaths.filter((p) => headPaths.has(p)));
   const files = new Map<string, QodoByLevel>();
   const seen = new Set<string>();
   let offHead = 0;
@@ -58,19 +77,21 @@ export function tallyFindings(prs: PrFindings[], headPaths: ReadonlySet<string>,
       offHead++;
       continue;
     }
+    if (unknown.has(f.path)) continue;
     const l = files.get(f.path) ?? zeroLevels();
     l[f.level]++;
     files.set(f.path, l);
   }
-  return { head, prs: prs.length, unreviewed: prs.filter((p) => !p.reviewed).length, offHead, files };
+  return { head, prs: prs.length, skipped, unreviewed: prs.filter((p) => !p.reviewed).length, offHead, files,
+    unknown: [...unknown].sort(byCodepoint) };
 }
 
 const CACHE_SCHEMA = 'commet.qodo-findings.v1';
 
 export function serializeCache(c: QodoCache): string {
   // fromEntries defines own properties, so a file named `__proto__` stays an ordinary key.
-  return canonicalJson({ schema: CACHE_SCHEMA, head: c.head, prs: c.prs, unreviewed: c.unreviewed, offHead: c.offHead,
-    files: Object.fromEntries(c.files) });
+  return canonicalJson({ schema: CACHE_SCHEMA, head: c.head, prs: c.prs, skipped: c.skipped, unreviewed: c.unreviewed, offHead: c.offHead,
+    files: Object.fromEntries(c.files), unknown: c.unknown });
 }
 
 const count = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
@@ -87,34 +108,42 @@ export function parseCache(text: string): QodoCache | null {
   } catch {
     return null;
   }
-  if (!isObj(v) || !exactKeys(v, ['schema', 'head', 'prs', 'unreviewed', 'offHead', 'files']) || v['schema'] !== CACHE_SCHEMA) return null;
-  const { head, prs, unreviewed, offHead, files } = v;
+  const keys = ['schema', 'head', 'prs', 'skipped', 'unreviewed', 'offHead', 'files', 'unknown'];
+  if (!isObj(v) || !exactKeys(v, keys) || v['schema'] !== CACHE_SCHEMA) return null;
+  const { head, prs, skipped, unreviewed, offHead, files, unknown } = v;
   if (typeof head !== 'string' || !/^([0-9a-f]{40}|[0-9a-f]{64})$/.test(head)) return null;
-  if (!count(prs) || !count(unreviewed) || !count(offHead) || unreviewed > prs || !isObj(files)) return null;
+  if (!count(prs) || !count(skipped) || !count(unreviewed) || !count(offHead) || unreviewed > prs || !isObj(files)) return null;
+  if (!Array.isArray(unknown) || !unknown.every((p) => typeof p === 'string')) return null;
   const out = new Map<string, QodoByLevel>();
+  // Every sum the snapshot can hold (a file's total, offHead plus every file) stays a safe integer,
+  // so a crafted cache is unreadable rather than a crash (Qodo local r1 #4).
+  let sum = offHead;
   for (const [path, l] of Object.entries(files)) {
     if (!isObj(l) || !exactKeys(l, QODO_LEVELS) || !QODO_LEVELS.every((k) => count(l[k]))) return null;
     const levels = l as unknown as QodoByLevel;
-    if (qodoTotal(levels) === 0) return null;
+    const n = qodoTotal(levels);
+    sum += n;
+    if (n === 0 || !Number.isSafeInteger(sum)) return null;
     out.set(path, levels);
   }
-  return { head, prs, unreviewed, offHead, files: out };
+  return { head, prs, skipped, unreviewed, offHead, files: out, unknown: unknown as string[] };
 }
 
 /**
  * files[].qodo for each HEAD path, and the snapshot's source. A cached file missing from this HEAD
- * adds its findings to `offHead` rather than vanishing. With no reviewed PR there is no evidence,
- * so every file is unknown (null), not 0.
+ * adds its findings to `offHead` rather than vanishing. A file an unreviewed PR changes is unknown
+ * (null), and with no reviewed PR at all there is no evidence, so every file is; never 0.
  */
 export function applyCache(c: QodoCache, headPaths: readonly string[]): { perFile: Map<string, FileQodo | null>; source: QodoSource } {
   const at = new Set(headPaths);
   let offHead = c.offHead;
   for (const [path, l] of c.files) if (!at.has(path)) offHead += qodoTotal(l);
   const reviewed = hasReview(c);
+  const unknown = new Set(c.unknown);
   const perFile = new Map(headPaths.map((p): [string, FileQodo | null] => {
-    if (!reviewed) return [p, null];
+    if (!reviewed || unknown.has(p)) return [p, null];
     const byLevel = c.files.get(p) ?? zeroLevels();
     return [p, { open: qodoTotal(byLevel), byLevel: { ...byLevel } }];
   }));
-  return { perFile, source: { status: 'read', head: c.head, prs: c.prs, unreviewed: c.unreviewed, offHead } };
+  return { perFile, source: { status: 'read', head: c.head, prs: c.prs, skipped: c.skipped, unreviewed: c.unreviewed, offHead } };
 }
