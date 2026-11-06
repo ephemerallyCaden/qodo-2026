@@ -22,7 +22,7 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 ```
 - One test: `npx vitest run -t "<name>"`.
 - Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
-- Before a PR, run `qodo review --base $(git merge-base HEAD <PR base>) --json` and resolve every `action_required` finding as in the review loop below. **At most 3 local rounds**, then open the PR: further findings belong in the PR review, where they're visible. (On #16, six local rounds took over 2 hours.)
+- Before a PR, run `qodo review --base "$(git merge-base HEAD "$BASE")" --json`, where `BASE` is the PR's base branch (e.g. `BASE=origin/session/week1`). Resolve `action_required` findings as in the review loop below for **at most 3 local rounds**, then open the PR anyway, listing any still-unresolved findings in its description. The loop continues in the PR review, and the merge gate (no unresolved `action_required`) applies there. (On #16, six local rounds took over 2 hours.)
 - `commet scan` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error.
 
 ## Dev tips
