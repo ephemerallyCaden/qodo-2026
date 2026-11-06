@@ -125,6 +125,11 @@ export interface Unreadable {
   files: number;
   /** Unmerged branches whose commits couldn't be read; they're absent from branches[]. */
   branches: number;
+  /**
+   * Commits over 200 files left out of test co-change matching while they held a test that had no
+   * name match, so that test's `testOf: null` may be missing evidence.
+   */
+  bulkCommits: number;
 }
 
 export interface SnapshotV02 {

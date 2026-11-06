@@ -87,7 +87,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   // earlier names too, so it neither blocks nor dilutes its folder's move (Qodo local r1 #1, r4 #1).
   const binary = binaryNames(history, [...head].filter(([, row]) => row.binary).map(([p]) => p));
   const lineage = buildLineage(history, (p) => binary.has(p) || excluded(p, undefined));
-  const testOf = matchTests(headPaths, lineage.paths);
+  const { targets: testOf, bulkSkipped } = matchTests(headPaths, lineage.paths);
   const structure = dirsAtHead(lineage, headPaths);
   const dirIdOf = new Map(structure.dirs.map((d) => [d.path, d.id]));
   const files: SnapshotV02['files'] = kept.map(([path, row]) => {
@@ -177,7 +177,8 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     dirs: structure.dirs,
     files,
     branches,
-    unreadable: { dirs: structure.unreadable, files: files.filter((f) => f.debt === null).length, branches: rawBranches.unreadable },
+    unreadable: { dirs: structure.unreadable, files: files.filter((f) => f.debt === null).length, branches: rawBranches.unreadable,
+      bulkCommits: bulkSkipped },
     people: [...people.values()].sort((a, b) => byCodepoint(a.id, b.id)),
     commits,
     sessions: buildSessions(ingest?.sessions.values() ?? [], raw.map((c) => c.sha), results),

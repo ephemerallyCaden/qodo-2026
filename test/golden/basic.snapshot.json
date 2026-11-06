@@ -654,6 +654,7 @@
   ],
   "unreadable": {
     "branches": 0,
+    "bulkCommits": 0,
     "dirs": 0,
     "files": 0
   },
