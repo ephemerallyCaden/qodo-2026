@@ -208,6 +208,9 @@ function partners(tops: (DirBirth & { planet: boolean })[], touches: Set<DirId>[
 
 const TEST_NAME = [/^(.+)\.(?:test|spec)\.[^.]+$/, /^test_(.+)\.py$/, /^(.+)_test\.go$/];
 const TEST_DIRS = new Set(['test', 'tests', '__tests__']);
+/** Test data, not tests (#16 AC10): `__fixtures__/`, `__snapshots__/`, and fixtures/ or golden/ in a test folder. */
+const DATA_DIRS = new Set(['__fixtures__', '__snapshots__']);
+const TEST_DATA_DIRS = new Set(['fixtures', 'golden']);
 const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
 
 /** The `x` a test file is named after (`x.test.ts`, `x.spec.ts`, `test_x.py`, `x_test.go`), or null. */
@@ -219,9 +222,16 @@ function testStem(path: string): string | null {
   return null;
 }
 
-/** A test file: named like one, or anywhere under a `test/`, `tests/` or `__tests__/` folder. */
+/** Inside test data: fixtures, goldens or snapshots. */
+function inTestData(segs: string[]): boolean {
+  return segs.some((s, i) => DATA_DIRS.has(s) || (TEST_DIRS.has(s) && TEST_DATA_DIRS.has(segs[i + 1] ?? '')));
+}
+
+/** A test file: named like one, or under a `test/`, `tests/` or `__tests__/` folder, but never test data. */
 function isTestPath(path: string): boolean {
-  return testStem(path) !== null || path.split('/').slice(0, -1).some((s) => TEST_DIRS.has(s));
+  const segs = path.split('/').slice(0, -1);
+  if (inTestData(segs)) return false;
+  return testStem(path) !== null || segs.some((s) => TEST_DIRS.has(s));
 }
 
 /** Folder steps between two files (up to the common ancestor, then down). */
@@ -232,34 +242,46 @@ function distance(a: string, b: string): number {
   return x.length + y.length - 2 * common;
 }
 
+/** What a test tests: a file path, or a folder path (`dir: true`). */
+export interface TestTarget { path: string; dir: boolean }
+
 /**
- * Maps each test file in `headPaths` to the source file it tests, or null. By name first (`x.*`,
- * closest path, then codepoint); otherwise the source it shares the most non-bulk commits with,
- * if at least TEST_COCHANGE_MIN (ties: closest path, then codepoint). `commitPaths` holds each
- * commit's changed paths.
+ * Maps each test file in `headPaths` to what it tests, or null (#16 AC4, AC9). In order: a source
+ * file named `x.*`; a source folder named `x` (outside test folders); the source it shares the
+ * most non-bulk commits with, if at least TEST_COCHANGE_MIN. Ties go to the closest path, then
+ * codepoint order. `commitPaths` holds each commit's changed paths.
  */
-export function matchTests(headPaths: string[], commitPaths: string[][]): Map<string, string | null> {
+export function matchTests(headPaths: string[], commitPaths: string[][]): Map<string, TestTarget | null> {
   const tests = headPaths.filter(isTestPath).sort(byCodepoint);
   const testSet = new Set(tests);
   const sources = headPaths.filter((p) => !testSet.has(p));
+  const add = (m: Map<string, string[]>, k: string, v: string) => {
+    const list = m.get(k);
+    if (list) list.push(v);
+    else m.set(k, [v]);
+  };
   // `x.*` candidates by every dot-prefix of the basename (`a.b.ts` is under `a` and `a.b`).
   const byPrefix = new Map<string, string[]>();
   for (const src of sources) {
     const b = base(src);
-    for (let i = b.indexOf('.'); i > 0; i = b.indexOf('.', i + 1)) {
-      const list = byPrefix.get(b.slice(0, i));
-      if (list) list.push(src);
-      else byPrefix.set(b.slice(0, i), [src]);
-    }
+    for (let i = b.indexOf('.'); i > 0; i = b.indexOf('.', i + 1)) add(byPrefix, b.slice(0, i), src);
   }
-  const closest = (t: string) => (a: string, b: string) => distance(t, a) - distance(t, b) || byCodepoint(a, b);
+  // Folder candidates by their own name; a folder is compared as if it were a file inside it.
+  const byFolder = new Map<string, string[]>();
+  for (const d of new Set(sources.flatMap(ancestors))) {
+    if (!d.split('/').some((s) => TEST_DIRS.has(s) || DATA_DIRS.has(s))) add(byFolder, base(d), d);
+  }
+  const closest = (t: string, inside = '') => (a: string, b: string) =>
+    distance(t, a + inside) - distance(t, b + inside) || byCodepoint(a, b);
 
-  const out = new Map<string, string | null>();
+  const out = new Map<string, TestTarget | null>();
   const unmatched = new Map<string, Map<string, number>>();
   for (const t of tests) {
     const stem = testStem(t);
     const byName = stem === null ? undefined : byPrefix.get(stem);
-    if (byName) out.set(t, [...byName].sort(closest(t))[0]!);
+    const folder = stem === null ? undefined : byFolder.get(stem);
+    if (byName) out.set(t, { path: [...byName].sort(closest(t))[0]!, dir: false });
+    else if (folder) out.set(t, { path: [...folder].sort(closest(t, '/x'))[0]!, dir: true });
     else unmatched.set(t, new Map());
   }
   const sourceSet = new Set(sources);
@@ -274,7 +296,8 @@ export function matchTests(headPaths: string[], commitPaths: string[][]): Map<st
   for (const [t, shared] of unmatched) {
     const counts = [...shared].filter(([, n]) => n >= TEST_COCHANGE_MIN);
     const top = Math.max(0, ...counts.map(([, n]) => n));
-    out.set(t, counts.filter(([, n]) => n === top).map(([src]) => src).sort(closest(t))[0] ?? null);
+    const src = counts.filter(([, n]) => n === top).map(([p]) => p).sort(closest(t))[0];
+    out.set(t, src === undefined ? null : { path: src, dir: false });
   }
   return out;
 }

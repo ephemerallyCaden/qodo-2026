@@ -90,19 +90,42 @@ const BRANCH_READS = 8;
 /** A branch as read from git: `tops` are the top-level path segments its commits touch. */
 export type RawBranch = Omit<Branch, 'dirIds'> & { tops: Set<string> };
 
+interface Tip { aheadCount: number; ct: number; tops: Set<string>; remote: boolean }
+
 /**
  * Unmerged local and remote-tracking branches, from refs already on disk (no fetch), except HEAD's
- * own branch and symbolic refs such as `origin/HEAD`. A branch whose commits can't be read is
+ * own branch and symbolic refs such as `origin/HEAD`. A remote-tracking ref that is a local
+ * branch's upstream, or is `<remote>/<name>` for a local `<name>`, folds into that branch's entry,
+ * which then uses the most advanced tip (#16 AC11). A branch whose commits can't be read is
  * counted in `unreadable`.
  */
 export async function unmergedBranches(git: Git, head: string, headRef: string): Promise<{ branches: RawBranch[]; unreadable: number }> {
   const refs = await git(['for-each-ref', `--no-merged=${head}`,
-    '--format=%(refname)%00%(symref)%00%(objectname)%00%(committerdate:unix)', 'refs/heads', 'refs/remotes']);
-  const todo = refs.split('\n').filter(Boolean).map((line) => line.split('\0') as [string, string, string, string])
+    '--format=%(refname)%00%(symref)%00%(objectname)%00%(committerdate:unix)%00%(upstream)', 'refs/heads', 'refs/remotes']);
+  const rows = refs.split('\n').filter(Boolean).map((line) => line.split('\0') as [string, string, string, string, string])
     .filter(([ref, symref]) => ref !== headRef && !symref);
-  const branches: RawBranch[] = [];
-  let unreadable = 0;
-  const read = async ([ref, , sha, ct]: [string, string, string, string]) => {
+
+  // Entry name → its refs. Locals first, so remotes can find them.
+  const groups = new Map<string, typeof rows>();
+  const byUpstream = new Map<string, string>();
+  for (const row of rows) {
+    if (!row[0].startsWith('refs/heads/')) continue;
+    const name = row[0].slice('refs/heads/'.length);
+    groups.set(name, [row]);
+    if (row[4]) byUpstream.set(row[4], name);
+  }
+  for (const row of rows) {
+    const ref = row[0];
+    if (!ref.startsWith('refs/remotes/')) continue;
+    const short = ref.slice('refs/remotes/'.length);
+    const slash = short.indexOf('/');
+    const sameName = slash > 0 && groups.has(short.slice(slash + 1)) ? short.slice(slash + 1) : undefined;
+    const local = byUpstream.get(ref) ?? sameName;
+    if (local !== undefined) groups.get(local)!.push(row);
+    else groups.set(short, [row]);
+  }
+
+  const read = async ([ref, , sha, ct]: (typeof rows)[number]): Promise<Tip | null> => {
     const range = `${head}..${sha}`;
     // --cc: a merge lists only files it changed against every parent (its own resolutions), not
     // the work it merged in, which HEAD..tip lists through those commits (Qodo local r1 #2).
@@ -110,22 +133,36 @@ export async function unmergedBranches(git: Git, head: string, headRef: string):
     // fake a commit boundary or need stripping; rev-list counts the commits (Qodo local r1 #3, r4 #2).
     const [count, log] = await Promise.all([tryGit(git, ['rev-list', '--count', range]),
       tryGit(git, ['log', '--format=', '--name-only', '--no-renames', '--cc', '-z', range])]);
-    if (count === null || log === null) {
-      unreadable++;
-      return;
-    }
+    if (count === null || log === null) return null;
     const tops = new Set<string>();
     for (const path of log.split('\0')) {
       const slash = path.indexOf('/');
       if (slash > 0 && exclusionOf(path) === null) tops.add(path.slice(0, slash));
     }
-    const remote = ref.startsWith('refs/remotes/');
+    return { aheadCount: Number(count.trim()), ct: Number(ct), tops, remote: ref.startsWith('refs/remotes/') };
+  };
+  const tips = new Map<string, Tip | null>();
+  for (let i = 0; i < rows.length; i += BRANCH_READS) {
+    const batch = rows.slice(i, i + BRANCH_READS);
+    (await Promise.all(batch.map(read))).forEach((tip, j) => tips.set(batch[j]![0], tip));
+  }
+
+  const branches: RawBranch[] = [];
+  let unreadable = 0;
+  for (const [name, members] of groups) {
+    const read = members.map(([ref]) => tips.get(ref)!);
+    if (read.some((t) => t === null)) {
+      unreadable++;
+      continue;
+    }
+    // Most advanced tip: most commits ahead of HEAD, then the newer tip, then the local one.
+    const best = (read as Tip[]).sort((a, b) => b.aheadCount - a.aheadCount || b.ct - a.ct || Number(a.remote) - Number(b.remote))[0]!;
+    const remote = !members[0]![0].startsWith('refs/heads/');
     // Kept as git has it, like file paths: a refname can't start with `/` or hold `~`, `:` or `\`,
     // so it can't be an absolute, home or drive path (Qodo local r4 #3).
-    branches.push({ name: ref.slice(remote ? 'refs/remotes/'.length : 'refs/heads/'.length), remote,
-      aheadCount: Number(count.trim()), lastCommitDate: isoUtc(Number(ct) * 1000), tops });
-  };
-  for (let i = 0; i < todo.length; i += BRANCH_READS) await Promise.all(todo.slice(i, i + BRANCH_READS).map(read));
+    branches.push({ name, remote, alsoRemote: !remote && members.length > 1, aheadCount: best.aheadCount,
+      lastCommitDate: isoUtc(best.ct * 1000), tops: best.tops });
+  }
   branches.sort((a, b) => byCodepoint(a.name, b.name) || Number(a.remote) - Number(b.remote));
   return { branches, unreadable };
 }

@@ -104,20 +104,35 @@ export function buildStructureRepo(): StructureRepo {
   mkdirSync(join(dir, 'moved'));
   git(['mv', 'half/h1.ts', 'moved/h1.ts']);
   commit('s25', []);
-  const head = sha['s25']!;
+  // #16 AC9: sub.test.ts names only the folder core/sub/; half.test.ts names a file (core/half.ts)
+  // and a folder (half/), and the file wins. AC10: fixture and golden data are not tests.
+  commit('s26', ['test/sub.test.ts', 'test/half.test.ts', 'core/half.ts', 'tests/fixtures/data.test.ts', 'tests/golden/out.json',
+    'web/__snapshots__/w.test.ts.snap', 'api/__fixtures__/f.test.ts']);
+  const head = sha['s26']!;
 
   // Branches. merged: an ancestor of HEAD (absent). old-fork: forks at s0, outside a 1-month window.
   git(['branch', 'merged', sha['s20']!]);
   git(['checkout', '-q', '-b', 'old-fork', sha['s0']!]);
   commit('b-old', ['ui/v.ts'], '2026-01-06T10:00:00Z');
+  // AC11: a remote copy at the same tip and no upstream config still folds in by name.
+  git(['update-ref', 'refs/remotes/origin/old-fork', sha['b-old']!]);
   git(['checkout', '-q', '-b', 'feature/ahead', head]);
   commit('b-ahead1', ['core/a.ts', 'README.md'], '2026-06-26T10:00:00Z');
   // brandnew/ isn't a folder at HEAD, so it adds no dirId.
   commit('b-ahead2', ['ui/v.ts', 'brandnew/z.ts'], '2026-06-27T10:00:00Z');
-  // A remote-tracking branch written straight into refs (no network), plus a symbolic origin/HEAD.
+  // Remote-tracking branches written straight into refs (no network), plus a symbolic origin/HEAD.
+  // AC11: local feature/remote (tracking origin) is one commit behind its remote copy, so the entry
+  // uses the remote tip. origin/only-remote has no local branch.
   git(['checkout', '-q', '--detach', head]);
-  commit('b-remote', ['api/util.py', 'node_modules/pkg/index.js'], '2026-06-28T10:00:00Z');
-  git(['update-ref', 'refs/remotes/origin/feature/remote', sha['b-remote']!]);
+  commit('b-remote1', ['ui/v.ts'], '2026-06-28T10:00:00Z');
+  git(['branch', 'feature/remote']);
+  git(['config', 'branch.feature/remote.remote', 'origin']);
+  git(['config', 'branch.feature/remote.merge', 'refs/heads/feature/remote']);
+  commit('b-remote2', ['api/util.py', 'node_modules/pkg/index.js'], '2026-06-29T10:00:00Z');
+  git(['update-ref', 'refs/remotes/origin/feature/remote', sha['b-remote2']!]);
+  git(['checkout', '-q', '--detach', head]);
+  commit('b-only', ['kit/k.ts'], '2026-06-30T10:00:00Z');
+  git(['update-ref', 'refs/remotes/origin/only-remote', sha['b-only']!]);
   git(['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feature/remote']);
   git(['checkout', '-q', 'main']);
   return { dir, sha };

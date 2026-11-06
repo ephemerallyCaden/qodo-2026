@@ -94,16 +94,22 @@ export interface FileEntry {
   loc: number;
   debt: DebtCounts | null;
   isTest: boolean;
-  /** The source file this test belongs to (name match, else co-change partner); null if none. */
-  testOf: FileId | null;
+  /**
+   * What this test tests: a source file named like it, else a folder named like it, else the
+   * source it most often changes with; null if none.
+   */
+  testOf: FileId | DirId | null;
 }
 
 /** An unmerged local or remote-tracking branch (no network: only refs already on disk). */
 export interface Branch {
   /** Short name: `feature/x` for a local branch, `origin/feature/x` for a remote-tracking one. */
   name: string;
+  /** Remote-tracking only: no local branch of this name. */
   remote: boolean;
-  /** Commits on the branch that HEAD doesn't have. */
+  /** A local branch whose remote-tracking copy (its upstream, or `<remote>/<name>`) is folded in. */
+  alsoRemote: boolean;
+  /** Commits on the branch that HEAD doesn't have (from the most advanced of its tips). */
   aheadCount: number;
   /** Committer date of the branch tip (git data, never the wall clock). */
   lastCommitDate: IsoUtc;

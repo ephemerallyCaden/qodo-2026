@@ -89,10 +89,11 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const lineage = buildLineage(history, (p) => binary.has(p) || excluded(p, undefined));
   const testOf = matchTests(headPaths, lineage.paths);
   const structure = dirsAtHead(lineage, headPaths);
+  const dirIdOf = new Map(structure.dirs.map((d) => [d.path, d.id]));
   const files: SnapshotV02['files'] = kept.map(([path, row]) => {
-    const src = testOf.get(path);
+    const target = testOf.get(path);
     return { id: fileId(path), path, loc: row.added, debt: debt ? (debt.get(path) ?? zeroDebt()) : null,
-      isTest: src !== undefined, testOf: src ? fileId(src) : null };
+      isTest: target !== undefined, testOf: !target ? null : target.dir ? dirIdOf.get(target.path)! : fileId(target.path) };
   });
   const topDirs = new Map(structure.dirs.filter((d) => d.depth === 1).map((d) => [d.path, d.id]));
   // A branch's rings are the folders it touches that exist at HEAD as top-level folders.
