@@ -22,7 +22,7 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 ```
 - One test: `npx vitest run -t "<name>"`.
 - Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
-- Before a PR, run `qodo review --base $(git merge-base HEAD origin/main) --json` and resolve every `action_required` finding as in the review loop below.
+- Before a PR, run `qodo review --base $(git merge-base HEAD <PR base>) --json` and resolve every `action_required` finding as in the review loop below. **At most 3 local rounds**, then open the PR: further findings belong in the PR review, where they're visible. (On #16, six local rounds took over 2 hours.)
 - `commet scan` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error.
 
 ## Dev tips
@@ -137,7 +137,8 @@ For the main 3D view; the 2D map, terminal mode and status card have their own s
 | Docs / chore | `docs: …` / `chore: …` | session branch |
 
 - Feature, fix and design PRs reach `main` inside that day's Day PR. One type per PR.
-- Put `Closes #<issue>` in the description so Qodo checks ticket compliance.
+- Put `Closes #<issue>` and the ticket's acceptance criteria in the description so Qodo checks ticket compliance. `Closes` only auto-closes on the default branch, so after a PR merges into a session branch, close the issue by hand with the evidence.
+- After a Day PR lands on `main`, merge `main` back into the session branch, so agents branching from it see the same rules (AGENTS.md was once missing from `session/week1`).
 - Conventional commits (`feat`, `fix`, `design`, `docs`, `test`, `chore`), small and focused. Stage explicit paths; never `git add -A` (other sessions share this checkout).
 - Never merge into or push `main`; the human merges.
 - Justify new dependencies in one line in the PR.
