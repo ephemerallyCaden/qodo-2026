@@ -12,13 +12,14 @@ import { CREW } from '../explorations/astronaut-lab/crew.js';
 export const TEAL = ['#004538', '#007c66', '#00bc9c', '#00ffd5'];
 
 export const PALETTES = {
-  // The human's call: a BLK 36 shell in the crew's greys and whites, the crew's dark visor as
-  // the screen, teal eyes. The shell runs from the gear greys into the suit's whites, so it is
-  // greyer than a suit (whose shadows are blue) but plainly the same family.
+  // The human's call: BLK 36 greys and whites like the crew's gear, a dark screen, teal eyes.
+  // The shell is the crew's gear-grey ramp (the astronauts' mitts and boots), not the suit's
+  // whites, so a drone can't melt into a white suit at 180p; the whites go to the trim (bezel,
+  // nozzles, rim, ears), which frames the dark screen, and to the smoke.
   base: {
     name: 'base (BLK 36 + teal)',
-    shell: ['#464b8c', '#6b74b2', '#c1d9f2', '#ffffff'],
-    trim: CREW.gear,
+    shell: ['#293268', '#464b8c', '#6b74b2', '#909edd'],
+    trim: ['#6b74b2', '#909edd', '#c1d9f2', '#ffffff'],
     screen: [...CREW.visor, CREW.glint],
     glow: TEAL,
     accent: ['#36277f', '#354ab2', '#4185d8', '#5ab9e5'],

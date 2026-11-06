@@ -10,6 +10,7 @@ import { VARIANTS, RECOMMENDED } from '../variants.js';
 import { PALETTES, SLOTS, TEAL } from '../palette.js';
 import { layout, extents, bodyAt, behaviour, smokeAt, LOOP, MOTION_LOOP, CYCLES, PUFF_PERIOD, MAX_PUFFS, MAX_SPARKS } from '../drone.js';
 import { resolveFile } from '../serve.mjs';
+import { CREW } from '../../explorations/astronaut-lab/crew.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const K_HEIGHT = 0.95; // a K astronaut
@@ -118,6 +119,8 @@ test('palettes fill every slot with hex colours; the base is BLK 36 with teal gl
   }
   const BLK36 = ['000000', '12173d', '293268', '464b8c', '6b74b2', '909edd', 'c1d9f2', 'ffffff', 'ffccd0', 'e5959f', 'c16a7d', '8c4b63', '66334b', '3f233c', '29174c', '412866', '643499', '8c51cc', 'b991f2', 'a5e6ff', '5ab9e5', '4185d8', '354ab2', '36277f', '0a2a33', '0f4a4c', '14665b', '22896e', '42bc7f', '8cff9b', 'ffe091', 'ff965f', 'cc5250', '872a38', 'd83843', 'ff6866'];
   for (const slot of ['shell', 'trim', 'screen', 'accent', 'smoke']) for (const h of PALETTES.base[slot]) assert.ok(BLK36.includes(h.slice(1)), `base.${slot} ${h} is not BLK 36`);
+  // The shell must stay off the K suit ramp (a white-blue shell melts into the suits at 180p).
+  for (const h of PALETTES.base.shell) assert.ok(!CREW.suit.includes(h), `base.shell ${h} is a suit colour`);
   assert.deepEqual(PALETTES.base.glow, TEAL);
   assert.deepEqual(TEAL, ['#004538', '#007c66', '#00bc9c', '#00ffd5']);
 });

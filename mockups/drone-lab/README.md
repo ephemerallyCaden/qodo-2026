@@ -10,7 +10,7 @@ Every variant follows the brief:
 - head-is-body;
 - about half an astronaut tall;
 - a thruster pack sputtering chunky smoke puffs;
-- a BLK 36 shell with a dark screen and teal eyes;
+- a BLK 36 gear-grey shell with white trim, a dark screen and teal eyes;
 - no arms;
 - the full idle loop: bob and puffs, looking around and blinking, a working face with code streaming, and banking into its drift.
 
@@ -61,7 +61,7 @@ Every tile `npm run lab` renders is checked, and the run fails if any check fail
   - `smokeAt(t)` emits puffs: fixed slots per nozzle, each firing at most once per 1.5 s. Whether a slot fires depends on the effort at its birth: acceleration, banking and the bob's upstroke. A puff is born at the nozzle mouth where the nozzle was at its birth, so trails follow the motion. It slows, rises, drifts on a hashed breeze, grows and then shrinks, stepping a band darker as it fades. Every hash is keyed on the cycle within the loop, so the smoke repeats exactly.
   - Sparkles are crisp 1-pixel dots and `+` crosses, drawn at their projected pixel in the same shader.
   - The shader reads everything from uniforms, so sliders never recompile it. Smoke is shaded in its own three bands and casts no shadows; the body self-shadows as the astronaut does.
-- **`palette.js`:** six slots: shell (4), trim (4), screen (3), glow (4, emissive), accent (4) and smoke (3). `base` is the human's BLK 36 + teal; `ember` is a slot-test swap (not a brand).
+- **`palette.js`:** six slots: shell (4), trim (4), screen (3), glow (4, emissive), accent (4) and smoke (3). `base` is the human's BLK 36 + teal (a gear-grey shell, kept off the suit ramp, with white trim); `ember` is a slot-test swap (not a brand).
 - **`lab.js`:** the sheet renderer, the crew shot (the viewer's crew framing and spacing) and the live page (variant picker, sliders, palette, views including a fixed-camera motion view, and toggles for motion and smoke). Labels are drawn at output resolution, outside the pixel pass.
 - **Read-only imports:**
   - `../asset-viewer/faces.js` (the V2 eyes);

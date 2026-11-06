@@ -3,7 +3,7 @@
 - **Head-is-body.** One rounded head with a face screen, at most a tiny chin pod (E), and no arms.
 - **About half an astronaut tall:** 47–48% of a K astronaut (0.95), measured without smoke; `npm test` checks the range.
 - **Thruster pack.** Five different layouts, each sputtering smoke. Puffs come in bursts: more when the drone accelerates or banks, and on each bob's upstroke. They drift and fade.
-- **Colour.** The base palette is BLK 36 (gear greys into suit whites), with the crew's dark visor as the screen and V2 eyes (`faces.js`) glowing [OIII] teal.
+- **Colour.** The base palette is BLK 36: a gear-grey shell with white trim and smoke, the crew's dark visor as the screen, and V2 eyes (`faces.js`) glowing [OIII] teal.
 - **The idle loop,** all of it on a 12 s behaviour loop that divides 24 s; the turntable and stills use the 6 s idle loop:
   - a hover bob with puffs;
   - looking around and blinking;
@@ -51,9 +51,13 @@ We deliberately didn't recreate it:
 - the eyes are our own V2 set, not pill eyes;
 - the sparkles are pixel `+` crosses, not snowflakes.
 
-## Shell colour caveat
+## Shell colour: staying off the suit ramp
 
-A grey-white shell is the human's call, and it keeps the drones in the crew's family. It does sit close to the white suits, though. In the crew shot the drones still separate by size (half height), silhouette (no limbs), the dark face that fills the head, teal eyes and the smoke. A brand palette can push the shell further off the suit ramp if needed.
+A white-blue shell melts into the K suits at 180p: the phase-1 `frost` slot test showed it, and so did the first pass at this brief, which lit the shell in the suit's own `#c1d9f2` / `#ffffff`. So the colours swap roles:
+- **The shell takes the crew's gear-grey ramp** (`#293268` `#464b8c` `#6b74b2` `#909edd`, the astronauts' mitts, boots and visor rims). The drones read as made of the same stuff as the crew's kit, not as small astronauts.
+- **The whites go to the trim:** a white bezel framing the dark screen, white nozzles, rim, ear pods and antenna stalks, and white smoke. Against the grey shell the white bezel is the drone's brightest edge and frames the face, which is where its identity lives.
+
+`npm test` fails if the base shell ever uses a suit colour. In the crew shot the drones now separate by value as well as by size (half height), silhouette (no limbs), the dark face, teal eyes and smoke.
 
 ## Phase 2: a brand is a parameter set plus a palette
 
@@ -74,7 +78,7 @@ A grey-white shell is the human's call, and it keeps the drones in the crew's fa
 - **Face plate:** the screen becomes the lower plate: `screenW 0.66`, `screenH 0.4`, `screenY -0.42`, `screenRound 3.5`, `bezel 0.12`.
 - **Eyes:** the V2 set has no upright pills. Copilot needs one new glyph ("pills"). Add it to the shared V2 set in `asset-viewer/faces.js`, so astronauts could use it too, rather than as a drone-only shape. That's a small, separate change for the human to approve.
 - **Thrusters and smoke:** twin under-pods (the logo has no thrusters, so keep it simple) and round puffs.
-- **Palette:** the logo is mono (`#24292f` on white), which suits the grey-white base shell. The trim takes a charcoal (goggle frames and ear pads), and the accent and smoke tint take Copilot's brand colours (to be confirmed from the brand kit). The glow stays teal or takes the brand colour.
+- **Palette:** the logo is mono (`#24292f` on white), which suits the grey shell and white trim. The trim takes a charcoal (goggle frames and ear pads), and the accent and smoke tint take Copilot's brand colours (to be confirmed from the brand kit). The glow stays teal or takes the brand colour.
 - **Open choice:** the logo's face plate is light with dark eyes, the inverse of our dark screen with glowing eyes. I'd keep the dark screen so every agent's drone shares one face language.
 
 **Microsoft Copilot** (`microsoft-copilot-logo.svg`, two interlocking rounded parallelograms, no face) suggests a slanted rounded-box head (a skew parameter still to add) with the face carried by the screen alone.
