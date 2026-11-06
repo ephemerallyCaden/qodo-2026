@@ -105,24 +105,24 @@ export async function unmergedBranches(git: Git, head: string, headRef: string):
   const rows = refs.split('\n').filter(Boolean).map((line) => line.split('\0') as [string, string, string, string, string])
     .filter(([ref, symref]) => ref !== headRef && !symref);
 
-  // Entry name → its refs. Locals first, so remotes can find them.
+  // Entries keyed by their first ref's full name (a local `origin/x` and the remote-tracking
+  // `origin/x` are different entries; Qodo local r5 #2). Locals first, so remotes can find them.
   const groups = new Map<string, typeof rows>();
   const byUpstream = new Map<string, string>();
   for (const row of rows) {
     if (!row[0].startsWith('refs/heads/')) continue;
-    const name = row[0].slice('refs/heads/'.length);
-    groups.set(name, [row]);
-    if (row[4]) byUpstream.set(row[4], name);
+    groups.set(row[0], [row]);
+    if (row[4]) byUpstream.set(row[4], row[0]);
   }
   for (const row of rows) {
     const ref = row[0];
     if (!ref.startsWith('refs/remotes/')) continue;
     const short = ref.slice('refs/remotes/'.length);
     const slash = short.indexOf('/');
-    const sameName = slash > 0 && groups.has(short.slice(slash + 1)) ? short.slice(slash + 1) : undefined;
-    const local = byUpstream.get(ref) ?? sameName;
+    const sameName = slash > 0 ? `refs/heads/${short.slice(slash + 1)}` : '';
+    const local = byUpstream.get(ref) ?? (groups.has(sameName) ? sameName : undefined);
     if (local !== undefined) groups.get(local)!.push(row);
-    else groups.set(short, [row]);
+    else groups.set(ref, [row]);
   }
 
   const read = async ([ref, , sha, ct]: (typeof rows)[number]): Promise<Tip | null> => {
@@ -149,7 +149,7 @@ export async function unmergedBranches(git: Git, head: string, headRef: string):
 
   const branches: RawBranch[] = [];
   let unreadable = 0;
-  for (const [name, members] of groups) {
+  for (const [key, members] of groups) {
     const read = members.map(([ref]) => tips.get(ref)!);
     if (read.some((t) => t === null)) {
       unreadable++;
@@ -157,7 +157,8 @@ export async function unmergedBranches(git: Git, head: string, headRef: string):
     }
     // Most advanced tip: most commits ahead of HEAD, then the newer tip, then the local one.
     const best = (read as Tip[]).sort((a, b) => b.aheadCount - a.aheadCount || b.ct - a.ct || Number(a.remote) - Number(b.remote))[0]!;
-    const remote = !members[0]![0].startsWith('refs/heads/');
+    const remote = key.startsWith('refs/remotes/');
+    const name = key.slice(remote ? 'refs/remotes/'.length : 'refs/heads/'.length);
     // Kept as git has it, like file paths: a refname can't start with `/` or hold `~`, `:` or `\`,
     // so it can't be an absolute, home or drive path (Qodo local r4 #3).
     branches.push({ name, remote, alsoRemote: !remote && members.length > 1, aheadCount: best.aheadCount,
