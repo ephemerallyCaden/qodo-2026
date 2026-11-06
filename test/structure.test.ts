@@ -639,3 +639,26 @@ describe('PR #20 Qodo review r1', () => {
     expect(lineage.dirs.get('s')).toMatchObject({ id: birthId('s'), bornSeq: 1 });
   });
 });
+
+describe('PR #20 Qodo review r2', () => {
+  it('#1: an empty HEAD commit is a lineage commit (real git)', async () => {
+    const r = scratch();
+    r.write('d/a.ts', 'export const a = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'one');
+    r.git('commit', '-q', '--allow-empty', '-m', 'empty head');
+    const s = await r.scan();
+    expect(s.commits.map((c) => c.seq)).toEqual([0, 1]);
+    expect(s.dirs.map((x) => [x.path, x.bornSeq])).toEqual([['d', 0]]);
+  });
+
+  it('#1: a final header without its closing NUL is kept, streamed or buffered; a cut-off path record is refused', async () => {
+    const [a, b] = ['a'.repeat(40), 'b'.repeat(40)];
+    const raw = ['', a, '100', '\nA', 'd/a.ts', '', b, '200'].join('\0');
+    const streamed = Object.assign(async (): Promise<string> => raw, { stream: async (_: string[], onData: (c: string) => void) => onData(raw) });
+    for (const git of [streamed, async () => raw]) {
+      expect((await lineageLog(git, 'HEAD')).map((c) => [c.sha, c.dateMs])).toEqual([[a, 100_000], [b, 200_000]]);
+    }
+    await expect(lineageLog(async () => ['', a, '100', '\nA', 'd/a.t'].join('\0'), 'HEAD')).rejects.toThrow(/incomplete/);
+  });
+});
