@@ -21,7 +21,9 @@ export async function lineageLog(git: Git, head: string): Promise<LineageCommit[
   let cur: LineageCommit | undefined;
   // Changes go here; a repeated header points it at a scratch list that is thrown away.
   let into: LineageCommit['changes'] = [];
-  let want: 'status' | 'sha' | 'ct' | 'from' | 'to' | 'path' = 'status';
+  type Want = 'status' | 'sha' | 'ct' | 'from' | 'to' | 'path';
+  // Widened so the end-of-stream check below sees what token() set (TS can't track the closure).
+  let want = 'status' as Want;
   let status: Change['status'] | null = null;
   let [sha, from] = ['', ''];
   const token = (t: string) => {
@@ -74,6 +76,10 @@ export async function lineageLog(git: Git, head: string): Promise<LineageCommit[
   };
   if (git.stream) await git.stream(args, feed);
   else feed(await git(args));
+  // A last header's timestamp may end the output without a closing NUL (an empty HEAD commit);
+  // anything else left over is a cut-off record, refused rather than half-read (PR #20 Qodo r2 #1).
+  if (pending !== '' && want === 'ct') token(pending);
+  else if (pending !== '' || (want !== 'status' && want !== 'sha')) throw new Error('lineage log ended inside an incomplete record');
   return commits;
 }
 
