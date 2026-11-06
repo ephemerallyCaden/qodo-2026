@@ -83,7 +83,9 @@ export async function unmergedBranches(git: Git, head: string, headRef: string):
   const branches: RawBranch[] = [];
   let unreadable = 0;
   const read = async ([ref, , sha, ct]: [string, string, string, string]) => {
-    const log = await tryGit(git, ['log', '--format=%x01', '--name-only', '--no-renames', '-z', `${head}..${sha}`]);
+    // --cc: a merge lists only files it changed against every parent (its own resolutions), not
+    // the work it merged in, which HEAD..tip lists through those commits (Qodo local r1 #2).
+    const log = await tryGit(git, ['log', '--format=%x01', '--name-only', '--no-renames', '--cc', '-z', `${head}..${sha}`]);
     if (log === null) {
       unreadable++;
       return;
@@ -91,8 +93,10 @@ export async function unmergedBranches(git: Git, head: string, headRef: string):
     const chunks = log.split('\x01').slice(1);
     const tops = new Set<string>();
     for (const chunk of chunks) {
-      for (const t of chunk.split('\0')) {
-        const path = t.replace(/^\n+/, '');
+      // `\0` ends the format line; a non-merge's first path follows one `\n`. Paths may hold
+      // newlines themselves, so only that one is dropped (Qodo local r1 #3).
+      for (const [i, t] of chunk.split('\0').entries()) {
+        const path = i === 1 && t.startsWith('\n') ? t.slice(1) : t;
         const slash = path.indexOf('/');
         if (slash > 0 && exclusionOf(path) === null) tops.add(path.slice(0, slash));
       }

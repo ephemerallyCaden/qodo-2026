@@ -290,3 +290,71 @@ describe('scan from a subdirectory', () => {
     expect(sub.json).toBe(json);
   });
 });
+
+describe('local Qodo review (#16 r1)', () => {
+  /** A throwaway repo whose commits run in order at fixed dates. */
+  function scratch() {
+    const d = mkdtempSync(join(tmpdir(), 'commet-scratch-'));
+    let n = 0;
+    const env = { ...process.env, GIT_AUTHOR_NAME: 'Ada Self', GIT_AUTHOR_EMAIL: 'self@example.com',
+      GIT_COMMITTER_NAME: 'Ada Self', GIT_COMMITTER_EMAIL: 'self@example.com' };
+    const git = (...args: string[]) => {
+      const at = `2026-07-${String(++n).padStart(2, '0')}T10:00:00Z`;
+      return execFileSync('git', args, { cwd: d, encoding: 'utf8', env: { ...env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } }).trim();
+    };
+    const write = (path: string, body: string | Buffer) => {
+      execFileSync('mkdir', ['-p', join(d, path, '..')]);
+      writeFileSync(join(d, path), body);
+    };
+    git('init', '-q', '-b', 'main');
+    return { dir: d, git, write, scan: async () => (await run({ repoDir: d })).snapshot };
+  }
+
+  it('#1: a binary left behind does not stop a folder\'s only source file from carrying its id', async () => {
+    const r = scratch();
+    r.write('art/draw.ts', Array.from({ length: 6 }, (_, i) => `export const draw${i} = ${i};`).join('\n') + '\n');
+    r.write('art/logo.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 1, 2]));
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'art');
+    execFileSync('mkdir', [join(r.dir, 'paint')]);
+    r.git('mv', 'art/draw.ts', 'paint/draw.ts');
+    r.git('commit', '-qm', 'move the source');
+    const s = await r.scan();
+    expect(s.dirs.map((x) => [x.path, x.id, x.bornSeq])).toEqual([['paint', birthId('art'), 0]]);
+  });
+
+  it('#2: a change made only in a merge commit counts toward the branch\'s folders', async () => {
+    const r = scratch();
+    for (const p of ['api/a.ts', 'lib/l.ts', 'ui/u.ts']) r.write(p, `export const v = ${JSON.stringify(p)};\n`);
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'root');
+    r.git('checkout', '-qb', 'side');
+    r.write('api/a.ts', 'export const v = 2;\n');
+    r.git('commit', '-qam', 'side');
+    r.git('checkout', '-qb', 'feature', 'main');
+    r.write('ui/u.ts', 'export const v = 3;\n');
+    r.git('commit', '-qam', 'feature');
+    r.git('merge', '-q', '--no-commit', 'side');
+    r.write('lib/l.ts', 'export const v = 4; // changed only while merging\n');
+    r.git('commit', '-qam', 'merge side');
+    r.git('checkout', '-q', 'main');
+    const s = await r.scan();
+    const ids = new Map(s.dirs.map((x) => [x.id, x.path]));
+    const feature = s.branches.find((b) => b.name === 'feature')!;
+    expect([feature.aheadCount, feature.dirIds.map((i) => ids.get(i)).sort()]).toEqual([3, ['api', 'lib', 'ui']]);
+  });
+
+  it('#3: a top-level folder whose name starts with a newline still gets its branch ring', async () => {
+    const r = scratch();
+    r.write('\nnl/x.ts', 'export const x = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'root');
+    r.git('checkout', '-qb', 'touch-nl');
+    r.write('\nnl/x.ts', 'export const x = 2;\n');
+    r.git('commit', '-qam', 'touch');
+    r.git('checkout', '-q', 'main');
+    const s = await r.scan();
+    expect(s.dirs.map((x) => x.path)).toEqual(['\nnl']);
+    expect(s.branches.map((b) => [b.name, b.dirIds])).toEqual([['touch-nl', [s.dirs[0]!.id]]]);
+  });
+});
