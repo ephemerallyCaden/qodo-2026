@@ -4,12 +4,14 @@ import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import { lineHasher, sha256Hex } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
 import { hashLines } from '../core/lines.js';
-import type { Commit, PersonId, SessionKey, SnapshotV01 } from '../core/snapshot/types.js';
+import type { Commit, PersonId, SessionKey, SnapshotV02 } from '../core/snapshot/types.js';
+import { buildLineage, dirsAtHead, matchTests, zeroDebt } from '../core/structure.js';
 import { isoUtc, minusMonths } from '../core/time.js';
 import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
 import { gitRunner } from './git.js';
 import { addedLines, headFiles, readRepo, windowCommits, type NumstatRow, type RawCommit } from './repo.js';
+import { debtCounts, lineageLog, unmergedBranches } from './structure.js';
 
 export interface ScanOptions {
   repoDir: string;
@@ -28,7 +30,7 @@ export interface ScanOptions {
 export type LogStats = (LogCounts & { transcripts: number }) | null;
 
 export interface ScanResult {
-  snapshot: SnapshotV01;
+  snapshot: SnapshotV02;
   json: string;
   commonDir: string;
   logs: LogStats;
@@ -56,7 +58,6 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const since = isoUtc(sinceMs);
 
   const counts: Record<string, number> = {};
-  const files: SnapshotV01['files'] = [];
   // One comparison for matching, people and selfPersonIds: all use the mailmapped, lowercased email.
   const isSelf = (c: RawCommit) => repo.selfEmail !== null && c.email === repo.selfEmail;
   const rawP = windowCommits(git, repo.head, since);
@@ -65,17 +66,35 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   // A git failure surfaces once, through rawP below; discovery may never await this copy, so it
   // must not reject unhandled and crash the CLI past its error path (Qodo PR10 #8).
   selfTimes.catch(() => undefined);
-  const [head, raw, found] = await Promise.all([
+  const [head, raw, found, history, debt, rawBranches] = await Promise.all([
     headFiles(git, repo.head, repo.emptyTree),
     rawP,
     o.ingest ? discoverClaude(o.claudeProjectsDir, repo.commonDir, repo.worktreeRoots, o.maxTranscriptBytes, selfTimes) : null,
+    lineageLog(git, repo.head),
+    debtCounts(git, repo.head),
+    unmergedBranches(git, repo.head, repo.branch === 'HEAD' ? '' : `refs/heads/${repo.branch}`),
   ]);
+  const kept: [string, NumstatRow][] = [];
   for (const [path, row] of head) {
     const rule = exclusionOf(path, row.binary);
     if (rule) counts[rule] = (counts[rule] ?? 0) + 1;
-    else files.push({ id: `f_${sha256Hex(path).slice(0, 12)}`, path, loc: row.added });
+    else kept.push([path, row]);
   }
-  files.sort((a, b) => byCodepoint(a.path, b.path));
+  kept.sort((a, b) => byCodepoint(a[0], b[0]));
+  const headPaths = kept.map(([p]) => p);
+  const fileId = (path: string): `f_${string}` => `f_${sha256Hex(path).slice(0, 12)}`;
+  const lineage = buildLineage(history, (p) => excluded(p, undefined));
+  const testOf = matchTests(headPaths, lineage.paths);
+  const structure = dirsAtHead(lineage, headPaths);
+  const files: SnapshotV02['files'] = kept.map(([path, row]) => {
+    const src = testOf.get(path);
+    return { id: fileId(path), path, loc: row.added, debt: debt ? (debt.get(path) ?? zeroDebt()) : null,
+      isTest: src !== undefined, testOf: src ? fileId(src) : null };
+  });
+  const topDirs = new Map(structure.dirs.filter((d) => d.depth === 1).map((d) => [d.path, d.id]));
+  // A branch's rings are the folders it touches that exist at HEAD as top-level folders.
+  const branches: SnapshotV02['branches'] = rawBranches.branches.map(({ tops, ...b }) => ({ ...b,
+    dirIds: [...tops].flatMap((t) => topDirs.get(t) ?? []).sort(byCodepoint) }));
 
   const hash = lineHasher(o.keyFor(repo.commonDir));
   const fromMs = found?.coverage[0]?.from;
@@ -127,8 +146,10 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     results = attribute();
   }
 
-  const people = new Map<string, SnapshotV01['people'][number]>();
-  const commits: Commit[] = raw.map((c, seq) => {
+  const people = new Map<string, SnapshotV02['people'][number]>();
+  const commits: Commit[] = raw.map((c) => {
+    const seq = lineage.seqOf.get(c.sha);
+    if (seq === undefined) throw new Error('window commit missing from the first-parent lineage');
     const author = personId(c.email);
     if (!people.has(author)) people.set(author, { id: author, displayName: redactPaths(c.name), isSelf: isSelf(c) });
     const r = results.get(c.sha)!;
@@ -139,15 +160,18 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
       subject: redactPaths(c.subject), files: rows, attribution: r.attribution };
   });
 
-  const snapshot: SnapshotV01 = {
-    schemaVersion: '0.1',
+  const snapshot: SnapshotV02 = {
+    schemaVersion: '0.2',
     generator: { name: 'commet', version: VERSION },
     repo: { repoId: repo.repoId, head: repo.head, headDate: isoUtc(repo.headMs), branch: repo.branch,
       selfPersonIds: repo.selfEmail ? [personId(repo.selfEmail)] : [] },
     window: { months: o.windowMonths, since, until: isoUtc(repo.headMs), firstParent: true },
     exclusions: { rulesetVersion: RULESET_VERSION, rules: RULES, counts },
     coverage: (found?.coverage ?? []).map((s) => ({ tool: 'claude-code', from: isoUtc(s.from), to: isoUtc(s.to) })),
+    dirs: structure.dirs,
     files,
+    branches,
+    unreadable: { dirs: structure.unreadable, files: debt ? 0 : files.length, branches: rawBranches.unreadable },
     people: [...people.values()].sort((a, b) => byCodepoint(a.id, b.id)),
     commits,
     sessions: buildSessions(ingest?.sessions.values() ?? [], raw.map((c) => c.sha), results),
