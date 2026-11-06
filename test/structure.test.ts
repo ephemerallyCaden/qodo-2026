@@ -416,3 +416,51 @@ describe('local Qodo review (#16 r3)', () => {
     expect(s.dirs.map((x) => [x.path, x.bornSeq])).toEqual([['m', 1], ['s', 2], ['z', 3]]);
   });
 });
+
+describe('local Qodo review (#16 r4)', () => {
+  it('#1: a binary moving with its folder neither counts at its old name nor blocks the move', async () => {
+    const r = scratch();
+    r.write('art/draw.ts', Array.from({ length: 6 }, (_, i) => `export const draw${i} = ${i};`).join('\n') + '\n');
+    r.write('art/logo.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 1, 2, 3, 4, 5, 6]));
+    r.write('art/extra.ts', Array.from({ length: 6 }, (_, i) => `export const extra${i} = ${i};`).join('\n') + '\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'art');
+    execFileSync('mkdir', [join(r.dir, 'paint')]);
+    r.git('mv', 'art/draw.ts', 'paint/draw.ts');
+    r.git('mv', 'art/logo.png', 'paint/logo.png');
+    r.git('rm', '-q', 'art/extra.ts');
+    r.git('commit', '-qm', 'move the source and the logo, drop the rest');
+    const s = await r.scan();
+    // Text files only: 1 of 2 moved and none stayed, so paint/ inherits art/'s id. Counting the
+    // binary under its old name (3 files, 1 moved) blocked that.
+    expect(s.dirs.map((x) => [x.path, x.id])).toEqual([['paint', birthId('art')]]);
+  });
+
+  it('#2: a U+0001 in a branch\'s path neither inflates aheadCount nor loses its folder', async () => {
+    const r = scratch();
+    r.write('d/a.ts', 'export const a = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'root');
+    r.git('checkout', '-qb', 'odd');
+    r.write('d/x\u0001y.ts', 'export const odd = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'odd path');
+    r.git('checkout', '-q', 'main');
+    const s = await r.scan();
+    expect(s.branches.map((b) => [b.name, b.aheadCount, b.dirIds])).toEqual([['odd', 1, [s.dirs[0]!.id]]]);
+  });
+
+  it('#3: branch names are kept as git has them, so tmp/feature and tmp/bugfix stay distinct', async () => {
+    const r = scratch();
+    r.write('d/a.ts', 'export const a = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'root');
+    for (const b of ['tmp/feature', 'tmp/bugfix']) {
+      r.git('checkout', '-qb', b, 'main');
+      r.write('d/a.ts', `export const a = ${JSON.stringify(b)};\n`);
+      r.git('commit', '-qam', b);
+    }
+    r.git('checkout', '-q', 'main');
+    expect((await r.scan()).branches.map((b) => b.name)).toEqual(['tmp/bugfix', 'tmp/feature']);
+  });
+});

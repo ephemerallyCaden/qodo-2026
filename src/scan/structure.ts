@@ -1,6 +1,5 @@
 // Git reads for #16: the lineage pass, debt markers and unmerged branches. The pure logic is in
 // src/core/structure.ts.
-import { redactPaths } from '../attrib/parsers/claude.js';
 import { byCodepoint } from '../core/canonical-json.js';
 import type { Branch, DebtCounts } from '../core/snapshot/types.js';
 import { DEBT_KEYS, zeroDebt, type LineageCommit } from '../core/structure.js';
@@ -104,27 +103,27 @@ export async function unmergedBranches(git: Git, head: string, headRef: string):
   const branches: RawBranch[] = [];
   let unreadable = 0;
   const read = async ([ref, , sha, ct]: [string, string, string, string]) => {
+    const range = `${head}..${sha}`;
     // --cc: a merge lists only files it changed against every parent (its own resolutions), not
     // the work it merged in, which HEAD..tip lists through those commits (Qodo local r1 #2).
-    const log = await tryGit(git, ['log', '--format=%x01', '--name-only', '--no-renames', '--cc', '-z', `${head}..${sha}`]);
-    if (log === null) {
+    // An empty format leaves only NUL-separated paths (no separator lines), so no byte in a path can
+    // fake a commit boundary or need stripping; rev-list counts the commits (Qodo local r1 #3, r4 #2).
+    const [count, log] = await Promise.all([tryGit(git, ['rev-list', '--count', range]),
+      tryGit(git, ['log', '--format=', '--name-only', '--no-renames', '--cc', '-z', range])]);
+    if (count === null || log === null) {
       unreadable++;
       return;
     }
-    const chunks = log.split('\x01').slice(1);
     const tops = new Set<string>();
-    for (const chunk of chunks) {
-      // `\0` ends the format line; a non-merge's first path follows one `\n`. Paths may hold
-      // newlines themselves, so only that one is dropped (Qodo local r1 #3).
-      for (const [i, t] of chunk.split('\0').entries()) {
-        const path = i === 1 && t.startsWith('\n') ? t.slice(1) : t;
-        const slash = path.indexOf('/');
-        if (slash > 0 && exclusionOf(path) === null) tops.add(path.slice(0, slash));
-      }
+    for (const path of log.split('\0')) {
+      const slash = path.indexOf('/');
+      if (slash > 0 && exclusionOf(path) === null) tops.add(path.slice(0, slash));
     }
     const remote = ref.startsWith('refs/remotes/');
-    branches.push({ name: redactPaths(ref.slice(remote ? 'refs/remotes/'.length : 'refs/heads/'.length)), remote,
-      aheadCount: chunks.length, lastCommitDate: isoUtc(Number(ct) * 1000), tops });
+    // Kept as git has it, like file paths: a refname can't start with `/` or hold `~`, `:` or `\`,
+    // so it can't be an absolute, home or drive path (Qodo local r4 #3).
+    branches.push({ name: ref.slice(remote ? 'refs/remotes/'.length : 'refs/heads/'.length), remote,
+      aheadCount: Number(count.trim()), lastCommitDate: isoUtc(Number(ct) * 1000), tops });
   };
   for (let i = 0; i < todo.length; i += BRANCH_READS) await Promise.all(todo.slice(i, i + BRANCH_READS).map(read));
   branches.sort((a, b) => byCodepoint(a.name, b.name) || Number(a.remote) - Number(b.remote));
