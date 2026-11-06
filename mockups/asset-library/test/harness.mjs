@@ -42,9 +42,9 @@ async function newPage(browser, { width = 1280, height = 720 } = {}) {
   return page;
 }
 
-// Startup compiles shaders in SwiftShader: allow 90 s, and surface the page's own error first.
+// Startup compiles shaders in SwiftShader (minutes on a busy machine): allow 240 s, and surface the page's own error first.
 async function waitFor(page, fn) {
-  await page.waitForFunction(fn, null, { timeout: 90000 }).catch((e) => { throw page.errors[0] ?? e; });
+  await page.waitForFunction(fn, null, { timeout: 240000 }).catch((e) => { throw page.errors[0] ?? e; });
 }
 
 /** The library page (optionally at a URL hash); resolves when it has booted. */
@@ -72,16 +72,15 @@ export const grabCanvas = (page) => page.evaluate(() => {
   return { w: s.width, h: s.height, data: Array.from(x.getImageData(0, 0, s.width, s.height).data) };
 });
 
-/** Pixel stats: unique colours, and how many pixels are not the background colour. */
-export function stats({ data }, bg = 0x0d0b16) {
+/** Pixel stats: unique colours, and how many pixels are not the background (the most common colour). */
+export function stats({ data }) {
   const colours = new Map();
-  let drawn = 0;
   for (let i = 0; i < data.length; i += 4) {
     const c = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
     colours.set(c, (colours.get(c) ?? 0) + 1);
-    if (c !== bg) drawn++;
   }
-  return { colours, drawn };
+  const bg = Math.max(...colours.values());
+  return { colours, drawn: data.length / 4 - bg };
 }
 
 /** Indices of pixels that differ between two grabs of the same size. */

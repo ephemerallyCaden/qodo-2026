@@ -601,19 +601,22 @@ $('json-apply').onclick = (e) => {
     $('json-err').textContent = err.message;
   }
 };
-function png(scale) {
+/** The current frame as a PNG data URL, upscaled by a whole number (nearest neighbour). */
+function snapshot(scale) {
   drawStage(); // the current frame, freshly rendered
-  const src = canvas;
   const out = document.createElement('canvas');
-  out.width = src.width * scale;
-  out.height = src.height * scale;
+  out.width = canvas.width * scale;
+  out.height = canvas.height * scale;
   const ctx = out.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(src, 0, 0, out.width, out.height);
+  ctx.drawImage(canvas, 0, 0, out.width, out.height);
+  return out.toDataURL('image/png');
+}
+function png(scale) {
   const a = document.createElement('a');
   const what = state.mode === 'scene' ? 'scene' : describe(state.asset).replace(/[^\w]+/g, '-');
+  a.href = snapshot(scale);
   a.download = `asset-library-${what}-t${now().toFixed(2)}${scale > 1 ? `-x${scale}` : ''}.png`;
-  a.href = out.toDataURL('image/png');
   a.click();
 }
 $('png1').onclick = () => png(1);
@@ -634,6 +637,8 @@ window.library = {
     return S.encodeHash(state);
   },
   state: () => clone(state),
+  basePalette: () => clone(P.BASE),
+  snapshot,
   hash: () => S.encodeHash(state),
   open(id, extra = {}) { openItem(ITEMS.find((c) => c.id === id)); if (Object.keys(extra).length) update((n) => Object.assign(n, extra)); },
   tab(name) { document.querySelector(`[data-tab="${name}"]`).click(); },
