@@ -14,15 +14,17 @@ export interface Io {
   env: NodeJS.ProcessEnv;
 }
 
-const USAGE = 'usage: commet scan [--window <months>] [--no-ingest] [--out <file>]\n';
+const USAGE = 'usage: commet scan [--window <months>] [--no-ingest] [--with-qodo] [--out <file>]\n'
+  + '  --with-qodo  opt in to reading this repo\'s Qodo review findings (read-only, over the network via gh and qodo)\n';
 
-interface ScanArgs { window: number; ingest: boolean; out?: string }
+interface ScanArgs { window: number; ingest: boolean; withQodo: boolean; out?: string }
 
 function parseScanArgs(args: string[]): ScanArgs | string {
-  const o: ScanArgs = { window: 24, ingest: true };
+  const o: ScanArgs = { window: 24, ingest: true, withQodo: false };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--no-ingest') o.ingest = false;
+    else if (a === '--with-qodo') o.withQodo = true;
     else if (a === '--window') {
       const n = Number(args[++i]);
       if (!Number.isInteger(n) || n < 1 || n > 240) return '--window takes a whole number of months (1–240)';
@@ -57,9 +59,10 @@ export async function main(argv: string[], io: Io): Promise<number> {
     const { snapshot, json, commonDir, logs } = await scan({
       repoDir: io.cwd, windowMonths: args.window, ingest: args.ingest,
       claudeProjectsDir: join(claudeDir, 'projects'), keyFor: (dir) => loadOrCreateKey(stateDir(dir)),
+      qodo: { fetch: args.withQodo, stateDir },
     });
     writeAtomic(args.out ? resolve(io.cwd, args.out) : join(stateDir(commonDir), 'snapshot.json'), json);
-    io.stdout(formatSummary(snapshot, logs));
+    io.stdout(formatSummary(snapshot, logs, !args.withQodo));
     const where = args.out ? 'the --out file' : '<git-common-dir>/commet/snapshot.json';
     io.stdout(`snapshot written to ${where} (${Buffer.byteLength(json)} bytes, sha256 ${sha256Hex(json).slice(0, 16)})\n`);
     return 0;

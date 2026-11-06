@@ -4,12 +4,14 @@ import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import { lineHasher, sha256Hex } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
 import { hashLines } from '../core/lines.js';
-import type { Commit, PersonId, SessionKey, SnapshotV02 } from '../core/snapshot/types.js';
+import { applyCache, tallyFindings, type QodoCache } from '../core/qodo.js';
+import type { Commit, FileQodo, PersonId, QodoReason, QodoSource, SessionKey, SnapshotV02 } from '../core/snapshot/types.js';
 import { binaryNames, buildLineage, debtCounted, dirsAtHead, matchTests, zeroDebt } from '../core/structure.js';
 import { isoUtc, minusMonths } from '../core/time.js';
 import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
 import { gitRunner } from './git.js';
+import { fetchQodo, readQodoCache, writeQodoCache } from './qodo.js';
 import { addedLines, headFiles, readRepo, windowCommits, type NumstatRow, type RawCommit } from './repo.js';
 import { debtCounts, lineageLog, unmergedBranches } from './structure.js';
 
@@ -24,6 +26,11 @@ export interface ScanOptions {
   keyFor: (commonDir: string) => Uint8Array;
   /** Transcripts larger than this are skipped (their span becomes blind). */
   maxTranscriptBytes?: number;
+  /**
+   * Qodo findings (#17). `fetch` (the --with-qodo opt-in) reads them over the network and caches
+   * the counts in `stateDir`; otherwise only that cache is read. Absent: neither (files[].qodo null).
+   */
+  qodo?: { fetch: boolean; stateDir: (commonDir: string) => string; timeoutMs?: number };
 }
 
 /** Aggregate log-reading counts for the summary; null when logs weren't read. */
@@ -61,6 +68,8 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   // One comparison for matching, people and selfPersonIds: all use the mailmapped, lowercased email.
   const isSelf = (c: RawCommit) => repo.selfEmail !== null && c.email === repo.selfEmail;
   const rawP = windowCommits(git, repo.head, since);
+  // Only with the opt-in; it runs alongside the git reads and never rejects.
+  const qodoP = o.qodo?.fetch ? fetchQodo(o.repoDir, o.qodo.timeoutMs) : null;
   // Commits that could come out human bound which outside sessions discovery searches first.
   const selfTimes = rawP.then((cs) => cs.filter((c) => isSelf(c) && !c.isMerge).map((c) => c.dateMs));
   // A git failure surfaces once, through rawP below; discovery may never await this copy, so it
@@ -90,13 +99,6 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const { targets: testOf, bulkSkipped } = matchTests(headPaths, lineage.paths);
   const structure = dirsAtHead(lineage, headPaths);
   const dirIdOf = new Map(structure.dirs.map((d) => [d.path, d.id]));
-  const files: SnapshotV02['files'] = kept.map(([path, row]) => {
-    const target = testOf.get(path);
-    // Only source code carries debt (AC13); a file that isn't source counts 0 even if unread.
-    const counted = debtCounted(path) ? debt?.get(path) ?? (debt ? zeroDebt() : null) : zeroDebt();
-    return { id: fileId(path), path, loc: row.added, debt: counted,
-      isTest: target !== undefined, testOf: !target ? null : target.dir ? dirIdOf.get(target.path)! : fileId(target.path) };
-  });
   const topDirs = new Map(structure.dirs.filter((d) => d.depth === 1).map((d) => [d.path, d.id]));
   // A branch's rings are the folders it touches that exist at HEAD as top-level folders.
   const branches: SnapshotV02['branches'] = rawBranches.branches.map(({ tops, ...b }) => ({ ...b,
@@ -105,12 +107,22 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const hash = lineHasher(o.keyFor(repo.commonDir));
   const fromMs = found?.coverage[0]?.from;
   const knownPaths = new Set([...head.keys(), ...raw.flatMap((c) => [...c.files.keys()])]);
-  // The patch log runs while the transcripts parse; it starts no earlier than the window.
-  const [patches, ingest] = await Promise.all([
+  // The patch log runs while the transcripts parse (and any Qodo fetch finishes); it starts no
+  // earlier than the window.
+  const [patches, ingest, qodo] = await Promise.all([
     fromMs !== undefined && fromMs <= repo.headMs ? addedLines(git, repo.head, isoUtc(Math.max(sinceMs, fromMs - DAY_MS)))
       : new Map<string, Map<string, string[]>>(),
     found ? parseClaude(found, knownPaths, hash) : null,
+    readQodo(o, repo.commonDir, repo.head, headPaths, qodoP),
   ]);
+  const files: SnapshotV02['files'] = kept.map(([path, row]) => {
+    const target = testOf.get(path);
+    // Only source code carries debt (AC13); a file that isn't source counts 0 even if unread.
+    const counted = debtCounted(path) ? debt?.get(path) ?? (debt ? zeroDebt() : null) : zeroDebt();
+    return { id: fileId(path), path, loc: row.added, debt: counted,
+      isTest: target !== undefined, testOf: !target ? null : target.dir ? dirIdOf.get(target.path)! : fileId(target.path),
+      qodo: qodo.perFile.get(path) ?? null };
+  });
 
   // Re-run after the safety net below adds outside transcripts.
   const attribute = () => {
@@ -179,6 +191,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     branches,
     unreadable: { dirs: structure.unreadable, files: files.filter((f) => f.debt === null).length, branches: rawBranches.unreadable,
       bulkCommits: bulkSkipped },
+    qodo: qodo.source,
     people: [...people.values()].sort((a, b) => byCodepoint(a.id, b.id)),
     commits,
     sessions: buildSessions(ingest?.sessions.values() ?? [], raw.map((c) => c.sha), results),
@@ -187,4 +200,24 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const logs = found && { transcripts: found.transcripts.length - unreadable, tooLarge: found.stats.tooLarge,
     unavailable: found.stats.unavailable + unreadable, dropped: ingest?.dropped ?? 0, unattributed: found.stats.unattributed };
   return { snapshot, json: canonicalJson(snapshot), commonDir: repo.commonDir, logs };
+}
+
+/**
+ * files[].qodo and its source: fetched (then cached) with the opt-in, else from the cache. A failed
+ * fetch is unknown, never 0 (Rule 1), and leaves an earlier cache as it was.
+ */
+async function readQodo(o: ScanOptions, commonDir: string, head: string, headPaths: string[],
+  fetched: ReturnType<typeof fetchQodo> | null): Promise<{ perFile: Map<string, FileQodo | null>; source: QodoSource }> {
+  const none = { perFile: new Map<string, FileQodo | null>() };
+  if (!o.qodo) return { ...none, source: { status: 'none' } };
+  let cache: QodoCache | null | QodoReason;
+  if (fetched) {
+    const prs = await fetched;
+    // Only paths at HEAD are kept, so no path Qodo sent that isn't in the repo reaches disk.
+    cache = typeof prs === 'string' ? prs : tallyFindings(prs, new Set(headPaths), head);
+    if (typeof cache !== 'string') writeQodoCache(o.qodo.stateDir(commonDir), cache);
+  } else cache = readQodoCache(o.qodo.stateDir(commonDir));
+  if (cache === null) return { ...none, source: { status: 'none' } };
+  if (typeof cache === 'string') return { ...none, source: { status: 'unavailable', reason: cache } };
+  return applyCache(cache, headPaths);
 }

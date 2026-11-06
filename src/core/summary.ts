@@ -1,5 +1,6 @@
 import { byCodepoint } from './canonical-json.js';
 import type { CommitClass, SnapshotV02 } from './snapshot/types.js';
+import { hasReview, QODO_LEVEL_NAMES, QODO_LEVELS, qodoTotal, zeroLevels } from './qodo.js';
 import { DEBT_KEYS, zeroDebt } from './structure.js';
 
 const CLASSES: CommitClass[] = ['agent', 'mixed', 'human', 'unknown'];
@@ -13,7 +14,8 @@ export interface LogCounts { tooLarge: number; unavailable: number; dropped: num
 
 /** Human-readable scan summary. Contains repo-relative data only: no absolute paths or code. */
 /** `logs` holds aggregate log-reading counts, or null when logs weren't read (--no-ingest). */
-export function formatSummary(s: SnapshotV02, logs: LogCounts | null): string {
+/** `qodoCached`: findings were read from the cache, not fetched this run. */
+export function formatSummary(s: SnapshotV02, logs: LogCounts | null, qodoCached = false): string {
   const excludedTotal = Object.values(s.exclusions.counts).reduce((a, b) => a + b, 0);
   const excludedList = Object.entries(s.exclusions.counts).sort((a, b) => byCodepoint(a[0], b[0]))
     .map(([k, v]) => `${k} ${v}`).join(', ');
@@ -46,6 +48,7 @@ export function formatSummary(s: SnapshotV02, logs: LogCounts | null): string {
   if (s.unreadable.bulkCommits) {
     lines.push(`${s.unreadable.bulkCommits} commit(s) over 200 files were left out of test co-change matching; tests in them may show no source`);
   }
+  lines.push(...qodoLines(s, qodoCached));
   if (s.unreadable.dirs) lines.push(`${s.unreadable.dirs} folder(s) had no lineage record; their id and birth fall back to HEAD`);
   if (skipped) lines.push(`${skipped} transcript(s) skipped (too large ${logs!.tooLarge}, unavailable ${logs!.unavailable}); commits during them are never classed human`);
   if (logs?.dropped) {
@@ -66,4 +69,22 @@ export function formatSummary(s: SnapshotV02, logs: LogCounts | null): string {
     if (agentWritten.length > LIST_LIMIT) lines.push(`  … and ${agentWritten.length - LIST_LIMIT} more`);
   }
   return lines.join('\n') + '\n';
+}
+
+function qodoLines(s: SnapshotV02, cached: boolean): string[] {
+  const q = s.qodo;
+  if (q.status === 'none') return ['qodo findings: not read (opt in with --with-qodo)'];
+  if (q.status === 'unavailable') return [`qodo findings: unavailable (${q.reason}); every file's finding count is unknown, not zero`];
+  const label = `qodo findings${cached ? ' (cached)' : ''}`;
+  if (!hasReview(q)) return [`${label}: unknown (no PR has a Qodo review)`];
+  const sum = zeroLevels();
+  const withOpen = s.files.filter((f) => f.qodo?.open);
+  for (const f of withOpen) for (const k of QODO_LEVELS) sum[k] += f.qodo!.byLevel[k];
+  const levels = QODO_LEVELS.filter((k) => k !== 'other' || sum.other).map((k) => `${QODO_LEVEL_NAMES[k]} ${sum[k]}`).join(' · ');
+  const stale = q.head === s.repo.head ? '' : ' (HEAD has moved since)';
+  const out = [`${label}: ${qodoTotal(sum)} open on ${withOpen.length} file(s) (${levels}), `
+    + `from ${q.prs - q.unreviewed} reviewed PR(s) as of ${q.head.slice(0, 7)}${stale}`];
+  if (q.unreviewed) out.push(`${q.unreviewed} PR(s) have no Qodo review yet; findings on their files are not counted`);
+  if (q.offHead) out.push(`${q.offHead} open finding(s) are on files not at HEAD (deleted, renamed, excluded or none) and are left out`);
+  return out;
 }

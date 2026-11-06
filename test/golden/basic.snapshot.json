@@ -408,6 +408,7 @@
       "isTest": false,
       "loc": 2,
       "path": "README.md",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -421,6 +422,7 @@
       "isTest": false,
       "loc": 2,
       "path": "dir/my file.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -434,6 +436,7 @@
       "isTest": false,
       "loc": 2,
       "path": "dir/naïve \"q\".ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -447,6 +450,7 @@
       "isTest": false,
       "loc": 2,
       "path": "docs/gap.md",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -460,6 +464,7 @@
       "isTest": false,
       "loc": 2,
       "path": "docs/late.md",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -473,6 +478,7 @@
       "isTest": false,
       "loc": 3,
       "path": "docs/notes.md",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -486,6 +492,7 @@
       "isTest": false,
       "loc": 2,
       "path": "docs/team.md",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -499,6 +506,7 @@
       "isTest": false,
       "loc": 6,
       "path": "src/agent.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -512,6 +520,7 @@
       "isTest": false,
       "loc": 7,
       "path": "src/core.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -525,6 +534,7 @@
       "isTest": false,
       "loc": 3,
       "path": "src/ctrl.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -538,6 +548,7 @@
       "isTest": false,
       "loc": 3,
       "path": "src/sub/helper.ts",
+      "qodo": null,
       "testOf": null
     }
   ],
@@ -557,6 +568,9 @@
       "isSelf": false
     }
   ],
+  "qodo": {
+    "status": "none"
+  },
   "repo": {
     "branch": "main",
     "head": "9ade81ff7bafed5730bc3ddb3045695c72d809bb",

@@ -1,6 +1,7 @@
 // Snapshot schema 0.2: explicitly unstable until T2 freezes schemaVersion 1 (delivery plan §5).
 // 0.2 (#16) adds dirs[], branches[], unreadable, and files[].debt/isTest/testOf; commit seq became
-// the first-parent ordinal from the root, so it shares a scale with dirs[].bornSeq.
+// the first-parent ordinal from the root, so it shares a scale with dirs[].bornSeq. #17 adds the
+// opt-in qodo source and files[].qodo.
 // Every number is an integer; there are no floats, clocks, absolute paths, code or prompt text.
 
 export type Sha = string;
@@ -99,7 +100,28 @@ export interface FileEntry {
    * source it most often changes with; null if none.
    */
   testOf: FileId | DirId | null;
+  /** Open Qodo review findings on this file. null: unknown (not read, failed, or no reviewed PR), never 0. */
+  qodo: FileQodo | null;
 }
+
+/** Open-finding counts per Qodo action level; a level Commet doesn't know counts as `other`. */
+export interface QodoByLevel { actionRequired: number; remediationRecommended: number; informational: number; other: number }
+
+export interface FileQodo { open: number; byLevel: QodoByLevel }
+
+/** Why Qodo findings are unknown. A fixed set: no tool output is ever passed through. */
+export type QodoReason = 'qodo not installed' | 'gh not installed' | 'not logged in' | 'timed out' | 'rate limited' | 'network error'
+  | 'no GitHub remote' | 'too many PRs' | 'truncated result' | 'malformed response' | 'qodo failed' | 'gh failed' | 'cache unreadable';
+
+/**
+ * Where files[].qodo came from (#17). `none`: not opted in and no cache. `read`: from a fetch or the
+ * cache it wrote, as of `head` (the HEAD it was fetched at); `prs` were fetched, `unreviewed` of them
+ * had no Qodo review, and `offHead` open findings sat on no file at this HEAD.
+ */
+export type QodoSource =
+  | { status: 'none' }
+  | { status: 'read'; head: Sha; prs: number; unreviewed: number; offHead: number }
+  | { status: 'unavailable'; reason: QodoReason };
 
 /** An unmerged local or remote-tracking branch (no network: only refs already on disk). */
 export interface Branch {
@@ -143,6 +165,7 @@ export interface SnapshotV02 {
   files: FileEntry[];
   branches: Branch[];
   unreadable: Unreadable;
+  qodo: QodoSource;
   people: { id: PersonId; displayName: string; isSelf: boolean }[];
   commits: Commit[];
   sessions: Session[];

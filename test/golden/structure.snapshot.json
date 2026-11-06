@@ -1195,6 +1195,7 @@
       "isTest": false,
       "loc": 3,
       "path": "README.md",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1208,6 +1209,7 @@
       "isTest": false,
       "loc": 3,
       "path": "api/__fixtures__/f.test.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1221,6 +1223,7 @@
       "isTest": false,
       "loc": 3,
       "path": "api/handler.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1234,6 +1237,7 @@
       "isTest": false,
       "loc": 3,
       "path": "api/server.go",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1247,6 +1251,7 @@
       "isTest": true,
       "loc": 3,
       "path": "api/server_test.go",
+      "qodo": null,
       "testOf": "f_a5457320f6b6"
     },
     {
@@ -1260,6 +1265,7 @@
       "isTest": false,
       "loc": 3,
       "path": "api/util.py",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1273,6 +1279,7 @@
       "isTest": false,
       "loc": 3,
       "path": "cli/c.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1286,6 +1293,7 @@
       "isTest": false,
       "loc": 3,
       "path": "core/README.md",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1299,6 +1307,7 @@
       "isTest": true,
       "loc": 3,
       "path": "core/a.test.ts",
+      "qodo": null,
       "testOf": "f_3c90faed34ec"
     },
     {
@@ -1312,6 +1321,7 @@
       "isTest": false,
       "loc": 11,
       "path": "core/a.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1325,6 +1335,7 @@
       "isTest": false,
       "loc": 3,
       "path": "core/b.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1338,6 +1349,7 @@
       "isTest": false,
       "loc": 3,
       "path": "core/half.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1351,6 +1363,7 @@
       "isTest": false,
       "loc": 3,
       "path": "core/sub/deep.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1364,6 +1377,7 @@
       "isTest": false,
       "loc": 3,
       "path": "core/sub/x/y.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1377,6 +1391,7 @@
       "isTest": false,
       "loc": 7,
       "path": "half/h2.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1390,6 +1405,7 @@
       "isTest": false,
       "loc": 7,
       "path": "half/h3.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1403,6 +1419,7 @@
       "isTest": false,
       "loc": 3,
       "path": "kit/k.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1416,6 +1433,7 @@
       "isTest": false,
       "loc": 3,
       "path": "lib/l.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1429,6 +1447,7 @@
       "isTest": false,
       "loc": 7,
       "path": "moved/h1.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1442,6 +1461,7 @@
       "isTest": false,
       "loc": 7,
       "path": "new/o1.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1455,6 +1475,7 @@
       "isTest": false,
       "loc": 7,
       "path": "new/o2.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1468,6 +1489,7 @@
       "isTest": true,
       "loc": 3,
       "path": "test/flow.test.ts",
+      "qodo": null,
       "testOf": "f_3bb5e133ae02"
     },
     {
@@ -1481,6 +1503,7 @@
       "isTest": true,
       "loc": 3,
       "path": "test/half.test.ts",
+      "qodo": null,
       "testOf": "f_5de4c2892fc9"
     },
     {
@@ -1494,6 +1517,7 @@
       "isTest": true,
       "loc": 3,
       "path": "test/helpers.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1507,6 +1531,7 @@
       "isTest": true,
       "loc": 3,
       "path": "test/lonely.test.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1520,6 +1545,7 @@
       "isTest": true,
       "loc": 3,
       "path": "test/sub.test.ts",
+      "qodo": null,
       "testOf": "d_e967615433b4"
     },
     {
@@ -1533,6 +1559,7 @@
       "isTest": false,
       "loc": 2,
       "path": "tests/fixtures/data.test.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1546,6 +1573,7 @@
       "isTest": false,
       "loc": 3,
       "path": "tests/golden/out.json",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1559,6 +1587,7 @@
       "isTest": true,
       "loc": 3,
       "path": "tests/test_util.py",
+      "qodo": null,
       "testOf": "f_834a332210d0"
     },
     {
@@ -1572,6 +1601,7 @@
       "isTest": false,
       "loc": 3,
       "path": "tools/t.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1585,6 +1615,7 @@
       "isTest": true,
       "loc": 3,
       "path": "ui/v.test.ts",
+      "qodo": null,
       "testOf": "f_362826af8b17"
     },
     {
@@ -1598,6 +1629,7 @@
       "isTest": false,
       "loc": 3,
       "path": "ui/v.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1611,6 +1643,7 @@
       "isTest": false,
       "loc": 3,
       "path": "web/__snapshots__/w.test.ts.snap",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1624,6 +1657,7 @@
       "isTest": false,
       "loc": 3,
       "path": "web/v.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1637,6 +1671,7 @@
       "isTest": false,
       "loc": 3,
       "path": "web/w.ts",
+      "qodo": null,
       "testOf": null
     },
     {
@@ -1650,6 +1685,7 @@
       "isTest": false,
       "loc": 3,
       "path": "web/x.ts",
+      "qodo": null,
       "testOf": null
     }
   ],
@@ -1664,6 +1700,9 @@
       "isSelf": true
     }
   ],
+  "qodo": {
+    "status": "none"
+  },
   "repo": {
     "branch": "main",
     "head": "c321a067de14ea76a1cf9e9abb11d1548d8ba9e3",
