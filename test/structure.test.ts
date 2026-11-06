@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { sha256Hex } from '../src/core/hash.js';
 import type { Dir, FileEntry, SnapshotV02 } from '../src/core/snapshot/types.js';
-import { buildLineage, dirsAtHead, matchTests } from '../src/core/structure.js';
+import { buildLineage, debtCounted, dirsAtHead, matchTests } from '../src/core/structure.js';
 import { formatSummary } from '../src/core/summary.js';
 import { scan, type ScanOptions } from '../src/scan/index.js';
 import { lineageLog } from '../src/scan/structure.js';
@@ -157,6 +157,24 @@ describe('#16 AC3: debt markers from HEAD blobs', () => {
   });
 });
 
+describe('#16 AC13: debt markers count in source code only', () => {
+  it('a TODO in a test file, in test data or in a .md file counts 0; one in a .ts source counts', () => {
+    const zero = { todo: 0, fixme: 0, hack: 0, xxx: 0 };
+    for (const p of ['test/sub.test.ts', 'tests/fixtures/data.test.ts', 'core/README.md']) {
+      expect(readFileSync(join(repo.dir, p), 'utf8'), p).toContain('TODO');
+      expect(file(p).debt, p).toEqual(zero);
+    }
+    expect(file('core/a.ts').debt).toEqual({ todo: 1, fixme: 1, hack: 2, xxx: 1 });
+  });
+
+  it('docs (*.md, *.mdx, *.rst, *.txt, docs/**), tests and test data are not source (pure)', () => {
+    const counted = (p: string) => debtCounted(p);
+    expect(['README.md', 'a/b.mdx', 'notes.rst', 'x/y.txt', 'docs/api.ts', 'test/x.test.ts', 'test/helpers.ts', 'test/golden/g.json',
+      'src/__snapshots__/s.snap'].filter(counted)).toEqual([]);
+    expect(['src/a.ts', 'lib/docs.ts', 'src/docs/x.ts', 'Makefile'].filter(counted)).toEqual(['src/a.ts', 'lib/docs.ts', 'src/docs/x.ts', 'Makefile']);
+  });
+});
+
 describe('#16 AC4: test files and what they test', () => {
   /** [isTest, the path testOf names (a folder path ends with '/')]. */
   const testOf = (path: string) => {
@@ -295,10 +313,14 @@ describe('#16 AC6: same input, same output', () => {
 describe('#16 AC7: what the scan cannot read is counted, never dropped', () => {
   it('a failed debt read gives debt null (not zero) and a summary line', async () => {
     const r = await withGitShim('for a in "$@"; do [ "$a" = grep ] && exit 128; done', () => run());
-    expect(r.snapshot.files.every((f) => f.debt === null)).toBe(true);
-    expect(r.snapshot.unreadable.files).toBe(r.snapshot.files.length);
+    // Source files are unknown; tests, test data and docs count 0 by rule (AC13), read or not.
+    const source = r.snapshot.files.filter((f) => debtCounted(f.path));
+    expect(source.length).toBeGreaterThan(10);
+    expect(source.every((f) => f.debt === null)).toBe(true);
+    expect(r.snapshot.files.filter((f) => !debtCounted(f.path)).every((f) => f.debt?.todo === 0)).toBe(true);
+    expect(r.snapshot.unreadable.files).toBe(source.length);
     const summary = formatSummary(r.snapshot, null);
-    expect(summary).toContain(`debt markers unreadable for ${r.snapshot.files.length} file(s); their debt is unknown, not zero`);
+    expect(summary).toContain(`debt markers unreadable for ${source.length} file(s); their debt is unknown, not zero`);
     // The totals line must not show reassuring zeros it never read.
     expect(summary).toContain('debt markers: unknown');
     expect(summary).not.toContain('debt markers: todo 0');

@@ -928,6 +928,12 @@
           0
         ],
         [
+          "core/README.md",
+          3,
+          0,
+          0
+        ],
+        [
           "core/half.ts",
           3,
           0,
@@ -947,7 +953,7 @@
         ],
         [
           "tests/fixtures/data.test.ts",
-          3,
+          2,
           0,
           0
         ],
@@ -965,7 +971,7 @@
         ]
       ],
       "seq": 26,
-      "sha": "bf494398dafc886e9967f963307e775decec1ac8",
+      "sha": "c321a067de14ea76a1cf9e9abb11d1548d8ba9e3",
       "subject": "test: s26"
     }
   ],
@@ -1276,6 +1282,19 @@
         "todo": 0,
         "xxx": 0
       },
+      "id": "f_ea08f26e820e",
+      "isTest": false,
+      "loc": 3,
+      "path": "core/README.md",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_162aa662ebb4",
       "isTest": true,
       "loc": 3,
@@ -1512,7 +1531,7 @@
       },
       "id": "f_9ed27c16eb59",
       "isTest": false,
-      "loc": 3,
+      "loc": 2,
       "path": "tests/fixtures/data.test.ts",
       "testOf": null
     },
@@ -1647,7 +1666,7 @@
   ],
   "repo": {
     "branch": "main",
-    "head": "bf494398dafc886e9967f963307e775decec1ac8",
+    "head": "c321a067de14ea76a1cf9e9abb11d1548d8ba9e3",
     "headDate": "2026-06-26T10:00:00Z",
     "repoId": "da5108882d5685b8",
     "selfPersonIds": [

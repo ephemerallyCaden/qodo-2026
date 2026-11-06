@@ -106,8 +106,12 @@ export function buildStructureRepo(): StructureRepo {
   commit('s25', []);
   // #16 AC9: sub.test.ts names only the folder core/sub/; half.test.ts names a file (core/half.ts)
   // and a folder (half/), and the file wins. AC10: fixture and golden data are not tests.
+  // AC13: markers in a test, in test data and in docs count 0; only source code counts.
+  touch('test/sub.test.ts', ['// TODO: a marker in a test file', '// FIXME HACK XXX also in the test']);
+  touch('tests/fixtures/data.test.ts', ['// TODO: a marker in test data']);
+  touch('core/README.md', ['# Core', 'TODO: a marker in docs. FIXME too.']);
   commit('s26', ['test/sub.test.ts', 'test/half.test.ts', 'core/half.ts', 'tests/fixtures/data.test.ts', 'tests/golden/out.json',
-    'web/__snapshots__/w.test.ts.snap', 'api/__fixtures__/f.test.ts']);
+    'web/__snapshots__/w.test.ts.snap', 'api/__fixtures__/f.test.ts', 'core/README.md']);
   const head = sha['s26']!;
 
   // Branches. merged: an ancestor of HEAD (absent). old-fork: forks at s0, outside a 1-month window.

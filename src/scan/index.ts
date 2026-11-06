@@ -5,7 +5,7 @@ import { lineHasher, sha256Hex } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
 import { hashLines } from '../core/lines.js';
 import type { Commit, PersonId, SessionKey, SnapshotV02 } from '../core/snapshot/types.js';
-import { binaryNames, buildLineage, dirsAtHead, matchTests, zeroDebt } from '../core/structure.js';
+import { binaryNames, buildLineage, debtCounted, dirsAtHead, matchTests, zeroDebt } from '../core/structure.js';
 import { isoUtc, minusMonths } from '../core/time.js';
 import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
@@ -92,7 +92,9 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const dirIdOf = new Map(structure.dirs.map((d) => [d.path, d.id]));
   const files: SnapshotV02['files'] = kept.map(([path, row]) => {
     const target = testOf.get(path);
-    return { id: fileId(path), path, loc: row.added, debt: debt ? (debt.get(path) ?? zeroDebt()) : null,
+    // Only source code carries debt (AC13); a file that isn't source counts 0 even if unread.
+    const counted = debtCounted(path) ? debt?.get(path) ?? (debt ? zeroDebt() : null) : zeroDebt();
+    return { id: fileId(path), path, loc: row.added, debt: counted,
       isTest: target !== undefined, testOf: !target ? null : target.dir ? dirIdOf.get(target.path)! : fileId(target.path) };
   });
   const topDirs = new Map(structure.dirs.filter((d) => d.depth === 1).map((d) => [d.path, d.id]));
@@ -175,7 +177,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     dirs: structure.dirs,
     files,
     branches,
-    unreadable: { dirs: structure.unreadable, files: debt ? 0 : files.length, branches: rawBranches.unreadable },
+    unreadable: { dirs: structure.unreadable, files: files.filter((f) => f.debt === null).length, branches: rawBranches.unreadable },
     people: [...people.values()].sort((a, b) => byCodepoint(a.id, b.id)),
     commits,
     sessions: buildSessions(ingest?.sessions.values() ?? [], raw.map((c) => c.sha), results),
