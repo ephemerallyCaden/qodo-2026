@@ -582,3 +582,14 @@ describe('local Qodo review (#16 r6)', () => {
     expect(lineage.dirs.get('p/q')).toMatchObject({ id: birthId('p/q'), bornSeq: 1 });
   });
 });
+
+describe('PR #20 Qodo review r1', () => {
+  it('#1: a file moved into a subfolder still stays in its folder when another moves to a sibling', () => {
+    const lineage = buildLineage([
+      { sha: 'a', dateMs: 0, changes: [{ status: 'A', path: 'p/1' }, { status: 'A', path: 'p/2' }] },
+      { sha: 'b', dateMs: 1000, changes: [{ status: 'R', from: 'p/1', path: 'p/q/1' }, { status: 'R', from: 'p/2', path: 's/2' }] },
+    ], () => false);
+    expect(lineage.dirs.get('p')).toMatchObject({ id: birthId('p'), bornSeq: 0 });
+    expect(lineage.dirs.get('s')).toMatchObject({ id: birthId('s'), bornSeq: 1 });
+  });
+});
