@@ -584,6 +584,21 @@ describe('local Qodo review (#16 r6)', () => {
 });
 
 describe('PR #20 Qodo review r1', () => {
+  it('#4: the lineage log is streamed, not buffered, and tokens split across chunks parse the same', async () => {
+    const [m, p] = ['m'.repeat(40), 'p'.repeat(40)];
+    const raw = ['', p, '100', '\nA', 'a.ts', 'R100', 'a.ts', 'd/é.ts', '', m, '200', '', m, '200', '\nA', 'm/m.ts', ''].join('\0');
+    const buffered = Object.assign(async (): Promise<string> => {
+      throw new Error('stdout maxBuffer length exceeded');
+    }, { stream: async (_args: string[], onData: (chunk: string) => void) => {
+      for (const ch of raw) onData(ch);
+    } });
+    const commits = await lineageLog(buffered, 'HEAD');
+    expect(commits.map((c) => [c.sha, c.dateMs, c.changes])).toEqual([
+      [p, 100_000, [{ status: 'A', path: 'a.ts' }, { status: 'R', from: 'a.ts', path: 'd/é.ts' }]],
+      [m, 200_000, []],
+    ]);
+  });
+
   it('#5: bulk commits left out of test co-change are counted, and the summary says so', () => {
     const filler = Array.from({ length: 200 }, (_, i) => `gen/f${i}.ts`);
     const bulk = ['t/flow.test.ts', 'src/flow-impl.ts', ...filler];
