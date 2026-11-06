@@ -2,51 +2,78 @@
 // src/core/structure.ts.
 import { byCodepoint } from '../core/canonical-json.js';
 import type { Branch, DebtCounts } from '../core/snapshot/types.js';
-import { DEBT_KEYS, zeroDebt, type LineageCommit } from '../core/structure.js';
+import { DEBT_KEYS, zeroDebt, type Change, type LineageCommit } from '../core/structure.js';
 import { isoUtc } from '../core/time.js';
 import { exclusionOf } from './exclusions.js';
 import { LOG_OPTS, tryGit, type Git } from './git.js';
 
 /**
- * Full first-parent history, oldest first, with renames (design §5.1.3). Never windowed. The
- * stream is read token by token: a commit starts with an empty token (`\0<sha>\0<ct>`) where a
- * status would be, and each status consumes its one or two paths, so no byte inside a path can
- * split or start a record (Qodo local r2 #2). A git that lists a merge once per parent repeats its
- * header; only the first (first-parent) diff is kept (Qodo local r3 #1).
+ * Full first-parent history, oldest first, with renames (design §5.1.3). Never windowed, so it is
+ * streamed rather than buffered (PR #20 Qodo r1 #4) and parsed token by token as it arrives: a
+ * commit starts with an empty token (`\0<sha>\0<ct>`) where a status would be, and each status
+ * consumes its one or two paths, so no byte inside a path can split or start a record (Qodo local
+ * r2 #2). A git that lists a merge once per parent repeats its header; only the first
+ * (first-parent) diff is kept (Qodo local r3 #1).
  */
 export async function lineageLog(git: Git, head: string): Promise<LineageCommit[]> {
-  const tokens = (await git(['log', ...LOG_OPTS, '--reverse', '--name-status', '-z', '--format=%x00%H%x00%ct', head])).split('\0');
+  const args = ['log', ...LOG_OPTS, '--reverse', '--name-status', '-z', '--format=%x00%H%x00%ct', head];
   const commits: LineageCommit[] = [];
   let cur: LineageCommit | undefined;
   // Changes go here; a repeated header points it at a scratch list that is thrown away.
   let into: LineageCommit['changes'] = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i]!;
-    if (t === '') {
-      if (i + 2 >= tokens.length) break;
-      const sha = tokens[i + 1]!;
-      if (cur?.sha === sha) into = [];
-      else {
-        cur = { sha, dateMs: Number(tokens[i + 2]) * 1000, changes: [] };
-        commits.push(cur);
-        into = cur.changes;
+  let want: 'status' | 'sha' | 'ct' | 'from' | 'to' | 'path' = 'status';
+  let status: Change['status'] | null = null;
+  let [sha, from] = ['', ''];
+  const token = (t: string) => {
+    switch (want) {
+      case 'status': {
+        if (t === '') {
+          want = 'sha';
+          return;
+        }
+        // The format line ends with one newline before the commit's first status.
+        const s = (t.startsWith('\n') ? t.slice(1) : t)[0];
+        // An unknown status (U, X, B; not produced by log) names one path: skip it to stay aligned. A
+        // HEAD folder only it would have created falls back in dirsAtHead and is counted there.
+        status = s === 'A' || s === 'C' || s === 'D' || s === 'M' || s === 'R' || s === 'T' ? s : null;
+        want = status === 'R' || status === 'C' ? 'from' : 'path';
+        return;
       }
-      i += 2;
-      continue;
+      case 'sha':
+        sha = t;
+        want = 'ct';
+        return;
+      case 'ct':
+        if (cur?.sha === sha) into = [];
+        else {
+          cur = { sha, dateMs: Number(t) * 1000, changes: [] };
+          commits.push(cur);
+          into = cur.changes;
+        }
+        want = 'status';
+        return;
+      case 'from':
+        from = t;
+        want = 'to';
+        return;
+      case 'to':
+        into.push({ status: status!, from, path: t });
+        want = 'status';
+        return;
+      case 'path':
+        if (status) into.push({ status, path: t });
+        want = 'status';
     }
-    // The format line ends with one newline before the commit's first status.
-    const status = (t.startsWith('\n') ? t.slice(1) : t)[0];
-    if (status === 'R' || status === 'C') {
-      into.push({ status, from: tokens[i + 1]!, path: tokens[i + 2]! });
-      i += 2;
-    } else if (status === 'A' || status === 'D' || status === 'M' || status === 'T') {
-      into.push({ status, path: tokens[++i]! });
-    } else {
-      // An unknown status (U, X, B; not produced by log) names one path: skip it to stay aligned. A
-      // HEAD folder only it would have created falls back in dirsAtHead and is counted there.
-      i++;
-    }
-  }
+  };
+  // Complete tokens end in NUL; the unfinished tail waits for the next chunk.
+  let pending = '';
+  const feed = (chunk: string) => {
+    const parts = (pending + chunk).split('\0');
+    pending = parts.pop()!;
+    for (const t of parts) token(t);
+  };
+  if (git.stream) await git.stream(args, feed);
+  else feed(await git(args));
   return commits;
 }
 
