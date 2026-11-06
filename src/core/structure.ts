@@ -31,7 +31,7 @@ const linked = (hits: number, of: number) => hits * 5 >= of * 3;
 const TEST_COCHANGE_MIN = 2;
 const BULK_FILES = 200;
 
-/** Debt marker kinds, in summary order; each counts its upper-case word (`todo` → TODO). */
+/** Debt marker kinds, in summary order; each counts the upper-case form of its key as a word. */
 export const DEBT_KEYS = ['todo', 'fixme', 'hack', 'xxx'] as const;
 export const zeroDebt = (): DebtCounts => ({ todo: 0, fixme: 0, hack: 0, xxx: 0 });
 
