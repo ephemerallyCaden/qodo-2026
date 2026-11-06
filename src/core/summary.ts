@@ -1,5 +1,6 @@
 import { byCodepoint } from './canonical-json.js';
-import type { CommitClass, SnapshotV01 } from './snapshot/types.js';
+import type { CommitClass, SnapshotV02 } from './snapshot/types.js';
+import { DEBT_KEYS, zeroDebt } from './structure.js';
 
 const CLASSES: CommitClass[] = ['agent', 'mixed', 'human', 'unknown'];
 const LIST_LIMIT = 20;
@@ -12,7 +13,7 @@ export interface LogCounts { tooLarge: number; unavailable: number; dropped: num
 
 /** Human-readable scan summary. Contains repo-relative data only: no absolute paths or code. */
 /** `logs` holds aggregate log-reading counts, or null when logs weren't read (--no-ingest). */
-export function formatSummary(s: SnapshotV01, logs: LogCounts | null): string {
+export function formatSummary(s: SnapshotV02, logs: LogCounts | null): string {
   const excludedTotal = Object.values(s.exclusions.counts).reduce((a, b) => a + b, 0);
   const excludedList = Object.entries(s.exclusions.counts).sort((a, b) => byCodepoint(a[0], b[0]))
     .map(([k, v]) => `${k} ${v}`).join(', ');
@@ -32,6 +33,16 @@ export function formatSummary(s: SnapshotV01, logs: LogCounts | null): string {
         + 'a commit outside them is never classed human. Logs expire after 30 days.'
       : 'no Claude Code logs found for this repo: every commit is unknown',
   ];
+  const tops = s.dirs.filter((d) => d.depth === 1);
+  const tests = s.files.filter((f) => f.isTest);
+  lines.push(`${s.dirs.length} folders (${tops.length} top-level, ${tops.filter((d) => d.partner).length} with a birth partner), `
+    + `${s.branches.length} unmerged branch(es); tests: ${tests.length} (${tests.filter((f) => f.testOf).length} matched to a source)`);
+  const debt = zeroDebt();
+  for (const f of s.files) for (const k of DEBT_KEYS) debt[k] += f.debt?.[k] ?? 0;
+  lines.push(`debt markers: ${DEBT_KEYS.map((k) => `${k} ${debt[k]}`).join(' · ')}`);
+  if (s.unreadable.files) lines.push(`debt markers unreadable for ${s.unreadable.files} file(s); their debt is unknown, not zero`);
+  if (s.unreadable.branches) lines.push(`${s.unreadable.branches} branch(es) could not be read and are left out of branches[]`);
+  if (s.unreadable.dirs) lines.push(`${s.unreadable.dirs} folder(s) had no lineage record; their id and birth fall back to HEAD`);
   if (skipped) lines.push(`${skipped} transcript(s) skipped (too large ${logs!.tooLarge}, unavailable ${logs!.unavailable}); commits during them are never classed human`);
   if (logs?.dropped) {
     lines.push(`${logs.dropped} log record(s) dropped (over the size cap, malformed, missing ids, or at a path outside the repo); `

@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { beforeAll, expect, it } from 'vitest';
 import { DENIED_PATH, discoverClaude, metaToken, parseClaude, redactPaths } from '../src/attrib/parsers/claude.js';
-import type { SnapshotV01 } from '../src/core/snapshot/types.js';
+import type { SnapshotV02 } from '../src/core/snapshot/types.js';
 import { formatSummary } from '../src/core/summary.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
 import { CANARIES, MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
@@ -74,7 +74,7 @@ it('skips and counts a transcript deleted between discovery and parsing (Qodo #7
   const ingest = await parseClaude(found, new Set(), (l) => l);
   expect(ingest.unreadable).toEqual([victim.span]);
   expect(ingest.events.length).toBeGreaterThan(0);
-  const summary = formatSummary(JSON.parse(outputs['snapshot']!) as SnapshotV01, { tooLarge: 0, unavailable: 1, dropped: 0, unattributed: 0 });
+  const summary = formatSummary(JSON.parse(outputs['snapshot']!) as SnapshotV02, { tooLarge: 0, unavailable: 1, dropped: 0, unattributed: 0 });
   expect(summary).toContain('1 transcript(s) skipped (too large 0, unavailable 1); commits during them are never classed human');
 });
 
@@ -93,7 +93,7 @@ it('commit subjects carrying private paths are redacted in the snapshot and the 
   }
   // The rest of the subject survives, and the commit is still listed.
   const redacted = 'fix: copy <path> and <path> (from <path>, <path>)';
-  expect((JSON.parse(snapshot) as SnapshotV01).commits[0]!.subject).toBe(redacted);
+  expect((JSON.parse(snapshot) as SnapshotV02).commits[0]!.subject).toBe(redacted);
   expect(r.out).toContain(redacted.slice(0, 40));
 });
 
@@ -128,7 +128,7 @@ it('author names carrying private paths are redacted in people[].displayName (Qo
   expect(r.code).toBe(0);
   const snapshot = readFileSync(join(repo.dir, '.git/commet/snapshot.json'), 'utf8');
   for (const text of [snapshot, r.out, r.err]) expect(text.includes('canary-eve'), 'canary-eve').toBe(false);
-  expect((JSON.parse(snapshot) as SnapshotV01).people.map((p) => p.displayName)).toEqual(['Eve <path> (<path>)']);
+  expect((JSON.parse(snapshot) as SnapshotV02).people.map((p) => p.displayName)).toEqual(['Eve <path> (<path>)']);
 });
 
 it('named-user home paths (~alice/…) are redacted in subjects and names (Qodo local r2 #2)', () => {

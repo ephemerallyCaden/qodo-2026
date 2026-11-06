@@ -1,4 +1,5 @@
 {
+  "branches": [],
   "commits": [
     {
       "attribution": {
@@ -319,6 +320,43 @@
       "tool": "claude-code"
     }
   ],
+  "dirs": [
+    {
+      "bornDate": "2026-10-09T10:00:00Z",
+      "bornSeq": 8,
+      "depth": 1,
+      "id": "d_a1ff613a245b",
+      "parent": null,
+      "partner": null,
+      "path": "dir"
+    },
+    {
+      "bornDate": "2026-10-04T10:00:00Z",
+      "bornSeq": 3,
+      "depth": 1,
+      "id": "d_00178f31922e",
+      "parent": null,
+      "partner": null,
+      "path": "docs"
+    },
+    {
+      "bornDate": "2026-10-01T09:00:00Z",
+      "bornSeq": 0,
+      "depth": 1,
+      "id": "d_3b82254b3c87",
+      "parent": null,
+      "partner": null,
+      "path": "src"
+    },
+    {
+      "bornDate": "2026-10-06T10:00:00Z",
+      "bornSeq": 5,
+      "depth": 2,
+      "id": "d_bcc0c4626065",
+      "parent": "d_3b82254b3c87",
+      "path": "src/sub"
+    }
+  ],
   "exclusions": {
     "counts": {
       "binary": 1,
@@ -360,59 +398,147 @@
   },
   "files": [
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_b33563055168",
+      "isTest": false,
       "loc": 2,
-      "path": "README.md"
+      "path": "README.md",
+      "testOf": null
     },
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_00b4e89d4aaa",
+      "isTest": false,
       "loc": 2,
-      "path": "dir/my file.ts"
+      "path": "dir/my file.ts",
+      "testOf": null
     },
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_ba1a4e79419f",
+      "isTest": false,
       "loc": 2,
-      "path": "dir/naïve \"q\".ts"
+      "path": "dir/naïve \"q\".ts",
+      "testOf": null
     },
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_66eb6c128d09",
+      "isTest": false,
       "loc": 2,
-      "path": "docs/gap.md"
+      "path": "docs/gap.md",
+      "testOf": null
     },
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_b651e26a9c88",
+      "isTest": false,
       "loc": 2,
-      "path": "docs/late.md"
+      "path": "docs/late.md",
+      "testOf": null
     },
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_327ffd98a1f7",
+      "isTest": false,
       "loc": 3,
-      "path": "docs/notes.md"
+      "path": "docs/notes.md",
+      "testOf": null
     },
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_a35b5d628675",
+      "isTest": false,
       "loc": 2,
-      "path": "docs/team.md"
+      "path": "docs/team.md",
+      "testOf": null
     },
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_49cc4f090941",
+      "isTest": false,
       "loc": 6,
-      "path": "src/agent.ts"
+      "path": "src/agent.ts",
+      "testOf": null
     },
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_033ecd338eec",
+      "isTest": false,
       "loc": 7,
-      "path": "src/core.ts"
+      "path": "src/core.ts",
+      "testOf": null
     },
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_089cedd9e904",
+      "isTest": false,
       "loc": 3,
-      "path": "src/ctrl.ts"
+      "path": "src/ctrl.ts",
+      "testOf": null
     },
     {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_04ac967ba698",
+      "isTest": false,
       "loc": 3,
-      "path": "src/sub/helper.ts"
+      "path": "src/sub/helper.ts",
+      "testOf": null
     }
   ],
   "generator": {
@@ -440,7 +566,7 @@
       "p_391d66efc87e"
     ]
   },
-  "schemaVersion": "0.1",
+  "schemaVersion": "0.2",
   "sessions": [
     {
       "branch": "main",
@@ -526,6 +652,11 @@
       "toolVersion": "2.1.31"
     }
   ],
+  "unreadable": {
+    "branches": 0,
+    "dirs": 0,
+    "files": 0
+  },
   "window": {
     "firstParent": true,
     "months": 24,

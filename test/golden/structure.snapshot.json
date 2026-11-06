@@ -1,0 +1,1473 @@
+{
+  "branches": [
+    {
+      "aheadCount": 2,
+      "dirIds": [
+        "d_b7c04fef35e2",
+        "d_bf972d1ca4de"
+      ],
+      "lastCommitDate": "2026-06-27T10:00:00Z",
+      "name": "feature/ahead",
+      "remote": false
+    },
+    {
+      "aheadCount": 1,
+      "dirIds": [
+        "d_b7c04fef35e2"
+      ],
+      "lastCommitDate": "2026-01-06T10:00:00Z",
+      "name": "old-fork",
+      "remote": false
+    },
+    {
+      "aheadCount": 1,
+      "dirIds": [
+        "d_d92ac1171106"
+      ],
+      "lastCommitDate": "2026-06-28T10:00:00Z",
+      "name": "origin/feature/remote",
+      "remote": true
+    }
+  ],
+  "commits": [
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-01-05T10:00:00Z",
+      "date": "2026-01-05T10:00:00Z",
+      "files": [
+        [
+          "README.md",
+          3,
+          0,
+          0
+        ],
+        [
+          "core/a.ts",
+          11,
+          0,
+          0
+        ],
+        [
+          "core/b.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "core/sub/deep.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "core/sub/x/y.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "half/h1.ts",
+          7,
+          0,
+          0
+        ],
+        [
+          "half/h2.ts",
+          7,
+          0,
+          0
+        ],
+        [
+          "half/h3.ts",
+          7,
+          0,
+          0
+        ],
+        [
+          "old/o1.ts",
+          7,
+          0,
+          0
+        ],
+        [
+          "old/o2.ts",
+          7,
+          0,
+          0
+        ],
+        [
+          "old/o3.ts",
+          7,
+          0,
+          0
+        ],
+        [
+          "old/o4.ts",
+          7,
+          0,
+          0
+        ],
+        [
+          "ui/v.ts",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 0,
+      "sha": "e08bf9a8610d75590949295a8d1e9d9ee43e1d5d",
+      "subject": "test: s0"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-01T10:00:00Z",
+      "date": "2026-06-01T10:00:00Z",
+      "files": [
+        [
+          "api/util.py",
+          3,
+          0,
+          0
+        ],
+        [
+          "core/b.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 1,
+      "sha": "5b6d6fcad37ba697d36f4b940c59d3a22040ee73",
+      "subject": "test: s1"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-02T10:00:00Z",
+      "date": "2026-06-02T10:00:00Z",
+      "files": [
+        [
+          "api/server.go",
+          3,
+          0,
+          0
+        ],
+        [
+          "core/a.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 2,
+      "sha": "dae5c0d6f84c9580cea2ab2b5813f7a9ea35ca2f",
+      "subject": "test: s2"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-03T10:00:00Z",
+      "date": "2026-06-03T10:00:00Z",
+      "files": [
+        [
+          "api/handler.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "core/b.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 3,
+      "sha": "0c44931997eaa994d30fdfb726df2e46bf654dab",
+      "subject": "test: s3"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-04T10:00:00Z",
+      "date": "2026-06-04T10:00:00Z",
+      "files": [
+        [
+          "api/util.py",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 4,
+      "sha": "eb8486d7439a4adbed88712fcaf3515f77ce7a9a",
+      "subject": "test: s4"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-05T10:00:00Z",
+      "date": "2026-06-05T10:00:00Z",
+      "files": [
+        [
+          "api/server.go",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 5,
+      "sha": "821dda403003fe3e85a1f8c3b8619c4be695a899",
+      "subject": "test: s5"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-06T10:00:00Z",
+      "date": "2026-06-06T10:00:00Z",
+      "files": [
+        [
+          "core/a.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "web/w.ts",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 6,
+      "sha": "8361ba330dd2bb63bc0525230d42dd75b4f3a496",
+      "subject": "test: s6"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-07T10:00:00Z",
+      "date": "2026-06-07T10:00:00Z",
+      "files": [
+        [
+          "core/b.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "web/w.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 7,
+      "sha": "b0f0e143c96c99b4c6cd1f8c9105442587c43f6a",
+      "subject": "test: s7"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-08T10:00:00Z",
+      "date": "2026-06-08T10:00:00Z",
+      "files": [
+        [
+          "web/v.ts",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 8,
+      "sha": "04c2264f996b8994bd2e9be12fedead8fb27a50f",
+      "subject": "test: s8"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-09T10:00:00Z",
+      "date": "2026-06-09T10:00:00Z",
+      "files": [
+        [
+          "web/v.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 9,
+      "sha": "21229716fa90976e851497530abd38da21cda002",
+      "subject": "test: s9"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-10T10:00:00Z",
+      "date": "2026-06-10T10:00:00Z",
+      "files": [
+        [
+          "web/w.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 10,
+      "sha": "b3a442355838218a47aff1762b86aaced2c0313a",
+      "subject": "test: s10"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-11T10:00:00Z",
+      "date": "2026-06-11T10:00:00Z",
+      "files": [
+        [
+          "cli/c.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "ui/v.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 11,
+      "sha": "bea8b4399a0a410a26b4cb9327df7ec2014c7000",
+      "subject": "test: s11"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-12T10:00:00Z",
+      "date": "2026-06-12T10:00:00Z",
+      "files": [
+        [
+          "cli/c.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "ui/v.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 12,
+      "sha": "e0d461e16cd6931474f4d77d2563349fd26c98ec",
+      "subject": "test: s12"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-13T10:00:00Z",
+      "date": "2026-06-13T10:00:00Z",
+      "files": [
+        [
+          "api/handler.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "lib/l.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "web/w.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 13,
+      "sha": "719aac558b20991f13eec4da57bf967fc3af7f4a",
+      "subject": "test: s13"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-14T10:00:00Z",
+      "date": "2026-06-14T10:00:00Z",
+      "files": [
+        [
+          "api/util.py",
+          1,
+          1,
+          0
+        ],
+        [
+          "lib/l.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "web/x.ts",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 14,
+      "sha": "4939962fe74f4a2cea09429f39f3d67308aab576",
+      "subject": "test: s14"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-15T10:00:00Z",
+      "date": "2026-06-15T10:00:00Z",
+      "files": [
+        [
+          "api/handler.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "lib/l.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "web/w.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 15,
+      "sha": "42487b35c12a9accc8c4b89b8ad77d2b2d619fbb",
+      "subject": "test: s15"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-16T10:00:00Z",
+      "date": "2026-06-16T10:00:00Z",
+      "files": [
+        [
+          "core/a.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "kit/k.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "ui/v.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 16,
+      "sha": "d41a465f77da2a1b923bb011521bf61e1f392aa5",
+      "subject": "test: s16"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-17T10:00:00Z",
+      "date": "2026-06-17T10:00:00Z",
+      "files": [
+        [
+          "core/b.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "kit/k.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "ui/v.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 17,
+      "sha": "62a7b22b1c1dc6d73864d0a18f7b82f40a1a6d8f",
+      "subject": "test: s17"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-18T10:00:00Z",
+      "date": "2026-06-18T10:00:00Z",
+      "files": [
+        [
+          "api/server_test.go",
+          3,
+          0,
+          0
+        ],
+        [
+          "core/a.test.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "tests/test_util.py",
+          3,
+          0,
+          0
+        ],
+        [
+          "ui/v.test.ts",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 18,
+      "sha": "c54bc6366ba827c1da766948b60df160548d5898",
+      "subject": "test: s18"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-19T10:00:00Z",
+      "date": "2026-06-19T10:00:00Z",
+      "files": [
+        [
+          "api/handler.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "test/flow.test.ts",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 19,
+      "sha": "e7c105a1b4b9476c8b3c9179200c6f050def9d0d",
+      "subject": "test: s19"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-20T10:00:00Z",
+      "date": "2026-06-20T10:00:00Z",
+      "files": [
+        [
+          "api/handler.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "test/flow.test.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 20,
+      "sha": "de7a52d396059232bddf15b73cd5089c38fa7b20",
+      "subject": "test: s20"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-21T10:00:00Z",
+      "date": "2026-06-21T10:00:00Z",
+      "files": [
+        [
+          "test/helpers.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "test/lonely.test.ts",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 21,
+      "sha": "8ac884e574247ff45572ec7f2bea251606875a1b",
+      "subject": "test: s21"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-22T10:00:00Z",
+      "date": "2026-06-22T10:00:00Z",
+      "files": [
+        [
+          "test/lonely.test.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "tools/t.ts",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 22,
+      "sha": "1a60cd092ef89d342308e491d8472a012d039672",
+      "subject": "test: s22"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-23T10:00:00Z",
+      "date": "2026-06-23T10:00:00Z",
+      "files": [
+        [
+          "test/helpers.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "tools/t.ts",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 23,
+      "sha": "ceea3e2d70e5a55342fc876a805a4c673f374831",
+      "subject": "test: s23"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-24T10:00:00Z",
+      "date": "2026-06-24T10:00:00Z",
+      "files": [
+        [
+          "new/o1.ts",
+          0,
+          0,
+          0
+        ],
+        [
+          "new/o2.ts",
+          0,
+          0,
+          0
+        ],
+        [
+          "old/o3.ts",
+          0,
+          7,
+          0
+        ],
+        [
+          "old/o4.ts",
+          0,
+          7,
+          0
+        ]
+      ],
+      "seq": 24,
+      "sha": "4c05589a10fc8829b78f44e4c81781ed32a5d4ea",
+      "subject": "test: s24"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-25T10:00:00Z",
+      "date": "2026-06-25T10:00:00Z",
+      "files": [
+        [
+          "moved/h1.ts",
+          0,
+          0,
+          0
+        ]
+      ],
+      "seq": 25,
+      "sha": "e3538f16dd7c427a01e22dce39eda84d3c969f7e",
+      "subject": "test: s25"
+    }
+  ],
+  "coverage": [],
+  "dirs": [
+    {
+      "bornDate": "2026-06-01T10:00:00Z",
+      "bornSeq": 1,
+      "depth": 1,
+      "id": "d_d92ac1171106",
+      "parent": null,
+      "partner": "d_bf972d1ca4de",
+      "path": "api"
+    },
+    {
+      "bornDate": "2026-06-11T10:00:00Z",
+      "bornSeq": 11,
+      "depth": 1,
+      "id": "d_d0ea5b78df6f",
+      "parent": null,
+      "partner": "d_b7c04fef35e2",
+      "path": "cli"
+    },
+    {
+      "bornDate": "2026-01-05T10:00:00Z",
+      "bornSeq": 0,
+      "depth": 1,
+      "id": "d_bf972d1ca4de",
+      "parent": null,
+      "partner": null,
+      "path": "core"
+    },
+    {
+      "bornDate": "2026-01-05T10:00:00Z",
+      "bornSeq": 0,
+      "depth": 2,
+      "id": "d_e967615433b4",
+      "parent": "d_bf972d1ca4de",
+      "path": "core/sub"
+    },
+    {
+      "bornDate": "2026-01-05T10:00:00Z",
+      "bornSeq": 0,
+      "depth": 3,
+      "id": "d_fc53047a69e4",
+      "parent": "d_e967615433b4",
+      "path": "core/sub/x"
+    },
+    {
+      "bornDate": "2026-01-05T10:00:00Z",
+      "bornSeq": 0,
+      "depth": 1,
+      "id": "d_11ed0f7ad9b9",
+      "parent": null,
+      "partner": null,
+      "path": "half"
+    },
+    {
+      "bornDate": "2026-06-16T10:00:00Z",
+      "bornSeq": 16,
+      "depth": 1,
+      "id": "d_f5ca16dd5396",
+      "parent": null,
+      "partner": "d_b7c04fef35e2",
+      "path": "kit"
+    },
+    {
+      "bornDate": "2026-06-13T10:00:00Z",
+      "bornSeq": 13,
+      "depth": 1,
+      "id": "d_0393d93a775b",
+      "parent": null,
+      "partner": "d_d92ac1171106",
+      "path": "lib"
+    },
+    {
+      "bornDate": "2026-06-25T10:00:00Z",
+      "bornSeq": 25,
+      "depth": 1,
+      "id": "d_e34803099561",
+      "parent": null,
+      "partner": "d_11ed0f7ad9b9",
+      "path": "moved"
+    },
+    {
+      "bornDate": "2026-01-05T10:00:00Z",
+      "bornSeq": 0,
+      "depth": 1,
+      "id": "d_22c51f4815bd",
+      "parent": null,
+      "partner": null,
+      "path": "new"
+    },
+    {
+      "bornDate": "2026-06-19T10:00:00Z",
+      "bornSeq": 19,
+      "depth": 1,
+      "id": "d_3fa607052550",
+      "parent": null,
+      "partner": null,
+      "path": "test"
+    },
+    {
+      "bornDate": "2026-06-18T10:00:00Z",
+      "bornSeq": 18,
+      "depth": 1,
+      "id": "d_96e87c3d9c44",
+      "parent": null,
+      "partner": "d_b7c04fef35e2",
+      "path": "tests"
+    },
+    {
+      "bornDate": "2026-06-22T10:00:00Z",
+      "bornSeq": 22,
+      "depth": 1,
+      "id": "d_11814f4b6e0e",
+      "parent": null,
+      "partner": null,
+      "path": "tools"
+    },
+    {
+      "bornDate": "2026-01-05T10:00:00Z",
+      "bornSeq": 0,
+      "depth": 1,
+      "id": "d_b7c04fef35e2",
+      "parent": null,
+      "partner": null,
+      "path": "ui"
+    },
+    {
+      "bornDate": "2026-06-06T10:00:00Z",
+      "bornSeq": 6,
+      "depth": 1,
+      "id": "d_3b3b3d512f56",
+      "parent": null,
+      "partner": null,
+      "path": "web"
+    }
+  ],
+  "exclusions": {
+    "counts": {
+      "binary": 1,
+      "dist": 1,
+      "node_modules": 1
+    },
+    "rules": [
+      {
+        "id": "lockfile",
+        "kind": "glob",
+        "pattern": "**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lockb,bun.lock,Cargo.lock,Gemfile.lock,poetry.lock,composer.lock,go.sum,uv.lock}"
+      },
+      {
+        "id": "node_modules",
+        "kind": "glob",
+        "pattern": "**/node_modules/**"
+      },
+      {
+        "id": "dist",
+        "kind": "glob",
+        "pattern": "**/dist/**"
+      },
+      {
+        "id": "vendor",
+        "kind": "glob",
+        "pattern": "**/vendor/**"
+      },
+      {
+        "id": "minified",
+        "kind": "glob",
+        "pattern": "**/*.min.{js,css}"
+      },
+      {
+        "id": "binary",
+        "kind": "binary",
+        "pattern": "numstat:-"
+      }
+    ],
+    "rulesetVersion": "builtin-0.1"
+  },
+  "files": [
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_b33563055168",
+      "isTest": false,
+      "loc": 3,
+      "path": "README.md",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_3bb5e133ae02",
+      "isTest": false,
+      "loc": 3,
+      "path": "api/handler.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_a5457320f6b6",
+      "isTest": false,
+      "loc": 3,
+      "path": "api/server.go",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_07ac88307c71",
+      "isTest": true,
+      "loc": 3,
+      "path": "api/server_test.go",
+      "testOf": "f_a5457320f6b6"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_834a332210d0",
+      "isTest": false,
+      "loc": 3,
+      "path": "api/util.py",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_8e9ac629a205",
+      "isTest": false,
+      "loc": 3,
+      "path": "cli/c.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_162aa662ebb4",
+      "isTest": true,
+      "loc": 3,
+      "path": "core/a.test.ts",
+      "testOf": "f_3c90faed34ec"
+    },
+    {
+      "debt": {
+        "fixme": 1,
+        "hack": 2,
+        "todo": 1,
+        "xxx": 1
+      },
+      "id": "f_3c90faed34ec",
+      "isTest": false,
+      "loc": 11,
+      "path": "core/a.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_e201b29b169a",
+      "isTest": false,
+      "loc": 3,
+      "path": "core/b.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_1264220b0f50",
+      "isTest": false,
+      "loc": 3,
+      "path": "core/sub/deep.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_206b45a093b3",
+      "isTest": false,
+      "loc": 3,
+      "path": "core/sub/x/y.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_e7a163e48f98",
+      "isTest": false,
+      "loc": 7,
+      "path": "half/h2.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_67e07c04ae4b",
+      "isTest": false,
+      "loc": 7,
+      "path": "half/h3.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_a37820cd7408",
+      "isTest": false,
+      "loc": 3,
+      "path": "kit/k.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_1286dc312cbf",
+      "isTest": false,
+      "loc": 3,
+      "path": "lib/l.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_f6f373f6684e",
+      "isTest": false,
+      "loc": 7,
+      "path": "moved/h1.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_4ca569b0dc3d",
+      "isTest": false,
+      "loc": 7,
+      "path": "new/o1.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_630fd916d1e7",
+      "isTest": false,
+      "loc": 7,
+      "path": "new/o2.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_732b045d6c8d",
+      "isTest": true,
+      "loc": 3,
+      "path": "test/flow.test.ts",
+      "testOf": "f_3bb5e133ae02"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_e3f0df6a33fd",
+      "isTest": true,
+      "loc": 3,
+      "path": "test/helpers.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_99e522a48ca8",
+      "isTest": true,
+      "loc": 3,
+      "path": "test/lonely.test.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_0dcbadaa6c70",
+      "isTest": true,
+      "loc": 3,
+      "path": "tests/test_util.py",
+      "testOf": "f_834a332210d0"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_2808310714aa",
+      "isTest": false,
+      "loc": 3,
+      "path": "tools/t.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_aaab23a6837f",
+      "isTest": true,
+      "loc": 3,
+      "path": "ui/v.test.ts",
+      "testOf": "f_362826af8b17"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_362826af8b17",
+      "isTest": false,
+      "loc": 3,
+      "path": "ui/v.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_bbd669de9dc9",
+      "isTest": false,
+      "loc": 3,
+      "path": "web/v.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_4576452d7c29",
+      "isTest": false,
+      "loc": 3,
+      "path": "web/w.ts",
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_21bdfe9b1706",
+      "isTest": false,
+      "loc": 3,
+      "path": "web/x.ts",
+      "testOf": null
+    }
+  ],
+  "generator": {
+    "name": "commet",
+    "version": "0.0.0"
+  },
+  "people": [
+    {
+      "displayName": "Ada Self",
+      "id": "p_391d66efc87e",
+      "isSelf": true
+    }
+  ],
+  "repo": {
+    "branch": "main",
+    "head": "e3538f16dd7c427a01e22dce39eda84d3c969f7e",
+    "headDate": "2026-06-25T10:00:00Z",
+    "repoId": "da5108882d5685b8",
+    "selfPersonIds": [
+      "p_391d66efc87e"
+    ]
+  },
+  "schemaVersion": "0.2",
+  "sessions": [],
+  "unreadable": {
+    "branches": 0,
+    "dirs": 0,
+    "files": 0
+  },
+  "window": {
+    "firstParent": true,
+    "months": 24,
+    "since": "2024-06-25T10:00:00Z",
+    "until": "2026-06-25T10:00:00Z"
+  }
+}

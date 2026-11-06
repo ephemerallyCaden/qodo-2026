@@ -7,7 +7,7 @@ import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import type { CommitAttribution, SnapshotV01 } from '../src/core/snapshot/types.js';
+import type { CommitAttribution, SnapshotV02 } from '../src/core/snapshot/types.js';
 import { formatSummary } from '../src/core/summary.js';
 import { scan, type LogStats } from '../src/scan/index.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
@@ -21,7 +21,7 @@ const KEY = () => new Uint8Array(32).fill(7);
 
 let repo: FixtureRepo;
 let claude: NeverHumanClaude;
-let snapshot: SnapshotV01;
+let snapshot: SnapshotV02;
 let logs: LogStats;
 const attr = (id: string): CommitAttribution => {
   const c = snapshot.commits.find((x) => x.sha === repo.commits[id]!.sha);
