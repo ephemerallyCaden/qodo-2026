@@ -218,6 +218,15 @@ describe('#16 AC10: fixture and golden data are not tests', () => {
     }
   });
 
+  it('test data is never what a test tests, by file name, folder name or co-change (pure)', () => {
+    const paths = ['src/core/palette.ts', 'test/golden/palette.v1.json', 'test/palette.test.ts', 'test/fixtures/mini.ts',
+      'test/fixtures/scan/x.ts', 'test/mini.test.ts', 'test/scan.test.ts', 'src/scan/index.ts'];
+    const m = matchTests(paths, [['test/mini.test.ts', 'test/fixtures/mini.ts'], ['test/mini.test.ts', 'test/fixtures/mini.ts']]);
+    expect(m.get('test/palette.test.ts')).toEqual({ path: 'src/core/palette.ts', dir: false });
+    expect(m.get('test/scan.test.ts')).toEqual({ path: 'src/scan', dir: true });
+    expect(m.get('test/mini.test.ts')).toBeNull();
+  });
+
   it('fixtures under a test folder are not tests (pure)', () => {
     const m = matchTests(['test/fixtures/a.ts', 'test/x.test.ts', 'src/a.ts'], []);
     expect([...m.keys()]).toEqual(['test/x.test.ts']);
