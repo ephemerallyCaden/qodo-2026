@@ -549,3 +549,14 @@ describe('local Qodo review (#16 r5)', () => {
     expect(s.unreadable.branches).toBe(0);
   });
 });
+
+describe('local Qodo review (#16 r6)', () => {
+  it('#1: moving a folder\'s files into its own subfolder keeps the parent\'s id', () => {
+    const lineage = buildLineage([
+      { sha: 'a', dateMs: 0, changes: [{ status: 'A', path: 'p/1' }, { status: 'A', path: 'p/2' }] },
+      { sha: 'b', dateMs: 1000, changes: [{ status: 'R', from: 'p/1', path: 'p/q/1' }, { status: 'R', from: 'p/2', path: 'p/q/2' }] },
+    ], () => false);
+    expect(lineage.dirs.get('p')).toMatchObject({ id: birthId('p'), bornSeq: 0 });
+    expect(lineage.dirs.get('p/q')).toMatchObject({ id: birthId('p/q'), bornSeq: 1 });
+  });
+});

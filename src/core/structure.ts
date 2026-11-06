@@ -93,7 +93,9 @@ export function buildLineage(commits: LineageCommit[], excluded: (path: string) 
         const rel = from.slice(d.length);
         if (!to.endsWith(rel) || to.length === rel.length) continue;
         const dest = to.slice(0, to.length - rel.length);
-        if (dest === d) continue;
+        // Moving into its own subfolder isn't a move of the folder: its files are still inside it
+        // (Qodo local r6 #1).
+        if (dest === d || dest.startsWith(`${d}/`)) continue;
         const t = tally.get(d) ?? new Map<string, number>();
         tally.set(d, t.set(dest, (t.get(dest) ?? 0) + 1));
       }
