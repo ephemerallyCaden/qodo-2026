@@ -85,9 +85,9 @@ function parseNumstat(tokens: string[]): Map<string, NumstatRow> {
   return rows;
 }
 
-/** Every blob at HEAD (ground truth) with its line count; binary blobs are flagged. */
+/** Every blob at HEAD (ground truth, from the repo root whatever the cwd) with its line count; binary blobs are flagged. */
 export async function headFiles(git: Git, head: string, emptyTree: string): Promise<Map<string, NumstatRow>> {
-  const [tree, numstat] = await Promise.all([git(['ls-tree', '-r', '-z', head]),
+  const [tree, numstat] = await Promise.all([git(['ls-tree', '-r', '-z', '--full-tree', head]),
     git(['diff', '--numstat', '-z', ...DIFF_OPTS, emptyTree, head])]);
   const blobs = tree.split('\0').flatMap((entry) => {
     const tab = entry.indexOf('\t');
