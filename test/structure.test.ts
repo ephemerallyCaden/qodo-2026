@@ -202,7 +202,7 @@ describe('#16 AC4: test files and what they test', () => {
   });
 
   it('name matching prefers the closest path, then codepoint order', () => {
-    const m = matchTests(['a/x.ts', 'b/c/x.ts', 'b/d/x.ts', 'b/c/x.test.ts', 'z/x.test.ts', 'y/x.ts'], []);
+    const { targets: m } = matchTests(['a/x.ts', 'b/c/x.ts', 'b/d/x.ts', 'b/c/x.test.ts', 'z/x.test.ts', 'y/x.ts'], []);
     expect(m.get('b/c/x.test.ts')).toEqual({ path: 'b/c/x.ts', dir: false });
     expect(m.get('z/x.test.ts')).toEqual({ path: 'a/x.ts', dir: false });
   });
@@ -224,7 +224,7 @@ describe('#16 AC9: a test named after a folder tests that folder', () => {
 
   it('a folder match comes before co-change, and the closest folder wins (pure)', () => {
     const commits = [['t/scan.test.ts', 'src/other.ts'], ['t/scan.test.ts', 'src/other.ts']];
-    const m = matchTests(['src/scan/index.ts', 'lib/deep/scan/x.ts', 'src/other.ts', 't/scan.test.ts'], commits);
+    const { targets: m } = matchTests(['src/scan/index.ts', 'lib/deep/scan/x.ts', 'src/other.ts', 't/scan.test.ts'], commits);
     expect(m.get('t/scan.test.ts')).toEqual({ path: 'src/scan', dir: true });
   });
 });
@@ -239,14 +239,14 @@ describe('#16 AC10: fixture and golden data are not tests', () => {
   it('test data is never what a test tests, by file name, folder name or co-change (pure)', () => {
     const paths = ['src/core/palette.ts', 'test/golden/palette.v1.json', 'test/palette.test.ts', 'test/fixtures/mini.ts',
       'test/fixtures/scan/x.ts', 'test/mini.test.ts', 'test/scan.test.ts', 'src/scan/index.ts'];
-    const m = matchTests(paths, [['test/mini.test.ts', 'test/fixtures/mini.ts'], ['test/mini.test.ts', 'test/fixtures/mini.ts']]);
+    const { targets: m } = matchTests(paths, [['test/mini.test.ts', 'test/fixtures/mini.ts'], ['test/mini.test.ts', 'test/fixtures/mini.ts']]);
     expect(m.get('test/palette.test.ts')).toEqual({ path: 'src/core/palette.ts', dir: false });
     expect(m.get('test/scan.test.ts')).toEqual({ path: 'src/scan', dir: true });
     expect(m.get('test/mini.test.ts')).toBeNull();
   });
 
   it('fixtures under a test folder are not tests (pure)', () => {
-    const m = matchTests(['test/fixtures/a.ts', 'test/x.test.ts', 'src/a.ts'], []);
+    const { targets: m } = matchTests(['test/fixtures/a.ts', 'test/x.test.ts', 'src/a.ts'], []);
     expect([...m.keys()]).toEqual(['test/x.test.ts']);
   });
 });
@@ -584,6 +584,20 @@ describe('local Qodo review (#16 r6)', () => {
 });
 
 describe('PR #20 Qodo review r1', () => {
+  it('#5: bulk commits left out of test co-change are counted, and the summary says so', () => {
+    const filler = Array.from({ length: 200 }, (_, i) => `gen/f${i}.ts`);
+    const bulk = ['t/flow.test.ts', 'src/flow-impl.ts', ...filler];
+    const paths = ['t/flow.test.ts', 'src/flow-impl.ts', 't/a.test.ts', 'src/a.ts', ...filler];
+    // Twice in bulk commits only (so no link), once in a bulk commit with only a name-matched test (not counted).
+    const { targets, bulkSkipped } = matchTests(paths, [bulk, bulk, ['t/a.test.ts', ...filler]]);
+    expect(targets.get('t/flow.test.ts')).toBeNull();
+    expect(targets.get('t/a.test.ts')).toEqual({ path: 'src/a.ts', dir: false });
+    expect(bulkSkipped).toBe(2);
+    const s2: SnapshotV02 = { ...snap, unreadable: { ...snap.unreadable, bulkCommits: 2 } };
+    expect(formatSummary(s2, null)).toContain('2 commit(s) over 200 files were left out of test co-change matching; tests in them may show no source');
+    expect(snap.unreadable.bulkCommits).toBe(0);
+  });
+
   it('#2: a branch that only changes a binary under a folder gives that folder no ring', async () => {
     const r = scratch();
     r.write('d/a.ts', 'export const a = 1;\n');

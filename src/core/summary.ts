@@ -43,6 +43,9 @@ export function formatSummary(s: SnapshotV02, logs: LogCounts | null): string {
   lines.push(`debt markers: ${s.unreadable.files ? 'unknown' : DEBT_KEYS.map((k) => `${k} ${debt[k]}`).join(' · ')}`);
   if (s.unreadable.files) lines.push(`debt markers unreadable for ${s.unreadable.files} file(s); their debt is unknown, not zero`);
   if (s.unreadable.branches) lines.push(`${s.unreadable.branches} branch(es) could not be read and are left out of branches[]`);
+  if (s.unreadable.bulkCommits) {
+    lines.push(`${s.unreadable.bulkCommits} commit(s) over 200 files were left out of test co-change matching; tests in them may show no source`);
+  }
   if (s.unreadable.dirs) lines.push(`${s.unreadable.dirs} folder(s) had no lineage record; their id and birth fall back to HEAD`);
   if (skipped) lines.push(`${skipped} transcript(s) skipped (too large ${logs!.tooLarge}, unavailable ${logs!.unavailable}); commits during them are never classed human`);
   if (logs?.dropped) {

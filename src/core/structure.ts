@@ -257,9 +257,10 @@ export interface TestTarget { path: string; dir: boolean }
  * file named `x.*`; a source folder named `x` (outside test folders); the source it shares the
  * most non-bulk commits with, if at least TEST_COCHANGE_MIN. Ties go to the closest path, then
  * codepoint order. Test data (fixtures, goldens, snapshots) is never a target. `commitPaths` holds
- * each commit's changed paths.
+ * each commit's changed paths. Commits over BULK_FILES files are left out of co-change; those that
+ * held a test still waiting for co-change evidence are counted in `bulkSkipped` (Rule 1).
  */
-export function matchTests(headPaths: string[], commitPaths: string[][]): Map<string, TestTarget | null> {
+export function matchTests(headPaths: string[], commitPaths: string[][]): { targets: Map<string, TestTarget | null>; bulkSkipped: number } {
   const tests = headPaths.filter(isTestPath).sort(byCodepoint);
   const testSet = new Set(tests);
   // Test data is neither a test nor what a test tests (it would win on path distance).
@@ -294,8 +295,12 @@ export function matchTests(headPaths: string[], commitPaths: string[][]): Map<st
     else unmatched.set(t, new Map());
   }
   const sourceSet = new Set(sources);
+  let bulkSkipped = 0;
   for (const paths of commitPaths) {
-    if (paths.length > BULK_FILES) continue;
+    if (paths.length > BULK_FILES) {
+      if (paths.some((p) => unmatched.has(p))) bulkSkipped++;
+      continue;
+    }
     const inCommit = paths.filter((p) => sourceSet.has(p));
     for (const t of paths) {
       const m = unmatched.get(t);
@@ -308,7 +313,7 @@ export function matchTests(headPaths: string[], commitPaths: string[][]): Map<st
     const src = counts.filter(([, n]) => n === top).map(([p]) => p).sort(closest(t))[0];
     out.set(t, src === undefined ? null : { path: src, dir: false });
   }
-  return out;
+  return { targets: out, bulkSkipped };
 }
 const DOC_FILE = /\.(?:md|mdx|rst|txt)$/i;
 
