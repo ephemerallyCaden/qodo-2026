@@ -47,7 +47,8 @@ function ancestors(path: string): string[] {
 /**
  * Replays first-parent history to give every folder an id fixed at its birth. A folder whose
  * files mostly move to a new folder in one commit hands that folder its id: ≥ 50% of its files
- * must move there, and fewer must stay behind than moved (on an even split the id stays put).
+ * must move there, and fewer of its files must stay behind than moved (on an even split the id
+ * stays put). Files new to the old path in that commit make a new folder there.
  * Excluded paths never create, keep or move a folder.
  */
 export function buildLineage(commits: LineageCommit[], excluded: (path: string) => boolean): Lineage {
@@ -85,6 +86,9 @@ export function buildLineage(commits: LineageCommit[], excluded: (path: string) 
       }
     }
     const before = new Map([...tally.keys()].map((d) => [d, count.get(d) ?? 0]));
+    // Files each folder lost this commit (moved or deleted); files new to it don't count as staying.
+    const lost = new Map<string, number>();
+    for (const p of removed) for (const d of ancestors(p)) lost.set(d, (lost.get(d) ?? 0) + 1);
     const touched = new Set<DirId>();
     for (const p of [...removed, ...changed]) for (const d of ancestors(p)) touched.add(dirs.get(d)!.id);
 
@@ -121,14 +125,14 @@ export function buildLineage(commits: LineageCommit[], excluded: (path: string) 
     }).sort((a, b) => b.moved - a.moved || byCodepoint(a.src, b.src));
     const claimed = new Set<string>();
     for (const { src, dest, moved } of offers) {
-      const left = count.get(src) ?? 0;
+      const stayed = before.get(src)! - (lost.get(src) ?? 0);
       const birth = dirs.get(src) ?? dead.get(src);
       // dirs and dead hold every folder that existed before this commit (nothing is born yet).
-      if (!birth || claimed.has(dest) || dirs.has(dest) || dead.has(dest) || moved * 2 < before.get(src)! || left >= moved) continue;
+      if (!birth || claimed.has(dest) || dirs.has(dest) || dead.has(dest) || moved * 2 < before.get(src)! || stayed >= moved) continue;
       claimed.add(dest);
       dirs.set(dest, birth);
-      // The files left behind make a new folder at the old path.
-      if (left > 0) born(src);
+      // Whatever is still at the old path (files left behind or new ones) is a new folder.
+      if ((count.get(src) ?? 0) > 0) born(src);
     }
     for (const p of added) for (const d of ancestors(p)) if (!dirs.has(d)) born(d);
     for (const p of [...added, ...changed]) for (const d of ancestors(p)) touched.add(dirs.get(d)!.id);
