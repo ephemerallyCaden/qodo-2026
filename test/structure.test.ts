@@ -56,8 +56,8 @@ beforeAll(async () => {
 
 describe('#16 AC1: dirs[] for every folder at HEAD, with stable ids', () => {
   it('lists every folder holding a non-excluded file at HEAD, and nothing else', () => {
-    expect(snap.dirs.map((d) => d.path)).toEqual(['api', 'cli', 'core', 'core/sub', 'core/sub/x', 'half', 'kit', 'lib', 'moved',
-      'new', 'test', 'tests', 'tools', 'ui', 'web']);
+    expect(snap.dirs.map((d) => d.path)).toEqual(['api', 'api/__fixtures__', 'cli', 'core', 'core/sub', 'core/sub/x', 'half', 'kit',
+      'lib', 'moved', 'new', 'test', 'tests', 'tests/fixtures', 'tests/golden', 'tools', 'ui', 'web', 'web/__snapshots__']);
   });
 
   it('records parent, depth, bornSeq and bornDate from the folder\'s first commit', () => {
@@ -158,9 +158,12 @@ describe('#16 AC3: debt markers from HEAD blobs', () => {
 });
 
 describe('#16 AC4: test files and what they test', () => {
+  /** [isTest, the path testOf names (a folder path ends with '/')]. */
   const testOf = (path: string) => {
     const f = file(path);
-    return [f.isTest, f.testOf === null ? null : snap.files.find((x) => x.id === f.testOf)!.path];
+    const target = f.testOf === null ? null : (snap.files.find((x) => x.id === f.testOf)?.path
+      ?? `${snap.dirs.find((x) => x.id === f.testOf)!.path}/`);
+    return [f.isTest, target];
   };
 
   it('matches by name (x.test.ts, test_x.py, x_test.go), picking the closest of two sources', () => {
@@ -182,8 +185,56 @@ describe('#16 AC4: test files and what they test', () => {
 
   it('name matching prefers the closest path, then codepoint order', () => {
     const m = matchTests(['a/x.ts', 'b/c/x.ts', 'b/d/x.ts', 'b/c/x.test.ts', 'z/x.test.ts', 'y/x.ts'], []);
-    expect(m.get('b/c/x.test.ts')).toBe('b/c/x.ts');
-    expect(m.get('z/x.test.ts')).toBe('a/x.ts');
+    expect(m.get('b/c/x.test.ts')).toEqual({ path: 'b/c/x.ts', dir: false });
+    expect(m.get('z/x.test.ts')).toEqual({ path: 'a/x.ts', dir: false });
+  });
+});
+
+describe('#16 AC9: a test named after a folder tests that folder', () => {
+  const target = (path: string) => {
+    const f = file(path);
+    return snap.files.find((x) => x.id === f.testOf)?.path ?? snap.dirs.find((x) => x.id === f.testOf)?.path ?? null;
+  };
+
+  it('matches a folder by name when no file has the name', () => {
+    expect(file('test/sub.test.ts').testOf).toBe(dir('core/sub').id);
+  });
+
+  it('prefers a file-name match over a folder-name match', () => {
+    expect(target('test/half.test.ts')).toBe('core/half.ts');
+  });
+
+  it('a folder match comes before co-change, and the closest folder wins (pure)', () => {
+    const commits = [['t/scan.test.ts', 'src/other.ts'], ['t/scan.test.ts', 'src/other.ts']];
+    const m = matchTests(['src/scan/index.ts', 'lib/deep/scan/x.ts', 'src/other.ts', 't/scan.test.ts'], commits);
+    expect(m.get('t/scan.test.ts')).toEqual({ path: 'src/scan', dir: true });
+  });
+});
+
+describe('#16 AC10: fixture and golden data are not tests', () => {
+  it('files under fixtures/, golden/, __fixtures__/ and __snapshots__/ are ordinary files', () => {
+    for (const p of ['tests/fixtures/data.test.ts', 'tests/golden/out.json', 'web/__snapshots__/w.test.ts.snap', 'api/__fixtures__/f.test.ts']) {
+      expect([p, file(p).isTest, file(p).testOf], p).toEqual([p, false, null]);
+    }
+  });
+
+  it('fixtures under a test folder are not tests (pure)', () => {
+    const m = matchTests(['test/fixtures/a.ts', 'test/x.test.ts', 'src/a.ts'], []);
+    expect([...m.keys()]).toEqual(['test/x.test.ts']);
+  });
+});
+
+describe('#16 AC11: a local branch and its remote copy are one entry', () => {
+  it('folds origin/<name> into <name> (upstream or same name), using the most advanced tip', () => {
+    expect(snap.branches.map((b) => [b.name, b.remote, b.alsoRemote, b.aheadCount])).toEqual([
+      ['feature/ahead', false, false, 2],
+      ['feature/remote', false, true, 2],
+      ['old-fork', false, true, 1],
+      ['origin/only-remote', true, false, 1],
+    ]);
+    const remote = snap.branches.find((b) => b.name === 'feature/remote')!;
+    expect(remote.lastCommitDate).toBe('2026-06-29T10:00:00Z');
+    expect(remote.dirIds).toEqual([dir('api').id, dir('ui').id].sort());
   });
 });
 
@@ -191,8 +242,9 @@ describe('#16 AC5: unmerged branches', () => {
   it('lists unmerged local and remote-tracking branches, not HEAD\'s, a merged one or origin/HEAD', () => {
     expect(snap.branches.map((b) => [b.name, b.remote, b.aheadCount, b.lastCommitDate])).toEqual([
       ['feature/ahead', false, 2, '2026-06-27T10:00:00Z'],
+      ['feature/remote', false, 2, '2026-06-29T10:00:00Z'],
       ['old-fork', false, 1, '2026-01-06T10:00:00Z'],
-      ['origin/feature/remote', true, 1, '2026-06-28T10:00:00Z'],
+      ['origin/only-remote', true, 1, '2026-06-30T10:00:00Z'],
     ]);
   });
 
@@ -200,7 +252,7 @@ describe('#16 AC5: unmerged branches', () => {
     const dirs = (name: string) => snap.branches.find((b) => b.name === name)!.dirIds;
     expect(dirs('feature/ahead')).toEqual([dir('core').id, dir('ui').id].sort());
     expect(dirs('old-fork')).toEqual([dir('ui').id]);
-    expect(dirs('origin/feature/remote')).toEqual([dir('api').id]);
+    expect(dirs('origin/only-remote')).toEqual([dir('kit').id]);
   });
 
   it('keeps a branch whose merge-base is outside the scan window', async () => {
@@ -236,14 +288,18 @@ describe('#16 AC7: what the scan cannot read is counted, never dropped', () => {
     const r = await withGitShim('for a in "$@"; do [ "$a" = grep ] && exit 128; done', () => run());
     expect(r.snapshot.files.every((f) => f.debt === null)).toBe(true);
     expect(r.snapshot.unreadable.files).toBe(r.snapshot.files.length);
-    expect(formatSummary(r.snapshot, null)).toContain(`debt markers unreadable for ${r.snapshot.files.length} file(s); their debt is unknown, not zero`);
+    const summary = formatSummary(r.snapshot, null);
+    expect(summary).toContain(`debt markers unreadable for ${r.snapshot.files.length} file(s); their debt is unknown, not zero`);
+    // The totals line must not show reassuring zeros it never read.
+    expect(summary).toContain('debt markers: unknown');
+    expect(summary).not.toContain('debt markers: todo 0');
   });
 
   it('a branch whose commits cannot be read is counted in the summary', async () => {
     const r = await withGitShim('for a in "$@"; do case "$a" in *..*) exit 128;; esac; done', () => run());
     expect(r.snapshot.branches).toEqual([]);
-    expect(r.snapshot.unreadable.branches).toBe(3);
-    expect(formatSummary(r.snapshot, null)).toContain('3 branch(es) could not be read and are left out of branches[]');
+    expect(r.snapshot.unreadable.branches).toBe(4);
+    expect(formatSummary(r.snapshot, null)).toContain('4 branch(es) could not be read and are left out of branches[]');
   });
 
   it('a HEAD folder with no lineage record falls back to HEAD and is counted', () => {

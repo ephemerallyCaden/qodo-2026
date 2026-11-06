@@ -39,7 +39,8 @@ export function formatSummary(s: SnapshotV02, logs: LogCounts | null): string {
     + `${s.branches.length} unmerged branch(es); tests: ${tests.length} (${tests.filter((f) => f.testOf).length} matched to a source)`);
   const debt = zeroDebt();
   for (const f of s.files) for (const k of DEBT_KEYS) debt[k] += f.debt?.[k] ?? 0;
-  lines.push(`debt markers: ${DEBT_KEYS.map((k) => `${k} ${debt[k]}`).join(' · ')}`);
+  // Debt is read all-or-nothing; when it wasn't read, no total is shown (Rule 1: no reassuring 0).
+  lines.push(`debt markers: ${s.unreadable.files ? 'unknown' : DEBT_KEYS.map((k) => `${k} ${debt[k]}`).join(' · ')}`);
   if (s.unreadable.files) lines.push(`debt markers unreadable for ${s.unreadable.files} file(s); their debt is unknown, not zero`);
   if (s.unreadable.branches) lines.push(`${s.unreadable.branches} branch(es) could not be read and are left out of branches[]`);
   if (s.unreadable.dirs) lines.push(`${s.unreadable.dirs} folder(s) had no lineage record; their id and birth fall back to HEAD`);
