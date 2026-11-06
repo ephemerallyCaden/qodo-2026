@@ -529,3 +529,23 @@ describe('local Qodo review (#16 r4)', () => {
     expect((await r.scan()).branches.map((b) => b.name)).toEqual(['tmp/bugfix', 'tmp/feature']);
   });
 });
+
+describe('local Qodo review (#16 r5)', () => {
+  it('#2: a local branch named like a remote-tracking one is not dropped', async () => {
+    const r = scratch();
+    r.write('d/a.ts', 'export const a = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'root');
+    r.git('checkout', '-qb', 'origin/foo');
+    r.write('d/a.ts', 'export const a = 2;\n');
+    r.git('commit', '-qam', 'local');
+    r.git('checkout', '-q', '--detach', 'main');
+    r.write('d/a.ts', 'export const a = 3;\n');
+    r.git('commit', '-qam', 'remote');
+    r.git('update-ref', 'refs/remotes/origin/foo', 'HEAD');
+    r.git('checkout', '-q', 'main');
+    const s = await r.scan();
+    expect(s.branches.map((b) => [b.name, b.remote, b.alsoRemote])).toEqual([['origin/foo', false, false], ['origin/foo', true, false]]);
+    expect(s.unreadable.branches).toBe(0);
+  });
+});
