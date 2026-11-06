@@ -305,3 +305,13 @@ export function matchTests(headPaths: string[], commitPaths: string[][]): Map<st
   }
   return out;
 }
+const DOC_FILE = /\.(?:md|mdx|rst|txt)$/i;
+
+/**
+ * Whether debt markers in this file count (#16 AC13: source code only). Tests, test data and
+ * docs (`*.md`, `*.mdx`, `*.rst`, `*.txt`, the top-level `docs/`) count 0.
+ */
+export function debtCounted(path: string): boolean {
+  if (DOC_FILE.test(path) || path.startsWith('docs/')) return false;
+  return !isTestPath(path) && !inTestData(path.split('/').slice(0, -1));
+}
