@@ -131,13 +131,24 @@ export async function unmergedBranches(git: Git, head: string, headRef: string):
     // the work it merged in, which HEAD..tip lists through those commits (Qodo local r1 #2).
     // An empty format leaves only NUL-separated paths (no separator lines), so no byte in a path can
     // fake a commit boundary or need stripping; rev-list counts the commits (Qodo local r1 #3, r4 #2).
-    const [count, log] = await Promise.all([tryGit(git, ['rev-list', '--count', range]),
-      tryGit(git, ['log', '--format=', '--name-only', '--no-renames', '--cc', '-z', range])]);
-    if (count === null || log === null) return null;
+    // Binary changes are excluded as everywhere else: numstat marks them `-`. It can't give a
+    // combined diff for merges, so it only flags paths that changed solely as binary in the
+    // branch's own commits; a binary changed only inside a merge isn't known (PR #20 Qodo r1 #2).
+    const [count, log, stat] = await Promise.all([tryGit(git, ['rev-list', '--count', range]),
+      tryGit(git, ['log', '--format=', '--name-only', '--no-renames', '--cc', '-z', range]),
+      tryGit(git, ['log', '--format=', '--numstat', '--no-renames', '--no-merges', '-z', range])]);
+    if (count === null || log === null || stat === null) return null;
+    const binary = new Set<string>();
+    const text = new Set<string>();
+    for (const row of stat.split('\0')) {
+      const t2 = row.indexOf('\t', row.indexOf('\t') + 1);
+      if (t2 < 0) continue; // the empty token after the last row
+      (row.startsWith('-\t-\t') ? binary : text).add(row.slice(t2 + 1));
+    }
     const tops = new Set<string>();
     for (const path of log.split('\0')) {
       const slash = path.indexOf('/');
-      if (slash > 0 && exclusionOf(path) === null) tops.add(path.slice(0, slash));
+      if (slash > 0 && exclusionOf(path) === null && (text.has(path) || !binary.has(path))) tops.add(path.slice(0, slash));
     }
     return { aheadCount: Number(count.trim()), ct: Number(ct), tops, remote: ref.startsWith('refs/remotes/') };
   };

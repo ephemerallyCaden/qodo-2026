@@ -584,6 +584,23 @@ describe('local Qodo review (#16 r6)', () => {
 });
 
 describe('PR #20 Qodo review r1', () => {
+  it('#2: a branch that only changes a binary under a folder gives that folder no ring', async () => {
+    const r = scratch();
+    r.write('d/a.ts', 'export const a = 1;\n');
+    r.write('e/b.ts', 'export const b = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'root');
+    r.git('checkout', '-qb', 'art');
+    r.write('d/logo.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 1, 2]));
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'binary only');
+    r.write('e/b.ts', 'export const b = 2;\n');
+    r.git('commit', '-qam', 'text');
+    r.git('checkout', '-q', 'main');
+    const s = await r.scan();
+    expect(s.branches.map((b) => [b.name, b.aheadCount, b.dirIds])).toEqual([['art', 2, [s.dirs.find((x) => x.path === 'e')!.id]]]);
+  });
+
   it('#1: a file moved into a subfolder still stays in its folder when another moves to a sibling', () => {
     const lineage = buildLineage([
       { sha: 'a', dateMs: 0, changes: [{ status: 'A', path: 'p/1' }, { status: 'A', path: 'p/2' }] },
