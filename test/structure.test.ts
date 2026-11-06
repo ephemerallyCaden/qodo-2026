@@ -10,6 +10,7 @@ import type { Dir, FileEntry, SnapshotV02 } from '../src/core/snapshot/types.js'
 import { buildLineage, dirsAtHead, matchTests } from '../src/core/structure.js';
 import { formatSummary } from '../src/core/summary.js';
 import { scan, type ScanOptions } from '../src/scan/index.js';
+import { lineageLog } from '../src/scan/structure.js';
 import { cli } from './fixtures/cli.js';
 import { buildStructureRepo, DEBT_CANARY, type StructureRepo } from './fixtures/build/structure.js';
 import { miniRepo } from './fixtures/mini.js';
@@ -382,5 +383,36 @@ describe('local Qodo review (#16 r2)', () => {
     const s = await r.scan();
     expect(s.commits.map((c) => c.seq)).toEqual([0, 1, 2]);
     expect(s.dirs.map((x) => [x.path, x.bornSeq])).toEqual([['d', 0], ['e', 2]]);
+  });
+});
+
+describe('local Qodo review (#16 r3)', () => {
+  it('#1: a merge listed once per parent is still one commit, with its first-parent diff only', async () => {
+    const [m, p] = ['m'.repeat(40), 'p'.repeat(40)];
+    const stream = ['', p, '100', '\nA', 'a.ts', '', m, '200', '\nA', 's/s.ts', '', m, '200', '\nA', 'a.ts', 'A', 'm/m.ts', ''].join('\0');
+    const commits = await lineageLog(async () => stream, 'HEAD');
+    expect(commits.map((c) => [c.sha, c.changes.map((x) => x.path)])).toEqual([[p, ['a.ts']], [m, ['s/s.ts']]]);
+  });
+
+  it('#1: a merge on the first-parent chain takes one seq (real git)', async () => {
+    const r = scratch();
+    r.write('a.ts', 'export const a = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'root');
+    r.git('checkout', '-qb', 'side');
+    r.write('s/s.ts', 'export const s = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'side');
+    r.git('checkout', '-q', 'main');
+    r.write('m/m.ts', 'export const m = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'main');
+    r.git('merge', '-q', '--no-edit', 'side');
+    r.write('z/z.ts', 'export const z = 1;\n');
+    r.git('add', '-A');
+    r.git('commit', '-qm', 'after');
+    const s = await r.scan();
+    expect(s.commits.map((c) => c.seq)).toEqual([0, 1, 2, 3]);
+    expect(s.dirs.map((x) => [x.path, x.bornSeq])).toEqual([['m', 1], ['s', 2], ['z', 3]]);
   });
 });
