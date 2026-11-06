@@ -249,12 +249,14 @@ export interface TestTarget { path: string; dir: boolean }
  * Maps each test file in `headPaths` to what it tests, or null (#16 AC4, AC9). In order: a source
  * file named `x.*`; a source folder named `x` (outside test folders); the source it shares the
  * most non-bulk commits with, if at least TEST_COCHANGE_MIN. Ties go to the closest path, then
- * codepoint order. `commitPaths` holds each commit's changed paths.
+ * codepoint order. Test data (fixtures, goldens, snapshots) is never a target. `commitPaths` holds
+ * each commit's changed paths.
  */
 export function matchTests(headPaths: string[], commitPaths: string[][]): Map<string, TestTarget | null> {
   const tests = headPaths.filter(isTestPath).sort(byCodepoint);
   const testSet = new Set(tests);
-  const sources = headPaths.filter((p) => !testSet.has(p));
+  // Test data is neither a test nor what a test tests (it would win on path distance).
+  const sources = headPaths.filter((p) => !testSet.has(p) && !inTestData(p.split('/').slice(0, -1)));
   const add = (m: Map<string, string[]>, k: string, v: string) => {
     const list = m.get(k);
     if (list) list.push(v);
