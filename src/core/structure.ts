@@ -45,6 +45,19 @@ function ancestors(path: string): string[] {
 }
 
 /**
+ * Names that hold a binary that is still binary at HEAD: `headBinary`, plus every earlier name a
+ * rename or copy carried into one. The name-status log has no binary flag, so a binary deleted
+ * before HEAD under a name never seen at HEAD isn't known and still counts toward its folder.
+ */
+export function binaryNames(commits: LineageCommit[], headBinary: Iterable<string>): Set<string> {
+  const names = new Set(headBinary);
+  for (let i = commits.length - 1; i >= 0; i--) {
+    for (const ch of commits[i]!.changes) if (ch.from !== undefined && names.has(ch.path)) names.add(ch.from);
+  }
+  return names;
+}
+
+/**
  * Replays first-parent history to give every folder an id fixed at its birth. A folder whose
  * files mostly move to a new folder in one commit hands that folder its id: ≥ 50% of its files
  * must move there, and fewer of its files must stay behind than moved (on an even split the id

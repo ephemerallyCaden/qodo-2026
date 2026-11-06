@@ -5,7 +5,7 @@ import { lineHasher, sha256Hex } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
 import { hashLines } from '../core/lines.js';
 import type { Commit, PersonId, SessionKey, SnapshotV02 } from '../core/snapshot/types.js';
-import { buildLineage, dirsAtHead, matchTests, zeroDebt } from '../core/structure.js';
+import { binaryNames, buildLineage, dirsAtHead, matchTests, zeroDebt } from '../core/structure.js';
 import { isoUtc, minusMonths } from '../core/time.js';
 import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
@@ -83,9 +83,10 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   kept.sort((a, b) => byCodepoint(a[0], b[0]));
   const headPaths = kept.map(([p]) => p);
   const fileId = (path: string): `f_${string}` => `f_${sha256Hex(path).slice(0, 12)}`;
-  // Binary-ness isn't in the name-status log; a path that is binary at HEAD is excluded all along,
-  // so a binary left behind can't block its folder's move (Qodo local r1 #1).
-  const lineage = buildLineage(history, (p) => excluded(p, head.get(p)));
+  // Binary-ness isn't in the name-status log: a binary at HEAD is excluded all along, under its
+  // earlier names too, so it neither blocks nor dilutes its folder's move (Qodo local r1 #1, r4 #1).
+  const binary = binaryNames(history, [...head].filter(([, row]) => row.binary).map(([p]) => p));
+  const lineage = buildLineage(history, (p) => binary.has(p) || excluded(p, undefined));
   const testOf = matchTests(headPaths, lineage.paths);
   const structure = dirsAtHead(lineage, headPaths);
   const files: SnapshotV02['files'] = kept.map(([path, row]) => {
