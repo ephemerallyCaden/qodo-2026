@@ -282,3 +282,11 @@ describe('#16 lineage rules (pure)', () => {
     expect([...lineage.dirs.keys()]).toEqual(['src']);
   });
 });
+
+describe('scan from a subdirectory', () => {
+  it('gives the same snapshot as from the repo root (ls-tree lists the whole tree)', async () => {
+    const sub = await run({ repoDir: join(repo.dir, 'core/sub') });
+    expect(sub.snapshot.files.find((f) => f.path === 'core/a.ts')?.debt).toEqual({ todo: 1, fixme: 1, hack: 2, xxx: 1 });
+    expect(sub.json).toBe(json);
+  });
+});
