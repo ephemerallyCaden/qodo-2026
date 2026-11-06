@@ -1,39 +1,80 @@
+## The brief every variant honours
+
+- **Head-is-body.** One rounded head with a face screen, at most a tiny chin pod (E), and no arms.
+- **About half an astronaut tall:** 47–48% of a K astronaut (0.95), measured without smoke; `npm test` checks the range.
+- **Thruster pack.** Five different layouts, each sputtering smoke. Puffs come in bursts: more when the drone accelerates or banks, and on each bob's upstroke. They drift and fade.
+- **Colour.** The base palette is BLK 36 (gear greys into suit whites), with the crew's dark visor as the screen and V2 eyes (`faces.js`) glowing [OIII] teal.
+- **The idle loop,** all of it on a 12 s behaviour loop that divides 24 s; the turntable and stills use the 6 s idle loop:
+  - a hover bob with puffs;
+  - looking around and blinking;
+  - a working face (eyes lift and narrow while lines of code are typed in and scroll up);
+  - banking into the drift.
+
+## Behaviour timeline (12 s motion loop)
+
+| Time (s) | What happens |
+|---|---|
+| 0–12 | Drifts in a figure 8 (side to side once, front to back twice) and banks into it. Bobs 4 times. Puffs fire in bursts that follow the effort. |
+| 1.0 | Blink |
+| 1.6–4.8 | Looks to its left, then right, then back (eyes glance and the head turns with them) |
+| 5.2 | Blink |
+| 5.6–10.6 | Working: eyes lift and narrow, and code lines are typed in at `codeRate` lines per second and scroll up |
+| 10.7 | Blink |
+| 10.9–11.95 | A small glance, then settles |
+
 ## Intended separate parts
 
-Every direction is one connected silhouette, except the anti-grav option: each of its `halos` (0–2) is a free-floating glow ring under the lens, kept at least 2 px clear of the lens and of each other. `npm run lab` checks each tile for exactly `1 + halos` pieces (anti-grav) or 1 piece (everything else); in the crew shot, 2 more for the astronauts.
+Smoke puffs and sparkles float free by design. Every tile is therefore rendered twice:
+- with smoke and sparkles off, the body must be exactly one connected piece;
+- with them on, every pixel must still be palette + space.
 
-## Recommendation: F · Beanie copter
+Each animated GIF must also show smoke in at least half its frames.
 
-- **Cutest, and the most character per pixel.** A wide headphone head with a screen face, a beanie rotor, a tiny body and nub arms reads as a toy robot buddy, not a vehicle.
-- **Clearly not crew.** Next to two K astronauts it's about 55% of their height, with no legs, a warm shell (against their white suits) and a propeller on top. It still shares their gear greys, visor tones and screen-face language, so it belongs in the same cast.
-- **Exercises every module a brand needs.** The head is the face module (shape, ears, topper, screen, eyes); the body carries the brand band; the propulsion and extras are free per brand. Its face screen is big and unobstructed, so brand eye glyphs read at 180p.
-- **Stable at 180p.** One silhouette from every angle, the rotor reads as a propeller even edge-on, and the pill eyes stay 2+ px wide.
+## Recommendation: A · Monitor buddy
 
-Why the base shell is warm: in the live page's crew view, the `frost` slot test (a white-blue shell) makes any direction blend into the white-suited crew at 180p. Brand palettes should keep the shell clearly off the crew's suit ramp.
+- **It is the brief's "floating monitor buddy" exactly.** A rounded-cube head that is all screen reads as a computer at a glance, which is what an AI agent session is.
+- **The best face for the face channel.** The screen is the largest of the five, so V2 eyes and the working state (code streaming) read even at the 1x crew distance. That's where an agent's activity will be shown.
+- **The best base for brand heads.** A rounded cube morphs into the others by sliding `headRound`, `headTaper` and `headFlat`, so most logo heads (Copilot's included) are short slider moves from A.
+- **Puffs read from every angle.** The four corner nozzles sit under the head, so the smoke shows from the front, the side and the back. Eager personality: the biggest bob, the busiest sputter, sparkles.
 
-Runner-up: **A · Bubble buddy**. It's the most neutral base and its anti-grav halos are the clearest "hovering" read, but the halos add a lot of teal under every drone, and it has no body to carry a brand band.
+Runner-up: **D · Saucer scout.** Its chunky round puffs from twin under-pods are the cutest smoke of the five, and the brim gives it the most retro charm. But a short wide head leaves the least screen height for faces and code.
+
+## The reference (Snowball), and what we didn't copy
+
+From the reference we took:
+- the vibe: chunky rounded forms, a dark face screen with glowing eyes, and cute puffs with sparkles;
+- that the thrusters are part of the character.
+
+We deliberately didn't recreate it:
+- no variant combines a dome, a dark visor band, side fins and twin under-pods;
+- the shell is BLK 36 greys and whites, not ice blue;
+- the eyes are our own V2 set, not pill eyes;
+- the sparkles are pixel `+` crosses, not snowflakes.
+
+## Shell colour caveat
+
+A grey-white shell is the human's call, and it keeps the drones in the crew's family. It does sit close to the white suits, though. In the crew shot the drones still separate by size (half height), silhouette (no limbs), the dark face that fills the head, teal eyes and the smoke. A brand palette can push the shell further off the suit ramp if needed.
 
 ## Phase 2: a brand is a parameter set plus a palette
 
-1. **Silhouette:** `headW/H/D`, `headRound`, `headCorner`, `headTaper` and `headFlat` cover capsule, dome, box and pebble heads and everything between them, continuously.
-2. **Logo features:** `ears` (pods, fins) and `topper` (goggles, crest) give the head the logo's protrusions.
-3. **Face:** the screen's size, height and corner shape (`screenW/H/Y`, `screenRound`, `bezel`) place the logo's face area; `eyes` picks the glyph. The three drone-only glyphs (pills, blocks, prompt `>_`) live in `drone.js` (`droneEyeLit`), so a brand that needs a new glyph adds one there without touching the astronaut's V2 set.
-4. **Colour:** one `palette.js` entry with five slots: shell, trim, screen, glow, accent.
-5. **Personality (optional):** propulsion, antenna, arms and accent placement.
+1. **Silhouette:** `headW/H/D`, `headRound`, `headCorner`, `headTaper`, `headFlat`, `size`, plus `rim` and `chin`.
+2. **Logo features:** `ears` (pods or fins), `topper` (goggles or a crest), `antenna`.
+3. **Face:** screen size, height and corner shape (`screenW/H/Y`, `screenRound`, `bezel`) place the logo's face area. `eyes` picks the V2 glyph.
+4. **Personality:** thruster layout, smoke style, `puffRate`, `sparkles`, bob, drift, bank, glance and gaze.
+5. **Colour:** one `palette.js` entry with six slots: shell, trim, screen, glow, accent, smoke.
 
 ## Worked example: GitHub Copilot (description only)
 
 **The logo** (`github-copilot-logo.svg`): a wide, rounded helmet head that widens toward the cheeks; two big rounded-rectangle goggle lenses across the top half, almost touching at the bridge; round ear pads low on each side; a wide lower face plate with two upright pill eyes.
 
-**The mapping,** starting from F:
-- **Head:** `headW 0.23`, `headH 0.165`, `headRound 0.55`, `headCorner 0.85`, `headTaper 1.12` (wider at the cheeks, as in the logo), `headFlat 0.15` (a flatter chin).
-- **Goggles:** `topper goggles`, `gogW 0.085`, `gogH 0.06`, `gogX 0.4` (the lenses nearly meet at the bridge), `gogY 0.42`. The frames take the trim slot (the logo's black outline); the lenses take the screen tones and a glint.
-- **Ear pads:** `ears pods`, `earR 0.07`, `earT 0.03`, `earY -0.35` (low, like the logo's).
-- **Face plate:** the screen becomes the lower plate: `screenW 0.66`, `screenH 0.4`, `screenY -0.42`, `screenRound 3.5`, `bezel 0.12`, `eyes pills`, `eyeScale 1.1`.
-- **Body and hover:** keep F's small body (it carries the brand band) and the beanie rotor (a goggled pilot in a propeller cap). For a pure logo-head, use `body off` and anti-grav with one halo.
-- **Palette:** the logo is mono (`#24292f` on white). A charcoal shell would vanish against space at 180p, so the shell takes a light grey-white ramp. The trim takes the charcoal (goggle frames and ear pads, the logo's black parts), and the accent and glow take Copilot's brand colours (to be confirmed from the brand kit).
-- **One open choice:** the logo's face plate is light with dark eyes, the inverse of our dark screen with glowing eyes. I'd keep the dark screen with glowing pills, so every agent's drone shares one face language. If the human prefers the literal look, add a per-brand `screenInvert` (screen from the shell's light tones, eyes from the trim's dark ones).
+**The mapping,** starting from A:
+- **Head:** soften the cube into the helmet: `headW 0.2`, `headH 0.15`, `headD 0.16`, `headRound 0.55`, `headCorner 0.85`, `headTaper 1.12` (wider at the cheeks), `headFlat 0.15` (a flatter chin).
+- **Goggles:** `topper goggles`, `gogW 0.075`, `gogH 0.05`, `gogX 0.4` (the lenses nearly meet at the bridge), `gogY 0.45`. The frames take the trim slot (the logo's black outline); the lenses take the screen tones and a glint.
+- **Ear pads:** `ears pods`, `earR 0.06`, `earT 0.025`, `earY -0.35` (low, like the logo's).
+- **Face plate:** the screen becomes the lower plate: `screenW 0.66`, `screenH 0.4`, `screenY -0.42`, `screenRound 3.5`, `bezel 0.12`.
+- **Eyes:** the V2 set has no upright pills. Copilot needs one new glyph ("pills"). Add it to the shared V2 set in `asset-viewer/faces.js`, so astronauts could use it too, rather than as a drone-only shape. That's a small, separate change for the human to approve.
+- **Thrusters and smoke:** twin under-pods (the logo has no thrusters, so keep it simple) and round puffs.
+- **Palette:** the logo is mono (`#24292f` on white), which suits the grey-white base shell. The trim takes a charcoal (goggle frames and ear pads), and the accent and smoke tint take Copilot's brand colours (to be confirmed from the brand kit). The glow stays teal or takes the brand colour.
+- **Open choice:** the logo's face plate is light with dark eyes, the inverse of our dark screen with glowing eyes. I'd keep the dark screen so every agent's drone shares one face language.
 
-A quick render of this parameter set on the base palette already reads as the logo: goggles over a pill-eyed face plate between low ear pads.
-
-**Microsoft Copilot** (`microsoft-copilot-logo.svg`, two interlocking rounded parallelograms, no face) is the harder case. It suggests a slanted box head (`headRound 0`, a skew parameter still to add) or two-tone shell halves, with the face carried by the screen alone.
+**Microsoft Copilot** (`microsoft-copilot-logo.svg`, two interlocking rounded parallelograms, no face) suggests a slanted rounded-box head (a skew parameter still to add) with the face carried by the screen alone.

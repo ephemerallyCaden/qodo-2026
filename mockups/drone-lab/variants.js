@@ -1,76 +1,81 @@
-// The base-model directions: each is a parameter set for the one drone in drone.js. Anything
-// not listed keeps its default (params.js). All directions wear the unbranded base palette, so
-// the lineup compares shape only.
-// Selects: ears 0 none 1 pods 2 fins; topper 0 none 1 goggles 2 crest; body 0 off 1 on;
-// prop 0 rotors 1 ring 2 anti-grav 3 jet; rotorN 0 top 1 twin 2 quad; antenna 0 none 1 stalk 2 twin;
-// arms 0 none 1 nubs 2 claws; accent 0 none 1 band 2 panel 3 stripe; accentOn 0 head 1 body.
-// Eyes: 0 dots 1 cyclops 2 visor slit 3 binocular 4 three 5 happy 6 LED 7 heartbeat 8 slant 9 X 10 pills 11 blocks 12 prompt.
+// The base-model variants: each is a parameter set for the one drone in drone.js. Anything
+// not listed keeps its default (params.js). Every variant honours the human's brief: head-is-body,
+// a thruster pack with smoke puffs, about half an astronaut tall, a BLK 36 shell, a dark screen
+// with V2 eyes glowing teal, no arms, and the full idle loop (bob, look around, work, bank).
+// Selects: rim/chin 0 off 1 on; ears 0 none 1 pods 2 fins; topper 0 none 1 goggles 2 crest;
+// antenna 0 none 1 stalk 2 twin; thrusters 0 twin under 1 single under 2 quad 3 rear 4 twin rear;
+// smoke 0 round puffs 1 wisps 2 sputter dots; accent 0 none 1 band 2 panel 3 stripe.
+// Eyes (V2): 0 dots 1 cyclops 2 visor slit 3 binocular 4 three 5 happy 6 LED 7 heartbeat 8 slant 9 X.
 export const VARIANTS = [
   {
-    id: 'A', name: 'Bubble buddy',
-    leaning: 'One round pebble that is all face: a big screen, nub arms, a stalk antenna, an anti-grav lens over two floating halos.',
+    id: 'A', name: 'Monitor buddy',
+    leaning: 'Eager: a rounded-cube terminal head, all screen, with twin antennae, four corner nozzles sputtering dots and sparkles.',
     params: {
-      body: 0, headW: 0.205, headH: 0.19, headD: 0.18, headRound: 0.85, headTaper: 0.86,
-      screenW: 0.7, screenH: 0.52, screenY: 0.08, screenRound: 4, bezel: 0.18,
-      arms: 1, armY: -0.35, armLen: 0.065, armSplay: 0.75, prop: 2, glowR: 0.075,
-      accent: 1, accentY: -0.8, accentW: 0.1,
+      size: 1.15,
+      headW: 0.165, headH: 0.14, headD: 0.135, headRound: 0.1, headCorner: 0.55,
+      screenW: 0.82, screenH: 0.76, screenY: 0, screenRound: 7, bezel: 0.12, eyes: 5,
+      antenna: 2, antTilt: 0.45, antL: 0.05,
+      thrusters: 2, thrR: 0.024, thrL: 0.03, thrSpread: 0.62, thrFlare: 1.2,
+      smoke: 2, puffSize: 1.2, puffRate: 0.85, sparkles: 4,
+      bobAmp: 0.024, drift: 0.18, bank: 0.3, glance: 5.5, lookYaw: 0.35,
     },
   },
   {
-    id: 'B', name: 'Monitor bot',
-    leaning: 'A boxy little terminal on a pill body: square screen in a thick bezel, twin antennae, a ring thruster.',
+    id: 'B', name: 'Shy bean',
+    leaning: 'Shy: a tall teardrop with a small high porthole, little ear pods, eyes cast down, one soft under-jet of round puffs.',
     params: {
-      headW: 0.2, headH: 0.15, headD: 0.15, headRound: 0, headCorner: 0.42,
-      screenW: 0.8, screenH: 0.72, screenY: 0, screenRound: 7, bezel: 0.12, eyes: 11,
-      bodyW: 0.1, bodyH: 0.075, bodyD: 0.095, bodyRound: 0.6, bodyTaper: 0.85, bodySink: 0.03,
-      antenna: 2, antTilt: 0.42, antL: 0.075, arms: 0, prop: 1, ringR: 0.12, ringT: 0.026,
-      accent: 2, accentOn: 1, accentY: 0.1, accentW: 0.28,
+      size: 1.05,
+      headW: 0.13, headH: 0.18, headD: 0.135, headRound: 1, headTaper: 1.3,
+      screenW: 0.62, screenH: 0.45, screenY: 0.2, screenRound: 2, bezel: 0.34, eyes: 0, eyeScale: 1.05, gaze: -2.5, glance: 3,
+      ears: 1, earR: 0.04, earT: 0.016, earY: 0.15, codeRows: 2,
+      thrusters: 1, thrR: 0.034, thrL: 0.03, thrFlare: 1.15,
+      smoke: 0, puffSize: 1.05, puffRate: 0.5,
+      bobAmp: 0.012, drift: 0.1, bank: 0.2, lookYaw: 0.18,
     },
   },
   {
-    id: 'C', name: 'Quad scout',
-    leaning: 'The literal drone: a flat-bottomed dome with a wide visor face on a four-rotor X frame. No arms, all flight.',
+    id: 'C', name: 'Visor racer',
+    leaning: 'Sleek: a long low capsule with a wraparound visor band and a dorsal crest, one rear jet laying wispy trails, banking hard.',
     params: {
-      body: 0, headW: 0.22, headH: 0.2, headD: 0.2, headRound: 0.8, headFlat: 0.35,
-      screenW: 0.74, screenH: 0.46, screenY: 0.12, screenRound: 5, bezel: 0.2, eyes: 5,
-      prop: 0, rotorN: 2, rotorR: 0.085, rotorArm: 0.095, rotorY: 0.05, antenna: 0, arms: 0,
-      accent: 3, accentW: 0.24,
+      size: 1.3,
+      headW: 0.16, headH: 0.16, headD: 0.25, headRound: 1, headTaper: 0.92,
+      screenW: 2.2, screenH: 0.34, screenY: 0.08, screenRound: 6, bezel: 0.14, eyes: 8,
+      topper: 2, crestH: 0.035,
+      thrusters: 3, thrR: 0.04, thrL: 0.05, thrFlare: 1.15,
+      smoke: 1, puffSize: 1.1, puffRate: 0.75,
+      bobAmp: 0.012, drift: 0.22, bank: 0.34, lookYaw: 0.25, glance: 4,
+      accent: 3, accentW: 0.22,
     },
   },
   {
-    id: 'D', name: 'Capsule helper',
-    leaning: 'An upright pill worker: round head on a tapered capsule body, little claw arms, a jet plume, a band on the belly.',
+    id: 'D', name: 'Saucer scout',
+    leaning: 'Retro: a flattened saucer head with a trim brim, a wide oval screen, a stalk antenna, twin under-pods puffing clouds and sparkles.',
     params: {
-      headW: 0.17, headH: 0.15, headD: 0.155, headRound: 0.8,
-      screenW: 0.74, screenH: 0.6, screenY: 0.02, screenRound: 4, bezel: 0.18, eyes: 3,
-      bodyW: 0.12, bodyH: 0.11, bodyD: 0.115, bodyRound: 0.9, bodyTaper: 0.72, bodySink: 0.05, neckBlend: 0.035,
-      arms: 2, armY: 0.15, armLen: 0.1, armR: 0.022, armSplay: 0.85, prop: 3, glowR: 0.055, plumeL: 0.1,
-      antTilt: 0.2, accent: 1, accentOn: 1, accentY: -0.15, accentW: 0.16,
+      size: 1.25,
+      headW: 0.235, headH: 0.13, headD: 0.22, headRound: 1, headFlat: 0.25,
+      rim: 1, rimY: -0.32, rimT: 0.02,
+      screenW: 0.7, screenH: 0.66, screenY: 0.18, screenRound: 3, bezel: 0.18, eyes: 3,
+      antenna: 1, antL: 0.06, antTilt: 0.15,
+      thrusters: 0, thrR: 0.03, thrL: 0.04, thrSpread: 0.5, thrFlare: 0.85,
+      smoke: 0, puffSize: 0.95, puffRate: 0.6, sparkles: 2,
+      drift: 0.15, bank: 0.25,
     },
   },
   {
-    id: 'E', name: 'Saucer dome',
-    leaning: 'A tiny UFO: a wide half-dome head with swept fins and a crest, riding a broad ring thruster.',
+    id: 'E', name: 'Chunky dumpling',
+    leaning: 'Chunky: a squat dome with a big low face, a tiny chin pod carrying twin rear jets, a belly band and big lazy puffs.',
     params: {
-      body: 0, headW: 0.2, headH: 0.23, headD: 0.2, headRound: 1, headFlat: 0.5, headTaper: 1.15,
-      screenW: 0.72, screenH: 0.42, screenY: 0.2, screenRound: 3.2, bezel: 0.2, eyes: 1,
-      ears: 2, earR: 0.065, earT: 0.012, earY: 0.2, topper: 2, antenna: 0, arms: 0,
-      prop: 1, ringR: 0.25, ringT: 0.032, accent: 0,
-    },
-  },
-  {
-    id: 'F', name: 'Beanie copter',
-    leaning: 'A wide headphone head (ear pods) with a beanie rotor on top, a little body and nub arms: the most character.',
-    params: {
-      headW: 0.215, headH: 0.16, headD: 0.165, headRound: 0.55, headCorner: 0.8,
-      screenW: 0.66, screenH: 0.6, screenY: -0.06, screenRound: 4.5, bezel: 0.18, eyes: 10,
-      ears: 1, earR: 0.075, earT: 0.026, earY: -0.05,
-      bodyW: 0.1, bodyH: 0.07, bodyD: 0.09, bodyRound: 0.85, bodyTaper: 0.8,
-      prop: 0, rotorN: 0, rotorR: 0.12, rotorArm: 0.08, antenna: 0,
-      arms: 1, armLen: 0.06, armY: 0.1, accent: 1, accentOn: 1, accentY: 0.1, accentW: 0.22,
+      size: 1.2,
+      headW: 0.205, headH: 0.18, headD: 0.19, headRound: 0.85, headFlat: 0.45, headCorner: 0.8,
+      chin: 1, chinR: 0.08,
+      screenW: 0.78, screenH: 0.48, screenY: -0.02, screenRound: 4, bezel: 0.16, eyes: 6,
+      thrusters: 4, thrR: 0.04, thrL: 0.055, thrSpread: 0.5, thrFlare: 1.15,
+      smoke: 0, puffSize: 1.35, puffRate: 0.65,
+      bobAmp: 0.014, drift: 0.12, bank: 0.18, lookYaw: 0.2,
+      accent: 1, accentY: -0.4, accentW: 0.08,
     },
   },
 ];
 
-// The recommended base model (marked in the lineup; used for the crew shot and turntable).
-export const RECOMMENDED = 'F';
+// The recommended base model (marked in the lineup).
+export const RECOMMENDED = 'A';

@@ -10,7 +10,7 @@ import { CREW, SPACE } from '../explorations/astronaut-lab/crew.js';
 import { makeDrone, extents, intendedPieces } from './drone.js';
 import { PALETTES, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS } from './params.js';
-import { VARIANTS } from './variants.js';
+import { VARIANTS, RECOMMENDED } from './variants.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -21,7 +21,8 @@ const CAM = new THREE.Vector3(0, 0.43, 2.7); // the viewer's crew close-up offse
 const CREW_CAM = { pos: new THREE.Vector3(0.35, 0.95, 2.7), target: new THREE.Vector3(0, 0.52, 0) };
 const ASTRO_K = { ...ASTRO_DEFAULTS, ...ASTRO_VARIANTS.find((v) => v.id === 'K').params };
 const CREW_COLORS = ['coral', 'lilac']; // the two astronauts beside the drone
-export const DRONE_HOVER = 0.6; // crew shot: the drone's head centre above the crew's floor
+export const DRONE_HOVER = 0.52; // crew shot: the drone's head centre above the crew's floor
+const PIXK = (2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2))) / FRAME_H; // one pixel's size per unit depth (every tile keeps 180p density)
 
 const gl = document.createElement('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas: gl, antialias: false, preserveDrawingBuffer: true });
@@ -45,7 +46,8 @@ const paletteOf = (key) => PALETTES[key] ?? PALETTES.base;
 // density (zoom 2 brings the camera twice as close). cell.crew renders the crew shot instead:
 // astronaut, drone, astronaut, as the viewer lines up its crew (0.72 apart, turned 0.4 / 0.05 / -0.4).
 function renderTile(cell, w, h) {
-  const { params = {}, yaw = 0, t = 0, zoom = 1, palette = 'base', sway = 0, blink = 1 } = cell;
+  const { params = {}, yaw = 0, t = 0, zoom = 1, palette = 'base', motion = false, blink = null, smoke = true } = cell;
+  const pixK = PIXK / zoom;
   if (gl.width !== w || gl.height !== h) renderer.setSize(w, h, false);
   drone.setParams(params);
   drone.setPalette(paletteOf(palette));
@@ -57,18 +59,18 @@ function renderTile(cell, w, h) {
     crew.forEach((a, i) => {
       a.group.visible = true;
       a.group.position.set(i === 0 ? -0.72 : 0.72, 0.03, 0);
-      a.update(t + i * 1.7 * 2, { yaw: i === 0 ? 0.4 : -0.4, sway: 1, blink: 1 });
+      a.update(t + i * 3.4, { yaw: i === 0 ? 0.4 : -0.4, sway: 1, blink: 1 });
     });
     drone.group.position.set(0, DRONE_HOVER, 0);
-    drone.update(t, { yaw: 0.05 + yaw, sway: 1, blink });
+    drone.update(t, { yaw: 0.05 + yaw, motion, blink, smoke, pixK: PIXK });
     camera.position.copy(CREW_CAM.pos);
     camera.lookAt(CREW_CAM.target);
   } else {
     crew.forEach((a) => (a.group.visible = false));
     const { top, bottom } = extents(drone.layout);
     drone.group.position.set(0, 0, 0);
-    drone.update(t, { yaw, sway, blink });
-    const cy = (top + bottom) / 2;
+    drone.update(t, { yaw, motion, blink, smoke, pixK });
+    const cy = (top + bottom) / 2 - 0.07 - (cell.frameLow ?? 0); // a little low, to leave room for the smoke
     camera.position.copy(CAM).multiplyScalar(1 / zoom).add(new THREE.Vector3(0, cy, 0));
     camera.lookAt(0, cy, 0);
   }
@@ -130,7 +132,8 @@ function wrap(ctx, text, width) {
  * Tiles are w x h internal pixels, upscaled by `scale` (nearest). Labels are drawn at
  * output resolution, outside the pixel pass. Returns the canvas and per-tile stats.
  */
-function sheet({ rows, heads = [], w, h, scale, rowLabelW = 0, headH = 0, gap = 6, title = '', footer = '', crispLabels = false }) {
+function sheet(spec) {
+  const { rows, heads = [], w, h, scale, rowLabelW = 0, headH = 0, gap = 6, title = '', footer = '', crispLabels = false, check = true } = spec;
   const cols = Math.max(...rows.map((r) => r.cells.length));
   const titleH = title ? 26 : 0;
   const footH = footer ? 22 : 0;
@@ -168,10 +171,29 @@ function sheet({ rows, heads = [], w, h, scale, rowLabelW = 0, headH = 0, gap = 
       wrap(ctx, row.label, rowLabelW - 8).forEach((l, i) => ctx.fillText(l, gap + 2, y + (h * scale) / 2 - 8 + i * 14));
     }
     row.cells.forEach((cell, c) => {
-      renderTile(cell, w, h);
-      nctx.drawImage(gl, 0, 0);
-      stats.push({ row: r, col: c, ...tileStats(nctx.getImageData(0, 0, w, h).data, w, h, cell), want: intendedPieces({ ...DEFAULTS, ...cell.params }) + (cell.crew ? crew.length : 0) });
       const x = rowLabelW + gap + c * (tw + gap);
+      let st = null;
+      if (check) {
+        // Connectivity is judged with smoke and sparkles off: they float free by design.
+        renderTile({ ...cell, smoke: false }, w, h);
+        nctx.drawImage(gl, 0, 0);
+        const bare = nctx.getImageData(0, 0, w, h).data;
+        st = tileStats(bare, w, h, cell);
+        renderTile(cell, w, h);
+        nctx.drawImage(gl, 0, 0);
+        const full = nctx.getImageData(0, 0, w, h).data;
+        const fs = tileStats(full, w, h, cell);
+        let smokePx = 0;
+        for (let i = 0; i < full.length; i += 4) if (full[i] !== bare[i] || full[i + 1] !== bare[i + 1] || full[i + 2] !== bare[i + 2]) smokePx++;
+        stats.push({ row: r, col: c, stray: fs.stray, figure: fs.figure, clipped: fs.clipped, pieces: st.pieces, heightPx: st.heightPx, smokePx, want: intendedPieces() + (cell.crew ? crew.length : 0) });
+      } else {
+        renderTile(cell, w, h);
+        if (spec.paletteCheck) {
+          nctx.drawImage(gl, 0, 0);
+          const fs = tileStats(nctx.getImageData(0, 0, w, h).data, w, h, cell);
+          stats.push({ row: r, col: c, stray: fs.stray, figure: fs.figure, clipped: fs.clipped, pieces: 1, want: 1, smokePx: 0 });
+        }
+      }
       ctx.drawImage(gl, x, y, tw, h * scale);
       if (cell.mark) { ctx.strokeStyle = '#00ffd5'; ctx.lineWidth = 2; ctx.strokeRect(x - 2, y - 2, tw + 4, h * scale + 4); }
       if (cell.caption) {
@@ -223,7 +245,7 @@ if (ui) {
   const view = document.getElementById('view');
   const stage = document.getElementById('stage');
   const vctx = view.getContext('2d');
-  const state = { params: paramsOf('A'), variant: 'A', mode: 'views', animate: true, spin: false, palette: 'base' };
+  const state = { params: paramsOf(RECOMMENDED), variant: RECOMMENDED, mode: 'views', animate: true, motion: true, smoke: true, spin: false, palette: 'base' };
   const picker = document.getElementById('variants');
   const sliders = document.getElementById('sliders');
   const json = document.getElementById('json');
@@ -270,6 +292,8 @@ if (ui) {
   document.getElementById('mode').onchange = (e) => (state.mode = e.target.value);
   document.getElementById('animate').onchange = (e) => (state.animate = e.target.checked);
   document.getElementById('spin').onchange = (e) => (state.spin = e.target.checked);
+  document.getElementById('motion').onchange = (e) => (state.motion = e.target.checked);
+  document.getElementById('smoke').onchange = (e) => (state.smoke = e.target.checked);
   document.getElementById('copy').onclick = () => navigator.clipboard?.writeText(json.value);
 
   function sync() {
@@ -288,7 +312,7 @@ if (ui) {
   function frame() {
     const t = state.animate ? (performance.now() - t0) / 1000 : 0;
     const spin = state.spin ? t * ((Math.PI * 2) / 6) : 0;
-    const base = { t, palette: state.palette, sway: state.animate ? 1 : 0 };
+    const base = { t, palette: state.palette, motion: state.motion, smoke: state.smoke };
     const mine = (yaw, extra = {}) => ({ ...base, params: state.params, yaw: yaw + spin, ...extra });
     let spec;
     if (state.mode === 'views') {
@@ -297,15 +321,17 @@ if (ui) {
       spec = { w: 180, h: 180, rows: [{ cells: [[-0.75, '3/4'], [-Math.PI / 2, 'side']].map(([y, caption]) => mine(y, { zoom: 2, caption })) }] };
     } else if (state.mode === 'crew') {
       spec = { w: 320, h: 180, rows: [{ cells: [mine(0, { crew: true, caption: 'crew close-up, 320x180' })] }] };
+    } else if (state.mode === 'motion') {
+      spec = { w: 220, h: 170, rows: [{ cells: [mine(-0.5, { zoom: 2, motion: true, caption: 'motion loop, 2x close-up (camera fixed)' })] }] };
     } else {
       const cells = [...VARIANTS.map((v) => ({ ...base, params: paramsOf(v.id), yaw: -0.75 + spin, caption: `${v.id} · ${v.name}` })), mine(-0.75, { caption: 'mix' })];
-      spec = { w: 100, h: 100, rows: [cells.slice(0, 4), cells.slice(4)].map((c) => ({ cells: c })) };
+      spec = { w: 100, h: 100, rows: [cells.slice(0, 3), cells.slice(3)].map((c) => ({ cells: c })) };
     }
     // The largest integer upscale that fits the stage (nearest, never fractional).
     const cols = Math.max(...spec.rows.map((r) => r.cells.length));
     const fitW = (stage.clientWidth - 24) / (cols * (spec.w + 6)), fitH = (stage.clientHeight - 24) / (spec.rows.length * (spec.h + 24));
     spec.scale = Math.max(1, Math.min(4, Math.floor(Math.min(fitW, fitH))));
-    const { canvas } = sheet(spec);
+    const { canvas } = sheet({ ...spec, check: false });
     if (view.width !== canvas.width || view.height !== canvas.height) { view.width = canvas.width; view.height = canvas.height; }
     vctx.drawImage(canvas, 0, 0);
     requestAnimationFrame(frame);

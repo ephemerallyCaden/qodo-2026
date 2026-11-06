@@ -1,23 +1,31 @@
 // One parameterised drone (an AI coding-agent session): a raymarched signed-distance body in
 // the astronaut's pipeline (../explorations/astronaut-lab/astronaut.js): the same banded
-// lighting, unified self-shadowing, contact occlusion and V2 screen eyes. Every shape, part
-// and size is a uniform from params.js and every colour a uniform from palette.js, so a
-// direction (or, in phase 2, a brand) is only a parameter set plus a palette; no shader is
-// recompiled.
-// Local units are world units (a K astronaut is 0.95 tall); the origin is the head centre,
+// lighting, unified self-shadowing, contact occlusion and V2 screen eyes (faces.js). It is
+// head-is-body: one rounded head with a dark face screen, on a thruster pack that sputters
+// chunky smoke puffs. Every shape, part, size and motion is a uniform from params.js and every
+// colour a uniform from palette.js, so a variant (or, in phase 2, a brand) is only a parameter
+// set plus a palette; no shader is recompiled.
+// Local units are world units (a K astronaut is 0.95 tall); the origin is the head centre and
 // the drone faces +z.
+// Everything moves on a loop: 6 s for the turntable and stills (bob, sway, puffs, blink), 12 s
+// for the motion loop (drift, banking, looking around, the working face). Both divide the
+// scene's 24 s loop. All of it is a pure function of t (no Math.random, no wall clock).
 import * as THREE from 'three';
 import { EYES_GLSL } from '../asset-viewer/faces.js';
 import { DEFAULTS } from './params.js';
 import { PALETTES } from './palette.js';
 
 export const LIGHT_DIR = new THREE.Vector3(-0.3, 0.55, 0.78).normalize(); // the viewer's top-left key
-export const LOOP = 6; // s: the turntable loop; divides the scene's 24 s loop
-// Loop-locked motion, as whole cycles per LOOP: bob 2, sway 1, rotor 12 turns, plume flicker 12, halo drift 4.
-export const MOTION = { bob: 2, sway: 1, rotor: 12, flicker: 12, halo: 4, antenna: 2 };
+export const LOOP = 6; // s: idle loop (turntable, stills)
+export const MOTION_LOOP = 12; // s: the full behaviour loop (drift, look around, work)
+export const PUFF_PERIOD = 1.5; // s: each smoke slot fires at most once per period
+// Whole cycles per 12 s motion loop. Bob, sway and puffs also divide the 6 s idle loop.
+export const CYCLES = { bob: 4, sway: 2, drift: 1, puffs: MOTION_LOOP / PUFF_PERIOD };
+export const MAX_PUFFS = 32;
+export const MAX_SPARKS = 6;
 
-const BMIN = [-0.64, -0.56, -0.64];
-const BMAX = [0.64, 0.6, 0.64];
+const BMIN = [-0.6, -0.62, -0.6];
+const BMAX = [0.6, 0.46, 0.6];
 
 const VERT = /* glsl */ `
   out vec3 vPosW;
@@ -31,34 +39,35 @@ const VERT = /* glsl */ `
 const FRAG = /* glsl */ `
   uniform mat4 uInvModel;
   uniform vec3 uLightLocal;
-  uniform vec3 uShell[4], uTrim[4], uAcc[4], uGlow[4], uScr[3];
+  uniform float uPixK;
+  uniform vec3 uShell[4], uTrim[4], uAcc[4], uGlow[4], uScr[3], uSmoke[3];
   uniform vec3 uHeadB; uniform vec4 uHeadK; // corner, round, taper, flat
-  uniform int uBody; uniform vec3 uBodyC, uBodyB; uniform vec4 uBodyK; uniform float uNeck;
-  uniform vec4 uScreen; // half-width share, half-height share, centre height, superellipse exponent
-  uniform float uBezel, uEyeScale; uniform vec2 uEyePhys; uniform int uDroneEyes;
-  uniform int uEars; uniform vec3 uEarC[2]; uniform float uEarR, uEarT;
+  uniform int uChin; uniform vec3 uChinC; uniform float uChinR;
+  uniform int uRim; uniform vec3 uRimC; uniform vec2 uRimR; uniform float uRimT;
+  uniform vec4 uScreen; // half-width tan, half-height tan, centre height, superellipse exponent
+  uniform float uBezel; uniform vec2 uEyePhys;
+  uniform vec4 uEyeXf; // eye offset x, y (eye-box px), scale, blink
+  uniform vec4 uWork; // code rows shown, lines done, typing progress of the newest line, row count
+  uniform int uEars; uniform vec3 uEarC[2]; uniform float uEarR, uEarT, uEarSweep;
   uniform int uTopper; uniform vec3 uGogC[2], uGogX[2], uGogY[2], uGogZ[2], uGogB; uniform float uGogR;
   uniform vec3 uCrestC, uCrestB;
   uniform int uAntN; uniform vec3 uAntA[2], uAntB[2]; uniform float uAntR, uAntTip;
-  uniform int uArms; uniform vec3 uArmS[2], uArmE[2], uArmW[2], uClaw[4]; uniform float uArmR;
-  uniform int uProp, uRotN; uniform vec3 uRotA[4], uRotE[4]; uniform float uRotR, uRotArmR, uSpin;
-  uniform vec3 uRingC; uniform float uRingR, uRingT;
-  uniform vec3 uLensC, uLensB; uniform int uHaloN; uniform vec3 uHaloC[2]; uniform float uHaloR[2];
-  uniform vec3 uNozA, uNozB; uniform vec2 uNozR; uniform vec3 uPlA, uPlB; uniform vec2 uPlR;
-  uniform int uAccent, uAccentOn; uniform float uAccentY, uAccentW;
+  uniform int uThrN; uniform vec3 uThrA[4], uThrB[4]; uniform vec2 uThrR;
+  uniform int uAccent; uniform float uAccentY, uAccentW;
+  uniform int uSmokeOn, uSmokeStyle, uPuffN; uniform vec3 uPuffC[${MAX_PUFFS}], uPuffV[${MAX_PUFFS}]; uniform float uPuffR[${MAX_PUFFS}], uPuffA[${MAX_PUFFS}];
+  uniform int uSparkN; uniform vec3 uSparkC[${MAX_SPARKS}]; uniform float uSparkS[${MAX_SPARKS}];
   ${EYES_GLSL}
   in vec3 vPosW;
 
   const vec3 BMIN = vec3(${BMIN.join(', ')});
   const vec3 BMAX = vec3(${BMAX.join(', ')});
-  const float HUB_H = 0.026; // rotor hub height above the arm end
-  const float DISC_T = 0.006; // rotor disc half-thickness
+  const float K = 0.006; // crisp blend: add-ons read as separate parts through shading alone
 
   float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
   float smax(float a, float b, float k) { return -smin(-a, -b, k); }
   float sdRoundBox(vec3 p, vec3 b, float r) { vec3 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r; }
   float sdEllipsoid(vec3 p, vec3 r) { float k0 = length(p / r); float k1 = length(p / (r * r)); return k0 * (k0 - 1.0) / k1; }
-  float sdCapsule(vec3 p, vec3 a, vec3 b, float r) { vec3 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)) - r; }
+  float sdCapsule(vec3 p, vec3 a, vec3 b, float r) { vec3 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / max(dot(ba, ba), 1e-8), 0.0, 1.0)) - r; }
   // Tapered capsule from a (radius r1) to b (radius r2), Inigo Quilez's exact round cone.
   float sdRoundCone(vec3 p, vec3 a, vec3 b, float r1, float r2) {
     vec3 ba = b - a; float l2 = dot(ba, ba); float rr = r1 - r2; float a2 = l2 - rr * rr; float il2 = 1.0 / l2;
@@ -69,14 +78,12 @@ const FRAG = /* glsl */ `
     if (sign(y) * a2 * y2 < k) return sqrt(x2 + y2) * il2 - r1;
     return (sqrt(x2 * a2 * il2) + y * rr) * il2 - r1;
   }
-  // A cylinder around axis 'ax' (unit), radius r, half-length h, edges rounded by e.
   float sdCyl(vec3 p, vec3 c, vec3 ax, float r, float h, float e) {
     vec3 q = p - c; float a = dot(q, ax); vec2 d = vec2(length(q - ax * a) - r + e, abs(a) - h + e);
     return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - e;
   }
-  float sdTorusY(vec3 p, vec3 c, float R, float r) { vec3 q = p - c; return length(vec2(length(q.xz) - R, q.y)) - r; }
 
-  // The shell family: a rounded box blended toward an ellipsoid, tapered toward the bottom,
+  // The head family: a rounded box blended toward an ellipsoid, tapered toward the bottom,
   // its bottom optionally cut flat (k = corner radius, round, taper, flat). Mirrored in JS.
   float sdShape(vec3 q, vec3 b, vec4 k) {
     float t = clamp((q.y + b.y) / (2.0 * b.y), 0.0, 1.0);
@@ -87,194 +94,173 @@ const FRAG = /* glsl */ `
     return d;
   }
 
-  float dHead(vec3 p) { return sdShape(p, uHeadB, uHeadK); }
-  float dBody(vec3 p) { return sdShape(p - uBodyC, uBodyB, uBodyK); }
+  float dHead(vec3 p) {
+    float d = sdShape(p, uHeadB, uHeadK);
+    if (uChin == 1) d = smin(d, length(p - uChinC) - uChinR, 0.03);
+    return d;
+  }
+  // An elliptical ring hugging the head (scaled torus; under-stepped by the march).
+  float dRim(vec3 p) { vec3 q = p - uRimC; float m = min(uRimR.x, uRimR.y); return length(vec2((length(q.xz / uRimR) - 1.0) * m, q.y)) - uRimT; }
   float dEar(vec3 p, int s) {
     if (uEars == 1) return sdCyl(p, uEarC[s], vec3(1.0, 0.0, 0.0), uEarR, uEarT, min(uEarT, uEarR) * 0.6);
-    vec3 q = p - uEarC[s]; // swept fin: tilted back
-    q.yz = mat2(0.8776, -0.4794, 0.4794, 0.8776) * q.yz;
-    return sdRoundBox(q, vec3(uEarT, uEarR, uEarR * 0.62), min(uEarT, uEarR) * 0.9);
+    vec3 q = p - uEarC[s]; // swept fin
+    float c = cos(uEarSweep), sn = sin(uEarSweep);
+    q.yz = mat2(c, -sn, sn, c) * q.yz;
+    return sdRoundBox(q, vec3(uEarT, uEarR, uEarR * 0.6), min(uEarT, uEarR) * 0.9);
   }
   vec3 gogLocal(vec3 p, int i) { vec3 q = p - uGogC[i]; return vec3(dot(q, uGogX[i]), dot(q, uGogY[i]), dot(q, uGogZ[i])); }
   float dGog(vec3 p, int i) { return sdRoundBox(gogLocal(p, i), uGogB, uGogR); }
   float dCrest(vec3 p) { return sdEllipsoid(p - uCrestC, uCrestB); }
   float dStalk(vec3 p, int i) { return sdCapsule(p, uAntA[i], uAntB[i], uAntR); }
   float dTip(vec3 p, int i) { return length(p - uAntB[i]) - uAntTip; }
-  float dArm(vec3 p, int s) {
-    if (uArms == 1) return smin(sdCapsule(p, uArmS[s], uArmE[s], uArmR), length(p - uArmE[s]) - uArmR * 1.4, 0.01);
-    float d = smin(sdCapsule(p, uArmS[s], uArmE[s], uArmR), sdCapsule(p, uArmE[s], uArmW[s], uArmR * 0.85), 0.012);
-    d = min(d, length(p - uArmW[s]) - uArmR * 1.05);
-    d = min(d, sdCapsule(p, uArmW[s], uClaw[s * 2], uArmR * 0.55));
-    return min(d, sdCapsule(p, uArmW[s], uClaw[s * 2 + 1], uArmR * 0.55));
-  }
-  float dRotArm(vec3 p, int i) { return sdCapsule(p, uRotA[i], uRotE[i], uRotArmR); }
-  float dHub(vec3 p, int i) { return sdCyl(p, uRotE[i] + vec3(0.0, HUB_H * 0.5, 0.0), vec3(0.0, 1.0, 0.0), uRotArmR * 1.35, HUB_H * 0.5, 0.006); }
-  float dDisc(vec3 p, int i) { return sdCyl(p, uRotE[i] + vec3(0.0, HUB_H, 0.0), vec3(0.0, 1.0, 0.0), uRotR, DISC_T, DISC_T); }
-  float dRing(vec3 p) { return sdTorusY(p, uRingC, uRingR, uRingT); }
-  float dRingCore(vec3 p) { return sdCyl(p, uRingC, vec3(0.0, 1.0, 0.0), uRingR - uRingT * 0.4, uRingT * 0.55, 0.004); }
-  float dLens(vec3 p) { return sdEllipsoid(p - uLensC, uLensB); }
-  float dHalo(vec3 p, int i) { return sdTorusY(p, uHaloC[i], uHaloR[i], 0.0105); }
-  float dNoz(vec3 p) { return sdRoundCone(p, uNozA, uNozB, uNozR.x, uNozR.y); }
-  float dPlume(vec3 p) { return sdRoundCone(p, uPlA, uPlB, uPlR.x, uPlR.y); }
+  float dThr(vec3 p, int i) { return sdRoundCone(p, uThrA[i], uThrB[i], uThrR.x, uThrR.y); }
 
-  // Shell parts blend softly (neck); every add-on part joins crisply (k = 0.006), so it reads
-  // as a separate part through shading alone (no outlines). Halos float free (listed parts).
-  float map(vec3 p) {
+  float mapBody(vec3 p) {
     float d = dHead(p);
-    if (uBody == 1) d = smin(d, dBody(p), uNeck);
-    const float K = 0.006;
+    if (uRim == 1) d = smin(d, dRim(p), K);
     for (int s = 0; s < 2; s++) {
       if (uEars > 0) d = smin(d, dEar(p, s), K);
       if (uTopper == 1) d = smin(d, dGog(p, s), K);
       if (s < uAntN) d = smin(smin(d, dStalk(p, s), K), dTip(p, s), K);
-      if (uArms > 0) d = smin(d, dArm(p, s), K);
     }
-    if (uTopper == 2) d = smin(d, dCrest(p), 0.012);
-    if (uProp == 0) {
-      for (int i = 0; i < 4; i++) {
-        if (i >= uRotN) break;
-        d = smin(d, dRotArm(p, i), K);
-        d = smin(d, dHub(p, i), K);
-        d = min(d, dDisc(p, i));
-      }
-    } else if (uProp == 1) {
-      d = smin(d, dRingCore(p), K);
-      d = smin(d, dRing(p), K);
-    } else if (uProp == 2) {
-      d = smin(d, dLens(p), K);
-      for (int i = 0; i < 2; i++) if (i < uHaloN) d = min(d, dHalo(p, i));
-    } else {
-      d = smin(d, dNoz(p), K);
-      d = smin(d, dPlume(p), K);
+    if (uTopper == 2) d = smin(d, dCrest(p), 0.01);
+    for (int i = 0; i < 4; i++) { if (i >= uThrN) break; d = smin(d, dThr(p, i), K); }
+    return d;
+  }
+  // Smoke: free-floating particles. Round puffs are three blended spheres (a chunky cloud),
+  // wisps are short capsules along their path, sputter dots single small spheres.
+  float dPuff(vec3 p, int i) {
+    vec3 c = uPuffC[i]; float r = uPuffR[i];
+    if (uSmokeStyle == 1) return sdCapsule(p, c, c + uPuffV[i], r);
+    if (uSmokeStyle == 2) return length(p - c) - r;
+    float d = length(p - c) - r;
+    d = smin(d, length(p - c - vec3(0.62, 0.3, 0.15) * r) - r * 0.72, r * 0.45);
+    return smin(d, length(p - c - vec3(-0.58, 0.2, -0.25) * r) - r * 0.78, r * 0.45);
+  }
+  float mapSmoke(vec3 p, out float age) {
+    float d = 1e9; age = 0.0;
+    if (uSmokeOn == 0) return d;
+    for (int i = 0; i < ${MAX_PUFFS}; i++) {
+      if (i >= uPuffN) break;
+      if (uPuffR[i] <= 0.0) continue;
+      if (length(p - uPuffC[i]) - uPuffR[i] * 2.2 - length(uPuffV[i]) > d) continue;
+      float e = dPuff(p, i);
+      if (e < d) { d = e; age = uPuffA[i]; }
     }
     return d;
   }
+  float mapAll(vec3 p) { float a; return min(mapBody(p), mapSmoke(p, a)); }
 
-  vec3 calcNormal(vec3 p) {
+  vec3 calcNormal(vec3 p, bool smoke) {
     const vec2 k = vec2(1.0, -1.0);
     const float e = 0.0015;
-    return normalize(k.xyy * map(p + k.xyy * e) + k.yyx * map(p + k.yyx * e) + k.yxy * map(p + k.yxy * e) + k.xxx * map(p + k.xxx * e));
+    if (smoke) {
+      float a;
+      return normalize(k.xyy * mapSmoke(p + k.xyy * e, a) + k.yyx * mapSmoke(p + k.yyx * e, a) + k.yxy * mapSmoke(p + k.yxy * e, a) + k.xxx * mapSmoke(p + k.xxx * e, a));
+    }
+    return normalize(k.xyy * mapBody(p + k.xyy * e) + k.yyx * mapBody(p + k.yyx * e) + k.yxy * mapBody(p + k.yxy * e) + k.xxx * mapBody(p + k.xxx * e));
   }
+  // Self-shadowing and contact occlusion come from the body only (smoke stays bright and soft).
   float shadow(vec3 ro, vec3 rd) {
     float t = 0.02;
     for (int i = 0; i < 48; i++) {
-      float h = map(ro + rd * t);
+      float h = mapBody(ro + rd * t);
       if (h < 0.002) return 0.0;
       t += max(h * 0.85, 0.008);
-      if (t > 1.4) break;
+      if (t > 1.2) break;
     }
     return 1.0;
   }
   float occlusion(vec3 p, vec3 n) {
     float o = 0.0;
     for (int i = 1; i <= 4; i++) {
-      float h = 0.02 * float(i);
-      o += (h - map(p + n * h)) / h;
+      float h = 0.018 * float(i);
+      o += (h - mapBody(p + n * h)) / h;
     }
     return clamp(1.0 - o * 0.3, 0.0, 1.0);
   }
 
   // Face screen, in yaw/pitch about the head centre (normalised head space), so it wraps any
-  // head shape. xy = screen coords (-1..1, y up), z = superellipse value (< 1 inside).
+  // head shape; past 45 degrees of yaw it wraps round the sides like a visor band.
+  // xy = screen coords (-1..1, y up), z = superellipse value (< 1 inside).
   vec3 screenQ(vec3 p) {
     vec3 n = p / uHeadB;
-    vec2 q = vec2(atan(n.x, n.z) / atan(uScreen.x), (atan(n.y, n.z) - atan(uScreen.z)) / atan(uScreen.y));
-    return vec3(q, n.z > 0.0 ? pow(abs(q.x), uScreen.w) + pow(abs(q.y), uScreen.w) : 9.0);
+    vec2 q = vec2(atan(n.x, n.z) / atan(uScreen.x), (atan(n.y, length(n.xz)) - atan(uScreen.z)) / atan(uScreen.y));
+    return vec3(q, pow(abs(q.x), uScreen.w) + pow(abs(q.y), uScreen.w));
   }
-  // Drone-only glyphs, in the V2 32 x 24 eye box (blink squashes them like the V2 set).
-  bool droneEyeLit(vec2 P) {
-    P.y = 12.0 + (P.y - 12.0) / max(uBlink, 0.05);
-    float d = 1e9;
-    if (uDroneEyes == 10) { // pills: two upright capsules
-      for (int k = -1; k <= 1; k += 2) d = min(d, sdSeg(P, vec2(16.0 + float(k) * 6.5, 9.6), vec2(16.0 + float(k) * 6.5, 14.4)) - 2.5);
-    } else if (uDroneEyes == 11) { // blocks: two rounded squares
-      for (int k = -1; k <= 1; k += 2) d = min(d, sdRRect(P, vec2(16.0 + float(k) * 7.0, 12.0), vec2(3.6), 1.2));
-    } else { // prompt >_
-      d = min(sdSeg(P, vec2(7.0, 7.5), vec2(12.5, 12.0)), sdSeg(P, vec2(12.5, 12.0), vec2(7.0, 16.5))) - 1.35;
-      d = min(d, sdSeg(P, vec2(16.5, 16.5), vec2(24.5, 16.5)) - 1.35);
-    }
-    return d < 0.0;
-  }
-  // q -> eye-box pixels: the 32 x 24 box fitted inside the screen at its real aspect, so wide
-  // or tall screens never stretch the glyphs.
+  // Screen coords -> the V2 32 x 24 eye box, fitted inside the screen at its real aspect.
   float eyeUnit() { return min(2.0 * uEyePhys.x / 32.0, 2.0 * uEyePhys.y / 24.0); }
-  bool eyesLit(vec2 q) {
-    vec2 P = vec2(16.0, 12.0) + vec2(q.x * uEyePhys.x, -q.y * uEyePhys.y) / (eyeUnit() * uEyeScale);
-    if (uDroneEyes >= 10) return droneEyeLit(P);
-    return eyeLit(P / vec2(32.0, 24.0));
+  vec2 boxP(vec2 q) { return vec2(16.0, 12.0) + vec2(q.x * uEyePhys.x, -q.y * uEyePhys.y) / eyeUnit(); }
+  bool eyesLit(vec2 P) {
+    vec2 E = vec2(16.0, 12.0) + (P - vec2(16.0, 12.0) - vec2(uEyeXf.x, -uEyeXf.y)) / uEyeXf.z;
+    return eyeLit(E / vec2(32.0, 24.0)); // uBlink (set to uEyeXf.w) squashes them
   }
-  // A small fixed L glint near the screen's top-left corner (moved in for round screens).
+  float hash1(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
+  float hash2(vec2 v) { return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453); }
+  // Working state: lines of code typed in at the bottom of the screen and scrolling up.
+  // Rows 3 px tall on a 4.5 px pitch; the newest row grows as it is typed.
+  bool codeLit(vec2 P) {
+    if (uWork.x <= 0.0) return false;
+    float base = 23.0 - 1.0; // bottom of the newest row
+    float i = floor((base - P.y) / 4.5);
+    if (i < 0.0 || i >= uWork.x) return false;
+    if (base - P.y - i * 4.5 >= 3.0) return false;
+    float n = uWork.y - i;
+    float indent = floor(hash1(n) * 3.0) * 3.0;
+    float len = 9.0 + floor(hash1(n + 31.0) * 12.0);
+    if (i == 0.0) len = floor(len * uWork.z);
+    float x = P.x - 6.0 - indent;
+    if (x < 0.0 || x >= len) return false;
+    return mod(x, 5.0) < 4.0 && hash2(vec2(n, floor(x / 5.0))) > 0.18;
+  }
   bool glint(vec2 q) {
     float u = eyeUnit();
     float o = mix(6.0, 3.0, clamp((uScreen.w - 2.0) / 4.0, 0.0, 1.0));
     vec2 G = vec2((q.x + 1.0) * uEyePhys.x, (1.0 - q.y) * uEyePhys.y) / u - o;
     return (G.y >= 0.0 && G.y < 1.0 && G.x >= 0.0 && G.x < 2.0) || (G.y >= 1.0 && G.y < 2.0 && G.x >= 0.0 && G.x < 1.0);
   }
-
-  // Accent on a shell part, in that part's normalised space.
-  bool accentAt(vec3 n, vec3 p, vec3 b) {
+  bool accentAt(vec3 p) {
+    vec3 n = p / uHeadB;
     if (uAccent == 1) return abs(n.y - uAccentY) < uAccentW;
     if (uAccent == 2) return n.z > 0.55 && abs(n.x) < uAccentW * 1.6 && abs(n.y - uAccentY) < uAccentW;
-    if (uAccent == 3) return abs(p.x) < uAccentW * b.x * 0.5 && n.y > -0.25;
+    if (uAccent == 3) return abs(p.x) < uAccentW * uHeadB.x * 0.5 && n.y > -0.25;
     return false;
   }
 
-  // Colour region: 0 shell, 1 trim, 2 accent, 3 screen, 4 glow (emissive), 5 rotor disc, 6 goggle lens.
+  // Colour region of a body point: 0 shell, 1 trim, 2 accent, 3 screen, 4 glow, 6 goggle lens.
   int region(vec3 p, out vec2 sq) {
     sq = vec2(0.0);
     float best = dHead(p), d;
-    int part = 0; // 0 head 1 body 2 trim 3 accent 4 glow 5 disc 6 goggle 7 ring
+    int part = 0; // 0 head 1 trim 2 accent 4 glow 6 goggle 7 nozzle
     int gi = 0;
-    if (uBody == 1) { d = dBody(p); if (d < best) { best = d; part = 1; } }
+    if (uRim == 1) { d = dRim(p); if (d < best) { best = d; part = 1; } }
     for (int s = 0; s < 2; s++) {
-      if (uEars > 0) { d = dEar(p, s); if (d < best) { best = d; part = 2; } }
+      if (uEars > 0) { d = dEar(p, s); if (d < best) { best = d; part = 1; } }
       if (uTopper == 1) { d = dGog(p, s); if (d < best) { best = d; part = 6; gi = s; } }
       if (s < uAntN) {
-        d = dStalk(p, s); if (d < best) { best = d; part = 2; }
+        d = dStalk(p, s); if (d < best) { best = d; part = 1; }
         d = dTip(p, s); if (d < best) { best = d; part = 4; }
       }
-      if (uArms > 0) { d = dArm(p, s); if (d < best) { best = d; part = 2; } }
     }
-    if (uTopper == 2) { d = dCrest(p); if (d < best) { best = d; part = 3; } }
-    if (uProp == 0) {
-      for (int i = 0; i < 4; i++) {
-        if (i >= uRotN) break;
-        d = min(dRotArm(p, i), dHub(p, i)); if (d < best) { best = d; part = 2; }
-        d = dDisc(p, i); if (d < best) { best = d; part = 5; gi = i; }
-      }
-    } else if (uProp == 1) {
-      d = dRing(p); if (d < best) { best = d; part = 7; }
-      d = dRingCore(p); if (d < best) { best = d; part = 4; }
-    } else if (uProp == 2) {
-      d = dLens(p); if (d < best) { best = d; part = 4; }
-      for (int i = 0; i < 2; i++) if (i < uHaloN) { d = dHalo(p, i); if (d < best) { best = d; part = 4; } }
-    } else {
-      d = dNoz(p); if (d < best) { best = d; part = 2; }
-      d = dPlume(p); if (d < best) { best = d; part = 4; }
-    }
+    if (uTopper == 2) { d = dCrest(p); if (d < best) { best = d; part = 2; } }
+    for (int i = 0; i < 4; i++) { if (i >= uThrN) break; d = dThr(p, i); if (d < best) { best = d; part = 7; gi = i; } }
     if (part == 0) {
       vec3 s = screenQ(p);
       sq = s.xy;
       if (s.z < 1.0) return 3;
       if (uBezel > 0.0 && s.z < pow(1.0 + uBezel, uScreen.w)) return 1;
-      return (uAccentOn == 0 && accentAt(p / uHeadB, p, uHeadB)) ? 2 : 0;
+      return accentAt(p) ? 2 : 0;
     }
-    if (part == 1) return (uAccentOn == 1 && accentAt((p - uBodyC) / uBodyB, p - uBodyC, uBodyB)) ? 2 : 0;
     if (part == 6) {
       vec3 g = gogLocal(p, gi);
-      if (g.z > 0.0 && sdRoundBox(vec3(g.xy, 0.0), vec3(uGogB.xy - 0.017, 1.0), max(uGogR - 0.017, 0.004)) < 0.0) { sq = g.xy / uGogB.xy; return 6; }
+      if (g.z > 0.0 && sdRoundBox(vec3(g.xy, 0.0), vec3(uGogB.xy - 0.014, 1.0), max(uGogR - 0.014, 0.004)) < 0.0) { sq = g.xy / uGogB.xy; return 6; }
       return 1;
     }
-    if (part == 5) { // spinning blades: two dark blade bands across the disc
-      vec3 q = p - uRotE[gi];
-      float a = atan(q.z, q.x) + uSpin * (gi == 1 || gi == 2 ? -1.0 : 1.0);
-      sq = vec2(abs(sin(a)), length(q.xz) / uRotR);
-      return 5;
+    if (part == 7) { // nozzle: the centre of the mouth glows
+      vec3 ax = normalize(uThrB[gi] - uThrA[gi]);
+      return dot(p - uThrB[gi], ax) > 0.45 * uThrR.y ? 4 : 1;
     }
-    if (part == 7) return p.y < uRingC.y - uRingT * 0.35 ? 4 : 1; // the ring's underside glows
-    if (part == 2) return 1;
-    if (part == 3) return 2;
-    return 4;
+    return part;
   }
 
   void main() {
@@ -285,39 +271,71 @@ const FRAG = /* glsl */ `
     float t = max(max(max(tmin.x, tmin.y), tmin.z), 0.0);
     float tf = min(min(tmax.x, tmax.y), tmax.z);
     bool hit = false;
-    for (int i = 0; i < 160; i++) {
-      float h = map(ro + rd * t);
+    for (int i = 0; i < 180; i++) {
+      float h = mapAll(ro + rd * t);
       if (h < 0.0010 * (1.0 + t)) { hit = true; break; }
       t += h * 0.85;
       if (t > tf) break;
     }
-    if (!hit) discard;
-    vec3 p = ro + rd * t;
-    vec3 n = calcNormal(p);
-    vec2 sq;
-    int r = region(p, sq);
     vec3 c;
-    if (r == 4) { // emissive: unlit, a bright face toward the camera and a mid rim
-      c = dot(n, -rd) > 0.6 ? uGlow[3] : uGlow[2];
-    } else {
+    bool have = false;
+    if (hit) {
+      vec3 p = ro + rd * t;
+      float age;
+      bool smoke = mapSmoke(p, age) < mapBody(p);
+      vec3 n = calcNormal(p, smoke);
       vec3 L = normalize(uLightLocal);
-      float lit = dot(n, L);
-      if (shadow(p + n * 0.006, L) < 0.5) lit = min(lit, 0.1) - 0.3;
-      lit -= (1.0 - occlusion(p, n)) * 0.6;
-      int b = lit > 0.7 ? 3 : lit > 0.32 ? 2 : lit > -0.12 ? 1 : 0;
-      if (r == 3 || r == 6) {
-        vec3 refl = reflect(rd, n);
-        c = (refl.y > 0.18 && b >= 2) ? uScr[1] : uScr[0];
-        if (r == 3) {
-          if (eyesLit(sq)) c = uGlow[3];
-          if (glint(sq)) c = uScr[2];
-        } else if (sq.x < -0.35 && sq.y > 0.2 && sq.y < 0.62 && sq.x > -0.7) c = uScr[2]; // goggle glint
-      } else if (r == 5) {
-        c = (sq.x < 0.3 && sq.y > 0.25) ? uTrim[max(b - 1, 0)] : uTrim[min(b + 1, 3)];
-      } else if (r == 2) c = uAcc[b];
-      else if (r == 1) c = uTrim[b];
-      else c = uShell[b];
+      if (smoke) {
+        float lit = dot(n, L);
+        int b = lit > 0.35 ? 2 : lit > -0.3 ? 1 : 0;
+        if (age > 0.62) b = max(b - 1, 0); // fading puffs step darker as they shrink
+        c = uSmoke[b];
+      } else {
+        vec2 sq;
+        int r = region(p, sq);
+        if (r == 4) c = dot(n, -rd) > 0.6 ? uGlow[3] : uGlow[2];
+        else {
+          float lit = dot(n, L);
+          if (shadow(p + n * 0.006, L) < 0.5) lit = min(lit, 0.1) - 0.3;
+          lit -= (1.0 - occlusion(p, n)) * 0.6;
+          int b = lit > 0.7 ? 3 : lit > 0.32 ? 2 : lit > -0.12 ? 1 : 0;
+          if (r == 3 || r == 6) {
+            vec3 refl = reflect(rd, n);
+            c = (refl.y > 0.18 && b >= 2) ? uScr[1] : uScr[0];
+            if (r == 3) {
+              vec2 P = boxP(sq);
+              if (codeLit(P)) c = uGlow[2];
+              if (eyesLit(P)) c = uGlow[3];
+              if (glint(sq)) c = uScr[2];
+            } else if (sq.x < -0.35 && sq.y > 0.2 && sq.y < 0.62 && sq.x > -0.7) c = uScr[2];
+          } else if (r == 2) c = uAcc[b];
+          else if (r == 1) c = uTrim[b];
+          else c = uShell[b];
+        }
+      }
+      have = true;
     }
+    // Sparkles: crisp 1-pixel dots and + crosses, drawn at their projected pixel (so they never
+    // blur), hidden behind anything nearer.
+    if (uSparkN > 0) {
+      mat3 toLocal = mat3(uInvModel);
+      vec3 R = normalize(toLocal * vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]));
+      vec3 Up = normalize(toLocal * vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]));
+      vec3 F = cross(Up, R);
+      for (int i = 0; i < ${MAX_SPARKS}; i++) {
+        if (i >= uSparkN) break;
+        if (uSparkS[i] < 0.5) continue;
+        vec3 v = uSparkC[i] - ro;
+        float along = dot(v, rd), depth = dot(v, F);
+        if (along <= 0.0 || (hit && t < along)) continue;
+        vec3 off = ro + rd * (depth / dot(rd, F)) - uSparkC[i]; // the ray's offset at the sparkle's depth
+        float pix = depth * uPixK; // world size of one pixel at that depth
+        float dx = abs(dot(off, R)) / pix, dy = abs(dot(off, Up)) / pix;
+        bool on = uSparkS[i] < 1.5 ? (dx < 0.5 && dy < 0.5) : ((dx < 0.5 && dy < 1.5) || (dy < 0.5 && dx < 1.5));
+        if (on) { c = uSmoke[2]; have = true; }
+      }
+    }
+    if (!have) discard;
     gl_FragColor = vec4(c, 1.0);
   }
 `;
@@ -327,12 +345,14 @@ const PROXY_GEO = new THREE.BoxGeometry(BMAX[0] - BMIN[0], BMAX[1] - BMIN[1], BM
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const colors = (hexes) => hexes.map((h) => new THREE.Color(h));
+const TAU = Math.PI * 2;
 
-// ---------------------------------------------------------------- JS ports of the shell field
-// Used to attach every add-on to the shell's real surface whatever its shape, so the drone
+// ---------------------------------------------------------------- JS port of the head field
+// Used to attach every add-on to the head's real surface whatever its shape, so the drone
 // stays one connected piece.
 const mix = (a, b, t) => a + (b - a) * t;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
+const smoothstep = (a, b, x) => { const u = clamp01((x - a) / (b - a)); return u * u * (3 - 2 * u); };
 const smin = (a, b, k) => { const h = clamp01(0.5 + (0.5 * (b - a)) / k); return mix(b, a, h) - k * h * (1 - h); };
 const smax = (a, b, k) => -smin(-a, -b, k);
 const roundBox = (x, y, z, b, r) => {
@@ -343,14 +363,13 @@ const ellipsoid = (x, y, z, r) => {
   const k0 = Math.hypot(x / r.x, y / r.y, z / r.z), k1 = Math.hypot(x / (r.x * r.x), y / (r.y * r.y), z / (r.z * r.z));
   return (k0 * (k0 - 1)) / k1;
 };
-/** The shell family's distance field (sdShape in the shader), centred at c. k = [corner, round, taper, flat]. */
-export function shapeField(c, b, k) {
+/** The head family's distance field (sdShape in the shader), centred at the origin. k = [corner, round, taper, flat]. */
+export function shapeField(b, k) {
   return (p) => {
-    const x = p.x - c.x, y = p.y - c.y, z = p.z - c.z;
-    const t = clamp01((y + b.y) / (2 * b.y));
+    const t = clamp01((p.y + b.y) / (2 * b.y));
     const s = 1 / mix(k[2], 1, t);
-    let d = mix(roundBox(x * s, y, z * s, b, k[0]), ellipsoid(x * s, y, z * s, b), k[1]) * Math.min(1, 1 / s);
-    if (k[3] > 0.001) d = smax(d, -b.y * (1 - k[3]) - y, 0.02);
+    let d = mix(roundBox(p.x * s, p.y, p.z * s, b, k[0]), ellipsoid(p.x * s, p.y, p.z * s, b), k[1]) * Math.min(1, 1 / s);
+    if (k[3] > 0.001) d = smax(d, -b.y * (1 - k[3]) - p.y, 0.02);
     return d;
   };
 }
@@ -364,6 +383,7 @@ export function exitAlong(field, from, dir, maxT = 0.8) {
   }
   return lo;
 }
+const surfacePoint = (field, dir) => dir.clone().normalize().multiplyScalar(exitAlong(field, V(), dir.clone().normalize()));
 const gradient = (field, p) => {
   const e = 1e-4;
   return V(
@@ -372,131 +392,172 @@ const gradient = (field, p) => {
     field(V(p.x, p.y, p.z + e)) - field(V(p.x, p.y, p.z - e)),
   ).normalize();
 };
-const shapeK = (P, pre) => [P[`${pre}Corner`] * Math.min(P[`${pre}W`], P[`${pre}H`], P[`${pre}D`]), P[`${pre}Round`], P[`${pre}Taper`], P.headFlat * (pre === 'head' ? 1 : 0)];
+
+// Thruster layouts: [root direction from the head centre, exhaust axis] per nozzle; s = spread.
+const LAYOUTS = [
+  (s) => [-1, 1].map((k) => [V(k * s, -1, -0.12), V(k * 0.18, -1, -0.3)]), // twin under-pods
+  () => [[V(0, -1, -0.08), V(0, -1, -0.25)]], // single under-jet
+  (s) => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, z]) => [V(x * s, -1, z * s), V(x * 0.4, -1, z * 0.4)]), // quad corner nozzles
+  () => [[V(0, -0.35, -1), V(0, -0.35, -1)]], // single rear jet
+  (s) => [-1, 1].map((k) => [V(k * s * 0.9, -0.3, -1), V(k * 0.12, -0.35, -1)]), // twin rear jets
+];
 
 /** The rest layout of a parameter set: every part's size and place, in drone units. */
 export function layout(P) {
-  const head = { c: V(), b: V(P.headW, P.headH, P.headD), k: shapeK(P, 'head') };
-  const headF = shapeField(head.c, head.b, head.k);
+  const head = { b: V(P.headW, P.headH, P.headD), k: [P.headCorner * Math.min(P.headW, P.headH, P.headD), P.headRound, P.headTaper, P.headFlat] };
+  const headF = shapeField(head.b, head.k);
   const headBottom = -exitAlong(headF, V(), V(0, -1, 0));
-  const body = { on: P.body === 1, b: V(P.bodyW, P.bodyH, P.bodyD), k: shapeK(P, 'body') };
-  body.c = V(0, headBottom - P.bodyH + P.bodySink, 0);
-  const bodyF = shapeField(body.c, body.b, body.k);
-  const core = body.on ? (p) => smin(headF(p), bodyF(p), P.neckBlend) : headF;
-  const S = body.on ? body : head; // the part arms and side rotors hang from
-  const bottom = -exitAlong(core, V(0, S.c.y, 0), V(0, -1, 0), 1) + S.c.y;
+  const chin = { on: P.chin === 1, c: V(0, headBottom - 0.15 * P.chinR, -0.1 * P.headD), r: P.chinR };
+  const core = chin.on ? (p) => smin(headF(p), p.clone().sub(chin.c).length() - chin.r, 0.03) : headF;
   const top = exitAlong(headF, V(), V(0, 1, 0));
+  const bottom = -exitAlong(core, V(), V(0, -1, 0), 1);
 
-  // Ears: on the head's real sides.
+  const rimY = P.rimY * P.headH;
+  const rim = { c: V(0, rimY, 0), r: [exitAlong(headF, V(0, rimY, 0), V(1, 0, 0)) + 0.35 * P.rimT, exitAlong(headF, V(0, rimY, 0), V(0, 0, 1)) + 0.35 * P.rimT] };
+
   const earY = P.earY * P.headH;
-  const earX = exitAlong(headF, V(0, earY, 0), V(1, 0, 0)) + (P.ears === 1 ? 0.15 : 0.35) * P.earT;
+  const earX = exitAlong(headF, V(0, earY, 0), V(1, 0, 0)) + (P.ears === 1 ? 0.15 : 0.3) * P.earT;
   const ears = [V(-earX, earY, 0), V(earX, earY, 0)];
 
-  // Goggles: two lenses on the head's upper front, tangent to the surface.
   const gog = [-1, 1].map((s) => {
-    const dir = V(s * P.gogX * P.headW, P.gogY * P.headH, 0.62 * P.headD).normalize();
-    const at = dir.clone().multiplyScalar(exitAlong(headF, V(), dir));
+    const at = surfacePoint(headF, V(s * P.gogX * P.headW, P.gogY * P.headH, 0.62 * P.headD));
     const z = gradient(headF, at);
     const x = V(0, 1, 0).cross(z).normalize();
     const y = z.clone().cross(x).normalize();
-    return { c: at.addScaledVector(z, 0.004), x, y, z };
+    return { c: at.addScaledVector(z, 0.003), x, y, z };
   });
-  const crest = { c: V(0, top - 0.012, -0.12 * P.headD), b: V(0.016, 0.05, 0.6 * P.headD) };
+  const crest = { c: V(0, top - 0.012, -0.12 * P.headD), b: V(0.014, P.crestH, 0.6 * P.headD) };
 
-  // Antenna base(s) on the head top; a top rotor pushes a single antenna back.
-  const topRotor = P.prop === 0 && P.rotorN === 0;
-  const antN = P.antenna;
   const ant = [];
-  for (let i = 0; i < antN; i++) {
-    const s = antN === 2 ? (i === 0 ? -1 : 1) : 0;
-    const back = topRotor ? 0.55 : 0.12;
-    const dir = V(s * 0.45 * P.headW, P.headH, -back * P.headD).normalize();
-    const base = dir.clone().multiplyScalar(exitAlong(headF, V(), dir) - 0.01);
-    const lean = antN === 2 ? V(s * Math.sin(P.antTilt), Math.cos(P.antTilt), -0.15) : V(0, Math.cos(P.antTilt), -Math.sin(P.antTilt));
+  for (let i = 0; i < P.antenna; i++) {
+    const s = P.antenna === 2 ? (i === 0 ? -1 : 1) : 0;
+    const base = surfacePoint(headF, V(s * 0.45 * P.headW, P.headH, -0.12 * P.headD)).multiplyScalar(0.97);
+    const lean = P.antenna === 2 ? V(s * Math.sin(P.antTilt), Math.cos(P.antTilt), -0.15) : V(0, Math.cos(P.antTilt), -Math.sin(P.antTilt));
     ant.push({ base, dir: lean.normalize() });
   }
 
-  // Arms: from the shell's real sides.
-  const armY = S.c.y + P.armY * S.b.y;
-  const shoulderX = exitAlong(core, V(0, armY, 0), V(1, 0, 0)) - 0.35 * P.armR;
+  const thr = LAYOUTS[P.thrusters](P.thrSpread).map(([root, axis]) => {
+    const ax = axis.clone().normalize();
+    const dir = V(root.x * P.headW, root.y * P.headH, root.z * P.headD).normalize();
+    const at = dir.clone().multiplyScalar(exitAlong(core, V(), dir, 1));
+    return { a: at.clone().addScaledVector(ax, -0.5 * P.thrL), b: at.clone().addScaledVector(ax, P.thrL), axis: ax };
+  });
+  const nozzleBottom = Math.min(...thr.map((n) => n.b.y - P.thrR * P.thrFlare));
 
-  // Rotors.
-  const rotors = [];
-  if (P.rotorN === 0) {
-    const a = V(0, top - 0.01, 0);
-    rotors.push({ a, e: V(0, top + 0.03 + 0.25 * P.rotorArm, 0) });
-  } else {
-    const ry = S.c.y + P.rotorY * S.b.y;
-    const dirs = P.rotorN === 1 ? [V(-1, 0, 0), V(1, 0, 0)] : [V(-1, 0, 1), V(1, 0, 1), V(1, 0, -1), V(-1, 0, -1)].map((d) => d.normalize());
-    for (const d of dirs) {
-      const from = V(0, ry, 0);
-      const a = from.clone().addScaledVector(d, exitAlong(core, from, d) - 0.02);
-      const lift = 0.35 * P.rotorArm; // arms angle up a little, so discs clear the shell
-      const e = a.clone().addScaledVector(d, P.rotorArm + Math.max(0, P.rotorR - 0.5 * P.rotorArm) * 0.6).add(V(0, lift, 0));
-      rotors.push({ a, e });
-    }
+  return { P, head, headF, core, chin, top, bottom: Math.min(bottom, nozzleBottom), rim, ears, gog, crest, ant, thr };
+}
+
+// ---------------------------------------------------------------- motion
+const hash = (...n) => { const x = Math.sin(n.reduce((a, v, i) => a + v * [12.9898, 78.233, 37.719, 4.581][i % 4], 0) + 4.1414) * 43758.5453; return x - Math.floor(x); };
+const pmod = (a, m) => ((a % m) + m) % m;
+
+/**
+ * The look-around and work schedule over the 12 s motion loop. glance: -1 (its left) .. 1;
+ * work: 0..1, the working face (eyes up and narrowed, code streaming); blink: 1 open .. 0.12.
+ */
+export function behaviour(t, motion) {
+  const blinkAt = (k, at) => { const d = k - at; return d > 0 && d < 0.18 ? 1 - Math.sin((d / 0.18) * Math.PI) * 0.88 : 1; };
+  if (!motion) {
+    const k = pmod(t, LOOP);
+    return { glance: 0, work: 0, workT: 0, blink: blinkAt(k, 1.2) };
   }
-
-  // Under-shell hover parts.
-  const ring = { c: V(0, bottom - 0.25 * P.ringT, 0) };
-  const lens = { c: V(0, bottom + 0.2 * P.glowR * 0.45, 0), b: V(P.glowR, P.glowR * 0.45, P.glowR) };
-  const noz = { a: V(0, bottom + 0.015, 0), b: V(0, bottom - 0.035, 0), r: [P.glowR, P.glowR * 0.78] };
-
-  return { P, head, body, headF, core, top, bottom, ears, gog, crest, ant, armY, shoulderX, rotors, ring, lens, noz, S };
+  const k = pmod(t, MOTION_LOOP);
+  const ss = (a, b) => smoothstep(a, b, k);
+  const glance = -ss(1.6, 2.0) + 2 * ss(3.0, 3.35) - ss(4.4, 4.8) + 0.6 * ss(10.9, 11.2) - 0.6 * ss(11.6, 11.95);
+  const work = ss(5.6, 6.0) * (1 - ss(10.2, 10.6));
+  return { glance, work, workT: Math.max(0, k - 5.8), blink: Math.min(blinkAt(k, 1.0), blinkAt(k, 5.2), blinkAt(k, 10.7)) };
 }
 
-const TAU = Math.PI * 2;
-const W = TAU / LOOP;
+const W12 = TAU / MOTION_LOOP;
+/** The body's place and attitude at time t, in the root frame: drift, bob, banking and head turn. */
+export function bodyAt(P, t, motion) {
+  const D = motion ? P.drift : 0;
+  const x = D * Math.sin(W12 * t * CYCLES.drift), z = 0.45 * D * Math.sin(2 * W12 * t * CYCLES.drift);
+  const vx = Math.cos(W12 * t), vz = Math.cos(2 * W12 * t); // velocity, normalised to its peak
+  const ax = Math.sin(W12 * t), az = Math.sin(2 * W12 * t); // acceleration, normalised
+  const bob = P.bobAmp * Math.sin(W12 * t * CYCLES.bob);
+  const sway = Math.sin(W12 * t * CYCLES.sway);
+  const roll = (motion ? -P.bank * vx : 0) + 0.05 * sway;
+  const pitch = (motion ? 0.6 * P.bank * vz : 0) + 0.04 * Math.sin(W12 * t * CYCLES.sway + 1.3);
+  const yaw = P.lookYaw * behaviour(t, motion).glance;
+  const m = new THREE.Matrix4().compose(V(x, bob, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, roll, 'YXZ')), V(P.size, P.size, P.size));
+  // Thrust effort: more when it accelerates or banks hard, and on each bob's upstroke.
+  const effort = (motion && D > 0 ? 0.55 * Math.hypot(ax, 0.6 * az) + 0.3 * Math.abs(vx) * (P.bank / 0.3) : 0) + 0.5 * Math.max(0, Math.cos(W12 * t * CYCLES.bob));
+  return { m, effort };
+}
 
-/** Everything that moves, at time t (s), loop-locked to LOOP. Returns the pose-dependent parts. */
-export function pose(Lay, t) {
+const PUFF_BASE = [0.028, 0.012, 0.013]; // particle radius by smoke style
+const SLOTS = { 1: 16, 2: 12, 4: 8 };
+
+/** Smoke particles and sparkles at time t, in the drone's body frame. Pure and loop-locked. */
+export function smokeAt(Lay, t, motion) {
   const { P } = Lay;
-  const bobPhase = t * W * MOTION.bob;
-  // Antenna: a lagging sway against the bob (secondary motion).
-  const sway = 0.14 * Math.sin(t * W * MOTION.antenna - 1.0);
-  const ant = Lay.ant.map(({ base, dir }) => {
-    const d = dir.clone().applyAxisAngle(V(1, 0, 0), -sway).normalize();
-    return { a: base, b: base.clone().addScaledVector(d, P.antL) };
+  const loop = motion ? MOTION_LOOP : LOOP;
+  const cyclesPerLoop = loop / PUFF_PERIOD;
+  const nThr = Lay.thr.length;
+  const S = Math.min(SLOTS[nThr], Math.floor(MAX_PUFFS / nThr));
+  const now = bodyAt(P, t, motion).m.clone().invert();
+  const puffs = [];
+  Lay.thr.forEach((n, j) => {
+    for (let k = 0; k < S; k++) {
+      const phase = ((k + 0.7 * hash(j, k, 1)) / S) * PUFF_PERIOD;
+      const cycle = Math.floor((t - phase) / PUFF_PERIOD);
+      const born = phase + cycle * PUFF_PERIOD;
+      const age = t - born;
+      const cm = pmod(cycle, cyclesPerLoop);
+      const life = PUFF_PERIOD * (0.5 + 0.42 * hash(j, k, cm, 2));
+      const at = bodyAt(P, born, motion);
+      const busy = clamp01(P.puffRate * (0.35 + 0.75 * at.effort));
+      if (age >= life || hash(j, k, cm, 3) > busy) { puffs.push(null); continue; }
+      const u = age / life;
+      // Born at the nozzle mouth (where the nozzle was at birth), blown out along its axis,
+      // slowing, then rising and drifting on a little hashed breeze; it stays put in the world
+      // while the drone flies on, so trails follow the motion.
+      const mouth = n.b.clone().applyMatrix4(at.m);
+      const axis = n.axis.clone().transformDirection(at.m);
+      const v0 = 0.3 * (0.7 + 0.6 * hash(j, k, cm, 4));
+      const tau = 0.22;
+      const out = v0 * tau * (1 - Math.exp(-age / tau));
+      const pos = mouth.addScaledVector(axis, out + 0.6 * P.thrR)
+        .add(V((hash(j, k, cm, 5) - 0.5) * 0.08 * age, 0.05 * age * age - 0.01 * age, (hash(j, k, cm, 6) - 0.5) * 0.08 * age));
+      const grow = smoothstep(0, 0.12, u) * (1 - smoothstep(0.6, 1, u));
+      const r = PUFF_BASE[P.smoke] * P.puffSize * (0.75 + 0.5 * hash(j, k, cm, 7)) * (0.7 + 0.7 * u) * grow;
+      const trailLen = (0.022 + 0.025 * (1 - u)) * P.puffSize; // wisps: a short streak back toward the nozzle
+      puffs.push({ c: pos.applyMatrix4(now), v: axis.clone().negate().transformDirection(now).multiplyScalar(trailLen), r, u, key: j * 100 + k });
+    }
   });
-  // Arms: hang out-down, a little forward, breathing with the bob.
-  const arms = [-1, 1].map((s) => {
-    const lift = 0.1 * Math.sin(bobPhase + 0.7 + s * 0.4);
-    const splay = P.armSplay + lift;
-    const dir = V(s * Math.sin(splay), -Math.cos(splay), 0.35).normalize();
-    const S = V(s * Lay.shoulderX, Lay.armY, 0);
-    if (P.arms === 1) return { s: S, e: S.clone().addScaledVector(dir, P.armLen) };
-    const E = S.clone().addScaledVector(dir, P.armLen * 0.5);
-    const fore = V(s * Math.sin(splay * 0.4), -Math.cos(splay * 0.4) * 0.6, 0.8 + 0.15 * lift).normalize();
-    const Wr = E.clone().addScaledVector(fore, P.armLen * 0.5);
-    const side = V(s, 0, 0).cross(fore).normalize(); // claws open up and down
-    const open = 0.45 + 0.15 * Math.sin(bobPhase);
-    const claw = [1, -1].map((k) => Wr.clone().addScaledVector(fore.clone().applyAxisAngle(side.clone().multiplyScalar(k), open).normalize(), P.armR * 2.2));
-    return { s: S, e: E, w: Wr, claw };
-  });
-  const flick = 1 + 0.12 * Math.sin(t * W * MOTION.flicker);
-  const plume = { a: Lay.noz.b.clone().add(V(0, -0.004, 0)), b: Lay.noz.b.clone().add(V(0, -P.plumeL * flick, 0)), r: [P.glowR * 0.62, 0.014] };
-  const lensBottom = Lay.lens.c.y - Lay.lens.b.y;
-  // Halos breathe together (radius) and sink a touch, keeping >= 2 px of space between parts.
-  const breathe = 0.5 + 0.5 * Math.sin(t * W * MOTION.halo);
-  const halos = [0, 1].map((i) => ({ c: V(0, lensBottom - 0.065 - i * 0.1 - 0.008 * breathe, 0), r: P.glowR * (1.25 - 0.3 * i) * (1 + 0.08 * breathe) }));
-  return { bob: Math.sin(bobPhase) * P.bobAmp, tilt: Math.sin(t * W * MOTION.sway), spin: t * W * MOTION.rotor, ant, arms, plume, halos };
+  // Sparkles: their own little bursts out of the nozzles, each a dot, then a + cross, then a
+  // dot, then gone (crisp pixels in the shader, never blurred).
+  const live = puffs.filter(Boolean);
+  const sparks = [];
+  for (let i = 0; i < P.sparkles; i++) {
+    const phase = ((i + 0.6 * hash(i, 11)) / Math.max(1, P.sparkles)) * PUFF_PERIOD;
+    const cycle = Math.floor((t - phase) / PUFF_PERIOD);
+    const born = phase + cycle * PUFF_PERIOD;
+    const cm = pmod(cycle, cyclesPerLoop);
+    const age = t - born, life = 0.75;
+    if (age >= life || hash(i, cm, 12) > 0.85) { sparks.push({ c: V(), s: 0 }); continue; }
+    const n = Lay.thr[Math.floor(hash(i, cm, 13) * nThr) % nThr];
+    const at = bodyAt(P, born, motion).m;
+    const axis = n.axis.clone().transformDirection(at);
+    const side = V(hash(i, cm, 14) - 0.5, 0.3 + 0.4 * hash(i, cm, 15), hash(i, cm, 16) - 0.5).multiplyScalar(0.16);
+    const pos = n.b.clone().applyMatrix4(at).addScaledVector(axis, 0.03 + 0.12 * Math.sqrt(age)).addScaledVector(side, age);
+    const u = age / life;
+    sparks.push({ c: pos.applyMatrix4(now), s: u < 0.2 || u > 0.7 ? 1 : 2 });
+  }
+  return { puffs: live, sparks };
 }
 
-/** Pieces the silhouette is meant to have: 1, plus each free-floating anti-grav halo. */
-export const intendedPieces = (P) => 1 + (P.prop === 2 ? P.halos : 0);
+/** Pieces the silhouette is meant to have with smoke and sparkles off: always 1. */
+export const intendedPieces = () => 1;
 
-/** Top and bottom of the drone at rest (drone units), for framing. */
+/** Top and bottom of the drone at rest (world units from the head centre, excluding smoke), for framing and size. */
 export function extents(Lay) {
   const { P } = Lay;
-  let top = Lay.top, bottom = Lay.bottom;
-  const ps = pose(Lay, 0);
-  for (const a of ps.ant) top = Math.max(top, a.b.y + P.antTip);
+  let top = Lay.top;
+  for (const a of Lay.ant) top = Math.max(top, a.base.y + a.dir.y * P.antL + P.antTip);
   if (P.topper === 2) top = Math.max(top, Lay.crest.c.y + Lay.crest.b.y);
-  if (P.prop === 0) for (const r of Lay.rotors) top = Math.max(top, r.e.y + 0.035);
-  if (P.prop === 1) bottom = Math.min(bottom, Lay.ring.c.y - P.ringT);
-  if (P.prop === 2) bottom = Math.min(bottom, P.halos ? ps.halos[P.halos - 1].c.y - 0.02 : Lay.lens.c.y - Lay.lens.b.y);
-  if (P.prop === 3) bottom = Math.min(bottom, ps.plume.b.y - 0.02);
-  return { top, bottom };
+  return { top: top * P.size, bottom: Lay.bottom * P.size };
 }
 
 /** A parameterised drone. setParams() takes any subset of params.js keys; setPalette() a palette.js entry. */
@@ -506,22 +567,23 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
   root.add(body);
   const vecs = (n) => Array.from({ length: n }, () => V());
   const U = {
-    uInvModel: { value: new THREE.Matrix4() }, uLightLocal: { value: V() },
+    uInvModel: { value: new THREE.Matrix4() }, uLightLocal: { value: V() }, uPixK: { value: 0.0035 },
     uShell: { value: colors(palette.shell) }, uTrim: { value: colors(palette.trim) }, uAcc: { value: colors(palette.accent) },
-    uGlow: { value: colors(palette.glow) }, uScr: { value: colors(palette.screen) },
+    uGlow: { value: colors(palette.glow) }, uScr: { value: colors(palette.screen) }, uSmoke: { value: colors(palette.smoke) },
     uHeadB: { value: V() }, uHeadK: { value: new THREE.Vector4() },
-    uBody: { value: 1 }, uBodyC: { value: V() }, uBodyB: { value: V() }, uBodyK: { value: new THREE.Vector4() }, uNeck: { value: 0.03 },
-    uScreen: { value: new THREE.Vector4() }, uBezel: { value: 0 }, uEyeScale: { value: 1 }, uEyePhys: { value: new THREE.Vector2() }, uDroneEyes: { value: 0 },
-    uEars: { value: 0 }, uEarC: { value: vecs(2) }, uEarR: { value: 0 }, uEarT: { value: 0 },
+    uChin: { value: 0 }, uChinC: { value: V() }, uChinR: { value: 0 },
+    uRim: { value: 0 }, uRimC: { value: V() }, uRimR: { value: new THREE.Vector2(1, 1) }, uRimT: { value: 0 },
+    uScreen: { value: new THREE.Vector4() }, uBezel: { value: 0 }, uEyePhys: { value: new THREE.Vector2() },
+    uEyeXf: { value: new THREE.Vector4(0, 0, 1, 1) }, uWork: { value: new THREE.Vector4() },
+    uEars: { value: 0 }, uEarC: { value: vecs(2) }, uEarR: { value: 0 }, uEarT: { value: 0 }, uEarSweep: { value: 0 },
     uTopper: { value: 0 }, uGogC: { value: vecs(2) }, uGogX: { value: vecs(2) }, uGogY: { value: vecs(2) }, uGogZ: { value: vecs(2) }, uGogB: { value: V() }, uGogR: { value: 0 },
-    uCrestC: { value: V() }, uCrestB: { value: V() },
-    uAntN: { value: 0 }, uAntA: { value: vecs(2) }, uAntB: { value: vecs(2) }, uAntR: { value: 0.0115 }, uAntTip: { value: 0 },
-    uArms: { value: 0 }, uArmS: { value: vecs(2) }, uArmE: { value: vecs(2) }, uArmW: { value: vecs(2) }, uClaw: { value: vecs(4) }, uArmR: { value: 0 },
-    uProp: { value: 0 }, uRotN: { value: 0 }, uRotA: { value: vecs(4) }, uRotE: { value: vecs(4) }, uRotR: { value: 0 }, uRotArmR: { value: 0.016 }, uSpin: { value: 0 },
-    uRingC: { value: V() }, uRingR: { value: 0 }, uRingT: { value: 0 },
-    uLensC: { value: V() }, uLensB: { value: V(1, 1, 1) }, uHaloN: { value: 0 }, uHaloC: { value: vecs(2) }, uHaloR: { value: [0.05, 0.05] },
-    uNozA: { value: V() }, uNozB: { value: V(0, -1, 0) }, uNozR: { value: new THREE.Vector2() }, uPlA: { value: V() }, uPlB: { value: V(0, -1, 0) }, uPlR: { value: new THREE.Vector2() },
-    uAccent: { value: 0 }, uAccentOn: { value: 0 }, uAccentY: { value: 0 }, uAccentW: { value: 0 },
+    uCrestC: { value: V() }, uCrestB: { value: V(1, 1, 1) },
+    uAntN: { value: 0 }, uAntA: { value: vecs(2) }, uAntB: { value: vecs(2) }, uAntR: { value: 0.0105 }, uAntTip: { value: 0 },
+    uThrN: { value: 0 }, uThrA: { value: vecs(4) }, uThrB: { value: vecs(4).map((v) => v.set(0, -1, 0)) }, uThrR: { value: new THREE.Vector2() },
+    uAccent: { value: 0 }, uAccentY: { value: 0 }, uAccentW: { value: 0 },
+    uSmokeOn: { value: 1 }, uSmokeStyle: { value: 0 }, uPuffN: { value: 0 }, uPuffC: { value: vecs(MAX_PUFFS) }, uPuffV: { value: vecs(MAX_PUFFS) },
+    uPuffR: { value: new Array(MAX_PUFFS).fill(0) }, uPuffA: { value: new Array(MAX_PUFFS).fill(0) },
+    uSparkN: { value: 0 }, uSparkC: { value: vecs(MAX_SPARKS) }, uSparkS: { value: new Array(MAX_SPARKS).fill(0) },
     uEyes: { value: 0 }, uBlink: { value: 1 },
   };
   const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: U, side: THREE.BackSide });
@@ -535,46 +597,55 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     const P = params;
     Lay = layout(P);
     U.uHeadB.value.copy(Lay.head.b); U.uHeadK.value.set(...Lay.head.k);
-    U.uBody.value = P.body; U.uBodyC.value.copy(Lay.body.c); U.uBodyB.value.copy(Lay.body.b); U.uBodyK.value.set(...Lay.body.k); U.uNeck.value = P.neckBlend;
-    U.uScreen.value.set(P.screenW, P.screenH, P.screenY, P.screenRound); U.uBezel.value = P.bezel; U.uEyeScale.value = P.eyeScale;
-    U.uEyePhys.value.set(P.headW * mix(P.screenW, Math.sin(Math.atan(P.screenW)), P.headRound), P.headH * mix(P.screenH, Math.sin(Math.atan(P.screenH)), P.headRound));
-    U.uDroneEyes.value = P.eyes; U.uEyes.value = Math.min(P.eyes, 9);
-    U.uEars.value = P.ears; Lay.ears.forEach((e, i) => U.uEarC.value[i].copy(e)); U.uEarR.value = P.earR; U.uEarT.value = P.earT;
+    U.uChin.value = P.chin; U.uChinC.value.copy(Lay.chin.c); U.uChinR.value = P.chinR;
+    U.uRim.value = P.rim; U.uRimC.value.copy(Lay.rim.c); U.uRimR.value.set(...Lay.rim.r); U.uRimT.value = P.rimT;
+    U.uScreen.value.set(P.screenW, P.screenH, P.screenY, P.screenRound); U.uBezel.value = P.bezel;
+    // The screen's real half-size, so the eye box keeps its aspect on any screen.
+    U.uEyePhys.value.set(Math.min(P.headW * mix(P.screenW, Math.sin(Math.atan(P.screenW)), P.headRound), P.headW * 0.95), P.headH * mix(P.screenH, Math.sin(Math.atan(P.screenH)), P.headRound));
+    U.uEyes.value = P.eyes;
+    U.uEars.value = P.ears; Lay.ears.forEach((e, i) => U.uEarC.value[i].copy(e)); U.uEarR.value = P.earR; U.uEarT.value = P.earT; U.uEarSweep.value = P.earSweep;
     U.uTopper.value = P.topper;
     Lay.gog.forEach((g, i) => { U.uGogC.value[i].copy(g.c); U.uGogX.value[i].copy(g.x); U.uGogY.value[i].copy(g.y); U.uGogZ.value[i].copy(g.z); });
-    U.uGogB.value.set(P.gogW, P.gogH, 0.014); U.uGogR.value = 0.6 * Math.min(P.gogW, P.gogH);
+    U.uGogB.value.set(P.gogW, P.gogH, 0.012); U.uGogR.value = 0.6 * Math.min(P.gogW, P.gogH);
     U.uCrestC.value.copy(Lay.crest.c); U.uCrestB.value.copy(Lay.crest.b);
     U.uAntN.value = P.antenna; U.uAntTip.value = P.antTip;
-    U.uArms.value = P.arms; U.uArmR.value = P.armR;
-    U.uProp.value = P.prop; U.uRotN.value = P.prop === 0 ? Lay.rotors.length : 0; U.uRotR.value = P.rotorR;
-    Lay.rotors.forEach((r, i) => { U.uRotA.value[i].copy(r.a); U.uRotE.value[i].copy(r.e); });
-    U.uRingC.value.copy(Lay.ring.c); U.uRingR.value = P.ringR; U.uRingT.value = P.ringT;
-    U.uLensC.value.copy(Lay.lens.c); U.uLensB.value.copy(Lay.lens.b); U.uHaloN.value = P.prop === 2 ? P.halos : 0;
-    U.uNozA.value.copy(Lay.noz.a); U.uNozB.value.copy(Lay.noz.b); U.uNozR.value.set(...Lay.noz.r);
-    U.uAccent.value = P.accent; U.uAccentOn.value = P.body === 1 ? P.accentOn : 0; U.uAccentY.value = P.accentY; U.uAccentW.value = P.accentW;
+    Lay.ant.forEach((a, i) => { U.uAntA.value[i].copy(a.base); U.uAntB.value[i].copy(a.base).addScaledVector(a.dir, P.antL); });
+    U.uThrN.value = Lay.thr.length; Lay.thr.forEach((n, i) => { U.uThrA.value[i].copy(n.a); U.uThrB.value[i].copy(n.b); });
+    U.uThrR.value.set(P.thrR, P.thrR * P.thrFlare);
+    U.uAccent.value = P.accent; U.uAccentY.value = P.accentY; U.uAccentW.value = P.accentW;
+    U.uSmokeStyle.value = P.smoke;
   }
   setParams({});
 
   function setPalette(pal) {
-    for (const [u, k] of [['uShell', 'shell'], ['uTrim', 'trim'], ['uAcc', 'accent'], ['uGlow', 'glow'], ['uScr', 'screen']]) U[u].value.forEach((c, i) => c.set(pal[k][i]));
+    for (const [u, k] of [['uShell', 'shell'], ['uTrim', 'trim'], ['uAcc', 'accent'], ['uGlow', 'glow'], ['uScr', 'screen'], ['uSmoke', 'smoke']]) U[u].value.forEach((c, i) => c.set(pal[k][i]));
   }
 
   const q = new THREE.Quaternion();
-  /** Pose at time t; yaw turns the drone; sway 0 drops the idle tilt (lineup, turntable). */
-  function update(t, { yaw = 0, sway = 1, blink = 1 } = {}) {
-    const ps = pose(Lay, t);
-    ps.ant.forEach((a, i) => { U.uAntA.value[i].copy(a.a); U.uAntB.value[i].copy(a.b); });
-    ps.arms.forEach((a, i) => {
-      U.uArmS.value[i].copy(a.s); U.uArmE.value[i].copy(a.e);
-      if (a.w) { U.uArmW.value[i].copy(a.w); U.uClaw.value[i * 2].copy(a.claw[0]); U.uClaw.value[i * 2 + 1].copy(a.claw[1]); }
-    });
-    U.uPlA.value.copy(ps.plume.a); U.uPlB.value.copy(ps.plume.b); U.uPlR.value.set(...ps.plume.r);
-    ps.halos.forEach((h, i) => { U.uHaloC.value[i].copy(h.c); U.uHaloR.value[i] = h.r; });
-    U.uSpin.value = ps.spin;
-    body.position.y = ps.bob;
-    body.rotation.set(0.05 * sway * ps.tilt, 0, 0.06 * sway * Math.sin(t * W * MOTION.sway + 1.3));
+  /**
+   * Pose at time t. yaw turns the whole view (turntable); motion runs the 12 s behaviour loop
+   * (drift, banking, looking around, working); smoke false hides smoke and sparkles; pixK is
+   * one pixel's world size per unit of depth, 2 tan(fov / 2) / height (for crisp sparkles).
+   */
+  function update(t, { yaw = 0, motion = false, smoke = true, blink = null, pixK = 0.0035 } = {}) {
+    const P = params;
+    const B = bodyAt(P, t, motion);
+    B.m.decompose(body.position, body.quaternion, body.scale);
     root.rotation.y = yaw;
-    U.uBlink.value = blink;
+    const beh = behaviour(t, motion);
+    const w = beh.work;
+    U.uBlink.value = Math.min(blink ?? beh.blink, 1 - 0.4 * w);
+    const lift = mix(3.5, 6, clamp01((P.screenRound - 2) / 3)); // round screens have less room up top
+    U.uEyeXf.value.set(P.glance * beh.glance, P.gaze * (1 - w) + lift * w, P.eyeScale * (1 - 0.35 * w), U.uBlink.value);
+    const lines = beh.workT * P.codeRate;
+    U.uWork.value.set(w > 0.5 ? Math.min(P.codeRows, Math.floor(lines) + 1) : 0, Math.floor(lines), lines - Math.floor(lines), P.codeRows);
+    U.uSmokeOn.value = smoke ? 1 : 0;
+    const { puffs, sparks } = smokeAt(Lay, t, motion);
+    U.uPuffN.value = smoke ? puffs.length : 0;
+    puffs.forEach((p, i) => { U.uPuffC.value[i].copy(p.c); U.uPuffV.value[i].copy(p.v); U.uPuffR.value[i] = p.r; U.uPuffA.value[i] = p.u; });
+    U.uSparkN.value = smoke ? sparks.length : 0;
+    sparks.forEach((s, i) => { U.uSparkC.value[i].copy(s.c); U.uSparkS.value[i] = s.s; });
+    U.uPixK.value = pixK;
     root.updateMatrixWorld(true);
     U.uInvModel.value.copy(proxy.matrixWorld).invert();
     proxy.matrixWorld.decompose(V(), q, V());

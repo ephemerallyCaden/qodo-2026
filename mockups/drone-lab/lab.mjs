@@ -1,6 +1,6 @@
 // Regenerates every lab output in out/ with headless Chromium (SwiftShader). The page is served
 // through Playwright request interception, so no socket is opened and nothing touches the network.
-// Usage: node lab.mjs [lineup] [crew] [closeups] [turntable] [params]   (no names = all)
+// Usage: node lab.mjs [lineup] [crew] [closeups] [turntable] [motion] [params]   (no names = all)
 // Every rendered tile is checked: only the drone's palette + space (+ BLK 36 crew in the crew
 // shot), so no antialiasing or dithering; the intended number of silhouette pieces (1, plus any
 // free-floating halos); not empty; not clipped by the tile edge. Each turntable's frame one loop
@@ -16,7 +16,7 @@ import { CREW, SPACE } from '../explorations/astronaut-lab/crew.js';
 import { PALETTES, SLOTS, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS, showValue } from './params.js';
 import { VARIANTS, RECOMMENDED } from './variants.js';
-import { LOOP, MOTION } from './drone.js';
+import { LOOP, MOTION_LOOP, CYCLES } from './drone.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
@@ -38,8 +38,9 @@ for (const [key, pal] of Object.entries(PALETTES)) {
     if (pal[slot]?.length !== n || !pal[slot].every((h) => /^#[0-9a-f]{6}$/.test(h))) throw new Error(`palette ${key}.${slot} needs ${n} hex colours`);
   }
 }
-// Loop lock: every motion completes whole cycles per loop.
-for (const [k, n] of Object.entries(MOTION)) if (!Number.isInteger(n) || n < 1) throw new Error(`MOTION.${k} must be a whole number of cycles per ${LOOP} s`);
+// Loop lock: every motion completes whole cycles per 12 s, and both loops divide the scene's 24 s.
+for (const [k, n] of Object.entries(CYCLES)) if (!Number.isInteger(n) || n < 1) throw new Error(`CYCLES.${k} must be a whole number per ${MOTION_LOOP} s`);
+if (24 % LOOP || 24 % MOTION_LOOP) throw new Error('loops must divide 24 s');
 
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
@@ -84,66 +85,59 @@ try {
     return { stats, png };
   }
   const heads = VARIANTS.map((v) => [`${v.id} · ${v.name}${v.id === RECOMMENDED ? ' (recommended)' : ''}`, v.leaning, v.id === RECOMMENDED]);
+  const STILL_T = 0.9; // idle loop time for stills: mid-sputter, eyes open
 
   if (want('lineup')) {
     // Front, 3/4 and side at the standard close-up pixel density (crops of 320x180), x3.
     const { stats } = await render('lineup', {
-      title: `drone lab · base-model directions A–F · 180p crops at x3 · base palette · t = 0 · recommended: ${rec.id} (teal frame)`,
+      title: `drone lab · base variants A–E · 180p crops at x3 · base palette · idle t = ${STILL_T} s · recommended: ${rec.id} (teal frame)`,
       w: 100, h: 100, scale: 3, rowLabelW: 56, headH: 96, heads,
-      rows: VIEWS.map(([label, yaw]) => ({ label, cells: VARIANTS.map((v) => ({ variant: v.id, yaw, mark: v.id === RECOMMENDED })) })),
+      rows: VIEWS.map(([label, yaw]) => ({ label, cells: VARIANTS.map((v) => ({ variant: v.id, yaw, t: STILL_T, mark: v.id === RECOMMENDED })) })),
     }, path.join(OUT, 'base-lineup.png'));
     const hs = stats.filter((s) => s.row === 0).map((s, i) => `${VARIANTS[i].id} ${s.heightPx}px`);
-    console.log(`  drone heights at 180p (front): ${hs.join(', ')}  (a K astronaut is ~100px)`);
+    console.log(`  drone heights at 180p (front, smoke off): ${hs.join(', ')}  (a K astronaut is ~100px)`);
   }
 
   if (want('crew')) {
-    // The viewer's crew close-up, full 320x180 frame, x4: K astronaut, drone, K astronaut.
-    const { stats } = await render('crew', {
-      title: `${rec.id} · ${rec.name} hovering with two K astronauts · the viewer's crew close-up, 320x180 at x4 · t = 0`,
-      w: 320, h: 180, scale: 4,
-      rows: [{ cells: [{ variant: rec.id, crew: true }] }],
+    // The viewer's crew close-up, full 320x180 frames, x2: K astronaut, drone, K astronaut.
+    const cells = VARIANTS.map((v) => ({ variant: v.id, crew: true, t: STILL_T, caption: `${v.id} · ${v.name}${v.id === RECOMMENDED ? ' (recommended)' : ''}` }));
+    await render('crew', {
+      title: "each variant hovering between two K astronauts · the viewer's crew close-up, 320x180 at x3 · idle",
+      w: 320, h: 180, scale: 3,
+      rows: [cells.slice(0, 2), cells.slice(2, 4), cells.slice(4)].map((c) => ({ cells: c })),
     }, path.join(OUT, 'base-with-crew.png'));
-    console.log(`  crew frame: ${stats[0].pieces} pieces, ${stats[0].figure} figure px`);
   }
 
   if (want('closeups')) {
     // The camera twice as close: the drone is ~2x the pixels, so parts can be judged. x4 like the viewer.
     for (const v of VARIANTS) {
       await render(`closeup ${v.id}`, {
-        title: `${v.id} · ${v.name} · 2x close-up (camera at half distance), x4 · ${v.leaning}`,
-        w: 180, h: 180, scale: 4,
-        rows: [{ cells: [[0, 'front'], [-0.75, '3/4'], [-Math.PI / 2, 'side'], [Math.PI * 0.8, 'back 3/4']].map(([yaw, caption]) => ({ variant: v.id, yaw, zoom: 2, caption })) }],
+        title: `${v.id} · ${v.name} · 2x close-up (camera at half distance), x3 · ${v.leaning}`,
+        w: 220, h: 220, scale: 3,
+        rows: [{ cells: [[0, 'front'], [-0.75, '3/4'], [-Math.PI / 2, 'side'], [Math.PI * 0.8, 'back 3/4']].map(([yaw, caption]) => ({ variant: v.id, yaw, t: STILL_T, zoom: 2, caption })) }],
       }, path.join(OUT, `${v.id}-closeup.png`));
     }
   }
 
-  // One turn per loop, 15 fps, sway off; each drone blinks once, staggered. Starts at 3/4.
-  async function turntable(name, rows, { scale = 2, zoom = 1, w = 100, h = 100 } = {}) {
+  // An animated loop of one variant: frames f / FPS over `loop` seconds, encoded with a fixed
+  // palette of exactly the frames' colours. Frame N (one loop later) must equal frame 0.
+  async function loopGif(name, loop, frame) {
     const tmp = path.join(OUT, `.frames-${name}`);
     await rm(tmp, { recursive: true, force: true });
     await mkdir(tmp, { recursive: true });
-    const N = LOOP * FPS;
-    const blink = (t, i) => { const k = t - (1 + i * 0.4); return k > 0 && k < 0.18 ? 1 - Math.sin((k / 0.18) * Math.PI) * 0.88 : 1; };
-    const per = Math.max(...rows.map((r) => r.length));
-    const frame = (f) => {
-      const t = f / FPS;
-      return {
-        w, h, scale, crispLabels: true,
-        rows: rows.map((vs, r) => ({
-          cells: vs.map((v, j) => ({ variant: v.id, yaw: -0.75 - (Math.PI * 2 * f) / N, t, zoom, blink: blink(t % LOOP, r * per + j), caption: `${v.id} · ${v.name}` })),
-        })),
-      };
-    };
-    let first;
+    const N = loop * FPS;
+    let first, smoky = 0, checked = 0;
     for (let f = 0; f < N; f++) {
-      const { png } = await render(`${name} frame ${f}`, frame(f), path.join(tmp, `f${String(f).padStart(3, '0')}.png`));
+      // Every third frame gets the full checks (a second, smoke-off render); all are palette-checked.
+      const check = f % 3 === 0;
+      const { png, stats } = await render(`${name} frame ${f}`, { ...frame(f), check, paletteCheck: true }, path.join(tmp, `f${String(f).padStart(3, '0')}.png`));
       first ??= png;
+      if (check) { checked++; if (stats.some((s) => s.smokePx > 0)) smoky++; }
     }
-    // Seamless: the frame one loop later must be pixel-identical to the first.
+    if (smoky < checked / 2) problems.push(`${name}: smoke in only ${smoky} of ${checked} checked frames`);
     if ((await render(`${name} seam`, frame(N))).png !== first) problems.push(`${name}: frame ${N} differs from frame 0 (loop seam)`);
-    else console.log(`  ${name} seam: frame ${N} == frame 0`);
+    else console.log(`  ${name} seam: frame ${N} == frame 0 · smoke in ${smoky}/${checked} checked frames`);
     const gif = path.join(OUT, `${name}.gif`);
-    // A fixed palette of exactly the colours in the frames, so ffmpeg can't nudge any.
     const hexes = [...new Set([...paletteHexes(PALETTES.base), SPACE, '#111111', '#fff6e4'])];
     const pal = Buffer.alloc(16 * 16 * 3);
     for (let i = 0; i < 256; i++) Buffer.from(hexes[Math.min(i, hexes.length - 1)].slice(1), 'hex').copy(pal, i * 3);
@@ -156,8 +150,24 @@ try {
   }
 
   if (want('turntable')) {
-    await turntable('base-turntable', [[rec]], { scale: 3, zoom: 2, w: 180, h: 180 });
-    await turntable('base-lineup-turntable', [VARIANTS.slice(0, 3), VARIANTS.slice(3)]);
+    // One turn per 6 s idle loop at the 2x close-up: bob, sway, puffs and a blink.
+    for (const v of VARIANTS) {
+      await loopGif(`${v.id}-turntable`, LOOP, (f) => ({
+        w: 220, h: 220, scale: 3, crispLabels: true,
+        rows: [{ cells: [{ variant: v.id, yaw: -0.75 - (Math.PI * 2 * f) / (LOOP * FPS), t: f / FPS, zoom: 2, caption: `${v.id} · ${v.name} · turntable, 6 s` }] }],
+      }));
+    }
+  }
+
+  if (want('motion')) {
+    // The full 12 s behaviour loop with the camera fixed at 3/4 (more side-on for rear jets): drift and banking, puffs that
+    // burst with effort, looking around, blinking, and the working face (code streaming).
+    for (const v of VARIANTS) {
+      await loopGif(`${v.id}-motion`, MOTION_LOOP, (f) => ({
+        w: 280, h: 220, scale: 2, crispLabels: true,
+        rows: [{ cells: [{ variant: v.id, yaw: v.params.thrusters >= 3 ? -1.05 : -0.5, t: f / FPS, zoom: 2, motion: true, caption: `${v.id} · ${v.name} · motion loop, 12 s` }] }],
+      }));
+    }
   }
 
   if (want('params')) await writeFile(path.join(OUT, 'params.md'), await paramsDoc());
@@ -170,9 +180,9 @@ async function paramsDoc() {
   const lines = [
     '# Drone lab: parameters',
     '',
-    'Generated by `npm run lab` from `params.js`, `variants.js`, `palette.js` and `params-notes.md`. Each direction is a parameter set for the one drone in `drone.js`; mixing directions is mixing columns of this table. Lengths are world units (a K astronaut is 0.95 tall), angles radians, "share" values are fractions of the named part. **Bold** marks a value that differs from the default.',
+    'Generated by `npm run lab` from `params.js`, `variants.js`, `palette.js` and `params-notes.md`. Each variant is a parameter set for the one drone in `drone.js`; mixing variants is mixing columns of this table. Lengths are world units (a K astronaut is 0.95 tall), angles radians, "share" values are fractions of the named part. **Bold** marks a value that differs from the default.',
     '',
-    '## Directions',
+    '## Variants',
     '',
     ...VARIANTS.map((v) => `- **${v.id} · ${v.name}${v.id === RECOMMENDED ? ' (recommended)' : ''}:** ${v.leaning}`),
     '',
@@ -192,10 +202,10 @@ async function paramsDoc() {
     const range = p.type === 'select' ? p.options.join(' / ') : `${p.min}–${p.max}`;
     lines.push(`| \`${p.key}\` | ${p.words} (${range}) | ${showValue(p.key, DEFAULTS[p.key])} | ${cells.join(' | ')} |`);
   }
-  lines.push('', '## Palette slots', '', '| Slot | Tones | Used for | base | frost (slot test) |', '|---|---|---|---|---|');
-  const used = { shell: 'the shell, lit in four bands', trim: 'bezel, ears, goggle frames, arms, antenna stalk, rotor arms and hubs, ring, nozzle', screen: 'screen and goggle lenses (two near-blacks), then the glint', glow: 'emissive and unlit: eyes, antenna tip, lens, halos, ring core, plume (the two brightest tones; the two darker ones are spare, e.g. for a dimmed idle state later)', accent: 'band / panel / stripe / crest' };
-  for (const [slot, n] of Object.entries(SLOTS)) lines.push(`| \`${slot}\` | ${n} | ${used[slot]} | ${PALETTES.base[slot].map((h) => `\`${h}\``).join(' ')} | ${PALETTES.frost[slot].map((h) => `\`${h}\``).join(' ')} |`);
-  lines.push('', `Motion, in whole cycles per ${LOOP} s loop (so also per 24 s scene loop): ${Object.entries(MOTION).map(([k, n]) => `${k} ${n}`).join(', ')}.`, '', notes.trim(), '');
+  lines.push('', '## Palette slots', '', '| Slot | Tones | Used for | base | ember (slot test) |', '|---|---|---|---|---|');
+  const used = { shell: 'the head, lit in four bands', trim: 'bezel, nozzles, rim, ears, goggle frames, antenna stalks', screen: 'screen and goggle lenses (two near-blacks), then the glint', glow: 'emissive and unlit: eyes and antenna tips [3], code lines and nozzle mouths [2]; [0] and [1] are spare', accent: 'band / panel / stripe / crest', smoke: 'puffs, lit in three bands and a band darker as they fade; sparkles [2]' };
+  for (const [slot, n] of Object.entries(SLOTS)) lines.push(`| \`${slot}\` | ${n} | ${used[slot]} | ${PALETTES.base[slot].map((h) => `\`${h}\``).join(' ')} | ${PALETTES.ember[slot].map((h) => `\`${h}\``).join(' ')} |`);
+  lines.push('', `Motion, in whole cycles per ${MOTION_LOOP} s motion loop (which divides the 24 s scene loop): ${Object.entries(CYCLES).map(([k, n]) => `${k} ${n}`).join(', ')}. The turntable and stills use the ${LOOP} s idle loop (no drift, looking or working).`, '', notes.trim(), '');
   return lines.join('\n');
 }
 
