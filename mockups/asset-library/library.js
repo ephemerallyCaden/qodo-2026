@@ -638,6 +638,13 @@ window.library = {
   },
   state: () => clone(state),
   basePalette: () => clone(P.BASE),
+  /** Scene item i's centre and radius in page (CSS) pixels, for pointer tests. */
+  bounds(i) {
+    const { w, h, scale } = sizes();
+    const b = stage().screenBounds(i, w, h);
+    const rect = canvas.getBoundingClientRect();
+    return b && { x: rect.left + b.x * scale, y: rect.top + b.y * scale, r: b.r * scale };
+  },
   snapshot,
   hash: () => S.encodeHash(state),
   open(id, extra = {}) { openItem(ITEMS.find((c) => c.id === id)); if (Object.keys(extra).length) update((n) => Object.assign(n, extra)); },
