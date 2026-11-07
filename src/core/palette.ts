@@ -51,13 +51,15 @@ const PALETTE = {
     gasB: ['#481a18', '#883422', '#c25e38', '#e69068', '#ffc6a0'],
     // barren moon: neutral regolith grey
     moon: ['#26262c', '#4a4a54', '#76767f', '#a4a4ac', '#d2d2d6'],
-    // toxic: ochre sludge seas, acid growth, fungus and spores, so it never reads as lush
-    sludge: ['#2e1c14', '#6a3a1e', '#a8602c', '#d8944a', '#f0c27a'],
-    toxic: ['#1c3810', '#386814', '#68a41c', '#a6d63a', '#e0ff7a'],
-    fungus: ['#381444', '#682a76', '#9848a6', '#c678d2'],
-    spore: ['#688828', '#a6c648', '#d2ea78', '#f2ffbe'],
+    // toxic (rust-ember, #19): the health band between lava and ash desert, hues between the lava
+    // glow and the sand. Cooled slag seas (sludge) with ember veins (toxic's top step), rust ground
+    // (toxic), oxidised orange crusts (fungus), dull rust smoke (spore, kept under chroma 0.08)
+    sludge: ['#150e0e', '#22140f', '#341c12', '#4a2614', '#643218'],
+    toxic: ['#3a1c12', '#642c16', '#8e421c', '#b85e26', '#e88a34'],
+    fungus: ['#7a4a1e', '#a66a2a', '#cc8e3c', '#e8b45c'],
+    spore: ['#2a2022', '#6a5048', '#8e705e', '#b49680'],
     moonBody: ['#a8602c', '#d8944a', '#f0c27a', '#f2d8b8'], // small orbiting moons: warm peach
-    haze: { ocean: '#86ccff', ice: '#ffffff', toxic: '#c8f06a' }, // thin lit-limb sliver per biome
+    haze: { ocean: '#86ccff', ice: '#ffffff', toxic: '#e07a48' }, // thin lit-limb sliver per biome
     halo: '#30285a', // optional 1–2 px dark back-shell, off by default
     // Per-pixel depth fade toward the tint (§5): the one allowed off-palette output.
     depth: [

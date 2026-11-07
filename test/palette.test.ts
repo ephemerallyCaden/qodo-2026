@@ -98,7 +98,10 @@ const isBiome = (b: string): b is keyof typeof BIOME_RAMPS => Object.hasOwn(BIOM
  * (art-direction §4 Rings: ocean darkest, cloud cream, ocean step, pale ocean), so it may only use
  * ocean and cloud colours. Per-biome rings (`ring.<biome>`, the human's planned direction) may only
  * use that biome's own ramps. Clouds are a family ramp themselves (§4), so the hue ban is their check.
+ * The ban covers everything the viewer draws as weather or atmosphere, not just `cloud`: lava's ash
+ * smoke, toxic spores (viewer.js WEATHER) and the lit-limb haze.
  */
+const WEATHER_RAMPS = ['cloud', 'ash', 'spore', 'haze'] as const;
 function ringAndCloudViolations(p: { readonly world: object }): string[] {
   const w = p.world as Readonly<Record<string, unknown>>;
   const colours = (role: string) => hexes(role.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], w));
@@ -114,7 +117,8 @@ function ringAndCloudViolations(p: { readonly world: object }): string[] {
   for (const [path, ramp, owner, family] of owned) {
     for (const [at, h] of strings(ramp, path)) if (!family.has(h)) out.push(`${at} ${h} is not from ${owner}`);
   }
-  for (const [at, h] of [...strings(ring, 'world.ring'), ...strings(w['cloud'], 'world.cloud')]) {
+  const weather = WEATHER_RAMPS.flatMap((role) => strings(w[role], `world.${role}`));
+  for (const [at, h] of [...strings(ring, 'world.ring'), ...weather]) {
     const band = APPROVED_SHADOWS.has(h) ? undefined : bannedHue(h);
     if (band) out.push(`${at} ${h} is ${band}`);
   }
@@ -211,7 +215,7 @@ describe('palette', () => {
     expect(depthViolations(b)).toEqual(['world.depth[1].strength 380', 'world.depth[2].strength 0.72', 'world.depth[3].strength 0.5']);
   });
 
-  it('draws rings from the planet family and keeps rings and clouds off pink, violet and yellow', () => {
+  it('draws rings from the planet family and keeps rings, clouds, weather and haze off pink, violet and yellow', () => {
     expect(ringAndCloudViolations(palette)).toEqual([]);
     const b = broken();
     b.world.ring[2] = '#ff86bf'; // the rejected v2 pink ring
@@ -224,9 +228,17 @@ describe('palette', () => {
       'world.ring[3] #ffd38a is yellow',
       'world.cloud[1] #8f74b0 is violet',
     ]);
+    const weather = broken();
+    weather.world.spore[1] = '#a6c648'; // the pre-#19 acid spore: green passes
+    weather.world.spore[2] = '#ffd38a'; // a yellow spore puff
+    weather.world.ash[3] = '#c678d2'; // violet smoke
+    (weather.world.haze as Record<string, string>)['toxic'] = '#ff86bf'; // a pink limb haze
+    expect(ringAndCloudViolations(weather)).toEqual([
+      'world.ash[3] #c678d2 is violet', 'world.spore[2] #ffd38a is yellow', 'world.haze.toxic #ff86bf is pink',
+    ]);
     const fungus = broken();
-    fungus.world.ring[0] = '#381444'; // dark toxic-fungus violet: another biome's colour
-    fungus.world.ring[2] = '#c678d2'; // light toxic-fungus violet
+    fungus.world.ring[0] = '#381444'; // dark violet (the pre-#19 toxic fungus): off the ring's family
+    fungus.world.ring[2] = '#c678d2'; // light violet (the pre-#19 toxic fungus)
     fungus.world.cloud[0] = '#29174c'; // a dark violet in place of the approved shadow
     expect(ringAndCloudViolations(fungus)).toEqual([
       'world.ring[0] #381444 is not from ocean or cloud', 'world.ring[2] #c678d2 is not from ocean or cloud',
@@ -244,7 +256,8 @@ describe('palette', () => {
     expect(withRings({ desert: ['#2e1c14', '#7a4c30', '#d8944a'], ice: ['#16234e', '#3a64b0', '#e6f4ff'] })).toEqual([]);
     expect(withRings({ desert: ['#2e1c14', '#2b6ee0', '#a4744c'] })).toEqual(['world.ring.desert[1] #2b6ee0 is not from the desert biome']);
     expect(withRings({ swamp: ['#2e1c14'] })).toEqual(['world.ring.swamp is not a biome', 'world.ring.swamp[0] #2e1c14 is not from the swamp biome']);
-    expect(withRings({ toxic: ['#381444', '#c678d2'] })).toEqual(['world.ring.toxic[0] #381444 is violet', 'world.ring.toxic[1] #c678d2 is violet']);
+    // Toxic's own colours still meet the hue ban: its brightest crust step is yellow.
+    expect(withRings({ toxic: ['#4a2614', '#b49680', '#e8b45c'] })).toEqual(['world.ring.toxic[2] #e8b45c is yellow']);
   });
 
   it('is the only source file with colour literals', () => {
