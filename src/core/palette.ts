@@ -5,7 +5,9 @@
 // Ported as data from what the asset viewer actually renders as PALETTES.final on
 // feature/hype-gif (mockups/asset-viewer): v2 space, stars and depth (viewer.js),
 // V2_PLANET_RAMPS (planet-ramps.js), the BLK 36 crew roles from mapPalette('blk-36')
-// (palette-map.js) and the [OIII] teal accent (planet-ramps.js ACCENTS.reveal).
+// (palette-map.js) and the [OIII] teal accent (planet-ramps.js ACCENTS.reveal). The toxic
+// ramps (sludge, toxic, fungus, spore, haze.toxic) are the later rust-ember look from
+// feature/19-toxic-band's planet-ramps.js, which supersedes hype-gif's for those roles (#19).
 //
 // Pinned by test/golden/palette.v1.json. Change it only on purpose: UPDATE_GOLDEN=1 npm test
 // and a `Golden-Update: <reason>` line in the commit.
