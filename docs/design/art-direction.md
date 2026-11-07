@@ -70,8 +70,8 @@ All ramps run dark → light, and the shader picks a band per pixel from lightin
 | Gas giant | A: `#5a2e1c`→`#fff0d0`; B: `#481a18`→`#ffc6a0` | Jupiter-like cream zones and salmon-brown belts. |
 | Moon / barren | `#26262c` `#4a4a54` `#76767f` `#a4a4ac` `#d2d2d6` | Neutral regolith grey. Told apart by craters, not hue. |
 | Small orbiting moons | `#a8602c` `#d8944a` `#f0c27a` `#f2d8b8` | Warm peach spheres, as in the moodboard GIF. |
-| Toxic | growth `#1c3810`→`#e0ff7a`; sludge `#2e1c14`→`#f0c27a`; fungus `#381444`→`#c678d2` | Ochre sludge seas and acid growth, so it can never be mistaken for lush. |
-| Haze | ocean `#86ccff`, ice `#ffffff`, toxic `#c8f06a` | A thin lit-limb sliver, never an outline. |
+| Toxic (ember) | ground `#3a1c12`→`#e88a34`; slag seas `#150e0e`→`#643218`; crusts (fungus role) `#7a4a1e`→`#e8b45c`; smoke (spore role) `#2a2022`→`#b49680` | The second-worst health band, between lava and desert: cooled slag seas with ember veins, rust ground and dull smoke. Hues sit between lava glow and sand (#19). |
+| Haze | ocean `#86ccff`, ice `#ffffff`, toxic `#e07a48` | A thin lit-limb sliver, never an outline. |
 | Halo (optional) | `#30285a` | A 1–2 px dark back-shell, one step above space. Off by default. |
 
 ### Rings
@@ -112,7 +112,7 @@ The crew palette is never retuned. Use the BLK 36 mapping as it is.
 - **Shape:** a procedural shader sphere with noise-driven terrain, quantised into colour bands.
 - **Light:** a **lit directional terminator**, keyed top-left at about 40°, which gives soft concentric crescents. Its dark side uses each ramp's own darks.
 - **Framing:** the hero planet fills **42–50% of frame height** in close-ups, alone, with little clutter.
-- **Meaning:** **biomes are decorative.** Each is hashed from the planet's stable ID and carries no data. **Planet size = lines of code.** Data is carried by fog, drones, size, constellations and debris.
+- **Meaning:** a planet's look shows its **code health** in four bands, worst to best: **lava → toxic → ash (desert) → lush** (human, 2026-11-06; inputs are debt markers and opt-in Qodo findings, see #17/#18). Cleaning code heals the planet. Other biomes (ocean, ice, gas giant, barren moon) remain for variety where health doesn't apply. **Planet size = lines of code.**
 
 ### Biomes
 | Biome | Look |
@@ -124,7 +124,7 @@ The crew palette is never retuned. Use the BLK 36 mapping as it is.
 | Lava | Near-black, slightly blue-shaded crust broken by **open molten lava pools** and bold glowing fissures. Low, streaky ash smoke rises off the fissures. |
 | Gas giant (extra) | Turbulent alternating bands and a storm. Large sizes only. |
 | Barren moon (extra) | Small, grey, densely cratered. |
-| Toxic (extra) | Ochre sludge seas, acid-lime growth, purple fungus, spores and a lime haze. |
+| Toxic | Health band between lava and desert: cooled slag seas with ember veins, rust ground, oxidised orange crusts, dull rust smoke and a warm haze. |
 
 ### Cracks (lava fissures, ice crevasses)
 - **Shape:** Voronoi-edge cracks with straight segments, pointed junctions and branching. Never wobbly noise contours.
@@ -137,7 +137,7 @@ The crew palette is never retuned. Use the BLK 36 mapping as it is.
 - **Form:** clouds **blend into soft continuous clumps**. Each mass is shaded as a single dome, with a lumpy outline that bulges past the silhouette.
 - **Cover:** about **28%** of the visible disc on lush, ocean and toxic, and about **8%** ash on lava. Cover comes from a quantile of the weather density, so it's consistent across seeds.
 - **Placement:** noise-clustered into merged masses and east–west streaks, with clear sky between them. Never an even polka-dot scatter.
-- **Colour:** two tones, cream plus a warm shadow.
+- **Colour:** two tones, cream plus a warm shadow. Exception: toxic's weather is dull rust smoke (the spore ramp, chroma under 0.05), so it never reads as desert cream.
 
 ### Rings
 - **Shape:** a thin band of chunky debris. At least 70% of particles are 2×2 or plus-shaped clumps forming clusters, and every dot stays exactly 1 internal pixel at every resolution.
@@ -206,7 +206,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 | Palette | Crew = **BLK 36** exactly; world = **v2**; rings = planet-family colours only |
 | Accent | **[OIII] teal**, events only, under 10% of pixels |
 | Depth | v2 fade with full colours; **pixel-smooth** per-pixel blend by distance (stepped and object modes as options) |
-| Planet meaning | Biomes decorative (hashed from stable ID); size = LOC; data via fog, drones, size, constellations, debris |
+| Planet meaning | Code-health bands lava → toxic → ash → lush; size = LOC; fog, drones, constellations and debris carry the rest |
 | Planet types | Lush, ocean, ice, desert/crater, lava, plus gas giant, barren moon, toxic |
 | Shading | Quantised bands, lit directional terminator, hero at 42–50% of frame, optional moons and halo |
 | Cracks | ≥2 px jagged Voronoi cracks plus open lava pools / ice water |
@@ -225,7 +225,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 
 | Direction | Why it was rejected |
 |---|---|
-| Health-coded biomes (lush = healthy, lava = churn, …) | Biomes are now decorative; data lives in other channels. |
+| Acid-lime and violet toxic | Read as a different world, not as "less bad than lava", and the violet broke the ring hue rule. Replaced by ember for the health band (#19). |
 | Sprite sheets / pre-rendered 2D | Breaks live 3D and the per-pixel depth fade. |
 | Planetarium pastels (v1) | Too soft and flat for a world with depth. |
 | Research "true colour ×2" shared palette | Coherent but too muted. |
