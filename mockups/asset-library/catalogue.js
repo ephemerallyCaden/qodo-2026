@@ -2,19 +2,11 @@
 // focus, framing and asset), or for the palette editor. Seeds are the asset viewer's own (its
 // system shot), so each tile is a look the viewer already shows. `final: false` marks the
 // exploration archive (R6). Pure data, no DOM.
-import { TOXIC_LOOKS, TOXIC_LOOK, toxicLookEdits } from '../asset-viewer/planet-ramps.js';
 
 const astro = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'astronaut', framing: 'body', asset: { kind: 'astronaut', ...asset } }, ...extra });
 const planet = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'planet', framing: 'planet', asset: { kind: 'planet', ...asset } }, ...extra });
 const focus = (f, framing = 'planet') => (e) => ({ ...e, state: { ...e.state, focus: f, framing } });
 const HOST_HIDDEN = { surface: false, haze: false, clouds: false, ring: false };
-// Toxic band candidates (#19), side by side: each tile carries its look as palette edits
-// (`state.palette`, {} for the shipped look), applied to its thumbnail and when opened.
-const TOXIC_SUBS = { acid: 'before #19: acid lime + fungus', sulphur: 'sulphur ochre', ember: 'rust-ember' };
-const toxicLook = (look) => {
-  const e = planet(`toxic · ${look === 'acid' ? 'before' : look}`, `${TOXIC_SUBS[look] ?? look}${look === TOXIC_LOOK ? ' (shipped)' : ''} · 13`, { biome: 'toxic', seed: 13, ring: 'off' });
-  return { ...e, final: look === TOXIC_LOOK, state: { ...e.state, palette: toxicLookEdits(look) } };
-};
 
 export const GROUPS = [
   {
@@ -38,7 +30,7 @@ export const GROUPS = [
       planet('lava', 'churn hotspot · 11', { biome: 'lava', seed: 11, ring: 'off' }),
       planet('gas giant', 'extra · very large · 5', { biome: 'gas', seed: 5, ring: 'off' }),
       planet('barren moon', 'extra · tiny or dead · 9', { biome: 'moon', seed: 9, ring: 'off', moons: false }),
-      ...[TOXIC_LOOK, ...Object.keys(TOXIC_LOOKS).filter((l) => l !== TOXIC_LOOK && l !== 'acid'), 'acid'].map(toxicLook), // shipped, other candidates, before
+      planet('toxic', 'health band · between lava and desert · 13', { biome: 'toxic', seed: 13, ring: 'off' }),
     ],
   },
   {

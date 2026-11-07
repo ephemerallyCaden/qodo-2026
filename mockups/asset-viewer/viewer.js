@@ -415,7 +415,7 @@ const LAVA_GLSL = /* glsl */ `
 `;
 
 // Biome surfaces (art-direction: biome = module health). All flat light bands from
-// palette ramps; lava fissures (and toxic veins) are emissive and ignore lighting.
+// palette ramps; lava fissures are emissive and ignore lighting.
 // uA/uB/uC are 5-entry ramps and uG a 3-entry glow ramp, re-keyed per biome (BIOMES).
 const PLANET_FRAG = /* glsl */ `
   ${NOISE}
@@ -783,7 +783,7 @@ export const BIOMES = {
   lava: { id: 4, label: 'lava', ramps: ['crust', 'crust', 'ash', 'glow'], weather: 'ash', haze: null },
   gas: { id: 5, label: 'gas giant (extra)', ramps: ['gasA', 'gasB', 'cap', 'glow'], weather: null, haze: null, extra: true },
   moon: { id: 6, label: 'barren moon (extra)', ramps: ['moon', 'moon', 'moon', 'glow'], weather: null, haze: null, extra: true },
-  toxic: { id: 7, label: 'toxic (extra)', ramps: ['sludge', 'toxic', 'fungus', 'glow'], sea: [0.5, 0.56], weather: 'spore', haze: 'haze.toxic', extra: true },
+  toxic: { id: 7, label: 'toxic', ramps: ['sludge', 'toxic', 'fungus', 'glow'], sea: [0.5, 0.56], weather: 'spore', haze: 'haze.toxic' },
 };
 // Weather: cloud-puff settings per biome; the one place to tune cover.
 //   cover   share of the visible disc the weather hides (measure: debug/measure-cloud-cover.mjs).

@@ -6,51 +6,6 @@
 
 export const ACCENTS = { reveal: ['#004538', '#007c66', '#00bc9c', '#00ffd5'] };
 
-// ---------------------------------------------------------------- toxic band (#19)
-// Toxic is the health band between lava (worst) and ash desert, so its colours sit between the
-// lava crust/glow and the desert's sand/rock: hues 30-100°, darker than desert, with lava's heat
-// cooling off. The shader reads: sludge = seas (uA), toxic = ground (uB; its top step also draws
-// the vein lines in the seas), fungus = surface blooms (uC, steps 1-4), spore = the weather puffs,
-// haze = the lit-limb sliver. Spore and haze obey the cloud hue ban (no pink, violet or yellow at
-// OKLCH chroma >= 0.08). `acid` is the pre-#19 look, kept for the before/after lineup only.
-export const TOXIC_LOOKS = {
-  // before: ochre sludge seas + acid-lime growth + purple fungus
-  acid: {
-    sludge: ['#2e1c14', '#6a3a1e', '#a8602c', '#d8944a', '#f0c27a'],
-    toxic: ['#1c3810', '#386814', '#68a41c', '#a6d63a', '#e0ff7a'],
-    fungus: ['#381444', '#682a76', '#9848a6', '#c678d2'],
-    spore: ['#688828', '#a6c648', '#d2ea78', '#f2ffbe'],
-    haze: '#c8f06a',
-  },
-  // sulphur ochre: dark tar seas with amber veins, scorched ochre ground, pale sulphur crusts,
-  // sooty tan fumes
-  sulphur: {
-    sludge: ['#1a1410', '#2a2016', '#3c2e1c', '#523e22', '#6a5028'],
-    toxic: ['#3a2814', '#5e4018', '#88601e', '#b2842a', '#e8a840'],
-    fungus: ['#8a7428', '#b49a34', '#d8c050', '#ecdc86'],
-    spore: ['#2e2622', '#6e6052', '#94826a', '#b8a486'],
-    haze: '#e0a46a',
-  },
-  // rust-ember: cooled slag seas with ember veins, rust ground, oxidised orange crusts, rust smoke
-  ember: {
-    sludge: ['#150e0e', '#22140f', '#341c12', '#4a2614', '#643218'],
-    toxic: ['#3a1c12', '#642c16', '#8e421c', '#b85e26', '#e88a34'],
-    fungus: ['#7a4a1e', '#a66a2a', '#cc8e3c', '#e8b45c'],
-    spore: ['#2a2022', '#6a5048', '#8e705e', '#b49680'],
-    haze: '#e07a48',
-  },
-};
-export const TOXIC_LOOK = 'ember'; // recommended: its hues sit between lava glow and sand
-/** A toxic look's surface and weather ramps (its haze goes in V2_PLANET_RAMPS.haze.toxic). */
-export const toxicRamps = (look) => { const { haze, ...ramps } = TOXIC_LOOKS[look]; return ramps; };
-/** A toxic look as single-colour palette edits ({ 'sludge.0': hex, ..., 'haze.toxic': hex }); the shipped look is {}. */
-export function toxicLookEdits(look) {
-  if (look === TOXIC_LOOK) return {};
-  const edits = { 'haze.toxic': TOXIC_LOOKS[look].haze };
-  for (const [key, ramp] of Object.entries(toxicRamps(look))) ramp.forEach((hex, i) => (edits[`${key}.${i}`] = hex));
-  return edits;
-}
-
 // ---------------------------------------------------------------- v2 (active)
 // v2 lush/cloud/cap ramps from f4ceea0 plus naturalistic biome ramps in the same
 // spirit (ea84759). Ring: no pink, violet or yellow; it uses v2 planet-family colours
@@ -73,9 +28,15 @@ export const V2_PLANET_RAMPS = {
   gasA: ['#5a2e1c', '#9c5a30', '#d89a5a', '#f2cc94', '#fff0d0'],
   gasB: ['#481a18', '#883422', '#c25e38', '#e69068', '#ffc6a0'],
   moon: ['#26262c', '#4a4a54', '#76767f', '#a4a4ac', '#d2d2d6'],
-  ...toxicRamps(TOXIC_LOOK),
+  // toxic (rust-ember, #19): the health band between lava and ash desert, hues between the lava
+  // glow and the sand. Cooled slag seas (sludge) with ember veins (toxic's top step), rust ground
+  // (toxic), oxidised orange crusts (fungus), dull rust smoke (spore, kept under chroma 0.08)
+  sludge: ['#150e0e', '#22140f', '#341c12', '#4a2614', '#643218'],
+  toxic: ['#3a1c12', '#642c16', '#8e421c', '#b85e26', '#e88a34'],
+  fungus: ['#7a4a1e', '#a66a2a', '#cc8e3c', '#e8b45c'],
+  spore: ['#2a2022', '#6a5048', '#8e705e', '#b49680'],
   moonBody: ['#a8602c', '#d8944a', '#f0c27a', '#f2d8b8'], // warm moons
-  haze: { ocean: '#86ccff', ice: '#ffffff', toxic: TOXIC_LOOKS[TOXIC_LOOK].haze },
+  haze: { ocean: '#86ccff', ice: '#ffffff', toxic: '#e07a48' },
   halo: '#30285a',
 };
 
