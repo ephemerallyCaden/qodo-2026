@@ -139,8 +139,12 @@ function renderThumbs(n) {
     const it = thumbQueue.shift();
     const st = S.normalise({ ...it.state, asset: it.state.asset });
     const ts = thumbStages[st.asset.kind];
-    ts.sync([st.asset], pal);
+    // A tile with its own palette edits (a toxic look) renders in them, over the current edits.
+    const own = Object.keys(it.state.palette ?? {}).length ? P.activate({ ...state.palette, ...it.state.palette }) : null;
+    if (own) retintStage(ts);
+    ts.sync([st.asset], own?.palette ?? pal);
     const img = renderToImage(ts, 3, S.RENDER_DEFAULTS, THUMB_W, THUMB_H, FRAMING_CAMERAS[`thumb-${st.framing}`] ?? FRAMING_CAMERAS[st.framing]);
+    if (own) { P.activate(state.palette); retintStage(ts); }
     thumbCanvases.get(it.id)?.getContext('2d').putImageData(img, 0, 0);
   }
   if (!thumbQueue.length && !window.library.thumbsDone) window.library.thumbsDone = true;
@@ -206,8 +210,12 @@ function openItem(it) {
     n.framing = it.state.framing;
     n.camera = null;
     n.asset = it.state.asset;
+    if (it.state.palette) n.palette = { ...withoutLookEdits(n.palette), ...it.state.palette }; // swap looks, keep other edits
   });
 }
+// Palette paths a catalogue tile's look sets (the toxic looks): opening a look tile replaces these.
+const LOOK_PATHS = new Set(ITEMS.flatMap((it) => Object.keys(it.state?.palette ?? {})));
+const withoutLookEdits = (edits) => Object.fromEntries(Object.entries(edits).filter(([path]) => !LOOK_PATHS.has(path)));
 
 // ---------------------------------------------------------------- controls (tiny DOM kit)
 function h(tag, props = {}, ...kids) {

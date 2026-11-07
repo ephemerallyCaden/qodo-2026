@@ -43,6 +43,13 @@ export const TOXIC_LOOKS = {
 export const TOXIC_LOOK = 'ember'; // recommended: its hues sit between lava glow and sand
 /** A toxic look's surface and weather ramps (its haze goes in V2_PLANET_RAMPS.haze.toxic). */
 export const toxicRamps = (look) => { const { haze, ...ramps } = TOXIC_LOOKS[look]; return ramps; };
+/** A toxic look as single-colour palette edits ({ 'sludge.0': hex, ..., 'haze.toxic': hex }); the shipped look is {}. */
+export function toxicLookEdits(look) {
+  if (look === TOXIC_LOOK) return {};
+  const edits = { 'haze.toxic': TOXIC_LOOKS[look].haze };
+  for (const [key, ramp] of Object.entries(toxicRamps(look))) ramp.forEach((hex, i) => (edits[`${key}.${i}`] = hex));
+  return edits;
+}
 
 // ---------------------------------------------------------------- v2 (active)
 // v2 lush/cloud/cap ramps from f4ceea0 plus naturalistic biome ramps in the same

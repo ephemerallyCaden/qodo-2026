@@ -9,7 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, openLibrary } from '../asset-library/test/harness.mjs';
-import { TOXIC_LOOKS, TOXIC_LOOK, toxicRamps } from '../asset-viewer/planet-ramps.js';
+import { TOXIC_LOOKS, TOXIC_LOOK, toxicLookEdits } from '../asset-viewer/planet-ramps.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'out');
@@ -19,12 +19,6 @@ const BANDS = [
 const SCALE = 4;
 const TILE = 180; // the internal height: a square crop around the planet
 
-/** Palette edits that turn the shipped toxic ramps into another look. */
-function lookEdits(name) {
-  const edits = { 'haze.toxic': TOXIC_LOOKS[name].haze };
-  for (const [key, ramp] of Object.entries(toxicRamps(name))) ramp.forEach((hex, i) => (edits[`${key}.${i}`] = hex));
-  return edits;
-}
 /** A paused, ring-free, moon-free planet in the inspector, at the default 320x180 frame. */
 const planetState = (biome, seed, palette = {}) => ({
   mode: 'asset', focus: 'planet', framing: 'planet', camera: null, palette,
@@ -33,7 +27,7 @@ const planetState = (biome, seed, palette = {}) => ({
 });
 
 const rows = Object.keys(TOXIC_LOOKS).map((look) => ({
-  look, title: look === 'acid' ? 'before: acid' : `${look}${look === TOXIC_LOOK ? ' (shipped)' : ''}`, edits: lookEdits(look),
+  look, title: look === 'acid' ? 'before: acid' : `${look}${look === TOXIC_LOOK ? ' (shipped)' : ''}`, edits: toxicLookEdits(look),
 }));
 
 await mkdir(OUT, { recursive: true });
