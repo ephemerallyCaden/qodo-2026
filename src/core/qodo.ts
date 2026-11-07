@@ -25,14 +25,16 @@ export const hasReview = (c: { prs: number; unreviewed: number }) => c.prs - c.u
 export interface PrFindings { reviewed: boolean; open: { id: string | null; level: keyof QodoByLevel; path: string | null }[] }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** A non-negative safe integer. */
+export const count = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
 
 /** Parses one `pr-review-session findings` response. */
 export function parsePrFindings(v: unknown): PrFindings | 'malformed response' | 'truncated result' {
   if (!isObj(v) || !Array.isArray(v['findings'])) return 'malformed response';
   const findings = v['findings'] as unknown[];
-  if (v['qar_operation_result_truncated'] === true || (typeof v['finding_count'] === 'number' && v['finding_count'] !== findings.length)) {
-    return 'truncated result';
-  }
+  // Without a count to check the list against, a cut-short list would look complete (Qodo local r2 #2).
+  if (!count(v['finding_count'])) return 'malformed response';
+  if (v['qar_operation_result_truncated'] === true || v['finding_count'] !== findings.length) return 'truncated result';
   const open: PrFindings['open'] = [];
   for (const f of findings) {
     if (!isObj(f)) return 'malformed response';
@@ -60,8 +62,8 @@ export interface QodoCache {
 export interface QodoFetch { prs: PrFindings[]; skipped: number; unreviewedPaths: string[] }
 
 /**
- * Counts open findings per file at `head`, once per finding id; the rest is `offHead`. A file an
- * unreviewed PR changes is unknown and gets no count.
+ * Counts open findings per file at `head`, once per finding id; the rest is `offHead`. The HEAD
+ * files an unreviewed PR changes are listed as `unknown`.
  */
 export function tallyFindings({ prs, skipped, unreviewedPaths }: QodoFetch, headPaths: ReadonlySet<string>, head: string): QodoCache {
   const unknown = new Set(unreviewedPaths.filter((p) => headPaths.has(p)));
@@ -77,7 +79,7 @@ export function tallyFindings({ prs, skipped, unreviewedPaths }: QodoFetch, head
       offHead++;
       continue;
     }
-    if (unknown.has(f.path)) continue;
+    // A file whose count is unknown still keeps its known findings, so they're never hidden.
     const l = files.get(f.path) ?? zeroLevels();
     l[f.level]++;
     files.set(f.path, l);
@@ -94,7 +96,6 @@ export function serializeCache(c: QodoCache): string {
     files: Object.fromEntries(c.files), unknown: c.unknown });
 }
 
-const count = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
 const exactKeys = (o: Record<string, unknown>, keys: readonly string[]) => {
   const have = Object.keys(o);
   return have.length === keys.length && keys.every((k) => Object.hasOwn(o, k));
@@ -131,19 +132,25 @@ export function parseCache(text: string): QodoCache | null {
 
 /**
  * files[].qodo for each HEAD path, and the snapshot's source. A cached file missing from this HEAD
- * adds its findings to `offHead` rather than vanishing. A file an unreviewed PR changes is unknown
- * (null), and with no reviewed PR at all there is no evidence, so every file is; never 0.
+ * adds its findings to `offHead` rather than vanishing. A file an unreviewed PR changes, or one
+ * `addedSince` the cached HEAD, is unknown (null); its known findings go to `onUnknown`. With no
+ * reviewed PR at all there is no evidence, so every file is unknown; never 0.
  */
-export function applyCache(c: QodoCache, headPaths: readonly string[]): { perFile: Map<string, FileQodo | null>; source: QodoSource } {
+export function applyCache(c: QodoCache, headPaths: readonly string[], addedSince: ReadonlySet<string> = new Set()):
+  { perFile: Map<string, FileQodo | null>; source: QodoSource } {
   const at = new Set(headPaths);
-  let offHead = c.offHead;
-  for (const [path, l] of c.files) if (!at.has(path)) offHead += qodoTotal(l);
-  const reviewed = hasReview(c);
   const unknown = new Set(c.unknown);
+  let [offHead, onUnknown] = [c.offHead, 0];
+  for (const [path, l] of c.files) {
+    if (!at.has(path)) offHead += qodoTotal(l);
+    else if (unknown.has(path)) onUnknown += qodoTotal(l);
+  }
+  const reviewed = hasReview(c);
   const perFile = new Map(headPaths.map((p): [string, FileQodo | null] => {
-    if (!reviewed || unknown.has(p)) return [p, null];
+    if (!reviewed || unknown.has(p) || addedSince.has(p)) return [p, null];
     const byLevel = c.files.get(p) ?? zeroLevels();
     return [p, { open: qodoTotal(byLevel), byLevel: { ...byLevel } }];
   }));
-  return { perFile, source: { status: 'read', head: c.head, prs: c.prs, skipped: c.skipped, unreviewed: c.unreviewed, offHead } };
+  return { perFile, source: { status: 'read', head: c.head, prs: c.prs, skipped: c.skipped, unreviewed: c.unreviewed, offHead, onUnknown,
+    addedSince: headPaths.filter((p) => addedSince.has(p)).length } };
 }

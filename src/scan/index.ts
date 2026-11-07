@@ -10,7 +10,7 @@ import { binaryNames, buildLineage, debtCounted, dirsAtHead, matchTests, zeroDeb
 import { isoUtc, minusMonths } from '../core/time.js';
 import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
-import { gitRunner } from './git.js';
+import { gitRunner, tryGit, type Git } from './git.js';
 import { fetchQodo, readQodoCache } from './qodo.js';
 import { addedLines, headFiles, readRepo, windowCommits, type NumstatRow, type RawCommit } from './repo.js';
 import { debtCounts, lineageLog, unmergedBranches } from './structure.js';
@@ -116,7 +116,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
     fromMs !== undefined && fromMs <= repo.headMs ? addedLines(git, repo.head, isoUtc(Math.max(sinceMs, fromMs - DAY_MS)))
       : new Map<string, Map<string, string[]>>(),
     found ? parseClaude(found, knownPaths, hash) : null,
-    readQodo(o, repo.commonDir, repo.head, headPaths, qodoP),
+    readQodo(o, git, repo.commonDir, repo.head, headPaths, qodoP),
   ]);
   const files: SnapshotV02['files'] = kept.map(([path, row]) => {
     const target = testOf.get(path);
@@ -209,7 +209,8 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
  * files[].qodo and its source: fetched with the opt-in (`fetched` is then the cache to save), else
  * from the cache. A failed fetch is unknown, never 0 (Rule 1), and leaves an earlier cache as it was.
  */
-async function readQodo(o: ScanOptions, commonDir: string, head: string, headPaths: string[], fetching: ReturnType<typeof fetchQodo> | null):
+async function readQodo(o: ScanOptions, git: Git, commonDir: string, head: string, headPaths: string[],
+  fetching: ReturnType<typeof fetchQodo> | null):
   Promise<{ perFile: Map<string, FileQodo | null>; source: QodoSource; fetched: QodoCache | null }> {
   const none = { perFile: new Map<string, FileQodo | null>(), fetched: null };
   if (!o.qodo) return { ...none, source: { status: 'none' } };
@@ -221,5 +222,14 @@ async function readQodo(o: ScanOptions, commonDir: string, head: string, headPat
   } else cache = readQodoCache(o.qodo.stateDir(commonDir));
   if (cache === null) return { ...none, source: { status: 'none' } };
   if (typeof cache === 'string') return { ...none, source: { status: 'unavailable', reason: cache } };
-  return { ...applyCache(cache, headPaths), fetched: fetching ? cache : null };
+  if (fetching) return { ...applyCache(cache, headPaths), fetched: cache };
+  // A file that didn't exist at the cached HEAD has no evidence either way (Qodo local r2 #1).
+  let addedSince = new Set<string>();
+  if (cache.head !== head) {
+    const tree = await tryGit(git, ['ls-tree', '-r', '-z', '--name-only', '--full-tree', cache.head]);
+    if (tree === null) return { ...none, source: { status: 'unavailable', reason: 'cache HEAD not found' } };
+    const then = new Set(tree.split('\0'));
+    addedSince = new Set(headPaths.filter((p) => !then.has(p)));
+  }
+  return { ...applyCache(cache, headPaths, addedSince), fetched: null };
 }

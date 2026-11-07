@@ -82,12 +82,16 @@ function qodoLines(s: SnapshotV02, cached: boolean): string[] {
   for (const f of withOpen) for (const k of QODO_LEVELS) sum[k] += f.qodo!.byLevel[k];
   const levels = QODO_LEVELS.filter((k) => k !== 'other' || sum.other).map((k) => `${QODO_LEVEL_NAMES[k]} ${sum[k]}`).join(' · ');
   const stale = q.head === s.repo.head ? '' : ' (HEAD has moved since)';
-  const out = [`${label}: ${qodoTotal(sum)} open on ${withOpen.length} file(s) (${levels}), `
-    + `from ${q.prs - q.unreviewed} reviewed PR(s) as of ${q.head.slice(0, 7)}${stale}`];
+  const known = qodoTotal(sum);
+  // Findings on a file whose count is unknown stay in the headline, so it never reads "0 open" over them.
+  const counts = q.onUnknown ? `${known + q.onUnknown} open: ${known} on ${withOpen.length} file(s) (${levels}), `
+    + `${q.onUnknown} more on files whose count is unknown` : `${known} open on ${withOpen.length} file(s) (${levels})`;
+  const out = [`${label}: ${counts}, from ${q.prs - q.unreviewed} reviewed PR(s) as of ${q.head.slice(0, 7)}${stale}`];
   if (q.unreviewed) {
-    const unknown = s.files.filter((f) => f.qodo === null).length;
+    const unknown = s.files.filter((f) => f.qodo === null).length - q.addedSince;
     out.push(`${q.unreviewed} PR(s) have no complete Qodo review; the ${unknown} file(s) at HEAD they change are unknown, not 0`);
   }
+  if (q.addedSince) out.push(`${q.addedSince} file(s) added since the cached HEAD are unknown, not 0`);
   if (q.skipped) out.push(`${q.skipped} closed PR(s) that never merged were not read`);
   if (q.offHead) out.push(`${q.offHead} open finding(s) are on files not at HEAD (deleted, renamed, excluded or none) and are left out`);
   return out;

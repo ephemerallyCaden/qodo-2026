@@ -5,7 +5,7 @@
 import { execFile } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseCache, parsePrFindings, type PrFindings, type QodoCache, type QodoFetch } from '../core/qodo.js';
+import { count, parseCache, parsePrFindings, type PrFindings, type QodoCache, type QodoFetch } from '../core/qodo.js';
 import type { QodoReason } from '../core/snapshot/types.js';
 
 /** More PRs than this can't be listed in one read, so the list may be incomplete: unknown. */
@@ -60,7 +60,7 @@ const parseJson = (text: string): unknown => {
 /** The paths a PR changes, from `gh pr view`; a list shorter than the PR's file count is truncated. */
 function parseFiles(v: unknown): string[] | 'malformed response' | 'truncated result' {
   const { files, changedFiles } = (v ?? {}) as { files?: unknown; changedFiles?: unknown };
-  if (!Array.isArray(files) || typeof changedFiles !== 'number') return 'malformed response';
+  if (!Array.isArray(files) || !count(changedFiles)) return 'malformed response';
   const paths = files.map((f) => (f as { path?: unknown } | null)?.path);
   if (!paths.every((p): p is string => typeof p === 'string')) return 'malformed response';
   return paths.length < changedFiles ? 'truncated result' : paths;

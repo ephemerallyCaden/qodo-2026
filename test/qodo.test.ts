@@ -60,6 +60,8 @@ const FINDINGS: Record<number, object> = {
     { id: 'f7', status: 'pending', level: 'action_required', path: 'src/gone.ts' },
     { id: 'f8', status: 'pending', level: 'informational', path: `/Users/${CANARY.home}/src/a.ts` },
     { id: 'f9', status: 'pending', level: 'informational', path: null },
+    // On a file whose count is unknown (#5 changes it): not shown per file, but never hidden.
+    { id: 'f10', status: 'pending', level: 'action_required', path: 'src/new.ts' },
   ]),
   2: response(2, [
     { id: 'g1', status: 'focus_areas_edited', level: 'remediation_recommended', path: 'src/a.ts' },
@@ -217,10 +219,10 @@ describe('#17 AC2: read-only tools only, unresolved findings on files at HEAD on
   it('a file changed by a PR with no complete review is unknown, not 0 (Qodo local r1 #2)', async () => {
     const r = await onPath(stubs(), () => scanCli(repo, ['--with-qodo']));
     expect(r.out).toContain('2 PR(s) have no complete Qodo review; the 2 file(s) at HEAD they change are unknown, not 0');
-    // With #5's review complete, its file is evidence-backed again.
+    // With #5's review complete, its file is evidence-backed again and shows its finding.
     const done = stubs({ findings: { ...FINDINGS, 5: response(5, []) } });
     await onPath(done, () => scanCli(repo, ['--with-qodo']));
-    expect(qodoOf(readSnap(repo))['src/new.ts']).toEqual(open(levels(0, 0, 0, 0)));
+    expect(qodoOf(readSnap(repo))['src/new.ts']).toEqual(open(levels(1, 0, 0, 0)));
     expect(done.calls().filter((c) => c.args[1] === 'view').map((c) => c.args[2])).toEqual([PR(4)]);
   });
 
@@ -228,8 +230,9 @@ describe('#17 AC2: read-only tools only, unresolved findings on files at HEAD on
     const s = stubs();
     const r = await onPath(s, () => scanCli(repo, ['--with-qodo']));
     const snap = readSnap(repo);
-    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 4, skipped: 1, unreviewed: 2, offHead: 4 });
-    expect(r.out).toContain('qodo findings: 5 open on 2 file(s) (action_required 1 · remediation_recommended 2 · informational 1 · other 1), '
+    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 4, skipped: 1, unreviewed: 2, offHead: 4, onUnknown: 1, addedSince: 0 });
+    expect(r.out).toContain('qodo findings: 6 open: 5 on 2 file(s) (action_required 1 · remediation_recommended 2 · informational 1 · other 1), '
+      + '1 more on files whose count is unknown, '
       + `from 2 reviewed PR(s) as of ${snap.repo.head.slice(0, 7)}`);
     // Skipped PRs are counted, not dropped silently (Qodo local r1 #1).
     expect(r.out).toContain('1 closed PR(s) that never merged were not read');
@@ -242,7 +245,7 @@ describe('#17 AC2: read-only tools only, unresolved findings on files at HEAD on
     expect(r.code).toBe(0);
     expect(s.calls().map((c) => c.tool)).toEqual(['gh']);
     const snap = readSnap(repo);
-    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 0, skipped: 0, unreviewed: 0, offHead: 0 });
+    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 0, skipped: 0, unreviewed: 0, offHead: 0, onUnknown: 0, addedSince: 0 });
     expect(snap.files.map((f) => f.qodo)).toEqual([null, null, null, null]);
     expect(r.out).toContain('qodo findings: unknown (no PR has a Qodo review)');
   });
@@ -260,7 +263,8 @@ describe('#17 AC3: the cache holds counts per file per level only; finding text 
     const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo.dir, encoding: 'utf8' }).trim();
     expect(JSON.parse(readFileSync(CACHE(repo), 'utf8'))).toEqual({
       schema: 'commet.qodo-findings.v1', head, prs: 4, skipped: 1, unreviewed: 2, offHead: 4,
-      files: { 'src/a.ts': levels(1, 1, 1, 1), 'src/b.ts': levels(0, 1, 0, 0) }, unknown: ['README.md', 'src/new.ts'],
+      files: { 'src/a.ts': levels(1, 1, 1, 1), 'src/b.ts': levels(0, 1, 0, 0), 'src/new.ts': levels(1, 0, 0, 0) },
+      unknown: ['README.md', 'src/new.ts'],
     });
   });
 
@@ -292,8 +296,31 @@ describe('#17 AC4: files[].qodo, and a scan without the flag reads the cache', (
     const cached = await onPath(none, () => scanCli(repo));
     expect(none.calls()).toEqual([]);
     expect(readFileSync(SNAPSHOT(repo), 'utf8')).toBe(first);
-    expect(cached.out).toContain('qodo findings (cached): 5 open on 2 file(s)');
+    expect(cached.out).toContain('qodo findings (cached): 6 open: 5 on 2 file(s)');
     expect(fetched.out).not.toContain('(cached)');
+  });
+
+  it('a file added since the cached HEAD is unknown, not 0 (Qodo local r2 #1)', async () => {
+    await onPath(stubs(), () => scanCli(repo, ['--with-qodo']));
+    writeFileSync(join(repo.dir, 'src/c.ts'), 'export const c = 1;\nexport const c2 = c + 1;\n');
+    commit(repo, '2026-10-06T10:00:00Z', ['add', 'src/c.ts'], 'feat: add c');
+    const r = await onPath(stubs({ omit: ['gh', 'qodo'] }), () => scanCli(repo));
+    const snap = readSnap(repo);
+    expect(qodoOf(snap)['src/c.ts']).toBeNull();
+    expect(qodoOf(snap)['src/a.ts']).toEqual(open(levels(1, 1, 1, 1)));
+    expect(snap.qodo).toMatchObject({ status: 'read', addedSince: 1 });
+    expect(r.out).toContain('2 PR(s) have no complete Qodo review; the 2 file(s) at HEAD they change are unknown, not 0');
+    expect(r.out).toContain('1 file(s) added since the cached HEAD are unknown, not 0');
+  });
+
+  it('a cache whose HEAD commit is gone is unavailable, not 0', async () => {
+    await onPath(stubs(), () => scanCli(repo, ['--with-qodo']));
+    const text = readFileSync(CACHE(repo), 'utf8').replace(/"head": "[0-9a-f]+"/, `"head": "${'f'.repeat(40)}"`);
+    writeFileSync(CACHE(repo), text);
+    const r = await onPath(stubs({ omit: ['gh', 'qodo'] }), () => scanCli(repo));
+    expect(readSnap(repo).qodo).toEqual({ status: 'unavailable', reason: 'cache HEAD not found' });
+    expect(readSnap(repo).files.every((f) => f.qodo === null)).toBe(true);
+    expect(r.out).toContain('qodo findings: unavailable (cache HEAD not found)');
   });
 
   it('a cached file no longer at HEAD is left out and counted, not carried to another path', async () => {
@@ -303,7 +330,7 @@ describe('#17 AC4: files[].qodo, and a scan without the flag reads the cache', (
     const r = await onPath(stubs({ omit: ['gh', 'qodo'] }), () => scanCli(repo));
     const snap = readSnap(repo);
     expect(qodoOf(snap)).toEqual({ 'README.md': null, 'src/a.ts': open(levels(1, 1, 1, 1)), 'src/new.ts': null });
-    expect(snap.qodo).toEqual({ status: 'read', head: fetchHead, prs: 4, skipped: 1, unreviewed: 2, offHead: 5 });
+    expect(snap.qodo).toEqual({ status: 'read', head: fetchHead, prs: 4, skipped: 1, unreviewed: 2, offHead: 5, onUnknown: 1, addedSince: 0 });
     expect(r.out).toContain(`as of ${fetchHead.slice(0, 7)} (HEAD has moved since)`);
   });
 
@@ -353,6 +380,11 @@ describe('#17 AC5: a failed fetch exits 0 with qodo null and an "unavailable (<r
     ['a finding count that disagrees with the list', { findings: { ...FINDINGS, 1: { ...(FINDINGS[1] as object), finding_count: 99 } } }, 'truncated result'],
     ['a PR file list cut short', { views: { ...VIEWS, 4: { changedFiles: 3, files: (VIEWS[4] as { files: object[] }).files } } }, 'truncated result'],
     ['a malformed PR file list', { views: { ...VIEWS, 5: { changedFiles: 1, files: [{ path: 7 }] } } }, 'malformed response'],
+    // A count that can't vouch for the list: missing, non-numeric, negative or fractional (Qodo local r2 #2, #3).
+    ['a findings read with no count', { findings: { ...FINDINGS, 1: { ...(FINDINGS[1] as object), finding_count: undefined } } }, 'malformed response'],
+    ['a findings count that is not a number', { findings: { ...FINDINGS, 2: { ...(FINDINGS[2] as object), finding_count: '6' } } }, 'malformed response'],
+    ['a negative changed-file count', { views: { ...VIEWS, 4: { changedFiles: -1, files: [] } } }, 'malformed response'],
+    ['a fractional changed-file count', { views: { ...VIEWS, 4: { changedFiles: 1.5, files: [] } } }, 'malformed response'],
     ['too many PRs to list', { prs: Array.from({ length: 1000 }, (_, i) => ({ number: i + 1, url: PR(i + 1), state: 'CLOSED' })) }, 'too many PRs'],
   ];
   for (const [name, o, reason] of failing) {
@@ -403,7 +435,7 @@ describe('#17 AC5: a failed fetch exits 0 with qodo null and an "unavailable (<r
     const r = await onPath(stubs(), () => scanCli(repo, ['--with-qodo', '--out', out]));
     expect(r.code).toBe(0);
     expect((JSON.parse(readFileSync(out, 'utf8')) as SnapshotV02).qodo).toMatchObject({ status: 'read', prs: 4 });
-    expect(r.out).toContain('qodo findings: 5 open on 2 file(s)');
+    expect(r.out).toContain('qodo findings: 6 open: 5 on 2 file(s)');
     expect(r.out).toContain('qodo findings cache could not be written; a scan without --with-qodo will not see these counts');
   });
 

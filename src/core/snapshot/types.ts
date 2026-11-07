@@ -102,7 +102,7 @@ export interface FileEntry {
   testOf: FileId | DirId | null;
   /**
    * Open Qodo review findings on this file. null: unknown (not read, failed, no reviewed PR, or
-   * changed by a PR without a complete review), never 0.
+   * changed by a PR without a complete review, or added since the cached HEAD), never 0.
    */
   qodo: FileQodo | null;
 }
@@ -114,17 +114,19 @@ export interface FileQodo { open: number; byLevel: QodoByLevel }
 
 /** Why Qodo findings are unknown. A fixed set: no tool output is ever passed through. */
 export type QodoReason = 'qodo not installed' | 'gh not installed' | 'not logged in' | 'timed out' | 'rate limited' | 'network error'
-  | 'no GitHub remote' | 'too many PRs' | 'truncated result' | 'malformed response' | 'qodo failed' | 'gh failed' | 'cache unreadable';
+  | 'no GitHub remote' | 'too many PRs' | 'truncated result' | 'malformed response' | 'qodo failed' | 'gh failed' | 'cache unreadable'
+  | 'cache HEAD not found';
 
 /**
  * Where files[].qodo came from (#17). `none`: not opted in and no cache. `read`: from a fetch or the
  * cache it wrote, as of `head` (the HEAD it was fetched at); `prs` were read and `skipped` (closed,
  * never merged) were not; `unreviewed` of those read had no complete Qodo review, so the files they
- * change are null; `offHead` open findings sat on no file at this HEAD.
+ * change are null; `offHead` open findings sat on no file at this HEAD and `onUnknown` on a file
+ * whose count is null; `addedSince` files are new since `head`, so null too.
  */
 export type QodoSource =
   | { status: 'none' }
-  | { status: 'read'; head: Sha; prs: number; skipped: number; unreviewed: number; offHead: number }
+  | { status: 'read'; head: Sha; prs: number; skipped: number; unreviewed: number; offHead: number; onUnknown: number; addedSince: number }
   | { status: 'unavailable'; reason: QodoReason };
 
 /** An unmerged local or remote-tracking branch (no network: only refs already on disk). */
