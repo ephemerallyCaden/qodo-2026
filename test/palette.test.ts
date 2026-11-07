@@ -256,7 +256,7 @@ describe('palette', () => {
     expect(withRings({ desert: ['#2e1c14', '#7a4c30', '#d8944a'], ice: ['#16234e', '#3a64b0', '#e6f4ff'] })).toEqual([]);
     expect(withRings({ desert: ['#2e1c14', '#2b6ee0', '#a4744c'] })).toEqual(['world.ring.desert[1] #2b6ee0 is not from the desert biome']);
     expect(withRings({ swamp: ['#2e1c14'] })).toEqual(['world.ring.swamp is not a biome', 'world.ring.swamp[0] #2e1c14 is not from the swamp biome']);
-    // Toxic's own colours still meet the hue ban: its brightest crust step is yellow.
+    // Toxic's own ramps still meet the hue ban: #e8b45c, the top step of its crust ramp (fungus), is yellow.
     expect(withRings({ toxic: ['#4a2614', '#b49680', '#e8b45c'] })).toEqual(['world.ring.toxic[2] #e8b45c is yellow']);
   });
 
