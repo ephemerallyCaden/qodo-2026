@@ -85,12 +85,12 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 - **Checked by:** ESLint bans in `src/core`, `src/scan` and `src/attrib` (render and layout code is review-only until lint covers it), golden byte compares, a scan-twice SHA-256 test.
 
 ### Rule 7: NUL-framed git output
-*A repository path can hold any byte except NUL, so git output that lists paths is read with `-z` and parsed by position on `\0`, never framed by another byte.*
+*A repository path can hold any byte except NUL, so git output that lists paths is read with `-z` and parsed by position on `\0`, never framed by another byte; patch text, which can hold NUL too, is parsed by its hunk counts.*
 - **Applies to:** the scanner and attribution code (`src/scan/**`, `src/attrib/**`): every git call whose output lists repository paths (`--name-only`, `--name-status`, `--numstat`, `--raw`, `ls-tree`, `ls-files`, `grep`) or carries patch text (`-p`).
 - **Rule:**
   - A path-listing git call passes `-z` and separates `--format` fields with `%x00`; no `%x01`, `%n` or other byte frames a record or a field that can hold a path.
   - The NUL tokens are parsed in order, a commit header recognised by its position (such as an empty token where a status or path would be) and each status taking its one or two paths, never by first splitting the output into commit chunks on a marker byte.
-  - A path token is never trimmed, stripped or rewritten; the only byte dropped is the one newline git writes after a format line.
+  - A path token is never trimmed, stripped or rewritten; the only byte dropped is the one newline git writes after a format line's closing NUL, before its first path or status.
   - Only a final header field may lack its closing NUL (an empty last commit has no paths after it); any other unterminated token is a cut-off record, refused or counted under Rule 1, never half-read.
   - Patch text (`-p`) can't be NUL-framed, because a text diff can itself hold NUL (past git's 8,000-byte binary check, or under a `diff` attribute) and U+0001: it is read line by line, the `@@` hunk counts tell content from headers, and paths come from the C-quoted `+++` header via `headerPath`.
   - Each new parser of path-bearing output gets a failing-first test whose filename contains U+0001, a newline and a tab.
@@ -126,7 +126,7 @@ Source of truth: `docs/design/art-direction.md`. These rules summarise it and ch
 
 ### Rule 5: Palette consistency
 *Every rendered colour comes from a named palette, never an inline literal, and nothing is pure black.*
-- **Applies to:** the same rendering code as Rule 4 (everything under `web/` and `mockups/`, and GLSL anywhere), except the palette modules that define the colours (in the asset viewer, `planet-ramps.js` and `palette-map.js`).
+- **Applies to:** the same rendering code as Rule 4 (everything under `web/` and `mockups/`, and GLSL anywhere), except the palette modules that define the colours (today the asset viewer's `planet-ramps.js` and `palette-map.js`, on `feature/hype-gif`).
 - **Rule:**
   - Render code and shaders hold no colour literal (a `'#rrggbb'` string, a `0xRRGGBB` number, `rgb()`, or a literal `vec3`, `vec4` or `new Color(…)` used as a colour); colours are read from a palette module by role.
   - World colours (planets, clouds, rings, space, stars) come from the v2 ramps (`V2_PLANET_RAMPS`).
