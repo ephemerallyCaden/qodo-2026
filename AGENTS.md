@@ -34,7 +34,7 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 
 ## Working with Qodo
 - Qodo can't see images. Report visual results in PRs as text: test output, pixel and colour counts.
-- A skipped review looks like a clean one. Confirm a review completed on the head commit before merging.
+- A skipped review looks like a clean one. Before merging, confirm the head commit was reviewed: `qodo read pr-review-session findings --pr-url <url> --extended` must list a `review_runs[]` entry with `commit_sha` equal to the head, `status: completed` and `review_effort` other than `skip`. `review_complete` is not a signal. PR #9 and PR #27 were merged on `skip` runs.
 - Keep `ignore_bot_pr = false`, or agent PRs go unreviewed.
 - **Run the review loop after every push to a PR.** Start a background watcher for Qodo's review of the exact head SHA (`gh pr view <N>`, or `get-pr-review-findings` via `qodo read`). Give it a 30-minute timeout. On a timeout or a failed command, report "review incomplete", never "clean". An empty findings list counts only once the review is confirmed complete on that SHA. Then, for each finding:
   1. **Validate it first.** Qodo is sometimes wrong. Confirm it with a failing test or a concrete trace through the code (the `qodo-review-resolver` workflow does this with citations).
