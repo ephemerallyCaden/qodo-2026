@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FileQodo, SnapshotV02 } from '../src/core/snapshot/types.js';
+import { parsePrFindings } from '../src/core/qodo.js';
 import { formatSummary } from '../src/core/summary.js';
 import { scan } from '../src/scan/index.js';
 import { cli } from './fixtures/cli.js';
@@ -21,6 +22,8 @@ const CANARY = {
   snippet: 'qodo-canary-snippet-3f4e', stderr: 'qodo-canary-stderr-c0de', home: 'qodo-canary-home-1a2b',
 };
 const PR = (n: number) => `https://github.com/acme/widgets/pull/${n}`;
+/** PR n's head commit, as `gh pr list` reports it and as its Qodo review records it. */
+const HEAD_OF = (n: number) => n.toString(16).padStart(40, '0');
 
 type Finding = { id: string; status: string; level: string; path: string | null };
 const finding = ({ id, status, level, path }: Finding) => ({
@@ -30,7 +33,7 @@ const finding = ({ id, status, level, path }: Finding) => ({
   evidence: { citations: [{ source_type: 'web', source: `https://example.com/${CANARY.url}` }] },
 });
 const session = (n: number, status = 'completed', complete = true) =>
-  ({ run_id: n, status, commit_sha: 'b'.repeat(40), started_at: '2026-10-05T10:00:00Z', review_complete: complete });
+  ({ run_id: n, status, commit_sha: HEAD_OF(n), started_at: '2026-10-05T10:00:00Z', review_complete: complete });
 const response = (n: number, findings: Finding[] | null, extra: object = {}) => ({
   pr_url: PR(n), git_provider: null, finding_count: findings?.length ?? 0, review_session: findings === null ? null : session(n),
   findings: (findings ?? []).map(finding), ...extra,
@@ -40,8 +43,8 @@ const response = (n: number, findings: Finding[] | null, extra: object = {}) => 
  * The fixture's PRs: #3 is closed unmerged (never fetched, but counted), #4 has no review yet and #5's
  * review is still running, so the files they change are unknown.
  */
-const PRS = [{ number: 1, url: PR(1), state: 'MERGED' }, { number: 2, url: PR(2), state: 'OPEN' },
-  { number: 3, url: PR(3), state: 'CLOSED' }, { number: 4, url: PR(4), state: 'MERGED' }, { number: 5, url: PR(5), state: 'OPEN' }];
+const PRS = ([[1, 'MERGED'], [2, 'OPEN'], [3, 'CLOSED'], [4, 'MERGED'], [5, 'OPEN']] as const)
+  .map(([number, state]) => ({ number, url: PR(number), state, headRefOid: HEAD_OF(number) }));
 /** `gh pr view --json files,changedFiles` for the PRs without a complete review. */
 const VIEWS: Record<number, object> = {
   4: { changedFiles: 2, files: [{ path: 'README.md', additions: 1, deletions: 0, changeType: 'MODIFIED' },
@@ -196,7 +199,7 @@ describe('#17 AC2: read-only tools only, unresolved findings on files at HEAD on
     expect((await onPath(s, () => scanCli(repo, ['--with-qodo']))).code).toBe(0);
     const calls = s.calls();
     const gh = calls.filter((c) => c.tool === 'gh');
-    expect(gh[0]).toEqual({ tool: 'gh', args: ['pr', 'list', '--state', 'all', '--limit', '1000', '--json', 'number,url,state'] });
+    expect(gh[0]).toEqual({ tool: 'gh', args: ['pr', 'list', '--state', 'all', '--limit', '1000', '--json', 'number,url,state,headRefOid'] });
     // Only the PRs without a complete review get their file list read.
     expect(gh.slice(1).map((c) => c.args).sort()).toEqual([4, 5].map((n) => ['pr', 'view', PR(n), '--json', 'files,changedFiles']));
     const qodo = calls.filter((c) => c.tool === 'qodo');
@@ -218,12 +221,36 @@ describe('#17 AC2: read-only tools only, unresolved findings on files at HEAD on
 
   it('a file changed by a PR with no complete review is unknown, not 0 (Qodo local r1 #2)', async () => {
     const r = await onPath(stubs(), () => scanCli(repo, ['--with-qodo']));
-    expect(r.out).toContain('2 PR(s) have no complete Qodo review; the 2 file(s) at HEAD they change are unknown, not 0');
+    expect(r.out).toContain('2 PR(s) have no complete Qodo review of their head commit; the 2 file(s) at HEAD they change are unknown, not 0');
     // With #5's review complete, its file is evidence-backed again and shows its finding.
     const done = stubs({ findings: { ...FINDINGS, 5: response(5, []) } });
     await onPath(done, () => scanCli(repo, ['--with-qodo']));
     expect(qodoOf(readSnap(repo))['src/new.ts']).toEqual(open(levels(1, 0, 0, 0)));
     expect(done.calls().filter((c) => c.args[1] === 'view').map((c) => c.args[2])).toEqual([PR(4)]);
+  });
+
+  it('a PR pushed since its last complete review leaves the files it changes unknown, not 0 (Qodo local r3 #1)', async () => {
+    // #2's review completed, but on a commit before its head: the push since then is unreviewed.
+    const prs = PRS.map((p) => (p.number === 2 ? { ...p, headRefOid: 'c'.repeat(40) } : p));
+    const views = { ...VIEWS, 2: { changedFiles: 1, files: [{ path: 'src/b.ts', additions: 1, deletions: 0, changeType: 'MODIFIED' }] } };
+    const s = stubs({ prs, views });
+    const r = await onPath(s, () => scanCli(repo, ['--with-qodo']));
+    const snap = readSnap(repo);
+    expect(qodoOf(snap)['src/b.ts']).toBeNull();
+    // #1's review is on its head, so the file only it vouches for keeps its count.
+    expect(qodoOf(snap)['src/a.ts']).toEqual(open(levels(1, 1, 1, 1)));
+    expect(snap.qodo).toMatchObject({ unreviewed: 3, onUnknown: 2 });
+    expect(s.calls().filter((c) => c.args[1] === 'view').map((c) => c.args[2]).sort()).toEqual([PR(2), PR(4), PR(5)]);
+    expect(r.out).toContain('3 PR(s) have no complete Qodo review of their head commit');
+  });
+
+  it('a review counts only when it is complete and on the PR\'s head commit', () => {
+    const at = (s: object | null) => parsePrFindings({ ...response(1, []), review_session: s }, HEAD_OF(1));
+    expect(at(session(1))).toMatchObject({ reviewed: true });
+    for (const s of [null, { ...session(1), commit_sha: null }, { ...session(1), commit_sha: HEAD_OF(2) }, session(1, 'running', false),
+      session(1, 'completed', false)]) {
+      expect(at(s), JSON.stringify(s)).toMatchObject({ reviewed: false });
+    }
   });
 
   it('a finding on a renamed, deleted, absolute or missing path is left out and counted, never moved', async () => {
@@ -247,7 +274,7 @@ describe('#17 AC2: read-only tools only, unresolved findings on files at HEAD on
     const snap = readSnap(repo);
     expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 0, skipped: 0, unreviewed: 0, offHead: 0, onUnknown: 0, addedSince: 0 });
     expect(snap.files.map((f) => f.qodo)).toEqual([null, null, null, null]);
-    expect(r.out).toContain('qodo findings: unknown (no PR has a Qodo review)');
+    expect(r.out).toContain('qodo findings: unknown (no PR has a complete Qodo review)');
   });
 });
 
@@ -309,7 +336,7 @@ describe('#17 AC4: files[].qodo, and a scan without the flag reads the cache', (
     expect(qodoOf(snap)['src/c.ts']).toBeNull();
     expect(qodoOf(snap)['src/a.ts']).toEqual(open(levels(1, 1, 1, 1)));
     expect(snap.qodo).toMatchObject({ status: 'read', addedSince: 1 });
-    expect(r.out).toContain('2 PR(s) have no complete Qodo review; the 2 file(s) at HEAD they change are unknown, not 0');
+    expect(r.out).toContain('2 PR(s) have no complete Qodo review of their head commit; the 2 file(s) at HEAD they change are unknown, not 0');
     expect(r.out).toContain('1 file(s) added since the cached HEAD are unknown, not 0');
   });
 
@@ -375,7 +402,8 @@ describe('#17 AC5: a failed fetch exits 0 with qodo null and an "unavailable (<r
     ['a GitHub API rate limit', { fail: { gh: 'process.stderr.write("GraphQL: API rate limit exceeded for user ID 1.\\n");\nprocess.exit(1);\n' } }, 'rate limited'],
     ['a remote that is not GitHub', { fail: { gh: 'process.stderr.write("none of the git remotes configured for this repository point to a known GitHub host.\\n");\nprocess.exit(1);\n' } }, 'no GitHub remote'],
     ['malformed JSON', { fail: { qodo: 'process.stdout.write("{oops");\n' } }, 'malformed response'],
-    ['a malformed PR list', { prs: [{ number: 1, url: '--exec=evil', state: 'OPEN' }] }, 'malformed response'],
+    ['a malformed PR list', { prs: [{ number: 1, url: '--exec=evil', state: 'OPEN', headRefOid: HEAD_OF(1) }] }, 'malformed response'],
+    ['a PR listed without its head commit', { prs: PRS.map((p) => ({ ...p, headRefOid: undefined })) }, 'malformed response'],
     ['a truncated read', { findings: { ...FINDINGS, 2: { ...(FINDINGS[2] as object), qar_operation_result_truncated: true } } }, 'truncated result'],
     ['a finding count that disagrees with the list', { findings: { ...FINDINGS, 1: { ...(FINDINGS[1] as object), finding_count: 99 } } }, 'truncated result'],
     ['a PR file list cut short', { views: { ...VIEWS, 4: { changedFiles: 3, files: (VIEWS[4] as { files: object[] }).files } } }, 'truncated result'],
@@ -446,6 +474,27 @@ describe('#17 AC5: a failed fetch exits 0 with qodo null and an "unavailable (<r
     expect(r.out).toContain('qodo findings: unavailable (qodo not installed)');
     expect(readSnap(repo).files.every((f) => f.qodo === null)).toBe(true);
     expect(readFileSync(CACHE(repo), 'utf8')).toBe(before);
+  });
+
+  it('known findings and skipped PRs stay in the summary when no PR has a complete review (Qodo local r3 #2)', async () => {
+    // Closed #3, and #5, still running, with findings on a file it changes, one it doesn't, and one not at HEAD.
+    const findings = { 5: response(5, [{ id: 'k1', status: 'pending', level: 'action_required', path: 'src/new.ts' },
+      { id: 'k2', status: 'pending', level: 'informational', path: 'src/a.ts' },
+      { id: 'k3', status: 'pending', level: 'informational', path: 'src/gone.ts' }], { review_session: session(5, 'running', false) }) };
+    const r = await onPath(stubs({ prs: [PRS[2], PRS[4]], findings }), () => scanCli(repo, ['--with-qodo']));
+    const snap = readSnap(repo);
+    expect(snap.files.every((f) => f.qodo === null)).toBe(true);
+    expect(snap.qodo).toMatchObject({ prs: 1, skipped: 1, unreviewed: 1, offHead: 1, onUnknown: 2 });
+    expect(r.out).toContain('qodo findings: unknown (no PR has a complete Qodo review); 2 open finding(s) are on files whose count is unknown');
+    expect(r.out).toContain('1 closed PR(s) that never merged were not read');
+    expect(r.out).toContain('1 open finding(s) are on files not at HEAD (deleted, renamed, excluded or none) and are left out');
+    // Every file is unknown here, so no line claims only the unreviewed PR's files are.
+    expect(r.out).not.toContain('file(s) at HEAD they change are unknown');
+  });
+
+  it('a closed PR is never read, so its listed head is never checked', async () => {
+    const prs = PRS.map((p) => (p.state === 'CLOSED' ? { ...p, headRefOid: null } : p));
+    expect((await onPath(stubs({ prs }), () => scanCli(repo, ['--with-qodo']))).out).toContain('qodo findings: 6 open: 5 on 2 file(s)');
   });
 
   it('the summary line comes from the snapshot alone', () => {

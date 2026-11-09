@@ -120,9 +120,9 @@ export type QodoReason = 'qodo not installed' | 'gh not installed' | 'not logged
 /**
  * Where files[].qodo came from (#17). `none`: not opted in and no cache. `read`: from a fetch or the
  * cache it wrote, as of `head` (the HEAD it was fetched at); `prs` were read and `skipped` (closed,
- * never merged) were not; `unreviewed` of those read had no complete Qodo review, so the files they
- * change are null; `offHead` open findings sat on no file at this HEAD and `onUnknown` on a file
- * whose count is null; `addedSince` files are new since `head`, so null too.
+ * never merged) were not; `unreviewed` of those read had no complete Qodo review of their head
+ * commit, so the files they change are null; `offHead` open findings sat on no file at this HEAD and
+ * `onUnknown` on a file whose count is null; `addedSince` files are new since `head`, so null too.
  */
 export type QodoSource =
   | { status: 'none' }

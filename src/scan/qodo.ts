@@ -5,7 +5,7 @@
 import { execFile } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { count, parseCache, parsePrFindings, type PrFindings, type QodoCache, type QodoFetch } from '../core/qodo.js';
+import { count, isSha, parseCache, parsePrFindings, type PrFindings, type QodoCache, type QodoFetch } from '../core/qodo.js';
 import type { QodoReason } from '../core/snapshot/types.js';
 
 /** More PRs than this can't be listed in one read, so the list may be incomplete: unknown. */
@@ -69,20 +69,25 @@ function parseFiles(v: unknown): string[] | 'malformed response' | 'truncated re
 /**
  * Lists this repo's PRs with `gh` and reads each one's stored Qodo findings. Closed PRs that never
  * merged are skipped (their code reached no branch) and counted. For a PR without a complete review
- * the files it changes are read too, so they become unknown rather than clean. Never rejects; any
- * failure is a reason, and the whole read is then unknown (a partial read could hide findings).
+ * of its head commit the files it changes are read too, so they become unknown rather than clean.
+ * Never rejects; any failure is a reason, and the whole read is then unknown (a partial read could
+ * hide findings).
  */
 export async function fetchQodo(repoDir: string, timeoutMs = QODO_TIMEOUT_MS): Promise<QodoFetch | QodoReason> {
-  const listed = await run('gh', ['pr', 'list', '--state', 'all', '--limit', String(PR_LIMIT), '--json', 'number,url,state'], repoDir, timeoutMs);
+  const listed = await run('gh', ['pr', 'list', '--state', 'all', '--limit', String(PR_LIMIT), '--json', 'number,url,state,headRefOid'],
+    repoDir, timeoutMs);
   if ('reason' in listed) return listed.reason;
   const prs = parseJson(listed.stdout);
   if (!Array.isArray(prs)) return 'malformed response';
   if (prs.length >= PR_LIMIT) return 'too many PRs';
-  const urls: string[] = [];
+  // Each PR's head commit: only a review of it vouches for the PR's code.
+  const read: { url: string; head: string }[] = [];
   for (const pr of prs as unknown[]) {
-    const { url, state } = (pr ?? {}) as { url?: unknown; state?: unknown };
+    const { url, state, headRefOid: head } = (pr ?? {}) as { url?: unknown; state?: unknown; headRefOid?: unknown };
     if (typeof url !== 'string' || !PR_URL.test(url) || typeof state !== 'string') return 'malformed response';
-    if (state !== 'CLOSED') urls.push(url);
+    if (state === 'CLOSED') continue;
+    if (!isSha(head)) return 'malformed response';
+    read.push({ url, head });
   }
   // PARALLEL workers take the next PR; the first failure stops them and kills the calls in flight.
   const out: PrFindings[] = [];
@@ -91,15 +96,16 @@ export async function fetchQodo(repoDir: string, timeoutMs = QODO_TIMEOUT_MS): P
   let failed: QodoReason | undefined;
   let next = 0;
   const worker = async () => {
-    while (failed === undefined && next < urls.length) {
+    while (failed === undefined && next < read.length) {
       const i = next++;
-      const r = await run('qodo', ['--no-onboarding', 'read', 'pr-review-session', 'findings', '--pr-url', urls[i]!, '--json'], repoDir,
+      const { url, head } = read[i]!;
+      const r = await run('qodo', ['--no-onboarding', 'read', 'pr-review-session', 'findings', '--pr-url', url, '--json'], repoDir,
         timeoutMs, stop.signal);
-      let parsed: PrFindings | string[] | QodoReason = 'reason' in r ? r.reason : parsePrFindings(parseJson(r.stdout));
+      let parsed: PrFindings | string[] | QodoReason = 'reason' in r ? r.reason : parsePrFindings(parseJson(r.stdout), head);
       if (typeof parsed !== 'string') {
         out[i] = parsed;
         if (!parsed.reviewed) {
-          const v = await run('gh', ['pr', 'view', urls[i]!, '--json', 'files,changedFiles'], repoDir, timeoutMs, stop.signal);
+          const v = await run('gh', ['pr', 'view', url, '--json', 'files,changedFiles'], repoDir, timeoutMs, stop.signal);
           parsed = 'reason' in v ? v.reason : parseFiles(parseJson(v.stdout));
           if (typeof parsed !== 'string') unreviewedPaths.push(...parsed);
         }
@@ -110,8 +116,8 @@ export async function fetchQodo(repoDir: string, timeoutMs = QODO_TIMEOUT_MS): P
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(PARALLEL, urls.length) }, worker));
-  return failed ?? { prs: out, skipped: prs.length - urls.length, unreviewedPaths };
+  await Promise.all(Array.from({ length: Math.min(PARALLEL, read.length) }, worker));
+  return failed ?? { prs: out, skipped: prs.length - read.length, unreviewedPaths };
 }
 
 /** The cached counts, null when there is no cache, or a reason when it can't be trusted. */

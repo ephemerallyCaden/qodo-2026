@@ -1,5 +1,5 @@
 import { byCodepoint } from './canonical-json.js';
-import type { CommitClass, SnapshotV02 } from './snapshot/types.js';
+import type { CommitClass, QodoSource, SnapshotV02 } from './snapshot/types.js';
 import { hasReview, QODO_LEVEL_NAMES, QODO_LEVELS, qodoTotal, zeroLevels } from './qodo.js';
 import { DEBT_KEYS, zeroDebt } from './structure.js';
 
@@ -76,7 +76,16 @@ function qodoLines(s: SnapshotV02, cached: boolean): string[] {
   if (q.status === 'none') return ['qodo findings: not read (opt in with --with-qodo)'];
   if (q.status === 'unavailable') return [`qodo findings: unavailable (${q.reason}); every file's finding count is unknown, not zero`];
   const label = `qodo findings${cached ? ' (cached)' : ''}`;
-  if (!hasReview(q)) return [`${label}: unknown (no PR has a Qodo review)`];
+  // Known findings and skipped PRs stay visible even with no complete review to vouch for the rest (Qodo local r3 #2).
+  const out = hasReview(q) ? reviewedLines(s, q, label) : [`${label}: unknown (no PR has a complete Qodo review)`
+    + (q.onUnknown ? `; ${q.onUnknown} open finding(s) are on files whose count is unknown` : '')];
+  if (q.skipped) out.push(`${q.skipped} closed PR(s) that never merged were not read`);
+  if (q.offHead) out.push(`${q.offHead} open finding(s) are on files not at HEAD (deleted, renamed, excluded or none) and are left out`);
+  return out;
+}
+
+/** The headline and the per-PR unknowns, when at least one PR's review vouches for the files it covers. */
+function reviewedLines(s: SnapshotV02, q: Extract<QodoSource, { status: 'read' }>, label: string): string[] {
   const sum = zeroLevels();
   const withOpen = s.files.filter((f) => f.qodo?.open);
   for (const f of withOpen) for (const k of QODO_LEVELS) sum[k] += f.qodo!.byLevel[k];
@@ -89,10 +98,9 @@ function qodoLines(s: SnapshotV02, cached: boolean): string[] {
   const out = [`${label}: ${counts}, from ${q.prs - q.unreviewed} reviewed PR(s) as of ${q.head.slice(0, 7)}${stale}`];
   if (q.unreviewed) {
     const unknown = s.files.filter((f) => f.qodo === null).length - q.addedSince;
-    out.push(`${q.unreviewed} PR(s) have no complete Qodo review; the ${unknown} file(s) at HEAD they change are unknown, not 0`);
+    out.push(`${q.unreviewed} PR(s) have no complete Qodo review of their head commit; `
+      + `the ${unknown} file(s) at HEAD they change are unknown, not 0`);
   }
   if (q.addedSince) out.push(`${q.addedSince} file(s) added since the cached HEAD are unknown, not 0`);
-  if (q.skipped) out.push(`${q.skipped} closed PR(s) that never merged were not read`);
-  if (q.offHead) out.push(`${q.offHead} open finding(s) are on files not at HEAD (deleted, renamed, excluded or none) and are left out`);
   return out;
 }
