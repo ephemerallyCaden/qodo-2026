@@ -14,5 +14,5 @@
     "skipLibCheck": true,
     "rootDir": "."
   },
-  "include": ["src", "test", "eslint.config.js", "vitest.config.ts"]
+  "include": ["src", "test", "factory", "eslint.config.js", "vitest.config.ts"]
 }

@@ -18,7 +18,7 @@ const determinism = {
 };
 
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/', 'coverage/'] },
+  { ignores: ['dist/', 'factory/dist/', 'node_modules/', 'coverage/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: ['src/core/**', 'src/scan/**', 'src/attrib/**'], rules: determinism },

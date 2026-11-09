@@ -17,7 +17,9 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "factory:build": "tsc -p factory/tsconfig.json",
+    "factory": "npm run -s factory:build && node factory/dist/bin.js"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0"
