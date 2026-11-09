@@ -30,7 +30,7 @@ export const GROUPS = [
       planet('lava', 'churn hotspot · 11', { biome: 'lava', seed: 11, ring: 'off' }),
       planet('gas giant', 'extra · very large · 5', { biome: 'gas', seed: 5, ring: 'off' }),
       planet('barren moon', 'extra · tiny or dead · 9', { biome: 'moon', seed: 9, ring: 'off', moons: false }),
-      planet('toxic', 'extra · overgrown, risky · 13', { biome: 'toxic', seed: 13, ring: 'off' }),
+      planet('toxic', 'health band · between lava and desert · 13', { biome: 'toxic', seed: 13, ring: 'off' }),
     ],
   },
   {

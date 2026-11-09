@@ -1,15 +1,16 @@
-// The health-band lineup for #19: lava -> toxic -> ash desert -> lush, worst to best, one row
-// per toxic look (TOXIC_LOOKS in planet-ramps.js: the pre-#19 'acid' look first, then the
-// candidates), each planet at the internal resolution (pixel h 180), cropped square and
-// upscaled x4 nearest-neighbour. Rendered by the asset library in headless Chromium +
-// SwiftShader through its test harness (no socket, no network). A look is applied as
-// palette edits over the base, so the other three planets are the shipped colours.
-// Usage: node lineup.mjs  ->  out/lineup.png (needs npm ci in ../asset-library: playwright, three).
+// The health-band lineup for #19: lava -> toxic -> ash desert -> lush, worst to best. Row 1 is
+// toxic as it was at a git revision (planet-ramps.js there, applied as palette edits, so the
+// other three planets stay the shipped colours); row 2 is the shipped toxic. Each planet is at
+// the internal resolution (pixel h 180), cropped square and upscaled x4 nearest-neighbour,
+// rendered by the asset library in headless Chromium + SwiftShader through its test harness
+// (no socket, no network).
+// Usage: node lineup.mjs [before-rev]  ->  out/lineup.png  (default rev: a5d8bf6, before #19;
+// needs npm ci in ../asset-library: playwright, three).
+import { execFileSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, openLibrary } from '../asset-library/test/harness.mjs';
-import { TOXIC_LOOKS, TOXIC_LOOK, toxicRamps } from '../asset-viewer/planet-ramps.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'out');
@@ -19,12 +20,6 @@ const BANDS = [
 const SCALE = 4;
 const TILE = 180; // the internal height: a square crop around the planet
 
-/** Palette edits that turn the shipped toxic ramps into another look. */
-function lookEdits(name) {
-  const edits = { 'haze.toxic': TOXIC_LOOKS[name].haze };
-  for (const [key, ramp] of Object.entries(toxicRamps(name))) ramp.forEach((hex, i) => (edits[`${key}.${i}`] = hex));
-  return edits;
-}
 /** A paused, ring-free, moon-free planet in the inspector, at the default 320x180 frame. */
 const planetState = (biome, seed, palette = {}) => ({
   mode: 'asset', focus: 'planet', framing: 'planet', camera: null, palette,
@@ -32,9 +27,20 @@ const planetState = (biome, seed, palette = {}) => ({
   render: { t: 3, play: false, pixelH: TILE },
 });
 
-const rows = Object.keys(TOXIC_LOOKS).map((look) => ({
-  look, title: look === 'acid' ? 'before: acid' : `${look}${look === TOXIC_LOOK ? ' (shipped)' : ''}`, edits: lookEdits(look),
-}));
+const TOXIC_ROLES = ['sludge', 'toxic', 'fungus', 'spore'];
+/** Palette edits that restore toxic's ramps and haze as planet-ramps.js had them at `rev`. */
+async function toxicAt(rev) {
+  const src = execFileSync('git', ['show', `${rev}:mockups/asset-viewer/planet-ramps.js`], { cwd: HERE, encoding: 'utf8' });
+  const { V2_PLANET_RAMPS: old } = await import(`data:text/javascript,${encodeURIComponent(src)}`);
+  const edits = { 'haze.toxic': old.haze.toxic };
+  for (const role of TOXIC_ROLES) old[role].forEach((hex, i) => (edits[`${role}.${i}`] = hex));
+  return edits;
+}
+const before = process.argv[2] ?? 'a5d8bf6';
+const rows = [
+  { look: `before (${before})`, title: `before: ${before}`, edits: await toxicAt(before) },
+  { look: 'shipped', title: 'after: rust-ember', edits: {} },
+];
 
 await mkdir(OUT, { recursive: true });
 const browser = await launch();
