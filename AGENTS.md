@@ -1,7 +1,7 @@
 # AGENTS.md: Commet house rules
 
 For every coding agent, reviewer and Qodo. Everyone follows Setup, Testing and PRs, then the rules for their work:
-- **Coding rules (1–3):** changes to `src/**`, `test/**` or CI.
+- **Coding rules (1–3, 7):** changes to `src/**`, `test/**` or CI.
 - **Art rules (4–5):** anything that renders: renderer, shaders, mockups.
 - **Design rules (6):** anything that shapes what the user sees or how Commet motivates them.
 
@@ -83,6 +83,19 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
   - Same repo and logs → byte-identical snapshot. Same snapshot, camera and frame → identical pixels.
 - **Why:** the factory verifies the product with goldens, and a planet that moves between runs breaks the user's mental map.
 - **Checked by:** ESLint bans in `src/core`, `src/scan` and `src/attrib` (render and layout code is review-only until lint covers it), golden byte compares, a scan-twice SHA-256 test.
+
+### Rule 7: NUL-framed git output
+*A repository path can hold any byte except NUL, so git output that lists paths is read with `-z` and parsed by position on `\0`, never framed by another byte.*
+- **Applies to:** the scanner and attribution code (`src/scan/**`, `src/attrib/**`): every git call whose output lists repository paths (`--name-only`, `--name-status`, `--numstat`, `--raw`, `ls-tree`, `ls-files`, `grep`) or carries patch text (`-p`).
+- **Rule:**
+  - A path-listing git call passes `-z` and separates `--format` fields with `%x00`; no `%x01`, `%n` or other byte frames a record or a field that can hold a path.
+  - The NUL tokens are parsed in order, each header or status saying how many path tokens follow, never by first splitting the output into commit chunks on a marker byte.
+  - A path token is never trimmed, stripped or rewritten; the only byte dropped is the one newline git writes after a format line.
+  - A last record with no closing NUL is accepted, and a record cut off mid-way is refused or counted under Rule 1, never half-read.
+  - Patch text (`-p`) can't be NUL-framed, because a text diff can itself hold NUL (past git's 8,000-byte binary check, or under a `diff` attribute) and U+0001: it is read line by line, the `@@` hunk counts tell content from headers, and paths come from the C-quoted `+++` header via `headerPath`.
+  - Each new parser of path-bearing output gets a failing-first test whose filename contains U+0001, a newline and a tab.
+- **Why:** git-output framing broke parsing 5 times in 3 days, all caught by Qodo: three U+0001 splits (PR #3, #16 local r2 and r4), a stripped leading newline (#16 local r1) and a dropped final record (PR #20 r2). The first fix missed its sibling in the same file (#24, still open), and two new parsers copied the `%x01` pattern two days later.
+- **Checked by:** the U+0001 fixtures in the scan tests; in review, any path-listing git call without `-z`, or `%x01` / `'\x01'` framing. From #24, `npm run lint` bans `\x01` and `%x01` in `src/scan` and `src/attrib`.
 
 ## Art rules
 For the main 3D view; the 2D map, terminal mode and status card have their own specs. Source of truth: `docs/design/art-direction.md`. Don't revive anything in its §11 (rejected directions) without new evidence and the human's sign-off. `art-direction-history.md` is a record, not a menu.
