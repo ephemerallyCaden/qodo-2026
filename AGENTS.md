@@ -89,13 +89,13 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 - **Applies to:** the scanner and attribution code (`src/scan/**`, `src/attrib/**`): every git call whose output lists repository paths (`--name-only`, `--name-status`, `--numstat`, `--raw`, `ls-tree`, `ls-files`, `grep`) or carries patch text (`-p`).
 - **Rule:**
   - A path-listing git call passes `-z` and separates `--format` fields with `%x00`; no `%x01`, `%n` or other byte frames a record or a field that can hold a path.
-  - The NUL tokens are parsed in order, each header or status saying how many path tokens follow, never by first splitting the output into commit chunks on a marker byte.
+  - The NUL tokens are parsed in order, a commit header recognised by its position (such as an empty token where a status or path would be) and each status taking its one or two paths, never by first splitting the output into commit chunks on a marker byte.
   - A path token is never trimmed, stripped or rewritten; the only byte dropped is the one newline git writes after a format line.
-  - A last record with no closing NUL is accepted, and a record cut off mid-way is refused or counted under Rule 1, never half-read.
+  - Only a final header field may lack its closing NUL (an empty last commit has no paths after it); any other unterminated token is a cut-off record, refused or counted under Rule 1, never half-read.
   - Patch text (`-p`) can't be NUL-framed, because a text diff can itself hold NUL (past git's 8,000-byte binary check, or under a `diff` attribute) and U+0001: it is read line by line, the `@@` hunk counts tell content from headers, and paths come from the C-quoted `+++` header via `headerPath`.
   - Each new parser of path-bearing output gets a failing-first test whose filename contains U+0001, a newline and a tab.
 - **Why:** git-output framing broke parsing 5 times in 3 days, all caught by Qodo: three U+0001 splits (PR #3, #16 local r2 and r4), a stripped leading newline (#16 local r1) and a dropped final record (PR #20 r2). The first fix missed its sibling in the same file (#24, still open), and two new parsers copied the `%x01` pattern two days later.
-- **Checked by:** the U+0001 fixtures in the scan tests; in review, any path-listing git call without `-z`, or `%x01` / `'\x01'` framing. From #24, `npm run lint` bans `\x01` and `%x01` in `src/scan` and `src/attrib`.
+- **Checked by:** the U+0001 fixtures in the scan tests; in review, any path-listing git call without `-z`, or `%x01` / `'\x01'` framing. Not yet in lint: once #24 lands, `npm run lint` will also ban `\x01` and `%x01` in `src/scan` and `src/attrib`.
 
 ## Art rules
 These cover the main 3D view; the 2D map, terminal mode and status card have their own specs.
