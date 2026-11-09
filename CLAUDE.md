@@ -1,60 +1,39 @@
-# [PROJECT NAME]
+# Commet: art mockup branch
 
-> [One sentence: what it does and who it's for]
+> Commet is a local-first, pixel-art 3D explorer that helps a solo developer working with AI coding agents keep a real mental model of their own codebase. This branch holds **design mockups**: throwaway prototypes that settle the art, not product code.
 
-## Stack
-<!-- Fill in at kickoff -->
-- Framework:
-- UI:
-- Database:
-- External APIs: [sponsor API + anything else]
-- Deploy target:
+**This branch is not the product line.** It grew from the initial template commit, so `AGENTS.md`, `CONSTITUTION.md`, `docs/` and `src/` aren't here. They live on `main` and the `session/*` branches, and they apply here too. Read them from git:
+- `git show main:AGENTS.md`: house rules shared by every agent and by Qodo.
+- `git show main:CONSTITUTION.md`: principles, autonomy and quality gates (approved).
+- `git show session/week1:docs/design/art-direction.md`: the visual source of truth. If a mockup and this document disagree, the document wins.
+- `git show session/week1:docs/features/asset-library.md` and the other feature docs under `docs/features/`.
+- `JOURNAL.md` and `.archive/` are gitignored. Use absolute paths: `<main-checkout>/JOURNAL.md`, `<main-checkout>/.archive/art-iteration/INDEX.md` (the full art history). `<main-checkout>` is `$(git rev-parse --path-format=absolute --git-common-dir)/..`.
 
-## Commands
-<!-- Fill in once stack is chosen -->
-- `[dev command]` to start dev server
-- `[build command]` to build
-- `[test command]` to run tests
-- `[lint command]` to lint
+`HACKATHON.md` and the 24-hour, four-person template rules that used to be here don't apply to Commet. Ignore any copy of them on older branches.
 
-## Architecture
-<!-- Fill in after initial scaffolding -->
-- Entry point:
-- API routes:
-- Components:
+## Mockups (each folder is its own npm project)
+| Folder | What | Dev server |
+|---|---|---|
+| `mockups/asset-viewer/` | The reference implementation of the art direction: factories, shaders, palettes | 127.0.0.1:5180 |
+| `mockups/asset-library/` | The demo playground: catalogue, inspector, scene composer, palette editor | 127.0.0.1:5190 |
+| `mockups/explorations/astronaut-lab/` | Astronaut variants A–J and K (archive) | 127.0.0.1:5186 |
+| `mockups/drone-lab/` | The drone (agent session) designs, on `feature/drone-lab` | 127.0.0.1:5192 |
 
-## Sponsor API
-<!-- Fill in at kickoff -->
-- API key in `.env` as `[SPONSOR]_API_KEY`
-- Docs: [link]
-- SDK: [install command]
+In a mockup folder: `npm ci` (or `npm install`), `npm test` (headless Chromium + SwiftShader, no socket, no network), `npm run dev`, and `npm run shots` or the folder's own render script where it has one. The tests are slow on a busy machine (1–3 minutes per browser test file).
 
 ## Rules
-- Read files before editing. Don't guess what exists.
-- No features beyond what was asked. Hackathon scope is tight.
-- Match existing patterns. Don't refactor adjacent code.
-- Run build/test after changes. Fix what you break.
-- Commit after every working feature. Small commits, clear messages.
-- If unsure, ask. Don't assume and build the wrong thing.
-- No abstractions for one-time code. Inline is fine for 24 hours.
-- Skip error handling except on the demo path.
+- Stack: three.js `WebGLRenderer`, GLSL and plain ES modules. Every asset is live 3D through the pixel pipeline (320×180 default, nearest-neighbour upscale), with no sprite sheets, outlines, anti-aliasing or dithering.
+- **Determinism:** no `Math.random` and no wall-clock time in render code. The same seed and time give the same pixels. Render tests must fail on empty output.
+- **Palettes:** the crew (astronauts, drones) uses BLK 36 exactly; the world uses v2; [OIII] teal is the only accent and marks events only. Rings and clouds reuse planet-family colours.
+- **Planet looks carry data:** a planet's look shows its code health (see the art direction §6). Nothing decorative may look like a data signal.
+- **Loopback only:** dev servers bind 127.0.0.1, serve a file allowlist, and the page makes no network requests. Downloaded references stay in `.archive/` (gitignored), never in the repo.
+- **Privacy:** never copy code, prompt text or absolute paths from agent logs into any output.
+- Golden and pixel-identity tests are updated deliberately with a reason, never regenerated just to pass. The asset viewer's tests must stay green, and the asset library must stay pixel-identical to it.
+- Read files before editing. No features beyond the task. Match existing patterns; don't refactor adjacent code.
+- **Stage explicit paths only.** Never `git add -A` or `git add .`; other sessions write files in this checkout.
+- Qodo can't see binary files. Report visual results as text (test output, colour counts, pixel diffs) in PRs.
 
-## Context management
-- When context feels long (50+ tool calls, or responses getting shorter): write your current plan to PLAN.md, then run `/compact`.
-- Compact AFTER: finishing a research phase, fixing a bug, completing a feature.
-- Do NOT compact DURING: active implementation, multi-file changes, debugging.
-- After compacting: read PLAN.md and SPEC.md back to restore state.
-
-## Agent auto-routing
-Use these agents and skills proactively without being asked:
-- After writing code that changes behavior: run `/verify` to check build/types/lint/tests
-- When a build or test fails: run `/fix` with the error output
-- Before committing: run `git diff` and scan for debug code, hardcoded secrets, console.logs
-- When starting a new feature: read SPEC.md first to check scope and team ownership
-- When exploring unfamiliar code: use the `explorer` agent, don't read files one by one
-
-## Team
-Four developers working in parallel on feature branches.
-- Merge to `main` only when your feature works and builds.
-- Coordinate with teammates before touching shared files.
-- Each person owns their branch. Don't edit others' branches.
+## Branching
+- `main` changes only with the human's approval. Never merge into or push `main`.
+- Mockup work happens on `feature/<name>` branches in worktrees under `.sandboxes/`. The team lead merges; other agents only commit on their own branch.
+- Commits: conventional style (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `design:`), small and focused.
