@@ -98,31 +98,45 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 - **Checked by:** the U+0001 fixtures in the scan tests; in review, any path-listing git call without `-z`, or `%x01` / `'\x01'` framing. From #24, `npm run lint` bans `\x01` and `%x01` in `src/scan` and `src/attrib`.
 
 ## Art rules
-For the main 3D view; the 2D map, terminal mode and status card have their own specs. Source of truth: `docs/design/art-direction.md`. Don't revive anything in its §11 (rejected directions) without new evidence and the human's sign-off. `art-direction-history.md` is a record, not a menu.
+These cover the main 3D view; the 2D map, terminal mode and status card have their own specs.
+Source of truth: `docs/design/art-direction.md`. These rules summarise it and change only after it does. Don't revive anything in its §11 (rejected directions) without new evidence and the human's sign-off; `art-direction-history.md` is a record, not a menu.
 
 ### Rule 4: Pixel honesty
 *Render at low resolution, upscale nearest-neighbour, light in our own banded shaders, and skip the usual "make it pretty" defaults.*
-- **Applies to:** `web/**`, all GLSL (`**/*.glsl` and inline), `mockups/**`.
+- **Applies to:** three.js and GLSL rendering code for the main 3D view: everything under `web/` and `mockups/`, and GLSL anywhere, in `.glsl` files or inline shader strings (`web/**`, `mockups/**`, `**/*.glsl`).
 - **Rule:**
-  - Render into a 320×180 target (default) and upscale by a whole number, nearest-neighbour only.
-  - No anti-aliasing (`antialias: false`, `setPixelRatio(1)`), linear filtering or mipmaps, outlines, dithering, or sprite sheets.
-  - No stock lit materials (`MeshStandard`, `MeshPhysical`, `MeshPhong`, `MeshLambert`), shadow maps or extra lights. Light in our shaders from the one key-light direction.
-  - No easing, tweens or springs on planetary motion (spin, orbits, moons, rings, clouds); constant rates only. Stars never twinkle.
-  - No post-processing (bloom, blur, FXAA/SMAA, SSAO, vignette, chromatic aberration, grain) unless art direction changes first.
-  - Quantised colour bands; lines ≥ 2 internal px (stars and ring dots exactly 1 px); every animated layer completes whole cycles per loop (24 s).
-  - **Exceptions:** the per-pixel depth fade is the one gradient. Labels and UI render outside the pixel pass, in the bitmap font.
+  - The scene renders into a low-resolution target (320×180 by default) that is upscaled by a whole-number factor with nearest-neighbour only, such as CSS `image-rendering: pixelated` or a `NearestFilter` blit.
+  - The `WebGLRenderer` is created with `antialias: false` and `setPixelRatio(1)`.
+  - Every texture and render target samples with `NearestFilter` and `generateMipmaps = false`, never `LinearFilter` or a mipmap filter (three.js's texture defaults).
+  - No outlines and no dithering: no `OutlinePass` or edge-detection outline, no `dithering: true` on a material, and no ordered or noise dither in a shader.
+  - No sprite sheets: scene objects are drawn live by meshes and shaders.
+  - No stock lit material: `MeshStandardMaterial`, `MeshPhysicalMaterial`, `MeshPhongMaterial`, `MeshLambertMaterial` or `MeshToonMaterial`.
+  - No shadow maps: `renderer.shadowMap.enabled`, `castShadow` and `receiveShadow` stay off.
+  - Our shaders light surfaces from the one key-light direction, with no extra lights (`AmbientLight`, `HemisphereLight`, `PointLight`, `SpotLight`, `RectAreaLight` or a second `DirectionalLight`).
+  - Planetary motion (spin, orbits, moons, rings, clouds) runs at constant rates, its phase a fixed rate times time, never through an easing curve, a tween (tween.js, GSAP) or a spring or damping (`MathUtils.damp`); camera motion isn't covered by this rule.
+  - Stars never twinkle: a star's brightness and size never vary with time.
+  - No post-processing beyond the nearest-neighbour upscale: no `EffectComposer` pass or full-screen shader for bloom (`UnrealBloomPass`), blur, FXAA or SMAA, SSAO, vignette, chromatic aberration or film grain.
+  - Surface colour comes in quantised bands: a shader picks one band of its ramp per pixel and never blends smoothly between ramp colours.
+  - Drawn lines, such as cracks, fissures and crevasses, are at least 2 internal px wide; stars and ring dots are exactly 1 internal px.
+  - Every animated layer completes a whole number of cycles per loop (24 s), so the loop has no seam.
+  - **Exception:** the per-pixel depth fade toward the depth tint is the one gradient.
+  - **Exception:** labels and UI render outside the pixel pass, in the bitmap font, never into the low-resolution target (no `TextGeometry` or font-rendered canvas text in the scene).
 - **Why:** three.js defaults and polish passes give smooth gradients and soft edges, which is a blurry 3D render, not pixel art.
 - **Checked by:** asset-viewer render tests (line width, depth, loop seam); in review, any AA, filtering, stock material, planetary easing, post-pass or in-pass text.
 
 ### Rule 5: Palette consistency
 *Every rendered colour comes from a named palette, never an inline literal, and nothing is pure black.*
-- **Applies to:** `web/**`, all GLSL, `mockups/**`, except the palette modules.
+- **Applies to:** the same rendering code as Rule 4 (everything under `web/` and `mockups/`, and GLSL anywhere), except the palette modules that define the colours (in the asset viewer, `planet-ramps.js` and `palette-map.js`).
 - **Rule:**
-  - No hex, `rgb()` or colour `vec3` written inline. World = v2 ramps (`V2_PLANET_RAMPS`); crew = BLK 36, never retuned; accent = [OIII] teal, code-layer events only, under 10% of the frame.
-  - Rings and clouds use only their planet family's colours: never pink, violet or yellow.
-  - No `#000000`, including the clear colour and page background. Space is `#0d0b16`.
-  - Glitches reuse the colour they cover; only teal may be added.
-  - **Exceptions:** lava glow is unlit but still from the v2 lava ramp. The depth fade is the only off-palette output.
+  - Render code and shaders hold no colour literal (a `'#rrggbb'` string, a `0xRRGGBB` number, `rgb()`, or a literal `vec3`, `vec4` or `new Color(…)` used as a colour); colours are read from a palette module by role.
+  - World colours (planets, clouds, rings, space, stars) come from the v2 ramps (`V2_PLANET_RAMPS`).
+  - Crew colours come from BLK 36 (`mapPalette('blk-36')`), used exactly and never retuned.
+  - The only accent is [OIII] teal (`#004538` `#007c66` `#00bc9c` `#00ffd5`), used for code-layer events only and on under 10% of the frame's pixels.
+  - Rings and clouds use only their planet family's colours, never pink, violet or yellow.
+  - Nothing is pure black: no `#000000`, `0x000000`, `rgb(0, 0, 0)` or `black`, including `setClearColor`, `scene.background` and the page background; space is `#0d0b16`.
+  - Code-layer glitch cells only reuse the colour they cover (a darker or lighter step, inverted lightness, a channel slip, a posterise), and the only colour they may add is teal.
+  - **Exception:** lava glow is unlit, but its colours still come from the v2 lava ramp.
+  - **Exception:** the depth fade is the only off-palette output.
 - **Why:** Qodo can't see renders, but it can see a colour literal in a diff. One stray magenta reads as pasted on.
 - **Checked by:** in review, any colour literal outside palette modules, a new palette, or `#000000` / `0x000000`.
 
@@ -132,11 +146,11 @@ For the main 3D view; the 2D map, terminal mode and status card have their own s
 *Commet rewards understanding code, never producing it.*
 - **Applies to:** every feature, UI surface and piece of copy, including fog, status messages, debris, teammates and recaps.
 - **Rule:**
-  - No XP, points, levels, badges or streaks for commits, PRs, lines or sessions.
-  - No leaderboards or per-person scores, counts or rankings. Repo totals are fine.
-  - Fog clears only through review (opening a diff, answering a question), never through time, more commits or a button.
-  - No guilt mechanics: nothing decays, nags or punishes a break.
-  - Not a task tracker: read intent from existing sources; never store, assign or edit tasks.
+  - Nothing awards XP, points, levels, badges or streaks for commits, PRs, lines or sessions.
+  - No leaderboard, ranking, or per-person score or count (such as commits or lines per person) appears anywhere; repo totals are fine.
+  - Fog clears only on review, when a file's diff is opened or its question answered; no timer, elapsed time, new commit or button (such as "chart all") clears it.
+  - No guilt mechanics: nothing decays, nags or punishes a break (no state that worsens with time away, no repeated reminders, no penalties).
+  - Commet is not a task tracker: it reads intent from sources that already exist and never stores, assigns or edits tasks.
 - **Why:** rewarding output is what makes agent-written code pile up unread. Output rewards get gamed, and scoring people turns a tool into surveillance.
 - **Checked by:** in review, any score, streak, ranking, per-person count or non-review way to clear fog.
 
