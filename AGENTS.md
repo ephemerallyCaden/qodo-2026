@@ -91,8 +91,8 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
   - A path-listing git call passes `-z` and separates `--format` fields with `%x00`; no `%x01`, `%n` or other byte frames a record or a field that can hold a path.
   - The NUL tokens are parsed in order, a commit header recognised by its position (such as an empty token where a status or path would be) and each status taking its one or two paths, never by first splitting the output into commit chunks on a marker byte.
   - A path token is never trimmed, stripped or rewritten; the only byte dropped is the one newline git writes after a format line's closing NUL, before its first path or status.
-  - Only a final header field may lack its closing NUL (an empty last commit has no paths after it); any other unterminated token is a cut-off record, refused or counted under Rule 1, never half-read.
-  - Patch text (`-p`) can't be NUL-framed, because a text diff can itself hold NUL (past git's 8,000-byte binary check, or under a `diff` attribute) and U+0001: it is read line by line, the `@@` hunk counts tell content from headers, and paths come from the C-quoted `+++` header via `headerPath`.
+  - Only a final header field may lack its closing NUL (an empty last commit has no paths after it), and only when it is complete and well-formed (e.g. a full 40-hex SHA); a malformed final header or any other unterminated token is a cut-off record, refused or counted under Rule 1, never half-read.
+  - Patch text (`-p`) can't be NUL-framed, because a text diff can itself hold NUL (past git's 8,000-byte binary check, or under a `diff` attribute) and U+0001: it is read line by line, the `@@` hunk counts tell content from headers, and paths come from the C-quoted `+++ b/…` header via `headerPath`, or from the `--- a/…` header when `+++` is `/dev/null` (a deleted file).
   - Each new parser of path-bearing output gets a failing-first test whose filename contains U+0001, a newline and a tab.
 - **Why:** git-output framing broke parsing 5 times in 3 days, all caught by Qodo: three U+0001 splits (PR #3, #16 local r2 and r4), a stripped leading newline (#16 local r1) and a dropped final record (PR #20 r2). The first fix missed its sibling in the same file (#24, still open), and two new parsers copied the `%x01` pattern two days later.
 - **Checked by:** the U+0001 fixtures in the scan tests; in review, any path-listing git call without `-z`, or `%x01` / `'\x01'` framing. Not yet in lint: once #24 lands, `npm run lint` will also ban `\x01` and `%x01` in `src/scan` and `src/attrib`.
@@ -126,7 +126,7 @@ Source of truth: `docs/design/art-direction.md`. These rules summarise it and ch
 
 ### Rule 5: Palette consistency
 *Every rendered colour comes from a named palette, never an inline literal, and nothing is pure black.*
-- **Applies to:** the same rendering code as Rule 4 (everything under `web/` and `mockups/`, and GLSL anywhere), except the palette modules that define the colours (today the asset viewer's `planet-ramps.js` and `palette-map.js`, on `feature/hype-gif`).
+- **Applies to:** the same rendering code as Rule 4 (everything under `web/` and `mockups/`, and GLSL anywhere), except palette modules: files whose only job is to define the named colours (e.g. `src/core/palette.ts` and the asset viewer's `planet-ramps.js` and `palette-map.js`).
 - **Rule:**
   - Render code and shaders hold no colour literal (a `'#rrggbb'` string, a `0xRRGGBB` number, `rgb()`, or a literal `vec3`, `vec4` or `new Color(…)` used as a colour); colours are read from a palette module by role.
   - World colours (planets, clouds, rings, space, stars) come from the v2 ramps (`V2_PLANET_RAMPS`).
