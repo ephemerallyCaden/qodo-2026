@@ -125,7 +125,7 @@ Every visual property of a planet either carries data or is seeded variety that 
 | Moons | Test files | #18 |
 | Debris | Stale work: stale PRs and abandoned, merged-but-not-deleted or orphaned agent branches | R13; PRs only with the opt-in token |
 | Rings | **Open (human, 2026-11-09).** No longer unmerged branches. Rings need a new meaning or stay out of the product view | — |
-| Fog, drones, constellations, beacons | Charting (R5), agent sessions (R2b, R16), co-change (R9), notes (R10) | — |
+| Fog, drones, constellations, beacons | Charting (R5), agent sessions (R2b), co-change (R9), notes (R10) | — |
 
 Gas giant and barren moon are **asset-library extras**, never shown in the product view.
 
