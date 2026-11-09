@@ -49,25 +49,28 @@ for (const pal of Object.values(PALETTES)) {
   pal.halo ??= pal.stars[0];
 }
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
-export const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
+const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
 let paletteName = 'final';
 // Ramp keys are paths into the active palette, e.g. 'ocean' or 'contributors.mint'.
 // A missing sub-key falls back to its parent (e.g. 'ring.lush' -> 'ring' on palettes
-// that have one ring ramp for every biome).
+// that have one ring ramp for every biome). A '#rrggbb' key is that colour itself.
 export const resolve = (key) => {
+  if (key.startsWith('#')) return key;
   const v = key.split('.').reduce((o, k) => o?.[k], PALETTES[paletteName]);
   return v !== undefined || !key.includes('.') ? v : resolve(key.split('.').slice(0, -1).join('.'));
 };
-/** Makes `name` (a PALETTES key) the active palette; true if it changed, and the caller must retint. */
-export function usePalette(name) {
-  if (name === paletteName) return false;
+/** Makes `name` (a PALETTES key) the active palette; true if the caller must retint. edited: its
+ *  colours changed in place (the asset library's palette editor), so drop the cached depth fades. */
+export function usePalette(name, { edited = false } = {}) {
+  if (edited) depthCache.clear();
+  if (name === paletteName && !edited) return false;
   paletteName = name;
   return true;
 }
 /** Makes every palette material under root re-resolve its ramps on its next setDepthLevel. */
 export const retint = (root) => root.traverse((o) => { if (o.userData.depthLevel !== undefined) o.userData.depthLevel = -1; });
 
-export const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object (or, per pixel, a fragment) drops a level
+const DEPTH_RANGES = [12, 26, 44]; // camera distances at which an object (or, per pixel, a fragment) drops a level
 const depthCache = new Map();
 
 // Depth mode. 'object' (the original): each whole object picks a level from its distance
@@ -878,7 +881,7 @@ export const MOON_ORBITS = [
   { size: 0.11, orbit: 1.75, incl: 0.34, yaw: 0.25, offset: 0.15 },
   { size: 0.062, orbit: 1.36, incl: 0.5, yaw: -0.4, offset: 0.62 },
 ];
-export const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size, shared by every planet surface (artefact cells)
+const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size, shared by every planet surface (artefact cells)
 
 export function makePlanet() {
   const group = new THREE.Group();
@@ -1208,7 +1211,7 @@ export function makePlanet() {
   };
 
   // parts and moons: for the asset library, which shows layers on their own and edits moon orbits.
-  const parts = { surface, haze, halo, sky, puffs, shadow, ringTilt };
+  const parts = { surface, haze, halo, sky, ringTilt };
   return { group, rebuild, update, ring, setExtras, parts, moons: MOONS };
 }
 
@@ -1341,15 +1344,16 @@ export function makeAstronaut(colorKey) {
     body.position.y = Math.sin(p * 2 * W) * 0.05;
     body.rotation.z = Math.sin(p * W) * 0.07;
     body.rotation.x = Math.sin(p * W + 1.3) * 0.05;
-    mat.uniforms.uBlink.value = blink(p);
+    mat.uniforms.uBlink.value = root.userData.blink === false ? 1 : blink(p); // the library's blink-off: eyes stay open
     root.updateMatrixWorld(true);
     mat.uniforms.uInvModel.value.copy(proxy.matrixWorld).invert();
     proxy.matrixWorld.decompose(new THREE.Vector3(), q, new THREE.Vector3());
     mat.uniforms.uLightLocal.value.copy(LIGHT_DIR).applyQuaternion(q.invert());
   }
-  function setColor(key) {
+  // eyeGlow: the eye light's ramp key (default the contributor ramp's step 2; the library passes a free colour).
+  function setColor(key, eyeGlow = `contributors.${key}.2`) {
     mat.userData.ramps.uAccent = `contributors.${key}`;
-    mat.userData.ramps.uEyeGlow = `contributors.${key}.2`;
+    mat.userData.ramps.uEyeGlow = eyeGlow;
     root.userData.depthLevel = -1; // force a re-tint
   }
   function setFace(idx) {
@@ -1535,6 +1539,10 @@ export const frameWidth = (h) => Math.floor((h * 16) / 9); // floor so e.g. 240 
 /** Sizes the drawing buffer (the internal pixels) and everything that reads it: artefact cells, sky bands, the camera. */
 export function setPixelSize(w, h, skies = [sky]) {
   renderer.setSize(w, h, false);
+  setViewSize(w, h, skies);
+}
+/** The same without resizing the canvas: for off-screen renders (the asset library's thumbnails). */
+export function setViewSize(w, h, skies = [sky]) {
   VIEW_SIZE.value.set(w, h);
   for (const s of skies) s.material.uniforms.uHeight.value = h;
   camera.aspect = w / h;

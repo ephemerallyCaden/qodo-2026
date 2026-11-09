@@ -3,7 +3,7 @@
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { launch, openLibrary, LIBRARY_ROOT } from './test/harness.mjs';
-import { crewScene } from './catalogue.js';
+import { crewScene, showcaseScene } from './catalogue.js';
 
 const OUT = path.join(LIBRARY_ROOT, 'out');
 const VIEWPORT = { width: 1920, height: 1080 };
@@ -18,12 +18,14 @@ const SHOTS = {
   'inspector-moon': { open: 'moons-0', extra: { render: paused(4.6) } },
   'inspector-ring': { open: 'rings-1' },
   'inspector-clouds': { open: 'clouds-4' },
-  'inspector-fx': { open: 'fx-1', extra: { render: paused(5.1) } },
+  'inspector-fx': { open: 'fx-2' }, // opens at its peak glitch time (catalogue t)
   'inspector-exploration': { open: 'explorations-2' },
   'palette-editor': { open: 'planets-0', act: async (page) => {
     await page.evaluate(() => window.library.set({ ...window.library.state(), palette: { 'land.2': '#c16a7d', 'land.3': '#e5959f', 'ocean.2': '#22896e' }, render: { ...window.library.state().render, t: 3, play: false } }));
     await page.evaluate(() => window.library.editColour('land.2'));
   } },
+  'scene-showcase': { set: { mode: 'scene', scene: showcaseScene(), render: paused(2) } },
+  'narrow-1280': { viewport: { width: 1280, height: 800 }, open: 'astronauts-1', extra: { render: paused(1.2) } },
   scene: { set: { mode: 'scene', scene: crewScene(), render: paused(2) }, act: async (page) => {
     await page.evaluate(() => window.library.set({ ...window.library.state(), scene: { ...window.library.state().scene, selected: 2 } }));
   } },
@@ -46,7 +48,7 @@ try {
     }
     const page = pages.get(key);
     await page.evaluate(() => { window.library.set({ palette: {}, render: { t: 3, play: false } }); window.library.tab('inspect'); });
-    if (shot.open) await page.evaluate(({ id, extra }) => window.library.open(id, extra ?? {}), { id: shot.open, extra: { render: paused(), ...shot.extra } });
+    if (shot.open) await page.evaluate(({ id, extra }) => window.library.open(id, extra), { id: shot.open, extra: shot.extra ?? {} });
     if (shot.set) await page.evaluate((s) => window.library.set(s), shot.set);
     if (shot.act) await shot.act(page);
     await page.waitForFunction(() => window.library.thumbsDone, null, { timeout: 300000 }); // palette edits re-render the thumbnails

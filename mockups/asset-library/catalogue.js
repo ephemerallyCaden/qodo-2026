@@ -1,7 +1,7 @@
 // The catalogue (R1): every entry is a starting configuration for the inspector (a partial state:
 // focus, framing and asset), or for the palette editor. Seeds are the asset viewer's own (its
 // system shot), so each tile is a look the viewer already shows. `final: false` marks the
-// exploration archive (R6). Pure data, no DOM.
+// exploration archive (R6). `t` (optional) is the loop time it opens at. Pure data, no DOM.
 
 const astro = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'astronaut', framing: 'body', asset: { kind: 'astronaut', ...asset } }, ...extra });
 const planet = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'planet', framing: 'planet', asset: { kind: 'planet', ...asset } }, ...extra });
@@ -65,9 +65,10 @@ export const GROUPS = [
   {
     id: 'fx', title: 'FX', note: 'the code layer: planet artefacts (adopted) and the ASCII FX candidates',
     items: [
-      focus('fx')(planet('artefacts', 'auto by size', { biome: 'lush', seed: 7, artefacts: true })),
-      focus('fx')(planet('artefacts + teal', '[OIII] garnish', { biome: 'lush', seed: 7, artefacts: true, artTeal: true })),
-      focus('fx')(planet('artefacts on lava', 'contrast glyphs', { biome: 'lava', seed: 11, ring: 'off', artefacts: true, size: 1.4 })),
+      // t: the loop time where the glitch covers the most pixels (measured), so the tile shows it
+      { ...focus('fx')(planet('artefacts', 'auto by size', { biome: 'lush', seed: 7, artefacts: true })), t: 11.9 },
+      { ...focus('fx')(planet('artefacts + teal', '[OIII] garnish', { biome: 'lush', seed: 7, artefacts: true, artTeal: true })), t: 11.2 },
+      { ...focus('fx')(planet('artefacts on lava', 'contrast glyphs', { biome: 'lava', seed: 11, ring: 'off', artefacts: true, size: 1.4 })), t: 7.7 },
       ...[
         ['fog of war', 'glyph field + wavefront'], ['glitch packets', 'heads carry source colour'], ['terminal', 'ASCII pass, scan bar'],
         ['drifting bands', 'ASCII pass, bands'], ['pixel ↔ glyph', 'mosaic transition'], ['decode tags', 'inverted label slabs'],
@@ -99,7 +100,7 @@ export const GROUPS = [
 
 // Stable ids: group-index.
 GROUPS.forEach((g) => g.items.forEach((it, i) => (it.id = `${g.id}-${i}`)));
-export const ITEMS = GROUPS.flatMap((g) => g.items.map((it) => ({ ...it, group: g.id })));
+export const ITEMS = GROUPS.flatMap((g) => g.items);
 
 // The viewer's showcase (its depth view: hero planet, mid/far/silhouette copies, crew line-up and
 // solo astronauts), as a composed scene. Positions, yaws and phases are the viewer's.

@@ -2,9 +2,9 @@
 // depth) plus the [OIII] teal accent, with individual colours editable. There is no
 // whole-palette swapping: edits are { path: hex } over that one base, and reset drops an edit.
 //
-// Every distinct edit set is registered as its own viewer palette (PALETTES['library:<hash>']),
-// because the viewer caches depth-faded colours per palette name: a fresh name means no stale
-// cache entries. With no edits the colours are exactly 'final', so renders match the viewer.
+// The edits live in one viewer palette, PALETTES.library, rewritten in place on each change
+// (usePalette(..., { edited: true }) drops the viewer's cached depth fades). With no edits its
+// colours are exactly 'final', so renders match the viewer.
 //
 // Free contributor colours (any hex, not only the three presets) get a 4-step ramp walked over
 // BLK 36 with the viewer's own ramp builder (rampThrough), so a BLK 36 colour gets exactly the
@@ -15,12 +15,11 @@ import { rampThrough } from '../asset-viewer/palette-map.js';
 import { ACCENTS } from '../asset-viewer/planet-ramps.js';
 import { CONTRIBUTOR_PRESETS } from './state.js';
 
-const clone = (v) => JSON.parse(JSON.stringify(v));
 const BLK36 = LOSPEC['blk-36'].colors.map((h) => `#${h}`);
 export const BLK36_SET = new Set(BLK36);
 
 /** The base: 'final' plus the teal accent ramp (the planet artefacts' garnish uses step 3). */
-export const BASE = Object.freeze(clone({ ...PALETTES.final, accent: [...ACCENTS.reveal] }));
+export const BASE = Object.freeze(structuredClone({ ...PALETTES.final, accent: [...ACCENTS.reveal] }));
 
 // Editor groups (R4): which colours show, in which order, with a note on where each is used.
 export const GROUPS = [
@@ -57,26 +56,21 @@ function setPath(obj, path, hex) {
   const last = keys.pop();
   keys.reduce((o, k) => o[k], obj)[last] = hex;
 }
-// FNV-1a over the edit list: a deterministic palette name per edit set.
-function hashEdits(edits) {
-  let h = 0x811c9dc5;
-  for (const ch of JSON.stringify(edits)) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193);
-  return (h >>> 0).toString(36);
-}
 
-/** Registers (once) and activates the palette for an edit set; returns { name, changed }. */
+const LIBRARY = 'library';
+let applied = null; // the edit set PALETTES.library holds (JSON)
+/** Makes PALETTES.library the base plus `edits` and activates it; returns { palette, changed } (changed: retint). */
 export function activate(edits) {
   const clean = cleanEdits(edits);
-  const name = `library:${hashEdits(clean)}`;
-  if (!PALETTES[name]) {
-    const pal = clone(BASE);
-    for (const [path, hex] of Object.entries(clean)) setPath(pal, path, hex);
-    pal.spaceBands = [pal.space, pal.space, pal.space]; // the flat background follows the space colour
-    pal.eyeGlow = {};
-    pal.name = `library (${Object.keys(clean).length} edits)`;
-    PALETTES[name] = pal;
-  }
-  return { name, changed: usePalette(name), palette: PALETTES[name] };
+  const key = JSON.stringify(clean);
+  if (key === applied) return { palette: PALETTES[LIBRARY], changed: usePalette(LIBRARY) };
+  applied = key;
+  const pal = structuredClone(BASE);
+  for (const [path, hex] of Object.entries(clean)) setPath(pal, path, hex);
+  pal.spaceBands = [pal.space, pal.space, pal.space]; // the flat background follows the space colour
+  pal.name = `library (${Object.keys(clean).length} edits)`;
+  PALETTES[LIBRARY] = pal;
+  return { palette: pal, changed: usePalette(LIBRARY, { edited: true }), edited: true };
 }
 
 /** The contributor ramp key for an astronaut colour (a preset key, or a hex registered on the palette). */
@@ -85,11 +79,7 @@ export function contributorKey(pal, color) {
   pal.contributors[color] ??= rampThrough(BLK36, color, 4, 0.66);
   return color;
 }
-/** The eye-light ramp key: the contributor ramp's step 2, or a free colour registered on the palette. */
-export function eyeGlowKey(pal, key, eyeGlow) {
-  if (!eyeGlow) return `contributors.${key}.2`;
-  pal.eyeGlow[eyeGlow] = eyeGlow;
-  return `eyeGlow.${eyeGlow}`;
-}
+/** The eye-light ramp key: the contributor ramp's step 2, or a free colour (a hex key resolves to itself). */
+export const eyeGlowKey = (key, eyeGlow) => eyeGlow ?? `contributors.${key}.2`;
 /** The 4-step ramp a contributor colour resolves to (shown in the inspector). */
 export const rampOf = (pal, color) => pal.contributors[contributorKey(pal, color)];

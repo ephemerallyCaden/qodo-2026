@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import {
   makePlanet, makeAstronaut, makeSky, makeStars, setDepthLevel, depthLevelAt, poseWorld, setLoop, applyDepth,
-  setPixelSize, frameWidth, retint, resolve, renderer, camera, controls, VIEWS, BIOMES, CREW_SPOT, VIEW_SIZE,
+  setPixelSize, setViewSize, frameWidth, retint, resolve, renderer, camera, controls, VIEWS, BIOMES, CREW_SPOT,
 } from '../asset-viewer/viewer.js';
 import { eyesFor } from '../asset-viewer/faces.js';
 import { makeAstronaut as makeLabAstronaut } from '../explorations/astronaut-lab/astronaut.js';
@@ -38,6 +38,7 @@ export const FRAMING_CAMERAS = {
 };
 export const labVariant = (id) => LAB_VARIANTS.find((v) => v.id === id);
 
+const TMP = new THREE.Vector3(), TMP2 = new THREE.Vector3(), RIGHT = new THREE.Vector3();
 const artOpt = (it) => (!it.artefacts ? 0 : it.artAuto ? 'auto' : it.artCount);
 
 /** One scene of items: sky and stars plus a slot per item (reused while its kind stays the same). */
@@ -80,20 +81,22 @@ export class Stage {
     p.rebuild(it.seed, it.biome, it.ring, it.cover, { inner: it.ringInner, width: it.ringWidth }, it.size, it.float);
     p.moons.forEach((m, i) => { Object.assign(m, it.moonOrbits[i]); m.mesh.scale.setScalar(m.size); });
     const { surface, haze, halo, sky, ringTilt } = p.parts;
-    // Isolation toggles (moons, rings or clouds on their own); rebuild and setExtras set the rest.
+    // Isolation toggles (moons, rings or clouds on their own), applied after rebuild and setExtras on
+    // every sync because those set these meshes' visibility from the biome and extras.
     surface.visible = it.layers.surface;
     haze.visible = !!BIOMES[it.biome].haze && it.layers.haze && it.layers.surface;
     halo.visible = it.halo && it.layers.surface;
     sky.visible = it.layers.clouds;
     ringTilt.visible = it.layers.ring;
-    surface.material.uniforms.uArtTealC.value.set(resolve('accent.3')); // the teal garnish, from the (editable) accent ramp
+    // The teal garnish: the viewer sets it once from ACCENTS; here it follows the editable accent ramp.
+    surface.material.uniforms.uArtTealC.value.set(resolve('accent.3'));
     p.group.position.set(...it.pos);
   }
 
   syncAstronaut(a, it, pal) {
     const key = contributorKey(pal, it.color);
-    a.setColor(key); // re-tints on the next setDepthLevel
-    a.material.userData.ramps.uEyeGlow = eyeGlowKey(pal, key, it.eyeGlow);
+    a.setColor(key, eyeGlowKey(key, it.eyeGlow)); // re-tints on the next setDepthLevel
+    a.group.userData.blink = it.blink;
     a.setFace(it.eyes === 'auto' ? eyesFor(it.handle) : it.eyes);
     a.group.position.set(...it.pos);
     a.group.rotation.y = it.yaw;
@@ -111,12 +114,10 @@ export class Stage {
     this.stars.position.copy(camera.position);
     const by = (k) => this.slots.filter((s) => s.kind === k);
     poseWorld(t, { planets: by('planet').map((s) => s.obj), astronauts: by('astronaut').map((s) => s.obj), spin: render.spin, lavaTime: render.lavaTime });
-    for (const s of by('astronaut')) if (!s.item.blink) s.obj.material.uniforms.uBlink.value = 1; // blink off: eyes stay open
     for (const s of by('lab')) s.obj.update(t, { yaw: s.item.yaw, sway: s.item.sway ? 1 : 0 });
     setDepthLevel(this.stars, 0);
     setDepthLevel(this.sky, 0);
-    const tmp = new THREE.Vector3();
-    for (const s of this.slots) if (s.kind !== 'lab') setDepthLevel(s.group, depthLevelAt(camera.position.distanceTo(s.group.getWorldPosition(tmp)), render));
+    for (const s of this.slots) if (s.kind !== 'lab') setDepthLevel(s.group, depthLevelAt(camera.position.distanceTo(s.group.getWorldPosition(TMP)), render));
   }
 
   clearColor() {
@@ -128,13 +129,13 @@ export class Stage {
     const s = this.slots[i];
     if (!s) return null;
     const it = s.item;
-    const c = new THREE.Vector3(...it.pos);
+    const c = TMP.set(...it.pos);
     const r = it.kind === 'planet' ? it.size : 0.55;
     if (it.kind !== 'planet') c.y += 0.5;
-    const p = c.clone().project(camera);
+    RIGHT.setFromMatrixColumn(camera.matrixWorld, 0);
+    const q = TMP2.copy(c).addScaledVector(RIGHT, r).project(camera);
+    const p = c.project(camera);
     if (p.z > 1) return null;
-    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
-    const q = c.clone().addScaledVector(right, r).project(camera);
     const x = (p.x + 1) * 0.5 * w, y = (1 - p.y) * 0.5 * h;
     return { x, y, r: Math.hypot((q.x + 1) * 0.5 * w - x, (1 - q.y) * 0.5 * h - y) };
   }
@@ -155,51 +156,45 @@ export function placeCamera({ pos, target }, minDistance = 0.3) {
   controls.update();
 }
 
-let canvasSize = '';
+let canvas = { w: 0, h: 0 };
 /** Renders a stage to the canvas at w x h internal pixels (the stage view). */
 export function renderToCanvas(stage, t, render, w, h) {
-  // Resizing the canvas clears it, so only on a change; the sky's band height is per stage.
-  if (canvasSize !== `${w}x${h}`) {
-    canvasSize = `${w}x${h}`;
+  // Resizing the canvas clears it, so only on a change; the rest is per stage (thumbnails change it).
+  if (canvas.w !== w || canvas.h !== h) {
+    canvas = { w, h };
     setPixelSize(w, h, [stage.sky]);
-  }
-  stage.sky.material.uniforms.uHeight.value = h;
+  } else setViewSize(w, h, [stage.sky]);
   controls.update();
   stage.pose(t, render);
   renderer.setClearColor(stage.clearColor());
   renderer.render(stage.scene, camera);
 }
 
-const thumbRTs = new Map();
+let thumb = null; // { rt, px, img }: the off-screen target and its read-back buffers (one size)
 /** Renders a stage off-screen with a fixed camera; returns ImageData (w x h), leaving the stage view untouched. */
 export function renderToImage(stage, t, render, w, h, cam) {
-  const key = `${w}x${h}`;
-  if (!thumbRTs.has(key)) thumbRTs.set(key, new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false }));
-  const rt = thumbRTs.get(key);
-  const saved = { pos: camera.position.clone(), quat: camera.quaternion.clone(), aspect: camera.aspect, view: VIEW_SIZE.value.clone() };
+  if (thumb?.img.width !== w || thumb?.img.height !== h) {
+    thumb?.rt.dispose();
+    thumb = { rt: new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false }), px: new Uint8Array(w * h * 4), img: new ImageData(w, h) };
+  }
+  const { rt, px, img } = thumb;
+  const saved = { pos: camera.position.clone(), quat: camera.quaternion.clone() };
   camera.position.set(...cam.pos);
-  camera.lookAt(new THREE.Vector3(...cam.target));
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
+  camera.lookAt(TMP.set(...cam.target));
   camera.updateMatrixWorld(true);
-  VIEW_SIZE.value.set(w, h);
-  stage.sky.material.uniforms.uHeight.value = h;
+  setViewSize(w, h, [stage.sky]);
   stage.pose(t, render);
   renderer.setRenderTarget(rt);
   renderer.setClearColor(stage.clearColor());
   renderer.clear();
   renderer.render(stage.scene, camera);
-  const px = new Uint8Array(w * h * 4);
   renderer.readRenderTargetPixels(rt, 0, 0, w, h, px);
   renderer.setRenderTarget(null);
   camera.position.copy(saved.pos);
   camera.quaternion.copy(saved.quat);
-  camera.aspect = saved.aspect;
-  camera.updateProjectionMatrix();
   camera.updateMatrixWorld(true);
-  VIEW_SIZE.value.copy(saved.view);
+  if (canvas.w) setViewSize(canvas.w, canvas.h, []);
   // GL rows run bottom-up
-  const img = new ImageData(w, h);
   for (let y = 0; y < h; y++) img.data.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
   return img;
 }

@@ -3,6 +3,7 @@
 // headless Chromium (SwiftShader); every comparison fails on empty output.
 //  - lush planet (seed 7) and lava planet (seed 11): the viewer's planet view vs the inspector
 //  - crew K: the viewer's crew close-up vs the library's composed copy of the viewer's showcase
+//    (and that copy's positions, yaws and phases vs the viewer's own objects)
 //  - the library's enums still match the viewer's exports
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -51,6 +52,14 @@ test('library renders are pixel-identical to the asset viewer', { timeout: 60000
       console.log(`${c.name}: ${l.w}x${l.h}, ${drawn} px drawn, ${stats(l).colours.size} colours, ${d.length} px differ`);
       assert.equal(d.length, 0, `${c.name}: ${d.length} pixels differ from the viewer`);
     }
+    // showcaseScene() hand-copies the viewer's layout: catch drift item by item, not only by pixels
+    const layout = await viewer.evaluate(() => {
+      const { planets, crew, solos } = window.viewer.internals;
+      const r = (v) => +v.toFixed(6);
+      return [...planets, ...crew, ...solos].map((o) => ({ pos: o.group.position.toArray().map(r), yaw: r(o.group.rotation.y), phase: r(o.group.userData.phase ?? 0) }));
+    });
+    const mine = showcaseScene().items.map((it) => ({ pos: it.pos.map((x) => +x.toFixed(6)), yaw: +(it.yaw ?? 0).toFixed(6), phase: +(it.phase ?? 0).toFixed(6) }));
+    assert.deepEqual(mine, layout, 'showcaseScene() no longer matches the viewer\'s showcase layout');
     assert.deepEqual([...viewer.errors, ...library.errors].map(String), []);
   } finally {
     await browser.close();

@@ -91,6 +91,9 @@ export function diff(a, b) {
   return out;
 }
 
+/** Resolves after two animation frames: the page has drawn whatever it was about to. */
+export const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
 export const rgbAt = ({ data }, px) => (data[px * 4] << 16) | (data[px * 4 + 1] << 8) | data[px * 4 + 2];
 export const hexInt = (h) => parseInt(h.replace('#', ''), 16);
 export { LIBRARY_ROOT };

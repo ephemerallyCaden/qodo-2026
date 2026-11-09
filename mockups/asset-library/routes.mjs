@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 export const LIBRARY_ROOT = path.dirname(fileURLToPath(import.meta.url));
 export const MOCKUPS = path.dirname(LIBRARY_ROOT);
-export const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
+export const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
 
 // Allowed path patterns (relative to mockups/). Top-level module files only for the two
 // read-only imports, so their tests, debug probes and screenshots are never served.

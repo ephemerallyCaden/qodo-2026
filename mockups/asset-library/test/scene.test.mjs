@@ -4,7 +4,7 @@
 // click selects the item under it and shift-drag moves only that item. Fails on empty output.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, openLibrary, grabCanvas, diff, stats, hexInt } from './harness.mjs';
+import { launch, openLibrary, grabCanvas, diff, stats, hexInt, settle } from './harness.mjs';
 import { crewScene } from '../catalogue.js';
 
 const SCENE = { mode: 'scene', scene: crewScene(), render: { t: 2, play: false } };
@@ -31,7 +31,7 @@ test('a composed scene (1 planet + 3 astronauts) renders deterministically', { t
     const again = await grabCanvas(a);
     assert.equal(diff(first, again).length, 0, 'the same scene renders differently the second time');
     const b = await openLibrary(browser, { hash });
-    await b.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await settle(b);
     const fresh = await grabCanvas(b);
     assert.equal(diff(first, fresh).length, 0, 'the scene renders differently in a fresh page');
     console.log(`scene: ${first.w}x${first.h}, ${st.drawn} px drawn, ${st.colours.size} colours; same after other work and in a fresh page`);

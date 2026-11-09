@@ -49,14 +49,6 @@ export const RENDER_DEFAULTS = {
   period: 24, surfaceTurns: 2, cloudTurns: 3,
 };
 
-export const DEFAULT_STATE = {
-  v: VERSION, mode: 'asset', focus: 'planet', framing: 'planet', camera: null,
-  asset: PLANET_DEFAULTS,
-  scene: { items: [], selected: -1, framing: 'depth', camera: null },
-  render: RENDER_DEFAULTS,
-  palette: {},
-};
-
 // ---------------------------------------------------------------- validation helpers
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const num = (v, lo, hi, def) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
@@ -68,7 +60,6 @@ export const HEX = /^#[0-9a-f]{6}$/;
 export const hexOrNull = (v) => (typeof v === 'string' && HEX.test(v.toLowerCase()) ? v.toLowerCase() : null);
 const vec3 = (v, lim, def) => (Array.isArray(v) && v.length === 3 ? v.map((x, i) => num(x, -lim, lim, def[i])) : [...def]);
 const camera = (v) => (isObj(v) && Array.isArray(v.pos) && Array.isArray(v.target) ? { pos: vec3(v.pos, 200, [0, 0, 10]), target: vec3(v.target, 200, [0, 0, 0]) } : null);
-const clone = (v) => JSON.parse(JSON.stringify(v));
 
 export function normalisePlanet(raw) {
   const r = isObj(raw) ? raw : {};
@@ -161,7 +152,7 @@ export function normalise(raw) {
   const items = (Array.isArray(s.items) ? s.items : []).slice(0, MAX_ITEMS).map((it) => normaliseItem(it, ['planet', 'astronaut']));
   return {
     v: VERSION,
-    mode: oneOf(r.mode, ['asset', 'scene'], DEFAULT_STATE.mode),
+    mode: oneOf(r.mode, ['asset', 'scene'], 'asset'),
     focus: asset.kind === 'planet' ? oneOf(r.focus, FOCI, 'planet') : asset.kind,
     framing: oneOf(r.framing, framingFor(asset.kind), framingFor(asset.kind)[0]),
     camera: camera(r.camera),
@@ -172,7 +163,8 @@ export function normalise(raw) {
   };
 }
 
-export const defaultState = () => normalise(clone(DEFAULT_STATE));
+/** The default state: a lush planet in the inspector, paused at t = 3 (every field from its normaliser). */
+export const defaultState = () => normalise({});
 
 // ---------------------------------------------------------------- URL + JSON
 // The URL hash is the state as base64url(JSON); copy JSON is the same object, pretty-printed.

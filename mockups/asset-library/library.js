@@ -10,18 +10,19 @@ import { GROUPS as CATALOGUE, ITEMS, showcaseScene, crewScene } from './catalogu
 import * as P from './palette.js';
 
 const $ = (id) => document.getElementById(id);
-const clone = (v) => JSON.parse(JSON.stringify(v));
+const clone = structuredClone;
 const canvas = renderer.domElement;
 controls.enableDamping = false; // the camera stops where it's released, so the URL records what's on screen
 
 // ---------------------------------------------------------------- state
 const stages = { asset: new Stage(), scene: new Stage() };
-const thumbStages = { planet: new Stage(), astronaut: new Stage(), lab: new Stage() };
+const thumbStages = {}; // one per asset kind, made on first use
+const thumbStage = (kind) => (thumbStages[kind] ??= new Stage());
 const allStages = () => [...Object.values(stages), ...Object.values(thumbStages)];
 let state = S.decodeHash(location.hash) ?? { ...S.defaultState(), render: { ...S.RENDER_DEFAULTS, play: true } };
 let tab = state.mode === 'scene' ? 'scene' : 'inspect';
 let pal = null; // the active palette object
-let paletteName = '';
+let lastRender = '';
 let lastCamera = '';
 let dirty = true;
 let current = null; // catalogue id the inspector was opened from
@@ -42,22 +43,20 @@ function cameraFor() {
 }
 const minDistance = () => (state.mode === 'asset' && state.asset.kind === 'planet' ? 1.35 * state.asset.size : 0.3);
 
-/**
- * The one way state changes. opts.panel: rebuild the control panel (structural changes);
- * opts.catalogue: refresh the catalogue selection.
- */
+/** The one way state changes. opts.panel: rebuild the control panel (structural changes only). */
 function apply(next, { panel = true } = {}) {
   const prevPlay = state.render.play;
   state = S.normalise(next);
   if (state.render.play && !prevPlay) playFrom = { t: state.render.t, at: performance.now() };
-  const act = P.activate(state.palette);
-  if (act.name !== paletteName) {
-    if (paletteName.startsWith('library:') && paletteName !== act.name) thumbsDirty();
-    paletteName = act.name;
-  }
+  const act = P.activate(state.palette); // a no-op unless the edits changed
+  if (act.edited && pal) thumbsSoon(); // (the first activation at boot queues them anyway)
   pal = act.palette;
-  if (act.changed) allStages().forEach(retintStage);
-  if (applyRender(state.render)) allStages().forEach(retintStage);
+  // depth uniforms read the palette's depth tints, so palette edits re-apply them too
+  const renderKey = JSON.stringify(state.render);
+  let retint = act.changed;
+  if (renderKey !== lastRender || act.edited) retint = applyRender(state.render) || retint;
+  lastRender = renderKey;
+  if (retint) allStages().forEach(retintStage);
   stage().sync(items(), pal);
   const cam = cameraFor();
   const camKey = JSON.stringify([state.mode, cam]);
@@ -99,12 +98,14 @@ function drawStage() {
   canvas.style.height = `${h * scale}px`;
   renderToCanvas(stage(), now(), state.render, w, h);
   drawSelection(w, h, scale);
-  $('status').innerHTML = [
+  const edits = Object.keys(P.cleanEdits(state.palette)).length;
+  const status = [
     `<span><b>${w}×${h}</b> ×${scale}</span>`,
     `<span>t <b>${now().toFixed(2)} s</b> / ${state.render.period} s loop</span>`,
-    `<span>palette <b>${Object.keys(P.cleanEdits(state.palette)).length ? `${Object.keys(P.cleanEdits(state.palette)).length} edits` : 'base'}</b></span>`,
+    `<span>palette <b>${edits ? `${edits} edits` : 'base'}</b></span>`,
     `<span>${state.mode === 'scene' ? `<b>${state.scene.items.length}</b> items · click selects · shift-drag moves` : 'drag orbits · scroll zooms'}</span>`,
   ].join('');
+  if (status !== drawStage.status) $('status').innerHTML = drawStage.status = status;
 }
 function drawSelection(w, h, scale) {
   const box = $('sel');
@@ -128,6 +129,13 @@ const THUMB_W = 160, THUMB_H = 90;
 const thumbQueue = [];
 const thumbCanvases = new Map();
 const paletteCanvases = new Map();
+// Palette edits re-render the thumbnails once the edit settles, not on every colour-picker tick.
+let thumbTimer = 0;
+function thumbsSoon() {
+  window.library.thumbsDone = false;
+  clearTimeout(thumbTimer);
+  thumbTimer = setTimeout(() => { thumbTimer = 0; thumbsDirty(); }, 150);
+}
 function thumbsDirty() {
   window.library.thumbsDone = false;
   thumbQueue.length = 0;
@@ -138,12 +146,12 @@ function renderThumbs(n) {
   for (let k = 0; k < n && thumbQueue.length; k++) {
     const it = thumbQueue.shift();
     const st = S.normalise({ ...it.state, asset: it.state.asset });
-    const ts = thumbStages[st.asset.kind];
+    const ts = thumbStage(st.asset.kind);
     ts.sync([st.asset], pal);
-    const img = renderToImage(ts, 3, S.RENDER_DEFAULTS, THUMB_W, THUMB_H, FRAMING_CAMERAS[`thumb-${st.framing}`] ?? FRAMING_CAMERAS[st.framing]);
+    const img = renderToImage(ts, it.t ?? 3, S.RENDER_DEFAULTS, THUMB_W, THUMB_H, FRAMING_CAMERAS[`thumb-${st.framing}`] ?? FRAMING_CAMERAS[st.framing]);
     thumbCanvases.get(it.id)?.getContext('2d').putImageData(img, 0, 0);
   }
-  if (!thumbQueue.length && !window.library.thumbsDone) window.library.thumbsDone = true;
+  if (!thumbQueue.length && !thumbTimer) window.library.thumbsDone = true;
 }
 function paletteThumb(cv, groupId) {
   const ctx = cv.getContext('2d');
@@ -206,6 +214,7 @@ function openItem(it) {
     n.framing = it.state.framing;
     n.camera = null;
     n.asset = it.state.asset;
+    if (it.t !== undefined) n.render = { ...n.render, t: it.t, play: false };
   });
 }
 
@@ -263,6 +272,8 @@ function describe(it) {
 
 function planetControls(it, patch) {
   const weather = WEATHER[BIOMES[it.biome].weather];
+  const orbit = (i, key) => (v) => patch({ moonOrbits: it.moonOrbits.map((o, j) => (j === i ? { ...o, [key]: v } : o)) }, live);
+  const layer = (key) => (v) => patch({ layers: { ...it.layers, [key]: v } });
   const order = { planet: ['planet', 'ring', 'clouds', 'moons', 'fx', 'look'], moon: ['moons', 'planet', 'look', 'ring', 'clouds', 'fx'], ring: ['ring', 'planet', 'look', 'moons', 'clouds', 'fx'], clouds: ['clouds', 'planet', 'look', 'ring', 'moons', 'fx'], fx: ['fx', 'planet', 'ring', 'clouds', 'moons', 'look'] }[state.mode === 'scene' ? 'planet' : state.focus];
   const lead = order.slice(0, 2).map((k) => ({ planet: 'planet', ring: 'ring', clouds: 'clouds', moons: 'moons', fx: 'artefacts', look: 'layers and look' })[k]);
   const open = (title) => lead.includes(title);
@@ -287,11 +298,11 @@ function planetControls(it, patch) {
       check('moons', it.moons, (v) => patch({ moons: v })),
       ...it.moonOrbits.flatMap((m, i) => [
         h('p', { class: 'note' }, i === 0 ? 'big moon' : 'small moon'),
-        slider('size', m.size, { min: 0.02, max: 0.4, step: 0.002, fmt: (v) => v.toFixed(3), disabled: !it.moons }, (v) => patch({ moonOrbits: it.moonOrbits.map((o, j) => (j === i ? { ...o, size: v } : o)) }, live)),
-        slider('orbit', m.orbit, { min: 1.1, max: 4, disabled: !it.moons, title: 'orbit radius in planet radii' }, (v) => patch({ moonOrbits: it.moonOrbits.map((o, j) => (j === i ? { ...o, orbit: v } : o)) }, live)),
-        slider('tilt', m.incl, { min: -1.5, max: 1.5, disabled: !it.moons }, (v) => patch({ moonOrbits: it.moonOrbits.map((o, j) => (j === i ? { ...o, incl: v } : o)) }, live)),
-        slider('yaw', m.yaw, { min: -3.2, max: 3.2, disabled: !it.moons }, (v) => patch({ moonOrbits: it.moonOrbits.map((o, j) => (j === i ? { ...o, yaw: v } : o)) }, live)),
-        slider('phase', m.offset, { min: 0, max: 1, disabled: !it.moons, title: 'position on the orbit (one orbit per surface turn)' }, (v) => patch({ moonOrbits: it.moonOrbits.map((o, j) => (j === i ? { ...o, offset: v } : o)) }, live)),
+        slider('size', m.size, { min: 0.02, max: 0.4, step: 0.002, fmt: (v) => v.toFixed(3), disabled: !it.moons }, orbit(i, 'size')),
+        slider('orbit', m.orbit, { min: 1.1, max: 4, disabled: !it.moons, title: 'orbit radius in planet radii' }, orbit(i, 'orbit')),
+        slider('tilt', m.incl, { min: -1.5, max: 1.5, disabled: !it.moons }, orbit(i, 'incl')),
+        slider('yaw', m.yaw, { min: -3.2, max: 3.2, disabled: !it.moons }, orbit(i, 'yaw')),
+        slider('phase', m.offset, { min: 0, max: 1, disabled: !it.moons, title: 'position on the orbit (one orbit per surface turn)' }, orbit(i, 'offset')),
       ]),
       buttons(btn('reset orbits', () => patch({ moonOrbits: S.MOON_DEFAULTS })))),
     fx: () => section('artefacts', open('artefacts'),
@@ -300,10 +311,10 @@ function planetControls(it, patch) {
       slider('sectors', it.artCount, { min: 1, max: 5, step: 1, fmt: String, disabled: !it.artefacts || it.artAuto }, (v) => patch({ artCount: v }, live)),
       check('teal accent', it.artTeal, (v) => patch({ artTeal: v }), { disabled: !it.artefacts })),
     look: () => section('layers and look', open('layers and look'),
-      check('body', it.layers.surface, (v) => patch({ layers: { ...it.layers, surface: v } }), { title: 'the planet surface; off shows moons, ring or clouds on their own' }),
-      check('haze', it.layers.haze, (v) => patch({ layers: { ...it.layers, haze: v } }), { disabled: !BIOMES[it.biome].haze }),
-      check('clouds', it.layers.clouds, (v) => patch({ layers: { ...it.layers, clouds: v } }), { disabled: !weather }),
-      check('ring', it.layers.ring, (v) => patch({ layers: { ...it.layers, ring: v } }), { disabled: it.ring === 'off' }),
+      check('body', it.layers.surface, layer('surface'), { title: 'the planet surface; off shows moons, ring or clouds on their own' }),
+      check('haze', it.layers.haze, layer('haze'), { disabled: !BIOMES[it.biome].haze }),
+      check('clouds', it.layers.clouds, layer('clouds'), { disabled: !weather }),
+      check('ring', it.layers.ring, layer('ring'), { disabled: it.ring === 'off' }),
       check('dark halo', it.halo, (v) => patch({ halo: v }), { title: 'optional ~2 px bg+1 halo (off in the final look)' })),
   };
   return order.map((k) => groups[k]());

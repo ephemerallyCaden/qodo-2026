@@ -4,7 +4,7 @@
 // is the stage exactly, upscaled by whole pixels. Every comparison fails on empty output.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, openLibrary, grabCanvas, diff, stats } from './harness.mjs';
+import { launch, openLibrary, grabCanvas, diff, stats, settle } from './harness.mjs';
 import { crewScene } from '../catalogue.js';
 
 const CONFIGS = [
@@ -29,8 +29,6 @@ const CONFIGS = [
     },
   },
 ];
-
-const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
 test('config -> URL -> fresh page load renders identical pixels', { timeout: 600000 }, async () => {
   const browser = await launch();

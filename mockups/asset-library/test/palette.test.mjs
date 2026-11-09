@@ -7,7 +7,7 @@
 //  - removing the edit renders the base frame again, pixel for pixel
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, openLibrary, grabCanvas, diff, stats, rgbAt, hexInt } from './harness.mjs';
+import { launch, openLibrary, grabCanvas, diff, stats, rgbAt, hexInt, settle } from './harness.mjs';
 import { crewScene } from '../catalogue.js';
 
 const still = { t: 3, play: false, depth: false };
@@ -56,12 +56,12 @@ test('the editor UI: pick a swatch, set a hex, reset to base', { timeout: 300000
     await page.click('[aria-label="land.2 #38a85a"]');
     await page.fill('[aria-label="hex land.2"]', '#c16a7d');
     await page.press('[aria-label="hex land.2"]', 'Enter');
-    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await settle(page);
     assert.deepEqual(await page.evaluate(() => window.library.state().palette), { 'land.2': '#c16a7d' });
     assert.ok(diff(base, await grabCanvas(page)).length > 100, 'the hex edit did not reach the stage');
     assert.ok(await page.isVisible('.sw button.edited'), 'the edited swatch is not marked');
     await page.click('text=reset to base');
-    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await settle(page);
     assert.deepEqual(await page.evaluate(() => window.library.state().palette), {});
     assert.equal(diff(base, await grabCanvas(page)).length, 0, 'reset to base did not restore the frame');
     assert.deepEqual(page.errors.map(String), []);
