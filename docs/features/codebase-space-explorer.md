@@ -52,6 +52,9 @@ You are the astronaut and your AI agents are your drone crew. Anything you didn'
   - Clicking a piece shows its age, its last commit, and which session or person created it, then gives a **copyable** cleanup command (`git branch -d …` / `gh pr close …`). Commet never deletes, closes or posts anything itself.
   - Shown as repo-level tidiness: total debris count and a rough mass figure. No per-person tallies.
 
+**Candidates (approved 2026-11-09)**
+- [ ] R15. Hackathon mode (human, 2026-11-09). For when you have no time to understand a codebase and just need to get it at a glance. `commet open --glance` or an in-app toggle hides fog **without charting anything**, so turning it off restores your real fog (principle 2). It shows where the work is (size plus recent churn), who wrote it (agent, human and unknown share per planet) and health. The setting is per launch and not saved. Candidate idea: a worker overlay that colours planets by agent session or human. Feature doc: `docs/features/hackathon-mode.md`. Issue #34.
+
 ## Week plan (human, 2026-11-04)
 | Deadline | Ships |
 |---|---|
@@ -61,7 +64,9 @@ You are the astronaut and your AI agents are your drone crew. Anything you didn'
 | Nov 29 | VS Code extension, polish |
 | Dec 2 | Demo |
 
-R13 isn't scheduled yet.
+R13 isn't scheduled yet. R15 (hackathon mode) comes after Phase 2.
+
+**Slip (2026-11-09):** the Nov 8 row shipped R1, R2 (v1 sources) and the scan half of R3. R4, R5, R8 and R14 moved to Phase 2 (milestone "Phase 2: first light", due Nov 15). R2b drones are not scheduled yet.
 
 ## Open assumptions
 - Scan time on large repos is unmeasured end to end (git/git numstat alone: 3.6 s for 2 years). Benchmark before fixing the first-run experience.
@@ -77,4 +82,15 @@ Agent session or merge → hook runs `commet scan` → snapshot → the local se
 - Background (gitignored): `.archive/docs/research/codebase-map-failure-audit.md`, `.archive/docs/features/briefs/`
 
 ## Tasks
-None yet.
+Done: #1 and #5 (R1, R2 scan and attribution), #16 (R3 scan structure), #19 (toxic band design).
+
+**Phase 2: first light** (milestone, due 2026-11-15). The contract goes first. The other tickets can then be built in parallel, each in its own directory.
+- #29: interface contract (layout.v1, fog view, local API, render hook). Team lead. Blocks the rest.
+- #23: design call on merge births and `test/`. Human. Blocks #18.
+- #18: `layout()` and `layout.json` (R3).
+- #30: three.js system view (R4).
+- #31: render harness and golden images (R8). Its final AC waits on #30.
+- #32: hardened `commet open` server (R14). Its chart-write AC waits on #33.
+- #33: fog of war and chart state, logic and CLI (R5).
+
+After Phase 2: #34 hackathon mode (R15). Scan follow-ups: #17 (in progress), #21, #22, #24, #25, #28.
