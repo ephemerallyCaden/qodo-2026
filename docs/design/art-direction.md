@@ -112,19 +112,42 @@ The crew palette is never retuned. Use the BLK 36 mapping as it is.
 - **Shape:** a procedural shader sphere with noise-driven terrain, quantised into colour bands.
 - **Light:** a **lit directional terminator**, keyed top-left at about 40°, which gives soft concentric crescents. Its dark side uses each ramp's own darks.
 - **Framing:** the hero planet fills **42–50% of frame height** in close-ups, alone, with little clutter.
-- **Meaning:** a planet's look shows its **code health** in four bands, worst to best: **lava → toxic → ash (desert) → lush** (human, 2026-11-06; inputs are debt markers and opt-in Qodo findings, see #17/#18). Cleaning code heals the planet. Other biomes (ocean, ice, gas giant, barren moon) remain for variety where health doesn't apply. **Planet size = lines of code.**
+- **Meaning:** a planet's look shows its **code health** (below). Cleaning code heals the planet. **Planet size = lines of code.**
+
+### What a planet tells you
+Every visual property of a planet either carries data or is seeded variety that stays inside one meaning (constitution principle 4; human, 2026-11-06 and 2026-11-09).
+
+| Channel | Encodes | Source |
+|---|---|---|
+| Look (health band) | Code health, worst to best: **lava → toxic → ash (the desert look) → healthy** | Debt markers per 1k LOC, plus open Qodo findings when opted in (#17/#18). Thresholds live in one constants file |
+| Healthy look | Nothing (seeded variety): **lush, ocean or ice**, all three meaning "healthy" | Hash of the planet's stable ID |
+| Size | Lines of code (clamped log) | #18 |
+| Moons | Test files | #18 |
+| Debris | Stale work: stale PRs and abandoned, merged-but-not-deleted or orphaned agent branches | R13; PRs only with the opt-in token |
+| Rings | **Open (human, 2026-11-09).** No longer unmerged branches. Rings need a new meaning or stay out of the product view | — |
+| Fog, drones, constellations, beacons | Charting (R5), agent sessions (R2b, R16), co-change (R9), notes (R10) | — |
+
+Gas giant and barren moon are **asset-library extras**, never shown in the product view.
+
+**Legibility rules.** Health must inform, not decorate:
+1. **Ordered at a glance.** The bands read as one scale, from molten through smouldering and dry to living, so you can rank two planets without a legend. Worse is hotter and darker; healthy is cool blues and greens under clouds.
+2. **Variety never crosses a band.** Seeded variation (continent shapes, cloud masses, crater layout, the lush/ocean/ice choice) stays recognisably inside its band. A healthy look must never read as a worse band; the known risk is ice reading as "frozen, stale".
+3. **Survives distance and size.** The band stays identifiable on the smallest and farthest planets (about 10 px discs at full depth fade), with clouds, debris and artefacts on top.
+4. **Not by hue alone.** Bands also differ in value structure and texture (glowing fissures, slag seas, dunes and craters, clouds and water), so they stay distinct under common colour-vision deficiencies.
+5. **Explained on demand.** Selecting a planet shows its band in words and its inputs, e.g. "toxic: 14 debt markers per 1k LOC, Qodo findings unknown". Unknown inputs are labelled unknown (AGENTS.md Rule 1), never shown as healthy.
+6. **No look without a meaning.** A biome, modifier or effect enters the product view only with a row in the table above.
 
 ### Biomes
 | Biome | Look |
 |---|---|
-| Lush | Ocean plus green continents, polar caps, clustered cream clouds. |
-| Ocean | Mostly water with a few islands, thin clouds and a lit-limb haze. |
-| Ice | White strata over **open dark-blue water leads**, cut by bold jagged crevasses. |
-| Desert / crater | Wind-dune bands and Worley craters with a dark floor and bright rim. No clouds. |
-| Lava | Near-black, slightly blue-shaded crust broken by **open molten lava pools** and bold glowing fissures. Low, streaky ash smoke rises off the fissures. |
-| Gas giant (extra) | Turbulent alternating bands and a storm. Large sizes only. |
-| Barren moon (extra) | Small, grey, densely cratered. |
-| Toxic | Health band between lava and desert: cooled slag seas with ember veins, rust ground, oxidised orange crusts, dull rust smoke and a warm haze. |
+| Lush (healthy) | Ocean plus green continents, polar caps, clustered cream clouds. |
+| Ocean (healthy) | Mostly water with a few islands, thin clouds and a lit-limb haze. |
+| Ice (healthy) | White strata over **open dark-blue water leads**, cut by bold jagged crevasses. |
+| Desert / crater (ash band) | Wind-dune bands and Worley craters with a dark floor and bright rim. No clouds. |
+| Lava (worst band) | Near-black, slightly blue-shaded crust broken by **open molten lava pools** and bold glowing fissures. Low, streaky ash smoke rises off the fissures. |
+| Toxic (second-worst band) | Between lava and desert: cooled slag seas with ember veins, rust ground, oxidised orange crusts, dull rust smoke and a warm haze. |
+| Gas giant (library extra) | Turbulent alternating bands and a storm. Large sizes only. |
+| Barren moon (library extra) | Small, grey, densely cratered. |
 
 ### Cracks (lava fissures, ice crevasses)
 - **Shape:** Voronoi-edge cracks with straight segments, pointed junctions and branching. Never wobbly noise contours.
@@ -143,11 +166,14 @@ The crew palette is never retuned. Use the BLK 36 mapping as it is.
 - **Shape:** a thin band of chunky debris. At least 70% of particles are 2×2 or plus-shaped clumps forming clusters, and every dot stays exactly 1 internal pixel at every resolution.
 - **Depth sorting:** the front arc is drawn over the disc, and the back arc is hidden behind it.
 - **Colour:** the planet's own colours (§4).
-- **Meaning:** rings are a modifier on any biome, not a biome.
-- **Parameters:** ring **width** (thread → wide belt) and ring **distance** (hugging the surface → far out) are per-planet values with viewer sliders. They're a data channel reserved for codebase metrics (mapping TBD). Particle density scales with ring area.
+- **Meaning:** rings are a modifier on any biome, not a biome. **What they encode is open** (human, 2026-11-09): they no longer mean unmerged branches, because stale work is debris. Until rings get a meaning they stay in the asset library and out of the product view.
+- **Parameters:** ring **width** (thread → wide belt) and ring **distance** (hugging the surface → far out) are per-planet values with viewer sliders. Particle density scales with ring area.
+
+### Debris (in design)
+Stale work (R13) drifts near the planets it touches. Debris is a modifier on any planet, whatever its band, and must never be mistaken for a ring, a moon or an artefact. The design is in progress: see `docs/features/space-debris.md`.
 
 ### Moons
-Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on inclined elliptical orbits, passing in front at the bottom and fully behind the disc, depth-sorted. Their speed changes come only from circular projection, with no easing.
+Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on inclined elliptical orbits, passing in front at the bottom and fully behind the disc, depth-sorted. Their speed changes come only from circular projection, with no easing. Moons mean test files (#18, up to 24 per planet with the rest counted); how many moons read at a glance isn't designed yet.
 
 ## 7. Motion
 
@@ -206,18 +232,18 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 | Palette | Crew = **BLK 36** exactly; world = **v2**; rings = planet-family colours only |
 | Accent | **[OIII] teal**, events only, under 10% of pixels |
 | Depth | v2 fade with full colours; **pixel-smooth** per-pixel blend by distance (stepped and object modes as options) |
-| Planet meaning | Code-health bands lava → toxic → ash → lush; size = LOC; fog, drones, constellations and debris carry the rest |
-| Planet types | Lush, ocean, ice, desert/crater, lava, plus gas giant, barren moon, toxic |
+| Planet meaning | Code-health bands lava → toxic → ash → healthy (lush, ocean or ice); size = LOC; moons = tests; debris = stale work; fog, drones and constellations carry the rest (§6 "What a planet tells you") |
+| Planet types | Healthy: lush, ocean, ice. Ash: desert/crater. Toxic. Lava. Library extras: gas giant, barren moon |
 | Shading | Quantised bands, lit directional terminator, hero at 42–50% of frame, optional moons and halo |
 | Cracks | ≥2 px jagged Voronoi cracks plus open lava pools / ice water |
 | Clouds | Float r≈1.05, offset shadow, 1.5× drift, blended clumps, ~28% cover (lava ash ~8%) |
-| Rings | Thin chunky clumps, 1 px dots, front arc over disc |
+| Rings | Thin chunky clumps, 1 px dots, front arc over disc; meaning open, library only until it has one |
 | Motion | 24 s loop lock (surface 2 : clouds 3); 36 s 3:4 alternative; reduced motion freezes |
 | Astronaut | Chibi SDF, 4:3 screen visor, ApprenticeHack V2 eyes, BLK 36 |
 | Code layer | Filter-style glyphs; planet artefacts adopted as a toggle |
 | Labels and UI | Bitmap pixel font at native resolution, outside the pixel pass |
 
-**Not designed yet:** drones (one per agent session), fog of war (see §9 candidates), captain's log beacons, co-change constellations, the suspicious-silence flag, space debris, warp transitions, and the label/UI layout.
+**Not designed yet:** per-agent drones (the base drone D-final is picked on `feature/drone-lab`), fog of war (see §9 candidates), captain's log beacons, co-change constellations, the suspicious-silence flag, space debris (in design), many moons at a glance, warp transitions, and the label/UI layout.
 
 **In progress:** lava and ice open areas, orange lava with yellow accents, and bluer lava rock (§6); the pixel-smooth default switch (§5).
 
@@ -225,6 +251,8 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 
 | Direction | Why it was rejected |
 |---|---|
+| Decorative, hash-picked biomes | Planet looks now encode code health (human, 2026-11-06 and 2026-11-09). Seeded variety lives only inside a band. |
+| Rings as unmerged branches (#18) | Stale work is debris (R13; human, 2026-11-09). Rings' meaning is open. |
 | Acid-lime and violet toxic | Read as a different world, not as "less bad than lava", and the violet broke the ring hue rule. Replaced by ember for the health band (#19). |
 | Sprite sheets / pre-rendered 2D | Breaks live 3D and the per-pixel depth fade. |
 | Planetarium pastels (v1) | Too soft and flat for a world with depth. |
