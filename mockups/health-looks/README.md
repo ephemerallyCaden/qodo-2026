@@ -13,6 +13,7 @@ It measures only. It changes no palette, ramp or viewer code; fixes are proposal
 npm ci
 npm run measure   # node measure.mjs: ~1350 renders, 15-40 min on a loaded machine; writes measurements.csv, sheets/*.png, REPORT.md
 node proposals.mjs --ash 0.7:0,0.6:-0.05,0.6:-0.1   # the fixes, measured (reads measurements.csv): PROPOSALS.md, ~800 renders
+node trial-sheet.mjs   # sheets/lineup-trial.png: the lineup with P2's dustier ash beside the shipped ash, numbers from PROPOSALS.md (~60 renders)
 npm test          # unit tests (Node) + render tests (headless Chromium + SwiftShader)
 ```
 
@@ -70,6 +71,7 @@ Each render is measured on the planet's pixels: every pixel that differs from th
 | `lineup.png` | The bands in order with the three healthy looks together, one row per condition (hero, mid, far, full, small, small-far, overlays, overlays-full). Each tile is the typical seed of its look (the one nearest its centroid at hero), cropped and upscaled by a whole factor (the factor is in the row label). Under each tile: L, warmth, glow, and the band it measures as |
 | `lineup-cvd.png` | The same at hero and at full fade under each simulated vision |
 | `seeds.png` | All 24 seeds of every look at hero and at full fade, with misread or confusable seeds marked |
+| `lineup-trial.png` | `lineup.png` with a **desert (trial)** column after desert: P2's dustier ash (the asset library's `dusty-ash` trial look, the same pixels as P2's palette edits) on the desert's typical seed. Under it are PROPOSALS.md's numbers for that variant, normal vision: the hero means, then per condition H2's margin, H5's closest look and H1's failing steps. Written by `trial-sheet.mjs`, not `measure.mjs`; nothing is measured anew |
 
 ## Files
 
@@ -79,10 +81,11 @@ Each render is measured on the planet's pixels: every pixel that differs from th
 | `metrics.mjs` | OKLab, the Machado matrices, disc geometry, `measure()` |
 | `analyse.mjs` | `checkH1`, `checkH2`, `checkH5`, and the wording every report uses for them |
 | `report.mjs` | Verdicts (H3 and H4 check by check), `REPORT.md`, `measurements.csv` |
-| `sheets.mjs` | The sheet layouts |
+| `sheets.mjs` | The sheet layouts (the lineup takes an optional trial column) |
 | `harness.mjs` | Headless Chromium + SwiftShader, the library page, renders (pixels cross as base64), a browser pool, PNG encoding |
 | `measure.mjs` | The run |
 | `proposals.mjs` | The fixes, measured: an exact emulation of the full-distance fade, and ash-look variants by palette edit |
+| `trial-sheet.mjs` | `sheets/lineup-trial.png`: the lineup with the asset library's dustier-ash trial beside the shipped ash, and the parser for its PROPOSALS.md numbers |
 | `test/` | `metrics`, `analyse` and `lab` tests (Node); `render.test.mjs` (browser): renders aren't empty and the mask is the disc, renders are deterministic, the sentinel touches lava only, and `measurements.csv` matches a fresh render |
 
 ## Findings and proposals

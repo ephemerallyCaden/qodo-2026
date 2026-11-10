@@ -17,7 +17,7 @@ export const cropSize = (cond, geom = geometryFor(cond)) => CROPS.find((c) => c 
 const picked = (conds) => conds.filter((c) => c.key === BASE || c.key === FULL);
 
 /** Each look's typical seed: the one nearest its look's centroid at the baseline, normal vision. */
-function typicalSeeds(records) {
+export function typicalSeeds(records) {
   return Object.fromEntries(LOOKS.map(({ look }) => {
     const rs = records.filter((r) => r.cond === BASE && r.vision === 'normal' && r.look === look);
     const c = centroid(rs.map(lookVector));
@@ -28,26 +28,37 @@ function typicalSeeds(records) {
 /**
  * A grid of the looks (columns, bands in order, the healthy looks together) by rows of
  * { cond, vision, title, lines }: each tile the look's typical seed, seen with that vision, its
- * statistics and the band it measures as underneath.
+ * statistics and the band it measures as underneath. trial (optional, a look being judged; not
+ * measured here): { title, band, after, cropKey(condKey), lines(condKey) }, a column right after
+ * look `after`, its crop from `crops` and its two text lines given (the trial's measured numbers).
  */
-function lookGrid(results, crops, rows, footer) {
+function lookGrid(results, crops, rows, footer, trial = null) {
   const seeds = typicalSeeds(results.records);
-  const w = LABEL_W + LOOKS.length * (TILE + PAD), h = HEAD + rows.length * ROW_H + 40;
+  const cols = LOOKS.flatMap((l) => [l, ...(trial?.after === l.look ? [{ look: trial.title, band: trial.band, trial }] : [])]);
+  const w = LABEL_W + cols.length * (TILE + PAD), h = HEAD + rows.length * ROW_H + 40;
   const blits = [], texts = [];
   // band names over their looks (healthy spans three), then the look names
   let bx = LABEL_W;
   for (const band of BANDS) {
-    const n = LOOKS.filter((l) => l.band === band).length;
-    texts.push({ text: n > 1 ? `${band} (${n} looks, one band)` : band, x: bx + PAD, y: PAD, size: 22, color: INK });
+    const n = cols.filter((l) => l.band === band).length;
+    const k = cols.filter((l) => l.band === band && !l.trial).length;
+    texts.push({ text: k > 1 ? `${band} (${k} looks, one band)` : n > k ? `${band} (shipped, trial)` : band, x: bx + PAD, y: PAD, size: 22, color: INK });
     bx += n * (TILE + PAD);
   }
-  LOOKS.forEach((l, i) => texts.push({ text: l.look, x: LABEL_W + i * (TILE + PAD) + PAD, y: PAD + 30, size: 18, color: DIM }));
+  cols.forEach((l, i) => texts.push({ text: l.look, x: LABEL_W + i * (TILE + PAD) + PAD, y: PAD + 30, size: 18, color: l.trial ? INK : DIM }));
   rows.forEach(({ cond, vision, title, lines }, ri) => {
     const y = HEAD + ri * ROW_H, c = cropSize(cond);
     texts.push({ text: title, x: PAD, y: y + PAD, size: 22, color: INK });
     [...lines, `crop ${c} px ×${TILE / c}`].forEach((t, i) => texts.push({ text: t, x: PAD, y: y + PAD + 34 + i * LINE, size: 15, color: DIM }));
-    LOOKS.forEach(({ look }, ci) => {
-      const x = LABEL_W + ci * (TILE + PAD), seed = seeds[look], crop = crops.get(`${cond.key}|${look}|${seed}`);
+    cols.forEach(({ look, trial: tr }, ci) => {
+      const x = LABEL_W + ci * (TILE + PAD);
+      if (tr) {
+        const crop = crops.get(tr.cropKey(cond.key));
+        blits.push({ ...crop, data: simulateImage(vision, crop.data), x, y, scale: TILE / c });
+        tr.lines(cond.key).forEach((text, i) => texts.push({ text, x: x + 4, y: y + TILE + 6 + i * LINE, size: 15, color: i ? INK : DIM }));
+        return;
+      }
+      const seed = seeds[look], crop = crops.get(`${cond.key}|${look}|${seed}`);
       blits.push({ ...crop, data: simulateImage(vision, crop.data), x, y, scale: TILE / c });
       const r = results.records.find((q) => q.cond === cond.key && q.vision === vision && q.look === look && q.seed === seed);
       const s = results.cell(cond.key, vision).h5.seeds.find((q) => q.look === look && q.seed === seed);
@@ -62,10 +73,11 @@ function lookGrid(results, crops, rows, footer) {
   return { w, h, bg: SPACE, blits, texts };
 }
 
-/** Bands in order, the healthy looks together, one row per condition (hero, mid, far, full, ...). */
-export function lineupSheet(results, crops, conds) {
+/** Bands in order, the healthy looks together, one row per condition (hero, mid, far, full, ...); trial: see lookGrid. */
+export function lineupSheet(results, crops, conds, trial = null) {
   const rows = conds.map((cond) => ({ cond, vision: 'normal', title: cond.key, lines: [cond.note, `disc ${(2 * geometryFor(cond).r).toFixed(0)} px · fade ${fadeAt(cond.d).toFixed(2)}`, `size ${cond.size} · d ${cond.d.toFixed(1)}`] }));
-  return lookGrid(results, crops, rows, `typical seed per look (nearest its centroid at ${BASE}); text: mean L, warmth, glow share, and the band its measurements read as (leave-one-out nearest look; ✗ = another band, or within ${GLANCE} of one). Every number: REPORT.md`);
+  const footer = `typical seed per look (nearest its centroid at ${BASE}); text: mean L, warmth, glow share, and the band its measurements read as (leave-one-out nearest look; ✗ = another band, or within ${GLANCE} of one). Every number: REPORT.md`;
+  return lookGrid(results, crops, rows, trial ? `${footer}. ${trial.footer}` : footer, trial);
 }
 
 /** The lineup under each vision (Machado 2009 simulations) at the baseline and full fade. */
