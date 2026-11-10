@@ -14,11 +14,11 @@ import { fileURLToPath } from 'node:url';
 import { resolveFile } from './serve.mjs';
 import { mapPalette } from '../asset-viewer/palette-map.js';
 import { CREW, SPACE } from '../explorations/astronaut-lab/crew.js';
-import { PALETTES, SLOTS, paletteHexes } from './palette.js';
+import { PALETTES, SLOTS, BRAND_PALETTES, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS, showValue } from './params.js';
 import { VARIANTS, PICKED, FINAL, FINAL_PARAMS } from './variants.js';
 import { LOOP, MOTION_LOOP, CYCLES } from './drone.js';
-import { BRANDS } from './brands.js';
+import { BRANDS, PROVIDERS, BRAND_COLOURS, sessionLook } from './brands.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
@@ -138,7 +138,7 @@ try {
 
   // An animated loop of one variant: frames f / FPS over `loop` seconds, encoded with a fixed
   // palette of exactly the frames' colours. Frame N (one loop later) must equal frame 0.
-  async function loopGif(name, loop, frame) {
+  async function loopGif(name, loop, frame, gifPalette = PALETTES.base) {
     const tmp = path.join(OUT, `.frames-${name}`);
     await rm(tmp, { recursive: true, force: true });
     await mkdir(tmp, { recursive: true });
@@ -155,7 +155,7 @@ try {
     if ((await render(`${name} seam`, frame(N))).png !== first) problems.push(`${name}: frame ${N} differs from frame 0 (loop seam)`);
     else console.log(`  ${name} seam: frame ${N} == frame 0 · smoke in ${smoky}/${checked} checked frames`);
     const gif = path.join(OUT, `${name}.gif`);
-    const hexes = [...new Set([...paletteHexes(PALETTES.base), SPACE, '#111111', '#fff6e4'])];
+    const hexes = [...new Set([...paletteHexes(gifPalette), SPACE, '#111111', '#fff6e4'])];
     const pal = Buffer.alloc(16 * 16 * 3);
     for (let i = 0; i < 256; i++) Buffer.from(hexes[Math.min(i, hexes.length - 1)].slice(1), 'hex').copy(pal, i * 3);
     await writeFile(path.join(tmp, 'palette.rgb'), pal);
@@ -234,6 +234,19 @@ try {
     }
     console.log('  face probe: working = glyphs and no eyes, idle = eyes and no glyphs (A–E and D-final)');
   }
+  if (want('brands')) {
+    // The same face probe for every brand drone (its V2 eye, and its lab prototype if any).
+    for (const b of BRANDS) {
+      for (const eyes of [null, b.protoEyes ?? null].filter((e, i) => i === 0 || e != null)) {
+        for (const [t, working] of [[0.5, false], [3.2, false], [7.0, true], [8.6, true]]) {
+          const p = await page.evaluate(([id, tt, e]) => window.lab.faceProbe({ brand: id, params: e == null ? {} : { eyes: e }, t: tt, yaw: 0, zoom: 2, motion: true, smoke: false }, 160, 160), [b.id, t, eyes]);
+          const ok = working ? p.eyes === 0 && p.glyphs > 20 : p.eyes > 10 && p.glyphs === 0;
+          if (!ok) problems.push(`face probe ${b.id}${eyes == null ? '' : ' (prototype eyes)'} t = ${t}: ${p.eyes} eye px, ${p.glyphs} glyph px`);
+        }
+      }
+    }
+    console.log('  face probe: every brand drone works with glyphs and no eyes, idles with eyes and no glyphs');
+  }
 
   // ---------------------------------------------------------------- brand drones (phase 2)
   const bheads = BRANDS.map((b) => [b.name, b.signature]);
@@ -259,6 +272,60 @@ try {
         w: 160, h: 160, scale: 3,
         rows: [{ cells }],
       }, path.join(OUT, `brand-${b.id}-closeup.png`));
+    }
+  }
+
+  if (want('seeds')) {
+    // A5: three sessions per drone differ only in seeded details: a trim swap, one small shape
+    // detail, personality (sparkles, gaze) and phase. The silhouette and shell never change.
+    const SEEDS = ['session-7f3a', 'session-c21e', 'session-90bd'];
+    await render('seeds', {
+      title: 'A5 · three sessions per drone (3/4, 180p x2) · only seeded details differ: trim, one shape detail, sparkles, gaze',
+      w: 100, h: 100, scale: 2, rowLabelW: 120,
+      rows: BRANDS.map((b) => ({ label: b.name, cells: SEEDS.map((sd) => {
+        const look = sessionLook(b.id, sd);
+        return { brand: b.id, seed: sd, yaw: -0.75, t: STILL_T, caption: `${sd.slice(8)} · trim ${look.trim + 1} · ${b.detail.key} ${look.params[b.detail.key].toFixed(3)}` };
+      }) })),
+    }, path.join(OUT, 'brands-seeds.png'));
+  }
+
+  if (want('squads')) {
+    // K astronauts with several drones: the crew close-up (four frames, all 11 drones) and the
+    // system view's distance (one frame, all 11). Each drone is a seeded session, out of step.
+    const at = (ids, xs, ys, zs) => ids.map((id, i) => ({ brand: id, seed: `crew-${id}`, phased: true, x: xs[i], y: ys[i], z: zs[i], yaw: 0.25 - 0.25 * i }));
+    const groups = [['claude', 'cursor', 'copilot'], ['codex', 'google', 'devin'], ['kiro', 'opencode', 'qodo'], ['generic', 'unknown']];
+    const frame = (ids) => ({
+      t: STILL_T, view: 'crew',
+      squad: at(ids, ids.length === 3 ? [-0.42, 0, 0.42] : [-0.25, 0.25], ids.length === 3 ? [0.5, 0.62, 0.48] : [0.52, 0.58], ids.length === 3 ? [0.15, -0.25, 0.1] : [0, -0.1]),
+      caption: ids.map((id) => BRANDS.find((b) => b.id === id).name).join(' · '),
+    });
+    await render('squad close-up', {
+      title: "K astronauts with the brand drones · the viewer's crew close-up, 320x180 at x2 · left to right as captioned",
+      w: 320, h: 180, scale: 2,
+      rows: [{ cells: groups.slice(0, 2).map(frame) }, { cells: groups.slice(2).map(frame) }],
+    }, path.join(OUT, 'brands-crew-closeup.png'));
+    const ids = BRANDS.map((b) => b.id);
+    const xs = ids.map((_, i) => -1.7 + (3.4 * i) / (ids.length - 1));
+    await render('squad system', {
+      title: "all 11 drones with two K astronauts at the viewer's system-view distance (5.98), 320x180 at x4",
+      footer: `left to right: ${BRANDS.map((b) => b.name).join(', ')}`,
+      w: 320, h: 180, scale: 4,
+      rows: [{ cells: [{ t: STILL_T, view: 'system', lift: 0.1, astros: [[-2.25, 0.03, -0.3, 0.4], [2.25, 0.03, -0.3, -0.4]],
+        squad: at(ids, xs, ids.map((_, i) => 0.5 + 0.12 * (i % 2)), ids.map((_, i) => (i % 2 ? -0.35 : 0.15))) }] }],
+    }, path.join(OUT, 'brands-crew-system.png'));
+  }
+
+  if (want('brand-gifs')) {
+    // Per drone: the 6 s turntable and the 12 s motion loop, as for D-final.
+    for (const b of BRANDS) {
+      await loopGif(`brand-${b.id}-turntable`, LOOP, (f) => ({
+        w: 220, h: 220, scale: 3, crispLabels: true,
+        rows: [{ cells: [{ brand: b.id, yaw: -0.75 - (Math.PI * 2 * f) / (LOOP * FPS), t: f / FPS, zoom: 2, caption: `${b.name} · turntable, 6 s` }] }],
+      }), BRAND_PALETTES[b.id]);
+      await loopGif(`brand-${b.id}-motion`, MOTION_LOOP, (f) => ({
+        w: 280, h: 220, scale: 2, crispLabels: true,
+        rows: [{ cells: [{ brand: b.id, yaw: -0.5, t: f / FPS, zoom: 2, motion: true, caption: `${b.name} · motion loop, 12 s` }] }],
+      }), BRAND_PALETTES[b.id]);
     }
   }
 

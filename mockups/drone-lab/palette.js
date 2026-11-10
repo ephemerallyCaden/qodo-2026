@@ -55,10 +55,11 @@ export const BRAND_PALETTES = {
   cursor: { name: 'Cursor', shell: ['#000000', '#12173d', '#293268', '#464b8c'], trim: ['#464b8c', '#909edd', '#c1d9f2', '#ffffff'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], smoke: ['#464b8c', '#909edd', '#c1d9f2'] },
   // The goggled helmet's blue-to-violet, with light cyan goggle frames and ear pads.
   copilot: { name: 'GitHub Copilot', shell: ['#29174c', '#36277f', '#354ab2', '#8c51cc'], trim: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], screen: VISOR, glow: TEAL, accent: ['#36277f', '#354ab2', '#4185d8', '#5ab9e5'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
-  // Codey's cornflower blue (#6e9bfa), its navy screen (#232d66 -> #293268).
-  codex: { name: 'OpenAI Codex', shell: ['#354ab2', '#4185d8', '#4185d8', '#909edd'], trim: ['#4185d8', '#909edd', '#c1d9f2', '#ffffff'], screen: ['#12173d', '#293268', '#ffffff'], glow: TEAL, accent: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
-  // Jules's pixel octopus purple (#642cc2 -> #643499), white trim.
-  google: { name: 'Google (Jules, Gemini CLI, Antigravity)', shell: ['#12173d', '#29174c', '#412866', '#643499'], trim: ['#8c51cc', '#b991f2', '#ffffff', '#ffffff'], screen: VISOR, glow: TEAL, accent: ['#354ab2', '#4185d8', '#b991f2', '#ff6866'], smoke: ['#8c51cc', '#b991f2', '#ffffff'] },
+  // Codey's cornflower blue (#6e9bfa -> #909edd is nearest, but that is the generic drone's grey;
+  // a lighter, cyan-leaning sky ramp keeps it apart from generic and Copilot), its navy screen (#232d66 -> #293268).
+  codex: { name: 'OpenAI Codex', shell: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], trim: ['#4185d8', '#5ab9e5', '#a5e6ff', '#ffffff'], screen: ['#12173d', '#293268', '#ffffff'], glow: TEAL, accent: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
+  // Jules's pixel octopus purple (#642cc2 -> #643499), lighter purple tentacles (accent), white trim.
+  google: { name: 'Google (Jules, Gemini CLI, Antigravity)', shell: ['#12173d', '#29174c', '#412866', '#643499'], trim: ['#8c51cc', '#b991f2', '#ffffff', '#ffffff'], screen: VISOR, glow: TEAL, accent: ['#412866', '#643499', '#8c51cc', '#b991f2'], smoke: ['#8c51cc', '#b991f2', '#ffffff'] },
   // Devin's near-black (#0e1015 -> #12173d) for the head, its white hexagons for the side pods.
   devin: { name: 'Devin', shell: ['#000000', '#000000', '#12173d', '#293268'], trim: ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#000000', '#12173d', '#293268', '#464b8c'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
   // The white ghost, shaded in Kiro's purple (#9046ff -> #8c51cc).
@@ -69,8 +70,8 @@ export const BRAND_PALETTES = {
   qodo: { name: 'Qodo', shell: ['#29174c', '#412866', '#643499', '#8c51cc'], trim: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], screen: VISOR, glow: TEAL, accent: ['#29174c', '#412866', '#643499', '#8c51cc'], smoke: ['#b991f2', '#c1d9f2', '#ffffff'] },
   // Every other detected tool: D-final's own base palette, with the tool's name as a label.
   generic: { ...PALETTES.base, name: 'generic (other tools)' },
-  // No tool known: a dull plum no provider uses, no white trim, and dimmed eyes.
-  unknown: { name: 'unknown agent', shell: ['#3f233c', '#3f233c', '#66334b', '#8c4b63'], trim: ['#29174c', '#3f233c', '#66334b', '#8c4b63'], screen: VISOR, glow: ['#004538', '#004538', '#007c66', '#00bc9c'], accent: ['#3f233c', '#3f233c', '#66334b', '#8c4b63'], smoke: ['#3f233c', '#66334b', '#8c4b63'] },
+  // No tool known: a dusty plum no provider uses, no white trim, and dimmed eyes.
+  unknown: { name: 'unknown agent', shell: ['#66334b', '#8c4b63', '#c16a7d', '#c16a7d'], trim: ['#3f233c', '#66334b', '#8c4b63', '#8c4b63'], screen: VISOR, glow: ['#004538', '#004538', '#007c66', '#00bc9c'], accent: ['#3f233c', '#66334b', '#8c4b63', '#c16a7d'], smoke: ['#66334b', '#8c4b63', '#c16a7d'] },
 };
 
 /** Every colour a palette can produce. */

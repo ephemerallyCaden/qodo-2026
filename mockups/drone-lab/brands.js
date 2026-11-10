@@ -7,7 +7,7 @@
 // Per-session variety (R2b / A5): sessionLook(brand, session) hashes a session id into seeded
 // details only (a trim swap, one small shape detail, personality), never the silhouette.
 import { FINAL } from './variants.js';
-import { PARAM_BY_KEY, LAB_EYE } from './params.js';
+import { DEFAULTS, PARAM_BY_KEY, LAB_EYE } from './params.js';
 import { BRAND_PALETTES } from './palette.js';
 import { hashStr } from '../asset-viewer/faces.js';
 
@@ -68,19 +68,19 @@ export const BRANDS = [
   {
     id: 'codex', name: 'OpenAI Codex', covers: 'OpenAI Codex (CLI, cloud)',
     mascot: 'Codey, the Codex pet: a cloud-puff head with a dark rounded screen face and >_ glyph eyes',
-    signature: 'a cloud-puff head round a big dark navy screen, cornflower blue, puffing clouds; works in prompt characters',
+    signature: 'a cloud-puff head round a big dark navy screen, sky blue, puffing clouds; works in prompt characters',
     params: {
       rim: 0, antenna: 0,
       headW: 0.122, headH: 0.098, headD: 0.11, headRound: 0.9, headCorner: 0.6, headTaper: 1, headFlat: 0.2,
-      crown: 1, crownN: 7, crownR: 0.034, crownArc: 2.05, crownZ: -0.2,
-      screenW: 0.85, screenH: 0.6, screenY: 0.02, screenRound: 4.5, bezel: 0.08, eyes: 5,
+      crown: 1, crownN: 7, crownR: 0.039, crownArc: 2.05, crownZ: -0.2,
+      screenW: 0.76, screenH: 0.55, screenY: 0.02, screenRound: 4.5, bezel: 0.08, eyes: 5,
       thrusters: 0, thrR: 0.026, thrL: 0.022, thrSpread: 0.55, thrFlare: 1.1,
       smoke: 0, puffSize: 1.15, puffRate: 0.45, sparkles: 1, glyphSet: 3,
       bobAmp: 0.03, drift: 0.16, bank: 0.26, lookYaw: 0.4,
     },
     protoEyes: LAB_EYE.prompt,
-    detail: { key: 'crownR', min: 0.031, max: 0.037 },
-    trims: [['#4185d8', '#909edd', '#c1d9f2', '#ffffff'], ['#354ab2', '#4185d8', '#909edd', '#c1d9f2'], ['#4185d8', '#5ab9e5', '#a5e6ff', '#ffffff']],
+    detail: { key: 'crownR', min: 0.036, max: 0.042 },
+    trims: [['#4185d8', '#5ab9e5', '#a5e6ff', '#ffffff'], ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], ['#5ab9e5', '#a5e6ff', '#ffffff', '#ffffff']],
   },
   {
     id: 'google', name: 'Google', covers: 'Google: Jules, Gemini CLI, Antigravity (one drone)',
@@ -173,12 +173,12 @@ export const BRANDS = [
   {
     id: 'unknown', name: 'unknown agent', covers: 'agent evidence with no known tool',
     mascot: '-',
-    signature: "D-final's saucer in a dull plum no provider uses, no white trim, dim eyes in a faceless visor slit, a question-mark antenna",
-    params: { antenna: 3, antL: 0.04, antTilt: 0, eyes: 2, sparkles: 0, puffRate: 0.3 },
+    signature: "D-final's saucer in a dusty plum no provider uses, no white trim, dim eyes in a narrow faceless visor, a question-mark antenna",
+    params: { antenna: 3, antL: 0.04, antTilt: 0, eyes: 2, screenH: 0.42, screenY: 0.22, sparkles: 0, puffRate: 0.3 },
     detail: { key: 'antL', min: 0.036, max: 0.044 },
-    trims: [['#29174c', '#3f233c', '#66334b', '#8c4b63'], ['#3f233c', '#3f233c', '#66334b', '#8c4b63']],
+    trims: [['#3f233c', '#66334b', '#8c4b63', '#8c4b63'], ['#29174c', '#3f233c', '#66334b', '#8c4b63']],
   },
-].map((b) => ({ ...b, params: { ...FINAL.params, ...b.params }, palette: BRAND_PALETTES[b.id] }));
+].map((b) => ({ ...b, params: { ...DEFAULTS, ...FINAL.params, ...b.params }, palette: BRAND_PALETTES[b.id] }));
 
 export const BRAND_BY_ID = Object.fromEntries(BRANDS.map((b) => [b.id, b]));
 /** The nine providers with a custom drone (not generic or unknown). */
@@ -214,3 +214,26 @@ export function sessionLook(brandId, session) {
   const trim = Math.floor(rnd() * b.trims.length) % b.trims.length;
   return { params, palette: { ...b.palette, trim: b.trims[trim] }, phase: Math.round(rnd() * 120) / 10, trim };
 }
+
+// Brand colour -> BLK 36, for the README and params.md (lab.mjs adds the nearest entries and
+// OKLab distances). `chosen` is what the palette uses; `why` explains any pick that isn't the nearest.
+export const BRAND_COLOURS = [
+  { brand: 'claude', part: 'Clawd terracotta', hex: '#d77757', chosen: ['#ff965f', '#cc5250'], why: 'The nearest, #ff6866, is a pink-red coral (hue 24° against the brand\'s 39°) and the coral contributor\'s brightest tone. The lit front takes #ff965f (the hue) and turned faces take #cc5250 (the lightness), so the shell averages to a terracotta orange.' },
+  { brand: 'cursor', part: 'near-black', hex: '#14120b', chosen: ['#12173d'], why: '' },
+  { brand: 'cursor', part: 'cream (light facet)', hex: '#f0efea', chosen: ['#ffffff'], why: '' },
+  { brand: 'cursor', part: 'cube grey', hex: '#43413c', chosen: ['#293268', '#464b8c'], why: 'The nearest, #0f4a4c, is a teal slate 0.037 from the [OIII] event teal #004538, so it would read as an event. The gear greys read as graphite.' },
+  { brand: 'copilot', part: 'helmet blue', hex: '#2f5bff', chosen: ['#354ab2'], why: 'Tied with #4185d8 (0.125). #354ab2 keeps it off the suit ramp and apart from Codex.' },
+  { brand: 'copilot', part: 'helmet lilac', hex: '#b18cff', chosen: ['#8c51cc'], why: 'The nearest, #b991f2, washes the lit helmet out to Kiro\'s lilac. One step darker keeps the blue-to-violet read.' },
+  { brand: 'copilot', part: 'goggle frames', hex: '#5cc8ff', chosen: ['#5ab9e5'], why: '' },
+  { brand: 'codex', part: 'Codey blue', hex: '#6e9bfa', chosen: ['#4185d8', '#5ab9e5'], why: 'The nearest, #909edd, is the generic drone\'s shell (A4 measured them too alike). The saturated azure keeps Codex apart from generic and from Copilot.' },
+  { brand: 'codex', part: 'Codey screen', hex: '#232d66', chosen: ['#293268'], why: '' },
+  { brand: 'google', part: 'Jules purple', hex: '#642cc2', chosen: ['#643499'], why: '' },
+  { brand: 'devin', part: 'near-black', hex: '#0e1015', chosen: ['#12173d'], why: '' },
+  { brand: 'devin', part: 'hexagons', hex: '#ffffff', chosen: ['#ffffff'], why: '' },
+  { brand: 'kiro', part: 'Kiro purple', hex: '#9046ff', chosen: ['#8c51cc'], why: '' },
+  { brand: 'kiro', part: 'ghost white', hex: '#ffffff', chosen: ['#ffffff'], why: '' },
+  { brand: 'opencode', part: 'ring light', hex: '#eeeeee', chosen: ['#ffffff'], why: '' },
+  { brand: 'opencode', part: 'core dark', hex: '#0c0c0c', chosen: ['#000000'], why: 'The nearest, #12173d, is the screen\'s usual navy. True black makes the split core read as two tones.' },
+  { brand: 'opencode', part: 'core grey', hex: '#4b4b4b', chosen: ['#293268'], why: 'The nearest, #0f4a4c, is a teal slate next to the [OIII] event teal. The gear navy keeps the eyes the only teal.' },
+  { brand: 'qodo', part: 'hoodie purple', hex: '#7a68fa', chosen: ['#8c51cc'], why: '' },
+];

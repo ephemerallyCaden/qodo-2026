@@ -599,7 +599,7 @@ export function layout(P) {
       const y = bottom + 0.6 * P.skirtR, rimAt = V(0, y, 0);
       const a = out.clone().multiplyScalar(exitAlong(core, rimAt, out, 1) * P.skirtSpread).setY(y);
       const b = a.clone().addScaledVector(down, P.skirtL);
-      const c = b.clone().addScaledVector(out, P.skirtCurl * P.skirtL * 0.8).add(V(0, P.skirtCurl * P.skirtL * 0.4, 0));
+      const c = b.clone().addScaledVector(out, P.skirtCurl * P.skirtL * 0.75).add(V(0, P.skirtCurl * P.skirtL * 0.18, 0));
       skirt.push({ a, b, c, out });
     }
   } else if (P.skirt === 3) {
