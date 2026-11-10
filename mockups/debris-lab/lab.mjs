@@ -3,6 +3,7 @@
 // touches the network. Usage:
 //   node lab.mjs [lineup] [clutter] [closeups] [loops] [sweep] [hulls] [crew] [compare] [measures]   (no names = all)
 //   node lab.mjs report   rewrites measures.md from measures.json without rendering
+//   v=A3,A2               only these directions (lineups, clutter strips, loops)
 // Every rendered tile is checked (checks.mjs); any failure exits non-zero. measures.md holds the
 // numbers the README quotes (colour separation, ring and moon separation, band reading, violet).
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -20,8 +21,11 @@ import { oklabInt, okDist, hexToInt, hkLightness, okChroma, nearest } from './co
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
-const wanted = process.argv.slice(2);
+const args = process.argv.slice(2);
+const only = args.find((a) => a.startsWith('v='))?.slice(2).split(','); // v=A3,A2: just these directions
+const wanted = args.filter((a) => !a.startsWith('v='));
 const want = (n) => !wanted.length || wanted.includes(n);
+const RUN = only ? VARIANTS.filter((v) => only.includes(v.id)) : VARIANTS;
 const FPS = 15;
 const problems = [];
 const M = {}; // measures -> measures.json / measures.md
@@ -69,7 +73,7 @@ try {
   // ------------------------------------------------------------ lineups (D3, D4)
   const lineupStats = {};
   if (want('lineup') || want('measures')) {
-    for (const v of VARIANTS) {
+    for (const v of RUN) {
       const rows = SIZES.map((size) => ({
         label: `planet size ${size}`,
         cells: BANDS.map((b) => ({ biome: b.biome, seed: b.seed, debrisSeed: 7, size, v: v.id, n: 8, cam: 'lineup', t: 3, expect: { pieces: 8 } })),
@@ -83,7 +87,7 @@ try {
 
   // ------------------------------------------------------------ clutter strips (D5)
   if (want('clutter')) {
-    for (const v of VARIANTS) {
+    for (const v of RUN) {
       const rows = [['lush', 7], ['lava', 11]].map(([biome, seed]) => ({
         label: biome,
         cells: CLUTTER.map((n) => ({ biome, seed, debrisSeed: 7, v: v.id, n, cam: 'lineup', t: 3, caption: `${n} stale${n > v.cap ? ` (cap ${v.cap})` : ''}`, expect: { pieces: Math.min(n, v.cap) } })),
@@ -141,7 +145,7 @@ try {
   }
   if (want('loops')) {
     M.loops = {};
-    for (const v of VARIANTS) {
+    for (const v of RUN) {
       const t0 = Date.now();
       const cell = { biome: 'lush', seed: 7, v: v.id, n: 8, cam: 'lineup' };
       const frames = await grab(cell, times);

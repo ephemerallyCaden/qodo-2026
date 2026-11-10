@@ -1,15 +1,15 @@
 // The debris lab page. Scenes are built from the asset viewer's own factories (makePlanet,
-// makeSky, makeStars, makeAstronaut), posed and depth-tinted by its own helpers, plus the debris
-// factory (debris.js). Tiles render off-screen at the internal resolution and are checked here;
+// makeSky, makeStars, makeAstronaut and makeDebris), posed and depth-tinted by its own helpers; the
+// lab adds its exploration kits and arrangements to the viewer's debris registries (layout.js). Tiles render off-screen at the internal resolution and are checked here;
 // lab.mjs and the tests drive window.lab, and the live page (index.html) uses the same functions.
 import * as THREE from 'three';
 import {
   makePlanet, makeSky, makeStars, makeAstronaut, setDepthLevel, depthLevelAt, poseWorld, setLoop, applyDepth,
   setViewSize, setPixelSize, retint, resolve, renderer, camera, controls, VIEWS, RING_PRESETS, CREW_SPOT, CONTRIBUTOR_KEYS, frameWidth,
-  LOOP as VIEWER_LOOP,
+  LOOP as VIEWER_LOOP, makeDebris,
 } from '../asset-viewer/viewer.js';
 import { eyesFor } from '../asset-viewer/faces.js';
-import { makeDebris, setViewport } from './debris.js';
+import './layout.js'; // registers the lab's kits, arrangements and colours with the viewer's debris
 import { variant as variantOf, sampleItems, VARIANTS, BANDS, CLUTTER } from './variants.js';
 import { LOOP, centreAt, phaseAt, ranked } from './layout.js';
 import { restColours, TEAL, HULL_KEYS, PAINT, DULL, TAGS } from './palette.js';
@@ -133,8 +133,7 @@ function capture(w, h) {
     rt = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false });
     px = new Uint8Array(w * h * 4);
   }
-  setViewSize(w, h, [sky]);
-  setViewport(w, h);
+  setViewSize(w, h, [sky]); // also the outline's pixel width (the viewer's drawing-buffer size)
   renderer.setRenderTarget(rt);
   renderer.setClearColor(resolve('space'));
   renderer.clear();
@@ -439,7 +438,6 @@ function bindLive() {
     const c = configure(cellOf());
     const w = frameWidth(180), h = 180;
     setPixelSize(w, h, [sky]);
-    setViewport(w, h);
     const scale = Math.max(1, Math.floor(Math.min((innerWidth - 300) / w, innerHeight / h)));
     canvas.style.width = `${w * scale}px`;
     canvas.style.height = `${h * scale}px`;

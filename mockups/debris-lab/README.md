@@ -2,7 +2,7 @@
 
 > **Exploration, 2026-11-09/10: five space-debris directions (A–E). The human picked A and asked for it in grey and red with real satellite parts (A2), then for neutral grey with red only as an outline and blinking lights (A3). A3 is waiting for their approval.** Debris is stale work (R13): stale PRs, abandoned branches, merged-but-not-deleted branches and orphaned agent branches, drifting near the planets they touch. The feature doc is `docs/features/space-debris.md` on `docs/art-meaning` (requirements D1–D8). The picked direction gets ported into the asset viewer and the asset library later, as its own task.
 
-There's one debris factory (`debris.js`), and it's a modifier any viewer planet can carry. A direction is just a parameter set (`variants.js`): a **kit** (what a piece is), an **arrangement** (where the pieces sit and how they move) and a **cap** (how many are drawn before the rest is counted). A, B and E differ only in arrangement; A, C and D differ only in kit. So any mix, such as "C's blocks in E's wake", is a one-line edit.
+There's one debris factory, and since the port it's the asset viewer's (`../asset-viewer/debris.js`, with `debris-kits.js`, `debris-layout.js` and `debris-palette.js`): a modifier any viewer planet can carry, drawing A3, the human's pick. The lab registers its exploration kits, arrangements and colours (A–E, A2) into the viewer's registries (`kits.js`, `layout.js`, `palette.js` here), so every direction still draws through that one implementation. A direction is just a parameter set (`variants.js`): a **kit** (what a piece is), an **arrangement** (where the pieces sit and how they move) and a **cap** (how many are drawn before the rest is counted). A, B and E differ only in arrangement; A, C and D differ only in kit. So any mix, such as "C's blocks in E's wake", is a one-line edit.
 
 The lab imports the asset viewer read-only, in library mode, the way the asset library does: its planets, moons, clouds, sky, stars, crew, renderer, camera, loop and depth fade are the viewer's own. It's a throwaway mockup, not product code.
 
@@ -259,21 +259,22 @@ Every tile `npm run lab` renders goes through `checks.mjs`, and the run fails on
 
 | File | What |
 |---|---|
-| `kits.js` | The five kits (hardware, satellite, outlined, blocks, canister) as part tables per class (pure data): sizes from diffs, the 2 px detail rule, solar-panel grids, fragments, rust cells |
-| `layout.js` | Items → pieces (`plan`), the arrangements (`place`, plus `prepare` for the two that pack), loop-locked poses (`fragPoses`) and the sweep's timeline (`sweepAt`). Pure, tested in Node |
-| `variants.js` | The directions (A–E, A2, A3), sample stale items, the bands and sizes |
-| `palette.js`, `colour.js` | Debris colours (checked against `mapPalette('blk-36')`), OKLab, CIELAB and Helmholtz–Kohlrausch lightness |
-| `debris.js` | The factory: `makeDebris()` → `{ group, rebuild(items, variant, { seed, radius, hull }), update(phase, { centre, radius, sweeps, selected }), setDebug, layout }` |
+| `kits.js` | The lab's exploration kits (hardware, satellite, blocks, canister) as part tables per class, registered into the viewer's `KITS`; it re-exports the viewer's kit machinery (`../asset-viewer/debris-kits.js`: sizes, the 2 px detail rule, panel grids, fragments, and A3's `outlined` kit) |
+| `layout.js` | The lab's arrangements (polar, heaps, the wake), registered into the viewer's `ARRANGEMENTS`; it re-exports the viewer's layout (`../asset-viewer/debris-layout.js`: `plan`, `orbits`, `display`, `turntable`, loop-locked poses, ageing, nav lights, the sweep, demo items). Pure, tested in Node |
+| `variants.js` | The directions (A–E, A2, A3), sample stale items (the viewer's demo items), the bands and sizes |
+| `palette.js`, `colour.js` | The lab's exploration colours, registered into the viewer's `debris-palette.js` (which holds A3's grey, outline and lights), checked against `mapPalette('blk-36')`; OKLab, CIELAB and Helmholtz–Kohlrausch lightness |
+| `../asset-viewer/debris.js` | The factory: `makeDebris()` → `{ group, rebuild(items, variant, { seed, radius, hull }), update(phase, { centre, radius, sweeps, selected, local }), setDebug, layout }`, built by `viewer.js` with its depth fade, light and view size |
 | `lab.js`, `index.html` | The page: scenes from the viewer's factories, off-screen tiles, per-tile stats, sheets, frames, the live view |
 | `lab.mjs`, `checks.mjs`, `harness.mjs` | The runner, the shared checks, and the Playwright harness |
 | `routes.mjs`, `serve.mjs` | The file allowlist (this folder, three, and `../asset-viewer/*.js` top-level modules only) and the loopback server |
 
 The debris shader is the viewer's toon recipe: four light bands from `dot(normal, light)`, band 0 in the planet's shadow, then rust per cell. Rust is decided per cell of a grid in the piece's own frame (cells at least 2 px), so patches stay on the panel as it tumbles. The debris group is a sibling of the planet's group, not a child: piece sizes follow the diff, not the planet's size (LOC), and orbit radii follow the planet.
 
-## Porting notes
+## The port (done: the asset viewer)
 
-- **Viewer hooks the port needs:** export `DEPTH_GLSL` and the depth uniforms (or put `makeDebris` in `viewer.js`), and `LIGHT_DIR`. The lab borrows them from a probe planet's ring material by regex, and throws if that ever stops matching.
-- **Asset library:** a debris entry with direction (or kit and arrangement), item count, age mix, hull and seed controls, plus the sweep.
+- **A3 lives in the viewer:** `debris.js` (the factory), `debris-kits.js`, `debris-layout.js` and `debris-palette.js`. `viewer.js` builds the factory with its own `DEPTH_GLSL`, depth uniforms, `LIGHT_DIR` and `VIEW_SIZE`, and `makePlanet()` composes a debris set (`planet.setDebris(...)`) with viewer controls. The lab imports `makeDebris` from `viewer.js`.
+- **Byte-identical:** A3's lineup, clutter strip, close-ups and loop came out of the moved code with the same hashes as before. With debris off, every viewer screenshot and test is unchanged.
+- **Next, the asset library:** a debris entry with item count, age mix and seed controls, plus the sweep.
 
 ## Open questions and limits
 

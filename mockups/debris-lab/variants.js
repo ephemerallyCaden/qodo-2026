@@ -2,7 +2,7 @@
 // (what a piece is), an arrangement (where pieces sit and how they move) and a cap (how many are
 // drawn before the rest is counted). A vs B vs E change only the arrangement; A vs C vs D only
 // the kit, so any mix ("C's blocks in E's wake") is one edit here.
-import { CLASSES } from './kits.js';
+import { demoItems } from './layout.js';
 
 export const VARIANTS = [
   {
@@ -38,23 +38,10 @@ export const variant = (id) => VARIANTS.find((v) => v.id === id);
 // The human's pick (A, refined as A2, then A3), which gets the sweep GIF.
 export const PICK = 'A3';
 
-// Ages (days) and diffs (lines) that land on each age step and across the size range.
-export const AGES = [21, 110, 400]; // intact, rusted, broken (layout.AGE_STEPS = 60, 180)
-const DIFFS = [12, 60, 240, 900, 3000, 9000];
-
-/**
- * n deterministic stale items with every class and age step represented as soon as n allows:
- * class cycles pr, branch, merged, agent; age steps cycle intact, rusted, broken at a different
- * rate, so 12 items cover all 12 class x age pairs.
- */
-export function sampleItems(n, { prefix = 'item' } = {}) {
-  return Array.from({ length: n }, (_, i) => ({
-    id: `${prefix}-${i}`,
-    cls: CLASSES[i % 4],
-    age: AGES[(i + Math.floor(i / 4)) % 3] + (i % 5),
-    diff: DIFFS[(i * 7 + 3) % DIFFS.length],
-  }));
-}
+// Sample stale items: the viewer's demo items (every class and age step represented as soon as n
+// allows; 12 items cover all 12 class x age pairs), so the lab and the viewer's controls agree.
+export { AGES } from './layout.js';
+export const sampleItems = (n, { prefix = 'item' } = {}) => demoItems(n, { prefix });
 
 // The planets each direction is shown on (lineups): every product band (art direction §6), worst
 // to best, then the three healthy looks. Seeds are the viewer's showcase seeds.
