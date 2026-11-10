@@ -15,13 +15,15 @@ npm ci && npm run build      # CLI entry: dist/cli.js
 ```
 
 ## Testing
-CI runs `npm ci` → build → typecheck → lint → test on Node 20 and 22. Run the same before committing:
+CI runs `npm ci` → build → typecheck → lint → test on Node 20 and 22, plus a `render` job (Playwright + SwiftShader in a digest-pinned container) and, on PRs, a `goldens` job. Run the same before committing:
 ```sh
 npm run build && npm run typecheck && npm run lint && npm test
 node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 ```
 - One test: `npx vitest run -t "<name>"`.
-- Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
+- Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line. CI's `goldens` job enforces the line on every PR commit that touches `test/golden/`.
+- Render tests: `npm run test:render`. Render goldens are authoritative only in CI's pinned container. A local run enforces determinism, budgets, non-blank output and the palette, and treats the golden compare as informational. To update them, take the `render-goldens` artifact of a failing CI run and name the run and image digest in the `Golden-Update:` line (`test/render/README.md`).
+- On a shared machine, run full suites one at a time: `lockf -k /tmp/commet-fullsuite.lock npm test` (and the same for `npm run test:render`). Kill only processes you started, never by name pattern.
 - Before a PR, run `qodo review --base "$(git merge-base HEAD "$BASE")" --json`, where `BASE` is the PR's base branch (e.g. `BASE=origin/session/week1`). Resolve `action_required` findings as in the review loop below for **at most 3 local rounds**, then open the PR anyway, listing any still-unresolved findings in its description. The loop continues in the PR review, and the merge gate (no unresolved `action_required`) applies there. (On #16, six local rounds took over 2 hours.)
 - `commet` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error, 6 server bind failure (`commet open`).
 

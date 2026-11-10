@@ -17,6 +17,8 @@ Node ≥ 20.19, npm. From the repo (or worktree) root:
 - `npm run build`: `tsc` to `dist/` (the bin is `dist/cli.js`).
 - `npm run typecheck`: strict `tsc --noEmit` over `src/`, `test/` and `factory/`.
 - `npm run lint`: ESLint. Bans `Math.random`, `Date.now`, `performance.now`, `crypto.randomUUID`, `new Date()` and `localeCompare` in `src/{core,scan,attrib}`, and Node built-ins in `src/core`.
+- `npm run test:render`: Playwright + SwiftShader render tests (R8). Goldens are authoritative only in CI's pinned container; locally the golden compare is informational (`test/render/README.md`).
+- Parallel agents: run full suites through `lockf -k /tmp/commet-fullsuite.lock <cmd>` so only one runs at a time.
 - `npm test`: Vitest (unit, golden, privacy canaries, lint rules). Golden snapshots live in `test/golden/`; regenerate only deliberately with `UPDATE_GOLDEN=1 npm test` and a `Golden-Update: <reason>` line in the commit.
 - `node dist/cli.js scan [--window <months>] [--no-ingest] [--out <file>]`: run inside a clone. Writes `<git-common-dir>/commet/snapshot.json`. Exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error. `CLAUDE_CONFIG_DIR` overrides `~/.claude`.
 - `node dist/cli.js open [--port <n>] [--no-open]`: serves the view on 127.0.0.1 only (R14, `docs/contracts/phase2.md`). It prints `http://127.0.0.1:<port>/#t=<token>` once and needs a snapshot first (exit 5 otherwise). `--no-open` keeps the token out of process lists. Exit 6: server bind failure.
