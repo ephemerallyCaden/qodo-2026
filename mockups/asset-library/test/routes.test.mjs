@@ -83,6 +83,19 @@ test('without an archive every archive request is a 404, and the rest still work
   }
 });
 
+test('the drone lab: its top-level modules only, never its outputs, tests, scripts or node_modules', async () => {
+  for (const m of ['drone.js', 'brands.js', 'params.js', 'palette.js', 'variants.js']) {
+    const r = await route('GET', `/drone-lab/${m}`);
+    assert.deepEqual([r.status, r.type], [200, 'text/javascript'], m);
+  }
+  for (const p of [
+    '/drone-lab/out/brand-copilot-turntable.gif', '/drone-lab/out/brands-lineup.png', '/drone-lab/out/params.md',
+    '/drone-lab/test/identity.json', '/drone-lab/test/drone.test.mjs', '/drone-lab/node_modules/three/build/three.module.js',
+    '/drone-lab/lab.mjs', '/drone-lab/serve.mjs', '/drone-lab/README.md', '/drone-lab/package.json', '/drone-lab/capture.html', '/drone-lab/index.html',
+    '/drone-lab/', '/drone-lab', '/drone-lab/../asset-viewer/serve.mjs', '/drone-lab/%2e%2e/asset-library/routes.mjs', '/drone-lab/out%2fparams.md',
+  ]) assert.equal((await route('GET', p)).status, 404, p);
+});
+
 test('the history allowlist names only plain relative image paths', () => {
   assert.ok(IMAGES.size > 20);
   for (const rel of IMAGES) assert.match(rel, /^[\w-]+(\/[\w.-]+)+\.(png|gif)$/, rel);

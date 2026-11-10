@@ -1,8 +1,8 @@
 // Which files the library page may load, shared by the dev server (serve.mjs) and the test and
 // screenshot harnesses (Playwright interception), so every request goes through the same
 // decision (route()). URL paths mirror mockups/: the page is /asset-library/, and it imports the
-// asset viewer's modules (../asset-viewer/*.js) and the astronaut lab's
-// (../explorations/astronaut-lab/*.js) read-only. three comes from this package's own
+// asset viewer's modules (../asset-viewer/*.js), the astronaut lab's
+// (../explorations/astronaut-lab/*.js) and the drone lab's (../drone-lab/*.js) read-only. three comes from this package's own
 // node_modules (the same pinned 0.187.0).
 //
 // The local art archive (R11) is served read-only at /art-archive/<path>: only the images the
@@ -21,13 +21,14 @@ export const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
 export const IMAGE_MIME = { '.png': 'image/png', '.gif': 'image/gif' };
 export const ARCHIVE_PREFIX = '/art-archive/';
 
-// Allowed path patterns (relative to mockups/). Top-level module files only for the two
-// read-only imports, so their tests, debug probes and screenshots are never served.
+// Allowed path patterns (relative to mockups/). Top-level module files only for the three
+// read-only imports, so their tests, debug probes, outputs and node_modules are never served.
 const ALLOW = [
   /^asset-library\/(index\.html|[\w-]+\.js)$/,
   /^asset-library\/node_modules\/three\/(build\/three\.module\.js|build\/three\.core\.js|examples\/jsm\/[\w/-]+\.js)$/,
   /^asset-viewer\/[\w-]+\.js$/,
   /^explorations\/astronaut-lab\/[\w-]+\.js$/,
+  /^drone-lab\/[\w-]+\.js$/,
 ];
 
 /** A URL pathname -> an absolute file under mockups/, or null when it isn't allowed. */
