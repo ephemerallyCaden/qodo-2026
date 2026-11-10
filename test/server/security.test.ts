@@ -88,7 +88,7 @@ describe('guards (unit)', () => {
     expect(parseChartAction({ kind: 'chart', fileId: 'f_000000000001' })).toEqual({ kind: 'chart', fileId: 'f_000000000001' });
     expect(parseChartAction({ kind: 'baseline' })).toEqual({ kind: 'baseline' });
     expect(parseChartAction({ kind: 'baseline-undo' })).toEqual({ kind: 'baseline-undo' });
-    for (const v of [null, [], 'chart', { kind: 'chart' }, { kind: 'chart', fileId: '../x' }, { kind: 'chart', fileId: 'f_1' },
+    for (const v of [null, [], 'chart', { kind: 'chart' }, { kind: 'chart', fileId: '../x' }, { kind: 'chart', fileId: 'f_1' }, { kind: 'chart', fileId: 'f_000000000001\n' },
       { kind: 'chart', fileId: 'f_000000000001', extra: 1 }, { kind: 'baseline', fileId: 'f_000000000001' }, { kind: 'beacon' },
       { kind: 'unchart', fileId: 'f_000000000001' }]) {
       expect(parseChartAction(v), JSON.stringify(v)).toBeNull();

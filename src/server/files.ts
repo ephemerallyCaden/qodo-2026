@@ -1,7 +1,7 @@
 // File access for `commet open`: the built bundle (an allowlist: no listing, no traversal, no
 // symlinks) and the state files under `.git/commet/` (never read through a symlink, Rule 2).
 import { constants } from 'node:fs';
-import { open, readdir, realpath } from 'node:fs/promises';
+import { lstat, open, readdir, realpath } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WEB_DIST } from '../core/contract/api.js';
@@ -102,9 +102,12 @@ export async function readStateFile(dir: string, name: string): Promise<Buffer |
   }
 }
 
-/** Opens without following a final symlink (ELOOP), then reads only if it's a regular file. */
+/**
+ * Refuses a symlink before opening it (Rule 2), and again atomically on open where O_NOFOLLOW
+ * exists (both surface as ELOOP; Windows has only the lstat check). Reads only a regular file.
+ */
 async function readRegularFile(file: string): Promise<Buffer | null> {
-  // O_NOFOLLOW is undefined on Windows; there the allowlist walk, which skips symlinks, is the guard.
+  if ((await lstat(file)).isSymbolicLink()) throw Object.assign(new Error('refusing to read a symlink'), { code: 'ELOOP' });
   const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   try {
     if (!(await handle.stat()).isFile()) return null;

@@ -12,8 +12,8 @@ export interface StateWatcher { close(): void }
  * current contents are recorded, so nothing that exists at start counts as a change. fs.watch on the
  * directory (writeAtomic renames, so a file watch would lose the inode) gives low latency; a stat
  * poll backs it up where watch events are lost or unsupported. Content hashes decide, so rewriting
- * identical bytes is not an update. A file that vanishes or can't be read sends nothing: its GET
- * route reports the problem when the view asks.
+ * identical bytes is not an update. A file that vanishes or can't be read sends nothing (its GET
+ * route reports the problem when the view asks); an unreadable one is retried on every check.
  */
 export async function watchState(dir: string, names: readonly string[], onChange: (name: string, body: Buffer) => void,
   pollMs = 1000): Promise<StateWatcher> {
@@ -25,7 +25,12 @@ export async function watchState(dir: string, names: readonly string[], onChange
       const sig = await signature(join(dir, name));
       const prev = seen.get(name);
       if (prev?.sig === sig) continue;
-      const body = await readStateFile(dir, name).catch(() => null);
+      let body: Buffer | null;
+      try {
+        body = await readStateFile(dir, name);
+      } catch {
+        continue; // Unreadable right now: nothing is recorded, so the next check reads it again.
+      }
       const hash = body ? createHash('sha256').update(body).digest('hex') : '';
       seen.set(name, { sig, hash });
       if (prev && prev.hash !== hash && body && !closed) onChange(name, body);
