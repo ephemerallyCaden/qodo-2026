@@ -121,6 +121,13 @@ describe('CI state (R6)', () => {
     expect(ciState('oops')).toEqual({ kind: 'pending', why: 'check runs unreadable' });
     expect(ciState(runs(['completed', 'success'], ['queued', null]))).toMatchObject({ kind: 'pending' });
   });
+  it("passes skipped and neutral runs, as GitHub's required checks do (Qodo PR37 447c4d14)", () => {
+    expect(ciState(runs(['completed', 'success'], ['completed', 'skipped'], ['completed', 'neutral']))).toMatchObject({ kind: 'complete', failed: [] });
+  });
+  it('is pending when the API holds more runs than the page shows (Qodo PR37 f96d3489)', () => {
+    const page = JSON.stringify({ total_count: 150, check_runs: [{ id: 1, name: 'c', status: 'completed', conclusion: 'success' }] });
+    expect(ciState(page)).toEqual({ kind: 'pending', why: 'only 1 of 150 check runs visible' });
+  });
   it('fails anything that is not success', () => {
     expect(ciState(runs(['completed', 'success'], ['completed', 'success']))).toMatchObject({ kind: 'complete', failed: [] });
     expect(ciState(runs(['completed', 'success'], ['completed', 'cancelled']))).toMatchObject({ kind: 'complete', failed: [{ name: 'c1' }] });

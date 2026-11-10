@@ -123,13 +123,20 @@ export type CiState =
   | { kind: 'pending'; why: string }
   | { kind: 'complete'; runs: CheckRun[]; failed: CheckRun[] };
 
-/** CI is clean when every check run on the head completed with `success`; zero runs is pending. */
+/** Conclusions GitHub's required status checks accept as passing. */
+const PASSING = new Set(['success', 'neutral', 'skipped']);
+
+/**
+ * CI is clean when every check run on the head completed and passed. Zero runs, or fewer runs
+ * than the API's `total_count` (another page), is pending: an unseen run is not a passing one.
+ */
 export function ciState(checkRunsJson: string): CiState {
-  const o = firstJson(checkRunsJson) as { check_runs?: unknown } | null;
+  const o = firstJson(checkRunsJson) as { check_runs?: unknown; total_count?: unknown } | null;
   if (!o || !Array.isArray(o.check_runs)) return { kind: 'pending', why: 'check runs unreadable' };
   const runs = o.check_runs as CheckRun[];
   if (!runs.length) return { kind: 'pending', why: 'no check runs yet' };
+  if (typeof o.total_count === 'number' && o.total_count > runs.length) return { kind: 'pending', why: `only ${runs.length} of ${o.total_count} check runs visible` };
   const open = runs.filter((r) => r.status !== 'completed');
   if (open.length) return { kind: 'pending', why: `${open.length} check run(s) ${open[0]!.status}` };
-  return { kind: 'complete', runs, failed: runs.filter((r) => r.conclusion !== 'success') };
+  return { kind: 'complete', runs, failed: runs.filter((r) => !PASSING.has(r.conclusion ?? '')) };
 }
