@@ -30,9 +30,11 @@ These are the legibility rules in the art direction §6, made measurable:
   - H4 FAIL: under protanopia and deuteranopia at small sizes, lush drifts toward ash.
   - H5 pass. H6 pass.
 - **Proposals (none applied):** P1 cap the planets' far fade at 0.72 (fixes H3, 12/12 byte-exact emulation); P2 a darker, dustier ash (fixes H1 and H4, but brings ash near toxic at far); P3 rule-1 wording (applied to art direction §6).
+- **Decided (human, 2026-11-10):** P1 rejected: the 0.88 fade stays, and far planets show health through the label and selection (rule 3 amended). P2: try the dustier ash beside the current ash in the asset library and the health lineup before adopting it. P3 applied.
 
 ## Tasks
-- Verification lab `mockups/health-looks/` (feature agent, branch `feature/health-looks`): renders, measurements and a report. It makes no palette changes, only proposals.
+- Verification lab `mockups/health-looks/` (feature agent, branch `feature/health-looks`): renders, measurements and a report. Done (a422f73).
+- Dustier ash (P2) as a comparison look in the asset library and the health lineup: pending, after library round 2.
 
 ## Completion
 - Merged: —
