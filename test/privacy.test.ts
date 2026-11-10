@@ -19,7 +19,8 @@ beforeAll(async () => {
   claude = writeClaudeFixture(repo, { fileSymlink: true });
   const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: claude.claudeDir });
   expect(r.code).toBe(0);
-  outputs = { snapshot: readFileSync(join(repo.dir, '.git/commet/snapshot.json'), 'utf8'), stdout: r.out, stderr: r.err };
+  outputs = { snapshot: readFileSync(join(repo.dir, '.git/commet/snapshot.json'), 'utf8'),
+    layout: readFileSync(join(repo.dir, '.git/commet/layout.json'), 'utf8'), stdout: r.out, stderr: r.err };
 });
 
 it('fixture still plants every canary (guards against a vacuous pass)', () => {
@@ -28,7 +29,7 @@ it('fixture still plants every canary (guards against a vacuous pass)', () => {
   expect(planted).toContain(`"cwd":"${repo.dir}"`);
 });
 
-it('no canary, cwd or absolute path reaches the snapshot, stdout or stderr', () => {
+it('no canary, cwd or absolute path reaches the snapshot, the layout, stdout or stderr', () => {
   const forbidden = [...Object.values(CANARIES), repo.dir, claude.claudeDir, homedir(), tmpdir()];
   for (const [name, text] of Object.entries(outputs)) {
     for (const f of forbidden) expect(text.includes(f), `${name} contains ${f}`).toBe(false);

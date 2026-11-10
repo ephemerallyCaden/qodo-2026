@@ -1,7 +1,8 @@
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { CommetError, EXIT } from '../core/errors.js';
 import { sha256Hex } from '../core/hash.js';
+import { formatLayout } from '../core/layout/index.js';
 import { formatSummary } from '../core/summary.js';
 import { scan } from '../scan/index.js';
 import { QODO_CACHE_FILE } from '../scan/qodo.js';
@@ -73,18 +74,24 @@ export async function main(argv: string[], io: Io): Promise<number> {
   }
   try {
     const claudeDir = io.env['CLAUDE_CONFIG_DIR'] || join(homedir(), '.claude');
-    const { snapshot, json, commonDir, logs, qodoCache } = await scan({
+    const { snapshot, json, layout, layoutJson, layoutNotes, commonDir, logs, qodoCache } = await scan({
       repoDir: io.cwd, windowMonths: args.window, ingest: args.ingest,
       claudeProjectsDir: join(claudeDir, 'projects'), keyFor: (dir) => loadOrCreateKey(stateDir(dir)),
       qodo: { fetch: args.withQodo, stateDir },
     });
-    writeAtomic(args.out ? resolve(io.cwd, args.out) : join(stateDir(commonDir), 'snapshot.json'), json);
-    io.stdout(formatSummary(snapshot, logs, !args.withQodo));
+    const out = args.out && resolve(io.cwd, args.out);
+    // With --out, the layout goes beside the snapshot (x.json → x.layout.json), so the state dir keeps one scan's pair.
+    const layoutOut = out && out.replace(/(\.json)?$/, '.layout.json');
+    writeAtomic(out || join(stateDir(commonDir), 'snapshot.json'), json);
+    writeAtomic(layoutOut || join(stateDir(commonDir), 'layout.json'), layoutJson);
+    io.stdout(formatSummary(snapshot, logs, !args.withQodo) + formatLayout(layout, layoutNotes));
     if (qodoCache !== null && !saveQodoCache(commonDir, qodoCache)) {
       io.stdout('qodo findings cache could not be written; a scan without --with-qodo will not see these counts\n');
     }
-    const where = args.out ? 'the --out file' : '<git-common-dir>/commet/snapshot.json';
-    io.stdout(`snapshot written to ${where} (${Buffer.byteLength(json)} bytes, sha256 ${sha256Hex(json).slice(0, 16)})\n`);
+    const written = (what: string, where: string, text: string) =>
+      io.stdout(`${what} written to ${where} (${Buffer.byteLength(text)} bytes, sha256 ${sha256Hex(text).slice(0, 16)})\n`);
+    written('snapshot', out ? 'the --out file' : '<git-common-dir>/commet/snapshot.json', json);
+    written('layout', layoutOut ? `${basename(layoutOut)} beside it` : '<git-common-dir>/commet/layout.json', layoutJson);
     return 0;
   } catch (e) {
     if (e instanceof CommetError) {

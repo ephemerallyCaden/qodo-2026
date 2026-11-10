@@ -4,10 +4,10 @@ import { hasReview, QODO_LEVEL_NAMES, QODO_LEVELS, qodoTotal, zeroLevels } from 
 import { DEBT_KEYS, zeroDebt } from './structure.js';
 
 const CLASSES: CommitClass[] = ['agent', 'mixed', 'human', 'unknown'];
-const LIST_LIMIT = 20;
+export const LIST_LIMIT = 20;
 const day = (iso: string) => iso.slice(0, 10);
 // Subjects come from the repo; strip control characters so they can't drive the terminal.
-const printable = (t: string) => t.replace(/\p{Cc}/gu, '?');
+export const printable = (t: string) => t.replace(/\p{Cc}/gu, '?');
 
 /** Aggregate log-reading counts: skipped transcripts, dropped records, unattributed transcripts. */
 export interface LogCounts { tooLarge: number; unavailable: number; dropped: number; unattributed: number }
