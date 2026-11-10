@@ -2,6 +2,7 @@
 // parsed in src/scan/structure.ts and passed in.
 import { byCodepoint } from './canonical-json.js';
 import { sha256Hex } from './hash.js';
+import type { PathHistory } from './renames.js';
 import type { DebtCounts, Dir, DirId } from './snapshot/types.js';
 import { isoUtc } from './time.js';
 
@@ -11,6 +12,21 @@ export interface Change { status: 'A' | 'C' | 'D' | 'M' | 'R' | 'T'; path: strin
 export interface LineageCommit { sha: string; dateMs: number; changes: Change[] }
 
 interface DirBirth { id: DirId; bornSeq: number; bornMs: number }
+
+/**
+ * A file arriving, moving or leaving (#18): a superset of #33's rename `{ seq, from, to }`. `key` is
+ * the file's identity across renames, numbered in birth order, so a lower key is an older file.
+ * `from` is null for a birth and `to` for a delete; `from === to` when only its folder ids changed
+ * (its folder was reborn, or handed its id on). `top` and `sub` are the ids of its top-level and
+ * second-level folders after the commit (null when it has none). `unsure`: a birth that may
+ * continue an older file git couldn't follow (#33's `pathHistory`), so it was placed as new.
+ */
+export interface FileEvent {
+  seq: number; key: number; from: string | null; to: string | null; top: DirId | null; sub: DirId | null; unsure?: true;
+}
+
+/** Every time an id became a top-level folder (born there, or moved up from deeper), including folders gone since. */
+export interface TopBirth { id: DirId; seq: number }
 
 export interface Lineage {
   /** First-parent ordinal from the root (0) for every commit on HEAD's first-parent chain. */
@@ -22,6 +38,26 @@ export interface Lineage {
   /** Per seq: the non-excluded paths the commit added or changed (new paths of renames). */
   paths: string[][];
   headMs: number;
+  /** File arrivals, moves and departures, in replay order (#18). */
+  events: FileEvent[];
+  topBirths: TopBirth[];
+  /** For each seq that gives birth to a top-level folder: every top-level folder's id after it, by path. */
+  topsAt: Map<number, Map<string, DirId>>;
+}
+
+/**
+ * A merge's merged-in side (#18 AC8): the merged branch's own commits (not merges), oldest first,
+ * each as the top-level folder names it touches. Keyed by the merge's first-parent seq.
+ */
+export type MergeSides = Map<number, Set<string>[]>;
+
+/** How a top-level folder was born: `order` ranks folders born in one merge by the branch commit that made them. */
+export interface TopBirthInfo { order: number; side: Set<DirId>[] }
+
+/** The structural history `layout()` replays (#18), so placement is decided once and never moves. */
+export interface StructureHistory {
+  events: FileEvent[];
+  births: { id: DirId; seq: number; order: number; first: Set<DirId>[] }[];
 }
 
 /** Clear link: at least 3 of every 5 (60%) of a folder's first commits also touched the partner. */
@@ -38,7 +74,7 @@ export const zeroDebt = (): DebtCounts => ({ todo: 0, fixme: 0, hack: 0, xxx: 0 
 const dirId = (path: string, ordinal: number): DirId => `d_${sha256Hex(`${path}#${ordinal}`).slice(0, 12)}`;
 
 /** `a/b/c.ts` → `['a', 'a/b']`. */
-function ancestors(path: string): string[] {
+export function ancestors(path: string): string[] {
   const out: string[] = [];
   for (let i = path.indexOf('/'); i >= 0; i = path.indexOf('/', i + 1)) out.push(path.slice(0, i));
   return out;
@@ -69,7 +105,14 @@ export function buildLineage(commits: LineageCommit[], excluded: (path: string) 
   const count = new Map<string, number>();
   const dirs = new Map<string, DirBirth>();
   const births = new Map<string, number>();
-  const lineage: Lineage = { seqOf: new Map(), dirs, touches: [], paths: [], headMs: commits.at(-1)?.dateMs ?? 0 };
+  const keyOf = new Map<string, number>();
+  let nextKey = 0;
+  // Top- and second-level folder ids, which place files on planets and continents (#18).
+  const near = new Map<string, DirId>();
+  const tops = new Map<string, DirId>();
+  const wasTop = new Set<DirId>();
+  const lineage: Lineage = { seqOf: new Map(), dirs, touches: [], paths: [], headMs: commits.at(-1)?.dateMs ?? 0,
+    events: [], topBirths: [], topsAt: new Map() };
 
   commits.forEach((c, seq) => {
     lineage.seqOf.set(c.sha, seq);
@@ -85,6 +128,8 @@ export function buildLineage(commits: LineageCommit[], excluded: (path: string) 
       else added.push(ch.path);
       if (ch.status === 'R' && ch.from !== undefined && !excluded(ch.from)) moves.push([ch.from, ch.path]);
     }
+    // Only folders holding a removed or added path can change id in this commit.
+    const shallow = new Set([...removed, ...added].flatMap((p) => ancestors(p).slice(0, 2)));
 
     // Where each folder's files went: tally[source][destination] = files moved.
     const tally = new Map<string, Map<string, number>>();
@@ -158,17 +203,81 @@ export function buildLineage(commits: LineageCommit[], excluded: (path: string) 
     for (const p of [...added, ...changed]) for (const d of ancestors(p)) touched.add(dirs.get(d)!.id);
     lineage.touches.push(touched);
     lineage.paths.push([...added, ...changed]);
+    recordFiles(seq, removed, added, moves, shallow);
   });
   return lineage;
+
+  /**
+   * Layout's view of the commit (#18): a rename carries its key and a delete or an overwrite ends
+   * one; any top- or second-level folder whose id changed regroups the files that stayed in it; an
+   * id new to the top level is a top-level birth.
+   */
+  function recordFiles(seq: number, removed: string[], added: string[], moves: [string, string][], shallow: Set<string>): void {
+    const ids = (p: string) => {
+      const [top, sub] = ancestors(p);
+      return { top: top === undefined ? null : dirs.get(top)!.id, sub: sub === undefined ? null : dirs.get(sub)!.id };
+    };
+    // keyOf holds only live paths, and every live rename source is in `removed`.
+    const carried = new Map<string, [string, number]>();
+    for (const [from, to] of moves) {
+      const k = keyOf.get(from);
+      if (k !== undefined) carried.set(to, [from, k]);
+    }
+    const carriedKeys = new Set([...carried.values()].map(([, k]) => k));
+    const end = (k: number, from: string) => lineage.events.push({ seq, key: k, from, to: null, top: null, sub: null });
+    for (const p of removed) {
+      const k = keyOf.get(p)!;
+      keyOf.delete(p);
+      if (!carriedKeys.has(k)) end(k, p);
+    }
+    const evented = new Set<string>();
+    for (const p of added) {
+      if (evented.has(p)) continue;
+      // Copied or renamed onto a live path: the file that was there is gone.
+      const over = keyOf.get(p);
+      if (over !== undefined) end(over, p);
+      const [from, k] = carried.get(p) ?? [null, nextKey++];
+      keyOf.set(p, k);
+      lineage.events.push({ seq, key: k, from, to: p, ...ids(p) });
+      evented.add(p);
+    }
+    const regrouped: string[] = [];
+    let topBorn = false;
+    for (const d of shallow) {
+      const was = near.get(d);
+      const id = dirs.get(d)?.id;
+      if (id === was) continue;
+      if (id === undefined) near.delete(d);
+      else near.set(d, id);
+      if (!d.includes('/')) {
+        if (id === undefined) tops.delete(d);
+        else tops.set(d, id);
+        if (id !== undefined && !wasTop.has(id)) {
+          wasTop.add(id);
+          lineage.topBirths.push({ id, seq });
+          topBorn = true;
+        }
+      }
+      if (was !== undefined && id !== undefined) regrouped.push(`${d}/`);
+    }
+    if (topBorn) lineage.topsAt.set(seq, new Map(tops));
+    if (regrouped.length === 0) return;
+    for (const p of live) {
+      if (!evented.has(p) && regrouped.some((prefix) => p.startsWith(prefix))) {
+        lineage.events.push({ seq, key: keyOf.get(p)!, from: p, to: p, ...ids(p) });
+      }
+    }
+  }
 }
 
 /**
  * dirs[] for the folders holding `headPaths` (non-excluded files at HEAD), sorted by path. A
  * folder the lineage doesn't know (it shouldn't happen) is born at HEAD and counted in
- * `unreadable`, never dropped. A top-level folder holding only tests isn't a planet, so it's
- * never a partner.
+ * `unreadable`, never dropped. A top-level folder holding only tests or test data isn't a planet,
+ * so it's never a partner (#18 AC9). `info` says how each top-level folder was born (merge
+ * look-through, #18 AC8).
  */
-export function dirsAtHead(lineage: Lineage, headPaths: string[]): { dirs: Dir[]; unreadable: number } {
+export function dirsAtHead(lineage: Lineage, headPaths: string[], info: Map<DirId, TopBirthInfo>): { dirs: Dir[]; unreadable: number } {
   const paths = new Set(headPaths.flatMap(ancestors));
   const headSeq = Math.max(0, lineage.touches.length - 1);
   let unreadable = 0;
@@ -179,9 +288,9 @@ export function dirsAtHead(lineage: Lineage, headPaths: string[]): { dirs: Dir[]
     return { id: dirId(p, -1), bornSeq: headSeq, bornMs: lineage.headMs };
   };
   const births = new Map([...paths].sort(byCodepoint).map((p) => [p, birthOf(p)]));
-  const sourceTops = new Set(headPaths.filter((p) => p.includes('/') && !isTestPath(p)).map((p) => p.slice(0, p.indexOf('/'))));
+  const sourceTops = new Set(headPaths.filter(isSurfacePath).map((p) => p.slice(0, p.indexOf('/'))));
   const tops = [...births].filter(([p]) => !p.includes('/')).map(([p, b]) => ({ ...b, planet: sourceTops.has(p) }));
-  const partner = partners(tops, lineage.touches);
+  const partner = partners(tops, lineage.touches, info);
   const dirs = [...births].map(([path, b]): Dir => {
     const slash = path.lastIndexOf('/');
     const parent = slash < 0 ? null : births.get(path.slice(0, slash))!.id;
@@ -193,24 +302,85 @@ export function dirsAtHead(lineage: Lineage, headPaths: string[]): { dirs: Dir[]
 }
 
 /**
- * The clear-link rule (#16): of a top-level folder's first 5 commits (from its birth; fewer if
- * that's all there are), ≥ 60% also touched one older top-level planet. Ties: higher share, then
- * older bornSeq, then id.
+ * How each top-level folder was born (#18 AC8). One born in a merge commit is looked through to
+ * the merged branch's own commits: `side` holds those that touch it (as folder ids at the merge)
+ * and `order` is the first of them, so the folders one PR brings in keep their real birth order. A
+ * folder no branch commit touched (made in the merge itself) ranks after the others in that merge.
  */
-function partners(tops: (DirBirth & { planet: boolean })[], touches: Set<DirId>[]): Map<DirId, DirId> {
-  const out = new Map<DirId, DirId>();
-  for (const t of tops) {
-    const first: Set<DirId>[] = [];
-    for (let seq = t.bornSeq; seq < touches.length && first.length < PARTNER_WINDOW; seq++) {
-      if (touches[seq]!.has(t.id)) first.push(touches[seq]!);
+export function topBirthInfo(lineage: Lineage, sides: MergeSides): Map<DirId, TopBirthInfo> {
+  const out = new Map<DirId, TopBirthInfo>();
+  const mapped = new Map<number, Set<DirId>[]>();
+  for (const b of lineage.topBirths) {
+    const side = sides.get(b.seq);
+    if (!side) {
+      out.set(b.id, { order: 0, side: [] });
+      continue;
     }
-    const best = tops.filter((x) => x.planet && x.bornSeq < t.bornSeq)
-      .map((x) => ({ x, hits: first.filter((s) => s.has(x.id)).length }))
-      .filter(({ hits }) => hits > 0 && linked(hits, first.length))
-      .sort((a, b) => b.hits - a.hits || a.x.bornSeq - b.x.bornSeq || byCodepoint(a.x.id, b.x.id))[0];
-    if (best) out.set(t.id, best.x.id);
+    let commits = mapped.get(b.seq);
+    if (!commits) {
+      const at = lineage.topsAt.get(b.seq)!;
+      commits = side.map((names) => new Set([...names].flatMap((n) => at.get(n) ?? [])));
+      mapped.set(b.seq, commits);
+    }
+    const first = commits.findIndex((s) => s.has(b.id));
+    out.set(b.id, { order: first < 0 ? side.length : first, side: commits.filter((s) => s.has(b.id)) });
   }
   return out;
+}
+
+/** A top-level folder's birth, for ordering: older means an earlier seq, or the same merge and an earlier branch commit. */
+export interface BirthRank { id: DirId; seq: number; order: number }
+export const olderThan = (x: BirthRank, t: BirthRank) => x.seq < t.seq || (x.seq === t.seq && x.order < t.order);
+/** Oldest first; folders born together by id. */
+export const byBirth = (a: BirthRank, b: BirthRank) => a.seq - b.seq || a.order - b.order || byCodepoint(a.id, b.id);
+
+/**
+ * The clear-link rule (#16): ≥ 60% of a folder's `first` commits also touched the candidate.
+ * Candidates must be older planets. Ties: higher share, then the older birth, then id.
+ */
+export function clearLink(first: Set<DirId>[], candidates: BirthRank[]): DirId | null {
+  const best = candidates.map((x) => ({ x, hits: first.filter((s) => s.has(x.id)).length }))
+    .filter(({ hits }) => hits > 0 && linked(hits, first.length))
+    .sort((a, b) => b.hits - a.hits || byBirth(a.x, b.x))[0];
+  return best?.x.id ?? null;
+}
+
+/**
+ * Partners at HEAD (#16 AC2): the clear-link rule over a top-level folder's first 5 commits (from
+ * its birth; fewer if that's all there are), against older top-level planets. A folder born in a
+ * merge counts the merged branch's commits first, then first-parent commits after the merge (#18 AC8).
+ */
+function partners(tops: (DirBirth & { planet: boolean })[], touches: Set<DirId>[], info: Map<DirId, TopBirthInfo>): Map<DirId, DirId> {
+  const out = new Map<DirId, DirId>();
+  const rank = (t: DirBirth): BirthRank => ({ id: t.id, seq: t.bornSeq, order: info.get(t.id)?.order ?? 0 });
+  const planets = tops.filter((x) => x.planet).map(rank);
+  for (const t of tops) {
+    const { side } = info.get(t.id) ?? { side: [] };
+    const first = side.slice(0, PARTNER_WINDOW);
+    for (let seq = t.bornSeq + (side.length > 0 ? 1 : 0); seq < touches.length && first.length < PARTNER_WINDOW; seq++) {
+      if (touches[seq]!.has(t.id)) first.push(touches[seq]!);
+    }
+    const me = rank(t);
+    const partner = clearLink(first, planets.filter((x) => olderThan(x, me)));
+    if (partner) out.set(t.id, partner);
+  }
+  return out;
+}
+
+/**
+ * What `layout()` replays (#18). A top-level folder's birth partner uses only the commits known at
+ * its birth (its birth commit, or the merged branch's own commits), so its slot is decided once.
+ * `paths` (#33's pathHistory over the same log, from seq 0) marks the unsure births.
+ */
+export function structureHistory(lineage: Lineage, info: Map<DirId, TopBirthInfo>, paths: PathHistory): StructureHistory {
+  const unsure = new Set(paths.births.filter((b) => b.unsure).map((b) => `${b.seq}\0${b.path}`));
+  return {
+    events: lineage.events.map((e) => (e.from === null && unsure.has(`${e.seq}\0${e.to}`) ? { ...e, unsure: true } : e)),
+    births: lineage.topBirths.map((b) => {
+      const { order, side } = info.get(b.id) ?? { order: 0, side: [] };
+      return { id: b.id, seq: b.seq, order, first: side.length > 0 ? side.slice(0, PARTNER_WINDOW) : [lineage.touches[b.seq] ?? new Set()] };
+    }),
+  };
 }
 
 const TEST_NAME = [/^(.+)\.(?:test|spec)\.[^.]+$/, /^test_(.+)\.py$/, /^(.+)_test\.go$/];

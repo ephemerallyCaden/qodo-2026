@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { scan, type ScanOptions } from '../../../src/scan/index.js';
 import { SELF } from './basic.js';
 
 /** Marker comment text: only the counts may reach any output (privacy canary). */
@@ -19,7 +20,13 @@ export const DEBT_LINES = [
   "export const size = 'XXXL';",
 ];
 
-export interface StructureRepo { dir: string; sha: Record<string, string> }
+export interface StructureRepo { dir: string; sha: Record<string, string>; head: string }
+
+const NO_LOGS = mkdtempSync(join(tmpdir(), 'commet-structure-claude-'));
+
+/** Scans the fixture without agent logs (every commit unknown), with a fixed key. */
+export const scanStructure = (repo: StructureRepo, o: Partial<ScanOptions> = {}) => scan({ repoDir: repo.dir, windowMonths: 24,
+  ingest: false, claudeProjectsDir: join(NO_LOGS, 'projects'), keyFor: () => new Uint8Array(32).fill(7), ...o });
 
 export function buildStructureRepo(): StructureRepo {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-structure-')));
@@ -112,7 +119,22 @@ export function buildStructureRepo(): StructureRepo {
   touch('core/README.md', ['# Core', 'TODO: a marker in docs. FIXME too.']);
   commit('s26', ['test/sub.test.ts', 'test/half.test.ts', 'core/half.ts', 'tests/fixtures/data.test.ts', 'tests/golden/out.json',
     'web/__snapshots__/w.test.ts.snap', 'api/__fixtures__/f.test.ts', 'core/README.md']);
-  const head = sha['s26']!;
+  // #18 AC8: one PR brings in pkg/, svc/ and ext/, all born in its merge (s27). The merge touches
+  // core/ and api/ too, so without looking through it all three would share core/ as partner. The
+  // branch's own commits give each its real one: pkg → core (2 of 3), svc → api, ext → pkg (older on
+  // the branch).
+  git(['checkout', '-q', '-b', 'pr']);
+  commit('p1', ['pkg/p.ts', 'core/b.ts']);
+  commit('p2', ['pkg/p.ts', 'core/a.ts']);
+  commit('p3', ['svc/s.ts', 'api/handler.ts']);
+  commit('p4', ['ext/e.ts', 'pkg/p.ts']);
+  git(['checkout', '-q', 'main']);
+  const mergeAt = '2026-06-30T12:00:00Z';
+  git(['merge', '-q', '--no-ff', '-m', 'test: s27 merge pr', 'pr'], { GIT_AUTHOR_DATE: mergeAt, GIT_COMMITTER_DATE: mergeAt,
+    GIT_AUTHOR_NAME: SELF.name, GIT_AUTHOR_EMAIL: SELF.email, GIT_COMMITTER_NAME: SELF.name, GIT_COMMITTER_EMAIL: SELF.email });
+  git(['branch', '-q', '-d', 'pr']);
+  sha['s27'] = git(['rev-parse', 'HEAD']);
+  const head = sha['s27']!;
 
   // Branches. merged: an ancestor of HEAD (absent). old-fork: forks at s0, outside a 1-month window.
   git(['branch', 'merged', sha['s20']!]);
@@ -139,5 +161,5 @@ export function buildStructureRepo(): StructureRepo {
   git(['update-ref', 'refs/remotes/origin/only-remote', sha['b-only']!]);
   git(['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feature/remote']);
   git(['checkout', '-q', 'main']);
-  return { dir, sha };
+  return { dir, sha, head };
 }

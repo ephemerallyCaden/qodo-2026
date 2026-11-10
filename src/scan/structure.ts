@@ -1,11 +1,11 @@
-// Git reads for #16: the lineage pass, debt markers and unmerged branches. The pure logic is in
-// src/core/structure.ts.
+// Git reads for #16 and #18 AC8: the lineage pass, merge sides, debt markers and unmerged branches.
+// The pure logic is in src/core/structure.ts.
 import { byCodepoint } from '../core/canonical-json.js';
 import type { Branch, DebtCounts } from '../core/snapshot/types.js';
-import { DEBT_KEYS, zeroDebt, type Change, type LineageCommit } from '../core/structure.js';
+import { DEBT_KEYS, zeroDebt, type Change, type Lineage, type LineageCommit, type MergeSides } from '../core/structure.js';
 import { isoUtc } from '../core/time.js';
 import { exclusionOf } from './exclusions.js';
-import { LOG_OPTS, tryGit, type Git } from './git.js';
+import { DIFF_OPTS, LOG_OPTS, tryGit, type Git } from './git.js';
 
 /**
  * Full first-parent history, oldest first, with renames (design §5.1.3). Never windowed, so it is
@@ -15,8 +15,12 @@ import { LOG_OPTS, tryGit, type Git } from './git.js';
  * r2 #2). A git that lists a merge once per parent repeats its header; only the first
  * (first-parent) diff is kept (Qodo local r3 #1).
  */
-export async function lineageLog(git: Git, head: string): Promise<LineageCommit[]> {
-  const args = ['log', ...LOG_OPTS, '--reverse', '--name-status', '-z', '--format=%x00%H%x00%ct', head];
+export function lineageLog(git: Git, head: string): Promise<LineageCommit[]> {
+  return logChanges(git, ['log', ...LOG_OPTS, '--reverse', '--name-status', '-z', '--format=%x00%H%x00%ct', head]);
+}
+
+/** Runs a `log --name-status -z --format=%x00%H%x00%ct` and parses it as lineageLog describes. */
+async function logChanges(git: Git, args: string[]): Promise<LineageCommit[]> {
   const commits: LineageCommit[] = [];
   let cur: LineageCommit | undefined;
   // Changes go here; a repeated header points it at a scratch list that is thrown away.
@@ -81,6 +85,30 @@ export async function lineageLog(git: Git, head: string): Promise<LineageCommit[
   if (pending !== '' && want === 'ct') token(pending);
   else if (pending !== '' || (want !== 'status' && want !== 'sha')) throw new Error('lineage log ended inside an incomplete record');
   return commits;
+}
+
+/**
+ * The merged-in side of every first-parent merge that gives birth to a top-level folder (#18 AC8),
+ * so partner detection can look through the merge to the branch's own commits: `M^1..M` (not
+ * merges), oldest first, each as the top-level folder names it touches. Excluded paths touch
+ * nothing, as in the lineage. A git failure fails the scan rather than quietly falling back to the merge.
+ */
+export async function mergeSides(git: Git, commits: LineageCommit[], lineage: Lineage, excluded: (path: string) => boolean): Promise<MergeSides> {
+  const seqs = [...new Set(lineage.topBirths.map((b) => b.seq))].filter((s) => s > 0);
+  const sides: MergeSides = new Map();
+  if (seqs.length === 0) return sides;
+  const seqOf = new Map(seqs.map((s) => [commits[s]!.sha, s]));
+  const out = await git(['rev-list', '--no-walk', '--parents', ...seqOf.keys()]);
+  const merges = out.split('\n').map((l) => l.split(' ')).filter((l) => l.length > 2).map((l) => l[0]!);
+  const topsOf = (c: LineageCommit) => new Set(c.changes.flatMap((ch) => [ch.path, ...(ch.from === undefined ? [] : [ch.from])])
+    .filter((p) => p.includes('/') && !excluded(p)).map((p) => p.slice(0, p.indexOf('/'))));
+  for (let i = 0; i < merges.length; i += BRANCH_READS) {
+    const batch = merges.slice(i, i + BRANCH_READS);
+    const logs = await Promise.all(batch.map((m) => logChanges(git,
+      ['log', '--no-merges', '--topo-order', '--reverse', ...DIFF_OPTS, '--name-status', '-z', '--format=%x00%H%x00%ct', `${m}^1..${m}`])));
+    batch.forEach((m, j) => sides.set(seqOf.get(m)!, logs[j]!.map(topsOf)));
+  }
+  return sides;
 }
 
 const MARKERS = new Map<string, keyof DebtCounts>(DEBT_KEYS.map((k) => [k.toUpperCase(), k]));

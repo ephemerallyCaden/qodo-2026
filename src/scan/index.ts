@@ -6,14 +6,14 @@ import type { LogCounts } from '../core/summary.js';
 import { hashLines } from '../core/lines.js';
 import { applyCache, serializeCache, tallyFindings, type QodoCache } from '../core/qodo.js';
 import type { Commit, FileQodo, PersonId, QodoReason, QodoSource, SessionKey, SnapshotV02 } from '../core/snapshot/types.js';
-import { binaryNames, buildLineage, debtCounted, dirsAtHead, matchTests, zeroDebt } from '../core/structure.js';
+import { binaryNames, buildLineage, debtCounted, dirsAtHead, matchTests, topBirthInfo, zeroDebt } from '../core/structure.js';
 import { isoUtc, minusMonths } from '../core/time.js';
 import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
 import { gitRunner, tryGit, type Git } from './git.js';
 import { fetchQodo, readQodoCache } from './qodo.js';
 import { addedLines, headFiles, readRepo, windowCommits, type NumstatRow, type RawCommit } from './repo.js';
-import { debtCounts, lineageLog, unmergedBranches } from './structure.js';
+import { debtCounts, lineageLog, mergeSides, unmergedBranches } from './structure.js';
 
 export interface ScanOptions {
   repoDir: string;
@@ -109,9 +109,12 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   // Binary-ness isn't in the name-status log: a binary at HEAD is excluded all along, under its
   // earlier names too, so it neither blocks nor dilutes its folder's move (Qodo local r1 #1, r4 #1).
   const binary = binaryNames(history, [...head].filter(([, row]) => row.binary).map(([p]) => p));
-  const lineage = buildLineage(history, (p) => binary.has(p) || excluded(p, undefined));
+  const lineageExcluded = (p: string) => binary.has(p) || excluded(p, undefined);
+  const lineage = buildLineage(history, lineageExcluded);
+  // Folders born in a merge are looked through to the merged branch's own commits (#18 AC8).
+  const births = topBirthInfo(lineage, await mergeSides(git, history, lineage, lineageExcluded));
   const { targets: testOf, bulkSkipped } = matchTests(headPaths, lineage.paths);
-  const structure = dirsAtHead(lineage, headPaths);
+  const structure = dirsAtHead(lineage, headPaths, births);
   const dirIdOf = new Map(structure.dirs.map((d) => [d.path, d.id]));
   const topDirs = new Map(structure.dirs.filter((d) => d.depth === 1).map((d) => [d.path, d.id]));
   // A branch's rings are the folders it touches that exist at HEAD as top-level folders.

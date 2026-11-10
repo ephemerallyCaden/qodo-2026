@@ -7,12 +7,12 @@ import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { sha256Hex } from '../src/core/hash.js';
 import type { Dir, FileEntry, SnapshotV02 } from '../src/core/snapshot/types.js';
-import { buildLineage, debtCounted, dirsAtHead, matchTests } from '../src/core/structure.js';
+import { buildLineage, debtCounted, dirsAtHead, matchTests, topBirthInfo } from '../src/core/structure.js';
 import { formatSummary } from '../src/core/summary.js';
-import { scan, type ScanOptions } from '../src/scan/index.js';
+import type { ScanOptions } from '../src/scan/index.js';
 import { lineageLog } from '../src/scan/structure.js';
 import { cli } from './fixtures/cli.js';
-import { buildStructureRepo, DEBT_CANARY, type StructureRepo } from './fixtures/build/structure.js';
+import { buildStructureRepo, DEBT_CANARY, scanStructure, type StructureRepo } from './fixtures/build/structure.js';
 import { miniRepo } from './fixtures/mini.js';
 
 const GOLDEN = join(import.meta.dirname, 'golden/structure.snapshot.json');
@@ -21,8 +21,7 @@ let repo: StructureRepo;
 let snap: SnapshotV02;
 let json: string;
 
-const run = (o: Partial<ScanOptions> = {}) => scan({ repoDir: repo.dir, windowMonths: 24, ingest: false,
-  claudeProjectsDir: join(NO_LOGS, 'projects'), keyFor: () => new Uint8Array(32).fill(7), ...o });
+const run = (o: Partial<ScanOptions> = {}) => scanStructure(repo, o);
 const dir = (path: string): Dir => {
   const d = snap.dirs.find((x) => x.path === path);
   if (!d) throw new Error(`no dir ${path}`);
@@ -56,8 +55,8 @@ beforeAll(async () => {
 
 describe('#16 AC1: dirs[] for every folder at HEAD, with stable ids', () => {
   it('lists every folder holding a non-excluded file at HEAD, and nothing else', () => {
-    expect(snap.dirs.map((d) => d.path)).toEqual(['api', 'api/__fixtures__', 'cli', 'core', 'core/sub', 'core/sub/x', 'half', 'kit',
-      'lib', 'moved', 'new', 'test', 'tests', 'tests/fixtures', 'tests/golden', 'tools', 'ui', 'web', 'web/__snapshots__']);
+    expect(snap.dirs.map((d) => d.path)).toEqual(['api', 'api/__fixtures__', 'cli', 'core', 'core/sub', 'core/sub/x', 'ext', 'half', 'kit',
+      'lib', 'moved', 'new', 'pkg', 'svc', 'test', 'tests', 'tests/fixtures', 'tests/golden', 'tools', 'ui', 'web', 'web/__snapshots__']);
   });
 
   it('records parent, depth, bornSeq and bornDate from the folder\'s first commit', () => {
@@ -327,7 +326,8 @@ describe('#16 AC7: what the scan cannot read is counted, never dropped', () => {
   });
 
   it('a branch whose commits cannot be read is counted in the summary', async () => {
-    const r = await withGitShim('for a in "$@"; do case "$a" in *..*) exit 128;; esac; done', () => run());
+    // Branch reads are `<head>..<tip>`; other ranges (a merge's side, #18 AC8) still read.
+    const r = await withGitShim(`for a in "$@"; do case "$a" in ${repo.head}..*) exit 128;; esac; done`, () => run());
     expect(r.snapshot.branches).toEqual([]);
     expect(r.snapshot.unreadable.branches).toBe(4);
     expect(formatSummary(r.snapshot, null)).toContain('4 branch(es) could not be read and are left out of branches[]');
@@ -335,7 +335,7 @@ describe('#16 AC7: what the scan cannot read is counted, never dropped', () => {
 
   it('a HEAD folder with no lineage record falls back to HEAD and is counted', () => {
     const lineage = buildLineage([{ sha: 'a', dateMs: 0, changes: [{ status: 'A', path: 'x/f.ts' }] }], () => false);
-    const { dirs, unreadable } = dirsAtHead(lineage, ['x/f.ts', 'y/g.ts']);
+    const { dirs, unreadable } = dirsAtHead(lineage, ['x/f.ts', 'y/g.ts'], topBirthInfo(lineage, new Map()));
     expect(dirs.map((d) => [d.path, d.bornSeq])).toEqual([['x', 0], ['y', 0]]);
     expect(unreadable).toBe(1);
   });
