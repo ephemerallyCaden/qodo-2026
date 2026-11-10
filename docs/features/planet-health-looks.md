@@ -34,7 +34,7 @@ These are the legibility rules in the art direction §6, made measurable:
 
 ## Tasks
 - Verification lab `mockups/health-looks/` (feature agent, branch `feature/health-looks`): renders, measurements and a report. Done (a422f73).
-- Dustier ash (P2) as a comparison look in the asset library and the health lineup: pending, after library round 2.
+- Dustier ash (P2) as a comparison look in the asset library and the health lineup: done (8412fb4, b03e5ed). In the library: a "dustier ash · trial" tile, the inspector's shipped/trial switch and side-by-side compare, and a "Trial: dustier ash" lineup group. In the health lab: `sheets/lineup-trial.png`. **The human's call is pending.**
 
 ## Completion
 - Merged: —
