@@ -13,7 +13,7 @@ import { assertRendered, diffPixels, frameProblems, LOW_RES, statsProblems, type
 import { checkGolden, GOLDEN_DIR } from './golden.js';
 import { chunk, decodePng, encodePng } from './png.js';
 import { BUDGET } from './thresholds.js';
-import { paletteProblems, twinRecord, twinText, type RenderEnv } from './twin.js';
+import { envJson, paletteProblems, twinRecord, twinText, type RenderEnv } from './twin.js';
 
 const rgb = (hex: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
 const SPACE = palette.world.space;
@@ -82,6 +82,12 @@ describe('empty-output check', () => {
     expect(frameProblems(frame(W, H, SPACE, planet(53)))).toEqual([`blank frame: 2809 of 57600 px aren't space ${SPACE} ${NEED}`]);
     expect(frameProblems(frame(W, H, SPACE, planet(54, TWELVE.slice(0, 10))))).toEqual(['blank frame: 11 colours (need 12)']);
     expect(frameProblems(frame(W, H, SPACE, planet(54, TWELVE.slice(0, 11))))).toEqual([]); // 11 + space
+  });
+
+  it('fails a frame with any pixel that is not opaque', () => {
+    const f = frame(W, H, SPACE, planet(54));
+    f.rgba[4 * 10 + 3] = 254;
+    expect(frameProblems(f)).toEqual(["1 px aren't opaque (alpha 255)"]);
   });
 
   it('fails the wrong size, a short buffer and a missing frame', () => {
@@ -160,7 +166,7 @@ describe('text twin', () => {
 });
 
 describe('golden rules', () => {
-  const dirs = () => ({ dir: mkdtempSync(join(tmpdir(), 'commet-golden-')), candidates: mkdtempSync(join(tmpdir(), 'commet-candidates-')) });
+  const dirs = () => ({ dir: mkdtempSync(join(tmpdir(), 'commet-golden-')) });
   const good = frame(W, H, SPACE, planet(54));
 
   it('writes with update, then matches in the same environment', () => {
@@ -169,8 +175,6 @@ describe('golden rules', () => {
     expect(readdirSync(d.dir).sort()).toEqual(['g.png', 'g.txt']);
     expect(checkGolden('g', good, STATS, { env: ENV, ...d })).toEqual({ status: 'match' });
     expect(checkGolden('g', good, STATS, { env: ENV, ci: true, ...d })).toEqual({ status: 'match' });
-    // Every run leaves what an update would have written, for the CI artifact.
-    expect(readFileSync(join(d.candidates, 'g.txt'), 'utf8')).toBe(readFileSync(join(d.dir, 'g.txt'), 'utf8'));
   });
 
   it('fails a missing golden instead of passing it', () => {
@@ -183,7 +187,7 @@ describe('golden rules', () => {
     const moved = frame(W, H, SPACE, (x, y) => planet(54)(x, y) ?? (x === 0 && y === 0 ? palette.world.land[0] : undefined));
     const message = (run: () => unknown) => { try { run(); } catch (e) { return (e as Error).message.split('\n'); } throw new Error('did not throw'); };
     const pixel = message(() => checkGolden('g', moved, STATS, { env: ENV, ...d }));
-    expect(pixel[0]).toMatch(/^g: 1 px differ from the golden \(max 0\)\. New image: /);
+    expect(pixel[0]).toBe('g: 1 px differ from the golden (max 0); to see the new image, rerun with UPDATE_GOLDEN=1 in the pinned environment (test/render/README.md)');
     expect(pixel).toContain('-    270    0.46%  #123d33  100,50-148,103   world.land[0]');
     expect(pixel).toContain('+    271    0.47%  #123d33  0,0-148,103      world.land[0]');
     const stats = message(() => checkGolden('g', good, { ...STATS, drawCalls: 8 }, { env: ENV, ...d }));
@@ -202,18 +206,20 @@ describe('golden rules', () => {
   it('never writes a blank frame, even with update', () => {
     const d = dirs();
     expect(() => checkGolden('blank', frame(W, H, SPACE, stars), STATS, { env: ENV, update: true, ...d })).toThrow(/blank frame/);
-    expect([...readdirSync(d.dir), ...readdirSync(d.candidates)]).toEqual([]);
+    expect(readdirSync(d.dir)).toEqual([]);
   });
 });
 
 describe('committed render goldens', () => {
   const pngs = existsSync(GOLDEN_DIR) ? readdirSync(GOLDEN_DIR).filter((f) => f.endsWith('.png')).sort() : [];
 
-  it('exist, all made in one SwiftShader environment', () => {
+  it('exist, all made in the CI render container (linux/x64 SwiftShader), where they are authoritative', () => {
     expect(pngs.length).toBeGreaterThanOrEqual(3);
-    const envs = new Set(pngs.map((p) => JSON.stringify(twinRecord(readFileSync(join(GOLDEN_DIR, p.replace(/\.png$/, '.txt')), 'utf8')).env)));
+    const envs = new Set(pngs.map((p) => envJson(twinRecord(readFileSync(join(GOLDEN_DIR, p.replace(/\.png$/, '.txt')), 'utf8')).env)));
     expect(envs.size).toBe(1);
-    expect([...envs][0]).toContain('SwiftShader');
+    const env = JSON.parse([...envs][0]!) as RenderEnv;
+    expect({ platform: env.platform, arch: env.arch }).toEqual({ platform: 'linux', arch: 'x64' });
+    expect(env.webgl).toContain('SwiftShader');
   });
 
   it('each have a text twin that describes exactly that image, and none is blank', () => {

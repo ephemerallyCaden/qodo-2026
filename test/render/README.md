@@ -6,7 +6,7 @@ target** with `lowResPixels()`, never the upscaled canvas, and checks it four wa
 
 | Check | Where | Fails when |
 |---|---|---|
-| Empty output | `frame.ts` `frameProblems`, `harness.ts` `openView` | no hook, no canvas, fewer than 12 colours, or under 5% of the frame off space |
+| Empty output | `frame.ts` `frameProblems`, `harness.ts` `openView` | no hook, no canvas, a pixel that isn't opaque, fewer than 12 colours, or under 5% of the frame off space |
 | Palette | `twin.ts` `paletteProblems` | with `depthFade: false`, even one pixel isn't a `src/core/palette.ts` colour |
 | Determinism | `standin.spec.ts` | frame *n* differs between renders in any order, or in a fresh browser |
 | Draw budget | `frame.ts` `statsProblems` | `renderer.info` draw calls or triangles are 0 or over `BUDGET` (never FPS) |
@@ -52,7 +52,7 @@ what lets the thresholds sit at 0.
 
 Each golden's text twin records, on its `env` line, where that golden was made: Playwright, browser,
 platform, arch and WebGL renderer. `checks.test.ts` requires every committed golden to share one
-SwiftShader environment. On each run:
+linux/x64 SwiftShader environment. On each run:
 
 - **Same environment:** strict. More than `PIXELS.maxDiffPixels` differing pixels, or a changed
   twin, fails.
@@ -63,19 +63,23 @@ SwiftShader environment. On each run:
   annotation saying goldens are authoritative in CI and how many pixels differ.
 
 ## Updating goldens
-Only on purpose, for a render change you meant, with a `Golden-Update: <reason>` line in the commit.
-Review the `.txt` diff before committing.
+Only with `UPDATE_GOLDEN=1`, in the pinned image, for a render change you meant, with a
+`Golden-Update: <reason>` line in the commit. CI's `goldens` job fails any PR commit that changes
+`test/golden/` without that line (`.github/scripts/golden-update.sh`). Review the `.txt` diff before
+committing.
 
-Every run writes what `UPDATE_GOLDEN=1` would write to `test-results/render-goldens/`, and CI uploads
-that directory as the `render-goldens` artifact. To update:
-
-- **From CI** (no Docker needed): push, then
-  `gh run download <run-id> -n render-goldens -D test/golden/render`. These are the same bytes
-  `UPDATE_GOLDEN=1` writes in that image.
+- **From CI** (no Docker needed): push. When the `render` job fails, it reruns the suite with
+  `UPDATE_GOLDEN=1` in the same image and uploads what that wrote to `test/golden/render/` as the
+  `render-goldens` artifact. Nothing is uploaded if that run fails too: a blank or over-budget frame
+  is never written. Take it with
+  `gh run download <run-id> -n render-goldens -D test/golden/render`, and name the run ID and image
+  digest in the `Golden-Update:` line.
 - **With Docker**, in a separate worktree (`npm ci` replaces `node_modules` with Linux builds):
   `docker run --rm -v "$PWD":/work -w /work <image from ci.yml> bash -c 'npm ci && UPDATE_GOLDEN=1 npm run test:render'`
 
-A golden written anywhere else records that environment on its `env` line, and CI then fails on it.
+A golden written anywhere else records that environment on its `env` line. `npm test` then fails,
+because `checks.test.ts` requires every committed golden to come from linux/x64 SwiftShader, and so
+does the CI `render` job.
 
 ## Text twins
 Each golden PNG has a `.txt` twin, so a reviewer who can't see images (Qodo) can review a render

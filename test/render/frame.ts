@@ -36,6 +36,10 @@ export function frameProblems(f: Frame, expected?: { width: number; height: numb
   if (f.rgba.length !== w * h * 4) return [`rgba has ${f.rgba.length} bytes, expected ${w * h * 4} for ${w}x${h}`];
   const out: string[] = [];
   if (expected && (w !== expected.width || h !== expected.height)) out.push(`frame is ${w}x${h}, expected the ${expected.width}x${expected.height} low-res target`);
+  let translucent = 0;
+  for (let i = 3; i < f.rgba.length; i += 4) if (f.rgba[i] !== 255) translucent++;
+  // The target is opaque, so every colour check (palette, twin) can read RGB alone.
+  if (translucent) out.push(`${translucent} px aren't opaque (alpha 255)`);
   const { colours, nonSpace } = coverage(f);
   const need = Math.ceil(BLANK.minNonSpaceFraction * w * h);
   if (colours < BLANK.minColours) out.push(`blank frame: ${colours} colour${colours === 1 ? '' : 's'} (need ${BLANK.minColours})`);

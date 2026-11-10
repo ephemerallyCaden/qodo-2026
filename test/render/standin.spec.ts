@@ -55,12 +55,13 @@ for (const g of GOLDENS) {
     const view = await openView(page, standin());
     // §10: with the depth fade off, every pixel is a palette colour.
     const [flat] = await render(view, { layout: MINI, reducedMotion: g.reducedMotion, depthFade: false }, [g.frame]);
+    assertRendered(flat!.pixels, flat!.stats, LOW_RES); // an empty frame is trivially palette-only
     expect(paletteProblems(flat!.pixels)).toEqual([]);
     const [r] = await render(view, { layout: MINI, reducedMotion: g.reducedMotion }, [g.frame]);
     assertRendered(r!.pixels, r!.stats, LOW_RES);
     const result = checkGolden(g.name, r!.pixels, r!.stats, goldenOptions(env));
     if (result.status === 'unpinned') {
-      const note = `goldens are authoritative in CI (${describeEnv(result.recorded)}); this run checked determinism, empty output and the budget, and the golden compare is informational: ${result.diffPixels} px differ`;
+      const note = `goldens are authoritative in CI (${describeEnv(result.recorded)}); this run checked determinism, empty output, the budget and the palette, and the golden compare is informational: ${result.diffPixels} px differ`;
       info.annotations.push({ type: 'golden-informational', description: note });
       console.log(`${g.name}: ${note}`);
     } else {

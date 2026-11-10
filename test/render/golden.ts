@@ -11,8 +11,7 @@ import { envJson, twinRecord, twinText, type RenderEnv } from './twin.js';
 
 const ROOT = join(import.meta.dirname, '../..');
 export const GOLDEN_DIR = join(ROOT, 'test/golden/render');
-/** Every run writes what UPDATE_GOLDEN=1 would write here; CI uploads it as an artifact. */
-const CANDIDATE_DIR = join(ROOT, 'test-results/render-goldens');
+const UPDATE_HINT = 'to see the new image, rerun with UPDATE_GOLDEN=1 in the pinned environment (test/render/README.md)';
 
 export interface GoldenOptions {
   env: RenderEnv;
@@ -21,7 +20,6 @@ export interface GoldenOptions {
   /** In CI a golden recorded in another environment fails instead of being skipped. */
   ci?: boolean;
   dir?: string;
-  candidates?: string;
 }
 
 type GoldenResult =
@@ -55,11 +53,8 @@ export function checkGolden(name: string, frame: Frame, stats: RenderStats, opts
   const dir = opts.dir ?? GOLDEN_DIR;
   assertRendered(frame, stats);
   const twin = twinText(name, frame, { stats, env: opts.env });
-  const png = encodePng(frame.width, frame.height, frame.rgba);
-  const candidates = opts.candidates ?? CANDIDATE_DIR;
-  write(candidates, name, png, twin);
   if (opts.update) {
-    write(dir, name, png, twin);
+    write(dir, name, encodePng(frame.width, frame.height, frame.rgba), twin);
     return { status: 'written' };
   }
   const goldenPng = join(dir, `${name}.png`), goldenTwin = join(dir, `${name}.txt`);
@@ -78,11 +73,10 @@ export function checkGolden(name: string, frame: Frame, stats: RenderStats, opts
     }
     return { status: 'unpinned', diffPixels: diff, recorded: was.env };
   }
-  const candidate = shown(join(candidates, `${name}.png`));
-  if (!sameSize) throw new Error(`${name}: golden is ${golden.width}x${golden.height}, frame is ${frame.width}x${frame.height}. New image: ${candidate}`);
+  if (!sameSize) throw new Error(`${name}: golden is ${golden.width}x${golden.height}, frame is ${frame.width}x${frame.height}; ${UPDATE_HINT}`);
   // Within a non-zero threshold the twin's counts may drift with the pixels; its stats and, at 0 px, its every line may not.
   if (diff > PIXELS.maxDiffPixels || was.stats.drawCalls !== stats.drawCalls || was.stats.triangles !== stats.triangles || (diff === 0 && committed !== twin)) {
-    throw new Error(`${name}: ${diff} px differ from the golden (max ${PIXELS.maxDiffPixels}). New image: ${candidate}\n${twinDiff(committed, twin)}`);
+    throw new Error(`${name}: ${diff} px differ from the golden (max ${PIXELS.maxDiffPixels}); ${UPDATE_HINT}\n${twinDiff(committed, twin)}`);
   }
   return { status: 'match' };
 }
