@@ -96,7 +96,7 @@ Where it differs from the review loop above:
   - No `Math.random`, `Date.now`, `new Date()`, `performance.now` or `localeCompare`. Use the seeded PRNG; sort by codepoint.
   - Same repo and logs → byte-identical snapshot. Same snapshot, camera and frame → identical pixels.
 - **Why:** the factory verifies the product with goldens, and a planet that moves between runs breaks the user's mental map.
-- **Checked by:** ESLint bans in `src/core`, `src/scan` and `src/attrib` (render and layout code is review-only until lint covers it), golden byte compares, a scan-twice SHA-256 test.
+- **Checked by:** ESLint bans in `src/core`, `src/scan`, `src/attrib`, `web/src` and the render stand-in, golden byte compares, render goldens (`npm run test:render`), and a scan-twice SHA-256 test.
 
 ### Rule 7: NUL-framed git output
 *A repository path can hold any byte except NUL, so git output that lists paths is read with `-z` and parsed by position on `\0`, never framed by another byte; patch text, which can hold NUL too, is parsed by its hunk counts.*

@@ -14,9 +14,10 @@
 ## Build & Test
 Node ≥ 20.19, npm. From the repo (or worktree) root:
 - `npm ci`: install (lockfile-exact).
-- `npm run build`: `tsc` to `dist/` (the bin is `dist/cli.js`).
+- `npm run build`: `tsc` to `dist/` (the bin is `dist/cli.js`), then `vite build --config web/vite.config.ts` to `dist/web/` (the view `commet open` serves).
+- `npx vite --config web/vite.config.ts`: the view's dev server on 127.0.0.1, with fixtures via `?fixture=mini|empty|invalid|missing`. Render test mode is `?test=1` (`window.__commet`).
 - `npm run typecheck`: strict `tsc --noEmit` over `src/`, `test/` and `factory/`.
-- `npm run lint`: ESLint. Bans `Math.random`, `Date.now`, `performance.now`, `crypto.randomUUID`, `new Date()` and `localeCompare` in `src/{core,scan,attrib}`, and Node built-ins in `src/core`.
+- `npm run lint`: ESLint. Bans `Math.random`, `Date.now`, `performance.now`, `crypto.randomUUID`, `new Date()` and `localeCompare` in `src/{core,scan,attrib}`, `web/src` and the render stand-in, and Node built-ins in `src/core`.
 - `npm run test:render`: Playwright + SwiftShader render tests (R8). Goldens are authoritative only in CI's pinned container; locally the golden compare is informational (`test/render/README.md`).
 - Parallel agents: run full suites through `lockf -k /tmp/commet-fullsuite.lock <cmd>` so only one runs at a time.
 - `npm test`: Vitest (unit, golden, privacy canaries, lint rules). Golden snapshots live in `test/golden/`; regenerate only deliberately with `UPDATE_GOLDEN=1 npm test` and a `Golden-Update: <reason>` line in the commit.
