@@ -9,6 +9,7 @@
 import { FAMILY_IDS, family as historyFamily } from './history.js';
 import { TRIALS } from './trials.js';
 import { DRONE_PROVIDERS, DRONE_VARIANTS, DRONE_FACES, PARAMS as DRONE_PARAMS } from './drones.js';
+import { DEBRIS_DEFAULTS, MAX_DEBRIS, AGE_MIXES, CLASSES as DEBRIS_CLASSES, DEBRIS_DIRECTIONS, itemsOf } from './debris-spec.js';
 
 export const VERSION = 1;
 export const BIOME_KEYS = ['lush', 'ocean', 'ice', 'desert', 'lava', 'gas', 'moon', 'toxic'];
@@ -21,7 +22,7 @@ export const EYE_COUNT = 10;
 export const CONTRIBUTOR_PRESETS = ['coral', 'mint', 'lilac'];
 export const LAB_VARIANTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 // Inspector foci for a planet item: which control group leads and what the stage isolates.
-export const FOCI = ['planet', 'moon', 'ring', 'clouds', 'fx'];
+export const FOCI = ['planet', 'moon', 'ring', 'clouds', 'fx', 'debris'];
 // Camera framings. Planet ones are the viewer's VIEWS; astronaut ones are offsets around the figure.
 export const FRAMINGS = { planet: ['planet', 'clouds-zoom', 'top'], astronaut: ['body', 'crew', 'face'], lab: ['lab'], drone: ['drone', 'drone-close'], scene: ['depth', 'crew', 'system'] };
 export const MAX_ITEMS = 16;
@@ -40,6 +41,7 @@ export const PLANET_DEFAULTS = {
   moons: true, moonOrbits: MOON_DEFAULTS, halo: false,
   artefacts: false, artAuto: true, artCount: 3, artTeal: false, lavaMode: 'layered',
   trial: null, // a trial look (trials.js) for this biome, or null: the shipped look
+  debris: DEBRIS_DEFAULTS, // space debris (debris-spec.js): stale items near the planet
   layers: { surface: true, haze: true, clouds: true, ring: true }, // the library's isolation toggles
   pos: [0, 0, 0],
 };
@@ -70,6 +72,24 @@ export const hexOrNull = (v) => (typeof v === 'string' && HEX.test(v.toLowerCase
 const vec3 = (v, lim, def) => (Array.isArray(v) && v.length === 3 ? v.map((x, i) => num(x, -lim, lim, def[i])) : [...def]);
 const camera = (v) => (isObj(v) && Array.isArray(v.pos) && Array.isArray(v.target) ? { pos: vec3(v.pos, 200, [0, 0, 10]), target: vec3(v.target, 200, [0, 0, 0]) } : null);
 
+const DEBRIS_ID = /^[\w-]{1,40}$/;
+/** A planet's debris: on/off, the demo count and age mix, a seed (null: the planet's), edited items, sweeps and a selected piece. */
+export function normaliseDebris(raw) {
+  const r = isObj(raw) ? raw : {};
+  const d = DEBRIS_DEFAULTS;
+  const seen = new Set();
+  const items = Array.isArray(r.items) ? r.items.slice(0, MAX_DEBRIS).filter((it) => isObj(it) && DEBRIS_ID.test(it.id) && !seen.has(it.id) && seen.add(it.id)).map((it) => ({
+    id: it.id, cls: oneOf(it.cls, DEBRIS_CLASSES, DEBRIS_CLASSES[0]), diff: int(it.diff, 1, 100000, 240), age: int(it.age, 0, 3650, 21),
+  })) : null;
+  const out = { on: bool(r.on, d.on), count: int(r.count, 0, MAX_DEBRIS, d.count), mix: oneOf(r.mix, AGE_MIXES, d.mix), seed: r.seed === null || r.seed === undefined ? null : int(r.seed, 1, 9999, null), items };
+  const ids = new Set(itemsOf(out).map((it) => it.id));
+  const swept = new Set();
+  out.sweeps = (Array.isArray(r.sweeps) ? r.sweeps : []).filter((x) => isObj(x) && ids.has(x.id) && !swept.has(x.id) && swept.add(x.id)).map((x) => ({ id: x.id, at: num(x.at, 0, 3600, 0) }));
+  out.selected = ids.has(r.selected) ? r.selected : null;
+  out.direction = oneOf(r.direction, DEBRIS_DIRECTIONS, d.direction); // the debris lab's directions (the history's explorations)
+  return out;
+}
+
 export function normalisePlanet(raw) {
   const r = isObj(raw) ? raw : {};
   const d = PLANET_DEFAULTS;
@@ -98,6 +118,7 @@ export function normalisePlanet(raw) {
     artTeal: bool(r.artTeal, d.artTeal),
     lavaMode: oneOf(r.lavaMode, LAVA_MODES, d.lavaMode),
     trial: TRIALS[r.trial]?.biome === oneOf(r.biome, BIOME_KEYS, d.biome) ? r.trial : null,
+    debris: normaliseDebris(r.debris),
     layers: Object.fromEntries(Object.entries(d.layers).map(([k, v]) => [k, bool(layers[k], v)])),
     pos: vec3(r.pos, 60, d.pos),
   };

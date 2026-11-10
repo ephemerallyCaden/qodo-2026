@@ -13,6 +13,7 @@ import { PALETTES, usePalette } from '../asset-viewer/viewer.js';
 import { LOSPEC } from '../asset-viewer/palettes.js';
 import { rampThrough } from '../asset-viewer/palette-map.js';
 import { ACCENTS, V2_PLANET_RAMPS } from '../asset-viewer/planet-ramps.js';
+import { paletteRole as debrisRole } from '../asset-viewer/debris-palette.js';
 import { CONTRIBUTOR_PRESETS, isObj } from './state.js';
 
 const BLK36 = LOSPEC['blk-36'].colors.map((h) => `#${h}`);
@@ -69,6 +70,7 @@ export function library(edits) {
   const pal = structuredClone(BASE);
   for (const [path, hex] of Object.entries(clean)) setPath(pal, path, hex);
   pal.spaceBands = [pal.space, pal.space, pal.space]; // the flat background follows the space colour
+  pal.debris = debrisRole(); // debris's fixed colours, with every registered direction's (the debris lab's)
   pal.name = `library (${Object.keys(clean).length} edits)`;
   PALETTES[LIBRARY] = pal;
   usePalette(LIBRARY, { edited: true });
@@ -90,6 +92,7 @@ export function buildLookPalette(spec = {}) {
   if (spec.world) Object.assign(pal, structuredClone(V2_PLANET_RAMPS));
   for (const [k, v] of Object.entries(spec.set ?? {})) pal[k] = isObj(v) && isObj(pal[k]) ? { ...pal[k], ...structuredClone(v) } : structuredClone(v);
   if (!spec.set?.spaceBands) pal.spaceBands = [pal.space, pal.space, pal.space];
+  pal.debris = debrisRole(); // a look palette carries debris too (fixed colours: debris on a history step or a trial)
   return pal;
 }
 const lookNames = new Map(); // spec (JSON) -> its viewer palette's name

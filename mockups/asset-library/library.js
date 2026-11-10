@@ -10,6 +10,7 @@ import { GROUPS as CATALOGUE, ITEMS, showcaseScene, crewScene, BIOME_MEANING, EX
 import * as P from './palette.js';
 import * as H from './history.js';
 import { TRIALS, trialOf, trialFor } from './trials.js';
+import { DEBRIS_COUNTS, AGE_MIXES, AGES, CLASSES as DEBRIS_CLASSES, CLASS_LABEL, AGE_NAMES, MAX_DEBRIS, FINAL_DIRECTION, itemsOf, nextSweep, ageName, directionOf } from './debris-spec.js';
 import { BRANDS, PARAMS as DRONE_PARAMS, DRONE_VARIANTS, DRONE_VIEWS, ZOOM, brandName, variantOf, droneLook } from './drones.js';
 
 const $ = (id) => document.getElementById(id);
@@ -155,9 +156,15 @@ function drawStage() {
     `<span><b>${w}×${h}</b> ×${scale}</span>`,
     `<span>t <b>${now().toFixed(2)} s</b> / ${state.render.period} s loop</span>`,
     `<span>palette <b>${edits ? `${edits} edits` : 'base'}</b></span>`,
+    debrisStatus(),
     `<span>${state.mode === 'scene' ? `<b>${state.scene.items.length}</b> items · click selects · shift-drag moves` : 'drag orbits · scroll zooms'}</span>`,
   ].join('');
   if (status !== drawStage.status) $('status').innerHTML = drawStage.status = status;
+}
+/** The inspected planet's debris: pieces drawn, and the rest counted (the viewer's cap, as a "+N"). */
+function debrisStatus() {
+  const s = state.mode === 'asset' && state.asset.kind === 'planet' && state.asset.debris.on ? stages.asset.slots[0]?.obj.debris?.layout : null;
+  return s ? `<span>debris <b>${s.pieces.length}</b>${s.overflow ? ` +${s.overflow} counted` : ''}</span>` : '';
 }
 function drawSelection(w, h, scale) {
   const box = $('sel');
@@ -355,8 +362,11 @@ function planetControls(it, patch) {
   const weather = WEATHER[BIOMES[it.biome].weather];
   const orbit = (i, key) => (v) => patch({ moonOrbits: it.moonOrbits.map((o, j) => (j === i ? { ...o, [key]: v } : o)) }, live);
   const layer = (key) => (v) => patch({ layers: { ...it.layers, [key]: v } });
-  const order = { planet: ['planet', 'ring', 'clouds', 'moons', 'fx', 'look'], moon: ['moons', 'planet', 'look', 'ring', 'clouds', 'fx'], ring: ['ring', 'planet', 'look', 'moons', 'clouds', 'fx'], clouds: ['clouds', 'planet', 'look', 'ring', 'moons', 'fx'], fx: ['fx', 'planet', 'ring', 'clouds', 'moons', 'look'] }[state.mode === 'scene' ? 'planet' : state.focus];
-  const lead = order.slice(0, 2).map((k) => ({ planet: 'planet', ring: 'ring', clouds: 'clouds', moons: 'moons', fx: 'artefacts', look: 'layers and look' })[k]);
+  const order = {
+    planet: ['planet', 'ring', 'clouds', 'moons', 'debris', 'fx', 'look'], moon: ['moons', 'planet', 'look', 'ring', 'clouds', 'debris', 'fx'], ring: ['ring', 'planet', 'look', 'moons', 'clouds', 'debris', 'fx'],
+    clouds: ['clouds', 'planet', 'look', 'ring', 'moons', 'debris', 'fx'], fx: ['fx', 'planet', 'ring', 'clouds', 'moons', 'debris', 'look'], debris: ['debris', 'planet', 'look', 'ring', 'moons', 'clouds', 'fx'],
+  }[state.mode === 'scene' ? 'planet' : state.focus];
+  const lead = order.slice(0, 2).map((k) => ({ planet: 'planet', ring: 'ring', clouds: 'clouds', moons: 'moons', fx: 'artefacts', look: 'layers and look', debris: 'debris' })[k]);
   const open = (title) => lead.includes(title);
   const groups = {
     planet: () => section('planet', open('planet'),
@@ -394,6 +404,7 @@ function planetControls(it, patch) {
       check('auto (by size)', it.artAuto, (v) => patch({ artAuto: v }), { disabled: !it.artefacts, title: '1 sector on the smallest planets up to 5 on the biggest' }),
       slider('sectors', it.artCount, { min: 1, max: 5, step: 1, fmt: String, disabled: !it.artefacts || it.artAuto }, (v) => patch({ artCount: v }, live)),
       check('teal accent', it.artTeal, (v) => patch({ artTeal: v }), { disabled: !it.artefacts })),
+    debris: () => debrisControls(it, patch, open('debris')),
     look: () => section('layers and look', open('layers and look'),
       check('body', it.layers.surface, layer('surface'), { title: 'the planet surface; off shows moons, ring or clouds on their own' }),
       check('haze', it.layers.haze, layer('haze'), { disabled: !BIOMES[it.biome].haze }),
@@ -402,6 +413,36 @@ function planetControls(it, patch) {
       check('dark halo', it.halo, (v) => patch({ halo: v }), { title: 'optional ~2 px bg+1 halo (off in the final look)' })),
   };
   return order.map((k) => groups[k]());
+}
+
+/** Space debris on a planet (debris-spec.js): on/off, count, age mix, seed, each piece, sweeps and the selected piece. */
+function debrisControls(it, patch, isOpen) {
+  const d = it.debris;
+  const set = (p, opts) => patch({ debris: { ...d, ...p } }, opts);
+  const items = itemsOf(d);
+  // editing one piece turns the demo items into edited ones
+  const edit = (i, p) => set({ items: items.map((x, j) => (j === i ? { ...x, ...p } : x)) });
+  const off = !d.on;
+  const piece = (x, i) => h('div', { class: 'piece' },
+    h('span', { class: 'pid', title: `${x.diff} changed lines, ${x.age} days` }, `${i + 1}${d.sweeps.some((s) => s.id === x.id) ? ' (swept)' : ''}`),
+    h('select', { 'aria-label': `piece ${i + 1} kind`, disabled: off, onchange: (e) => edit(i, { cls: e.target.value }) }, DEBRIS_CLASSES.map((c) => h('option', { value: c, selected: c === x.cls }, CLASS_LABEL[c]))),
+    h('select', { 'aria-label': `piece ${i + 1} age`, disabled: off, onchange: (e) => edit(i, { age: +e.target.value }) }, AGES.map((a, k) => h('option', { value: a, selected: ageName(x.age) === AGE_NAMES[k] }, AGE_NAMES[k]))),
+    h('select', { 'aria-label': `piece ${i + 1} diff size`, disabled: off, onchange: (e) => edit(i, { diff: +e.target.value }) }, [12, 60, 240, 900, 3000, 9000].map((n) => h('option', { value: n, selected: n === x.diff }, `${n} lines`))));
+  return section(`debris${d.on ? ` (${items.length})` : ''}`, isOpen,
+    d.direction === FINAL_DIRECTION ? null : note(`exploration, not final: the debris lab's direction ${d.direction}, ${directionOf(d.direction).name}`, 'warn'),
+    d.direction === FINAL_DIRECTION ? null : buttons(btn(`${FINAL_DIRECTION} (final)`, () => set({ direction: FINAL_DIRECTION }))),
+    check('debris', d.on, (v) => set({ on: v }), { title: 'stale work (R13): stale PRs, abandoned, merged-not-deleted and orphaned agent branches' }),
+    slider('count', d.items ? items.length : d.count, { min: 0, max: MAX_DEBRIS, step: 1, fmt: String, disabled: off || !!d.items, title: 'demo stale items (the viewer\'s); pieces past 12 are counted, not drawn' }, (v) => set({ count: v, sweeps: [], selected: null }, live)),
+    buttons(...DEBRIS_COUNTS.map((n) => btn(String(n), () => set({ count: n, items: null, sweeps: [], selected: null }), { on: !d.items && d.count === n, disabled: off }))),
+    select('age mix', d.mix, AGE_MIXES.map((m) => [m, m]), (v) => set({ mix: v, sweeps: [], selected: null }), { disabled: off || !!d.items }),
+    slider('seed', d.seed ?? it.seed, { min: 1, max: 999, step: 1, fmt: (v) => (d.seed === null ? `${v} (planet)` : String(v)), disabled: off, title: 'where the pieces sit (null: the planet\'s seed, as the viewer)' }, (v) => set({ seed: v }, live)),
+    buttons(
+      btn('sweep one', () => { const id = nextSweep(d); if (id) update((n) => { const pl = n.mode === 'scene' ? n.scene.items[n.scene.selected] : n.asset; pl.debris.sweeps.push({ id, at: Math.round(now() * 100) / 100 }); n.render.play = true; }); }, { disabled: off || !nextSweep(d), title: 'the biggest piece not yet swept breaks apart now (the stage plays)' }),
+      btn('restore swept', () => set({ sweeps: [] }), { disabled: off || !d.sweeps.length }),
+      btn('demo items', () => set({ items: null, sweeps: [], selected: null }), { disabled: off || !d.items, title: 'drop the edits: the viewer\'s demo items again' })),
+    select('selected', d.selected ?? '', [['', 'none'], ...items.map((x, i) => [x.id, `${i + 1} · ${CLASS_LABEL[x.cls]} · ${ageName(x.age)}`])], (v) => set({ selected: v || null }), { disabled: off }),
+    note('the selected piece glows [OIII] teal (an event); neutral grey metal and the red outline are debris\'s approved exceptions'),
+    off ? null : h('div', { class: 'pieces' }, items.map(piece)));
 }
 
 /** Current <-> trial on the same seed (trials.js), and the side-by-side comparison. */

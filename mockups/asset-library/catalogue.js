@@ -4,6 +4,7 @@
 // exploration archive (R6). `t` (optional) is the loop time it opens at. `tag` (optional)
 // replaces the final badge: a library extra, or a look whose meaning is open (R9). Pure data, no DOM.
 import { BRANDS, DRONE_VARIANTS, variantOf } from './drones.js';
+import { DEBRIS_COUNTS, CLASSES, CLASS_LABEL, AGES, AGE_NAMES } from './debris-spec.js';
 
 const astro = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'astronaut', framing: 'body', asset: { kind: 'astronaut', ...asset } }, ...extra });
 const planet = (title, sub, asset, { camera = null, ...extra } = {}) => ({ title, sub, final: true, state: { focus: 'planet', framing: 'planet', camera, asset: { kind: 'planet', ...asset } }, ...extra });
@@ -39,6 +40,7 @@ export const TRIAL_TAG = 'trial';
 // mid distance (12, as the health-looks lab's 'mid' condition).
 const HERO_POS = [1.92, 1.12, 6.69];
 const MID_POS = HERO_POS.map((x) => Math.round(((x * 12) / Math.hypot(...HERO_POS)) * 1e4) / 1e4);
+const debrisTile = (title, sub, asset, debris) => focus('debris')(planet(title, sub, { ring: 'off', ...asset, debris: { on: true, ...debris } }));
 const trialTile = (title, sub, asset, camera = null) => planet(title, sub, { ...asset, trial: 'dusty-ash' }, { final: false, tag: TRIAL_TAG, camera });
 
 export const GROUPS = [
@@ -105,6 +107,18 @@ export const GROUPS = [
       focus('ring')(planet('thread', '0.04 at 1.25', { biome: 'ocean', seed: 42, ringWidth: 0.04, ringInner: 1.25, moons: false }, { tag: RING_TAG })),
       focus('ring')(planet('far belt', '0.72 at 2.6', { biome: 'desert', seed: 3, ringWidth: 0.72, ringInner: 2.6, moons: false }, { tag: RING_TAG })),
       focus('ring')(planet('ring alone', 'host body hidden', { biome: 'lush', seed: 7, ring: 'wide', ringWidth: 0.72, ringInner: 1.54, moons: false, layers: HOST_HIDDEN }, { tag: RING_TAG })),
+    ],
+  },
+  {
+    // stale work (R13; art direction §6 Debris): the clutter scale, every kind at every age, and on every band
+    id: 'debris', title: 'Debris', note: 'stale work near the planet it touches: 0, 1, 3, 8 and 24 pieces; each kind at each age; on every band',
+    items: [
+      ...DEBRIS_COUNTS.map((n) => debrisTile(`debris · ${n}`, n === 24 ? '24 items, 12 drawn' : `${n} stale item${n === 1 ? '' : 's'}`, { biome: 'lush', seed: 7 }, { count: n })),
+      ...CLASSES.flatMap((cls) => AGES.map((age, a) => debrisTile(`${CLASS_LABEL[cls]}`, `${AGE_NAMES[a]} · 3 pieces`, { biome: 'lush', seed: 7 },
+        { items: [240, 900, 3000].map((diff, i) => ({ id: `${cls}-${i}`, cls, diff, age: age + i })) }))),
+      ...[['lava', 11, 'worst band'], ['toxic', 13, 'second-worst band'], ['desert', 3, 'ash band'], ['lush', 7, 'healthy'], ['ocean', 42, 'healthy'], ['ice', 21, 'healthy']]
+        .map(([biome, seed, band]) => debrisTile(`debris on ${biome}`, `8 items · ${band}`, { biome, seed }, { count: 8 })),
+      debrisTile('debris alone', 'host body hidden · 8 items', { biome: 'lush', seed: 7, layers: HOST_HIDDEN }, { count: 8 }),
     ],
   },
   {

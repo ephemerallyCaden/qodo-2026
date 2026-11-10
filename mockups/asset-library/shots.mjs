@@ -47,6 +47,11 @@ const SHOTS = {
     { kind: 'drone', provider: 'copilot', session: 2, pos: [0.15, 0.55, 3.3], yaw: -0.5, phase: 2.1 },
     { kind: 'planet', biome: 'lush', seed: 7, pos: [0, 0, 0] },
   ] } } },
+  // debris (stale work, R13): the inspector's debris section with a selected piece, and the Debris group
+  'inspector-debris': { open: 'debris-3', extra: { asset: { kind: 'planet', biome: 'lush', seed: 7, ring: 'off', debris: { on: true, count: 8, selected: 'item-2' } }, render: paused(3) } },
+  'debris-catalogue': { viewport: { width: 1920, height: 1800 }, open: 'debris-3', act: async (page) => {
+    await page.evaluate(() => document.querySelector('[data-id="debris-0"]').scrollIntoView({ block: 'start' }));
+  } },
   // the dustier-ash trial (health-looks P2): the inspector's look switch, side by side, and the lineup group
   'trial-compare': { open: 'planets-3', extra: { trialCompare: true, render: paused() } },
   'trial-lineup': { viewport: { width: 1920, height: 1800 }, open: 'trials-6', act: async (page) => {
@@ -61,6 +66,7 @@ const SHOTS = {
   'history-lab': { set: history('crew', 7, -1, { option: 2 }), archive: true }, // lab variant C, live
   'history-drones': { set: history('drones', 5, 4, { option: 2 }), archive: true }, // the live Copilot drone beside D-final (archived)
   'history-no-archive': { set: history('crew', 3) }, // the same view without the archive
+  'history-debris': { set: history('debris', 0, 2, { option: 1 }), archive: true }, // direction B (junkyard), live through the debris lab's kits, beside the final A3
 };
 
 const wanted = process.argv.slice(2);

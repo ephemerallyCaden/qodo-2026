@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { launch, openLibrary, openViewer, grabCanvas, diff, stats } from './harness.mjs';
 import { showcaseScene } from '../catalogue.js';
 import * as S from '../state.js';
+import { DEBRIS_COUNTS, AGE_MIXES } from '../debris-spec.js';
 
 // The viewer's screenshot defaults (shots.mjs BASE).
 const VIEWER_BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-smooth', depthBands: '3-band', artefacts: false, artAuto: true, artCount: 3, artTeal: false, cover: null, lavaMode: 'layered', lavaTime: null };
@@ -73,7 +74,7 @@ test('library enums match the viewer exports', { timeout: 180000 }, async () => 
     const got = await page.evaluate(async () => {
       const v = await import('../asset-viewer/viewer.js');
       const f = await import('../asset-viewer/faces.js');
-      return { biomes: Object.keys(v.BIOMES), lava: v.LAVA_MODES, depth: v.DEPTH_MODES, bands: Object.keys(v.DEPTH_BANDS), presets: v.RING_PRESETS, eyes: f.EYE_DESIGNS.length, moons: v.MOON_ORBITS, contributors: v.CONTRIBUTOR_KEYS };
+      return { biomes: Object.keys(v.BIOMES), lava: v.LAVA_MODES, depth: v.DEPTH_MODES, bands: Object.keys(v.DEPTH_BANDS), presets: v.RING_PRESETS, eyes: f.EYE_DESIGNS.length, moons: v.MOON_ORBITS, contributors: v.CONTRIBUTOR_KEYS, debrisCounts: v.DEBRIS_COUNTS, ageMixes: v.AGE_MIXES };
     });
     assert.deepEqual(got.biomes, S.BIOME_KEYS);
     assert.deepEqual(got.lava, S.LAVA_MODES);
@@ -83,6 +84,8 @@ test('library enums match the viewer exports', { timeout: 180000 }, async () => 
     assert.equal(got.eyes, S.EYE_COUNT);
     assert.deepEqual(got.moons, S.MOON_DEFAULTS);
     assert.deepEqual(got.contributors, S.CONTRIBUTOR_PRESETS);
+    assert.deepEqual(got.debrisCounts, DEBRIS_COUNTS);
+    assert.deepEqual(got.ageMixes, AGE_MIXES);
   } finally {
     await browser.close();
   }

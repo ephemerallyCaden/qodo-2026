@@ -32,8 +32,11 @@ test('R9: planet tiles say what their look means, worst to best, with extras and
 });
 
 test('R9: no Nov 3 meanings and no acid lime outside the history view', () => {
-  const text = GROUPS.flatMap((g) => [g.title, g.note, ...g.items.flatMap((it) => [it.title, it.sub ?? '', it.note ?? ''])]).join('\n');
-  for (const old of [/stable, rarely touched/i, /\bstale\b/i, /churn/i, /shared lib/i, /healthy, active/i, /overgrown/i, /risky/i]) assert.doesNotMatch(text, old);
+  // (debris is stale work by name, R13: "stale" as a planet's meaning is the Nov 3 one, so the debris group is left out of that check)
+  const textOf = (groups) => groups.flatMap((g) => [g.title, g.note, ...g.items.flatMap((it) => [it.title, it.sub ?? '', it.note ?? ''])]).join('\n');
+  const text = textOf(GROUPS), looks = textOf(GROUPS.filter((g) => g.id !== 'debris'));
+  for (const old of [/stable, rarely touched/i, /churn/i, /shared lib/i, /healthy, active/i, /overgrown/i, /risky/i]) assert.doesNotMatch(text, old);
+  assert.doesNotMatch(looks, /\bstale\b/i);
   const { sludge, ...lime } = H.VENDORED.acid.set; // its ochre sludge reuses the sand ramp: the lime and violet roles
   const acid = new Set(hexes(lime));
   assert.deepEqual(hexes(V2_PLANET_RAMPS).filter((x) => acid.has(x)), [], 'the shipped world palette holds no acid-lime colour');
@@ -42,7 +45,7 @@ test('R9: no Nov 3 meanings and no acid lime outside the history view', () => {
 });
 
 test('R10: every family is a dated timeline, oldest to final, each step saying what changed and why', () => {
-  assert.deepEqual(H.FAMILY_IDS, ['crew', 'planets', 'toxic', 'lava', 'clouds', 'rings', 'palettes', 'depth', 'fx', 'drones']);
+  assert.deepEqual(H.FAMILY_IDS, ['crew', 'planets', 'toxic', 'lava', 'clouds', 'rings', 'debris', 'palettes', 'depth', 'fx', 'drones']);
   const rows = [];
   for (const f of H.FAMILIES) {
     assert.ok(f.title && f.note, f.id);

@@ -17,6 +17,7 @@ import { SPACE as LAB_SPACE } from '../explorations/astronaut-lab/crew.js';
 import { makeDrone, layout as droneLayout, extents as droneExtents } from '../drone-lab/drone.js';
 import { contributorKey, eyeGlowKey } from './palette.js';
 import { droneLook, droneCell, droneCamera, pixK, ZOOM } from './drones.js';
+import { debrisSpec } from './debris-spec.js';
 
 export { renderer, camera, controls, frameWidth };
 
@@ -96,6 +97,7 @@ export class Stage {
   syncPlanet(p, it) {
     p.setExtras({ moons: it.moons, halo: it.halo, artefacts: artOpt(it), teal: it.artTeal, cloudShadow: it.cloudShadow, lavaMode: it.lavaMode });
     p.rebuild(it.seed, it.biome, it.ring, it.cover, { inner: it.ringInner, width: it.ringWidth }, it.size, it.float);
+    p.setDebris(debrisSpec(it)); // after rebuild, as the viewer: the pieces scale with the planet
     p.moons.forEach((m, i) => { Object.assign(m, it.moonOrbits[i]); m.mesh.scale.setScalar(m.size); });
     const { surface, haze, halo, sky, ringTilt } = p.parts;
     // Isolation toggles (moons, rings or clouds on their own), applied after rebuild and setExtras on

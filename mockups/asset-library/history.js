@@ -145,6 +145,11 @@ const lineup = () => ({
   render: { depth: false },
 });
 
+// The debris family: 8 of the viewer's demo items on the lush hero, in a debris-lab direction
+const DEBRIS_NAMES = { A: 'derelicts', B: 'junkyard', C: 'scrap blocks', D: 'tagged canisters', E: 'wake' };
+const debrisOf = (direction) => ({ on: true, count: 8, mix: 'mixed', direction });
+const debrisView = (direction) => solo({ ...LUSH, ring: 'off', debris: debrisOf(direction) });
+
 // ---------------------------------------------------------------- families
 export const FAMILIES = [
   {
@@ -286,6 +291,22 @@ export const FAMILIES = [
       { date: '2026-11-09 20:37', rev: '83dfc76', title: 'meaning open', final: true, tag: 'meaning open', live: solo({ ...LUSH, moons: false }),
         changed: 'Rings stay a modifier in the asset library, out of the product view.',
         why: 'Stale work is debris (R13), so rings no longer mean unmerged branches. They need a new meaning first.' },
+    ],
+  },
+  {
+    // stale work (R13), drawn live: the debris lab's directions are registered with the viewer's debris (debris-spec.js)
+    id: 'debris', title: 'Debris', note: 'stale work near the planet it touches: five directions, then grey and red satellites, then the outlined A3',
+    steps: [
+      { date: '2026-11-10 12:20', rev: 'ce3e46f', title: 'five directions, A–E', exploration: true,
+        live: { ...debrisView('A'), options: { label: 'direction', list: ['A', 'B', 'C', 'D', 'E'].map((id) => ({ id, label: `${id} · ${DEBRIS_NAMES[id]}`, item: { debris: debrisOf(id) } })) } },
+        changed: 'One debris factory, five parameter sets: A derelicts (a silhouette per class on crooked tumbling orbits), B junkyard (two heaps beside the disc), C scrap blocks, D tagged canisters on polar orbits, E a comet-like wake.',
+        why: 'The human (2026-11-09): debris owns all stale work, so rings no longer mean unmerged branches. It must never read as a ring, a moon, an artefact, a drone or a health band. The human picked A.' },
+      { date: '2026-11-10 15:31', rev: '50195cc', title: 'A2: grey and red satellites', exploration: true, live: debrisView('A2'),
+        changed: 'A\'s orbits with grey metal, red paint and real satellite parts: a dish satellite, a snapped boom, a spent stage, a solar array.',
+        why: 'The human: "make them grey and red, to really be noticeable and look more like satellite pieces."' },
+      { date: '2026-11-10 19:12', rev: '5d53455', title: 'A3, a planet modifier', final: true, live: debrisView('A3'),
+        changed: 'Neutral grey metal, a 1 px red outline and two blinking red nav lights per piece (69dcefe); age by paint: intact, weathered, broken. Ported into the viewer as a modifier any planet can carry.',
+        why: 'The human: "more grey and less blue … leave the red as an outline effect … flashing lights on the debris that are red." Two approved exceptions: grey outside BLK 36, and the outline.' },
     ],
   },
   {

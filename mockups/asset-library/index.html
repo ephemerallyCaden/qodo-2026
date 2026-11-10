@@ -110,6 +110,10 @@
     .row .val { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
     .row.wide { grid-template-columns: 92px 1fr; }
     .row.edited > span:first-child { color: var(--hi); }
+    .pieces { display: grid; gap: 3px; margin: 6px 0; }
+    .piece { display: grid; grid-template-columns: 54px 1fr 74px 74px; gap: 3px; align-items: center; }
+    .piece .pid { color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .piece select { padding: 1px 2px; font-size: 11px; min-width: 0; }
     .row input[type=range] { width: 100%; accent-color: var(--hi); margin: 0; }
     .row select { width: 100%; padding: 2px 4px; }
     .row input[type=text] { width: 100%; background: var(--bg); border: 1px solid var(--line2); padding: 2px 5px; }
