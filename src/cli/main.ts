@@ -1,3 +1,4 @@
+import { renameSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { CommetError, EXIT } from '../core/errors.js';
@@ -54,6 +55,21 @@ function saveQodoCache(commonDir: string, text: string): boolean {
   }
 }
 
+/**
+ * Writes one scan's layout and snapshot as a pair (Qodo local r1 #2): both are staged next to
+ * their targets first, so a failed write (a full disk, a target that can't be replaced) leaves the
+ * last pair as it was. The layout goes in first; its `source.head` names the snapshot it belongs to.
+ */
+function writePair(files: [file: string, text: string][]): void {
+  try {
+    for (const [file, text] of files) writeAtomic(`${file}.next`, text);
+    for (const [file] of files) renameSync(`${file}.next`, file);
+  } catch (e) {
+    for (const [file] of files) rmSync(`${file}.next`, { force: true });
+    throw e;
+  }
+}
+
 /** Runs the CLI and returns the exit code (design §8; see EXIT). */
 export async function main(argv: string[], io: Io): Promise<number> {
   const [cmd, ...rest] = argv;
@@ -82,8 +98,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
     const out = args.out && resolve(io.cwd, args.out);
     // With --out, the layout goes beside the snapshot (x.json → x.layout.json), so the state dir keeps one scan's pair.
     const layoutOut = out && out.replace(/(\.json)?$/, '.layout.json');
-    writeAtomic(out || join(stateDir(commonDir), 'snapshot.json'), json);
-    writeAtomic(layoutOut || join(stateDir(commonDir), 'layout.json'), layoutJson);
+    writePair([[layoutOut || join(stateDir(commonDir), 'layout.json'), layoutJson], [out || join(stateDir(commonDir), 'snapshot.json'), json]]);
     io.stdout(formatSummary(snapshot, logs, !args.withQodo) + formatLayout(layout, layoutNotes));
     if (qodoCache !== null && !saveQodoCache(commonDir, qodoCache)) {
       io.stdout('qodo findings cache could not be written; a scan without --with-qodo will not see these counts\n');

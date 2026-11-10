@@ -100,15 +100,44 @@ export async function mergeSides(git: Git, commits: LineageCommit[], lineage: Li
   const seqOf = new Map(seqs.map((s) => [commits[s]!.sha, s]));
   const out = await git(['rev-list', '--no-walk', '--parents', ...seqOf.keys()]);
   const merges = out.split('\n').map((l) => l.split(' ')).filter((l) => l.length > 2).map((l) => l[0]!);
-  const topsOf = (c: LineageCommit) => new Set(c.changes.flatMap((ch) => [ch.path, ...(ch.from === undefined ? [] : [ch.from])])
-    .filter((p) => p.includes('/') && !excluded(p)).map((p) => p.slice(0, p.indexOf('/'))));
   for (let i = 0; i < merges.length; i += BRANCH_READS) {
     const batch = merges.slice(i, i + BRANCH_READS);
     const logs = await Promise.all(batch.map((m) => logChanges(git,
       ['log', '--no-merges', '--topo-order', '--reverse', ...DIFF_OPTS, '--name-status', '-z', '--format=%x00%H%x00%ct', `${m}^1..${m}`])));
-    batch.forEach((m, j) => sides.set(seqOf.get(m)!, logs[j]!.map(topsOf)));
+    batch.forEach((m, j) => sides.set(seqOf.get(m)!, sideTops(logs[j]!, excluded)));
   }
   return sides;
+}
+
+const topOf = (p: string) => p.slice(0, p.indexOf('/'));
+
+/**
+ * Each side commit's top-level folders, by their names at the merge: a folder the branch renamed
+ * later (most of its moved files going to one new top-level name) is counted under its new name,
+ * so its earlier commits still count for it (Qodo local r1 #1).
+ */
+function sideTops(side: LineageCommit[], excluded: (path: string) => boolean): Set<string>[] {
+  const atMerge = new Map<string, string>();
+  const name = (top: string) => atMerge.get(top) ?? top;
+  const out: Set<string>[] = [];
+  for (let i = side.length - 1; i >= 0; i--) {
+    const changes = side[i]!.changes;
+    const paths = changes.flatMap((ch) => (ch.from === undefined ? [ch.path] : [ch.path, ch.from])).filter((p) => p.includes('/') && !excluded(p));
+    out[i] = new Set(paths.map((p) => name(topOf(p))));
+    const moved = new Map<string, Map<string, number>>();
+    for (const ch of changes) {
+      if (ch.status !== 'R' || ch.from === undefined || !ch.from.includes('/') || !ch.path.includes('/') || excluded(ch.from) || excluded(ch.path)) continue;
+      const [from, to] = [topOf(ch.from), topOf(ch.path)];
+      if (from === to) continue;
+      const t = moved.get(from) ?? new Map<string, number>();
+      moved.set(from, t.set(to, (t.get(to) ?? 0) + 1));
+    }
+    for (const [from, t] of moved) {
+      const [to] = [...t].sort((a, b) => b[1] - a[1] || byCodepoint(a[0], b[0]))[0]!;
+      atMerge.set(from, name(to));
+    }
+  }
+  return out;
 }
 
 const MARKERS = new Map<string, keyof DebtCounts>(DEBT_KEYS.map((k) => [k.toUpperCase(), k]));

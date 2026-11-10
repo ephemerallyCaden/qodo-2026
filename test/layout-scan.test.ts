@@ -1,7 +1,7 @@
 // Issue #18 through the scan: `commet scan` writes layout.json, the golden on the structure fixture
 // (test/fixtures/build/structure.ts), and AC3, AC8 and AC9 on real git history.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -19,6 +19,7 @@ import { SELF } from './fixtures/build/basic.js';
 import { buildStructureRepo, scanStructure, type StructureRepo } from './fixtures/build/structure.js';
 import { cli } from './fixtures/cli.js';
 import { planetAt } from './fixtures/layout.js';
+import { miniRepo } from './fixtures/mini.js';
 
 const GOLDEN = join(import.meta.dirname, 'golden/structure.layout.json');
 const NO_LOGS = mkdtempSync(join(tmpdir(), 'commet-layout-claude-'));
@@ -112,6 +113,26 @@ describe('#18 AC8: partners look through a merge (real git)', () => {
     expect(partners).toEqual({ pkg: 'core', svc: 'api', ext: 'pkg' });
     expect(['pkg', 'svc', 'ext'].map((p) => dirPath(planet(p).partner))).toEqual(['core', 'api', 'pkg']);
     expect(['pkg', 'svc', 'ext'].map((p) => planet(p).bornSeq)).toEqual([27, 27, 27]);
+  });
+});
+
+describe('local Qodo review (#18 r1)', () => {
+  it('#2: a failed layout write leaves the last snapshot and layout as they were', async () => {
+    const r = miniRepo([{ id: 'one', at: '2026-10-01T10:00:00Z', path: 'src/a.ts', lines: ['export const a = 1;'] }]);
+    const state = join(r.dir, '.git/commet');
+    expect((await cli(['scan', '--no-ingest'], r.dir, { CLAUDE_CONFIG_DIR: NO_LOGS })).code).toBe(0);
+    const before = readFileSync(join(state, 'snapshot.json'), 'utf8');
+    writeFileSync(join(r.dir, 'src/b.ts'), 'export const b = 2;\n');
+    execFileSync('git', ['add', '-A'], { cwd: r.dir });
+    execFileSync('git', ['commit', '-qm', 'two'], { cwd: r.dir, env: { ...process.env, GIT_AUTHOR_NAME: SELF.name, GIT_AUTHOR_EMAIL: SELF.email,
+      GIT_COMMITTER_NAME: SELF.name, GIT_COMMITTER_EMAIL: SELF.email, GIT_AUTHOR_DATE: '2026-10-02T10:00:00Z', GIT_COMMITTER_DATE: '2026-10-02T10:00:00Z' } });
+    // A layout.json that can't be replaced (a folder holding a file).
+    rmSync(join(state, 'layout.json'));
+    mkdirSync(join(state, 'layout.json', 'x'), { recursive: true });
+    const failed = await cli(['scan', '--no-ingest'], r.dir, { CLAUDE_CONFIG_DIR: NO_LOGS });
+    expect(failed.code).toBe(1);
+    expect(readFileSync(join(state, 'snapshot.json'), 'utf8')).toBe(before);
+    expect(readdirSync(state).filter((f) => f.endsWith('.next'))).toEqual([]);
   });
 });
 

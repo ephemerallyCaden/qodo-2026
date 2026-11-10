@@ -426,6 +426,23 @@ describe('#18 AC8: partners look through a merge (pure)', () => {
   });
 });
 
+describe('local Qodo review (#18 r1)', () => {
+  it('#1: a folder renamed on the merged branch keeps the evidence of its commits under the old name', async () => {
+    // The branch makes tmp/ with core/ twice, then renames tmp/ to pkg/ and merges: pkg/'s partner is core/ (2 of 3).
+    const commits = [[A('core/a.ts')], [A('pkg/p.ts'), M('core/a.ts')]];
+    const log = lineageCommits(commits);
+    const git = async (args: string[]) => (args[0] === 'rev-list' ? `${log[1]!.sha} ${log[0]!.sha} ${'f'.repeat(40)}\n`
+      : `\0${'b'.repeat(40)}\x00100\0\nA\0tmp/p.ts\0M\0core/a.ts\0`
+        + `\0${'c'.repeat(40)}\x00200\0\nM\0tmp/p.ts\0M\0core/a.ts\0`
+        + `\0${'d'.repeat(40)}\x00300\0\nR100\0tmp/p.ts\0pkg/p.ts\0`);
+    const sides = await mergeSides(git, log, buildLineage(log, () => false), () => false);
+    expect(sides.get(1)).toEqual([new Set(['pkg', 'core']), new Set(['pkg', 'core']), new Set(['tmp', 'pkg'])]);
+    const w = world(commits, { sides });
+    expect(w.snapshot.dirs.find((d) => d.path === 'pkg')!.partner).toBe(w.snapshot.dirs.find((d) => d.path === 'core')!.id);
+    expect(planet(run(w), 'pkg').partner).toBe(planet(run(w), 'core').dirId);
+  });
+});
+
 describe('#18 edge cases', () => {
   it('an empty repo has a star and nothing else', () => {
     const l = run(world([[]]));
