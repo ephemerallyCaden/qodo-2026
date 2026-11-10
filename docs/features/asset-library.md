@@ -26,9 +26,9 @@ Design answers (2026-11-06):
 - [ ] R8 **Local-only and deterministic:** the server is 127.0.0.1 only, there's no network at runtime, and the same URL always renders the same pixels.
 
 **Round 2 (human, 2026-11-09)**
-- [ ] R9 **Current looks only, labelled by meaning:** the toxic planet is the ember health band (#19), not the old acid-lime look. Planet tiles say what their look means (lava, toxic, ash and healthy bands; lush, ocean and ice as the three healthy looks; gas giant and barren moon as library extras), per the art direction §6. Rings are badged "meaning open".
-- [ ] R10 **Iteration view:** a history of the art, showing how each asset family got to its final look (crew, planets and biomes, toxic, lava, clouds, rings, palettes, depth, ASCII FX, drones). Each family is a dated timeline, oldest to final, and each step says what changed and why. Steps that the current code can still render (an old palette or parameter set) are live on the stage; the others show their archived render, badged "archived image". The final step is marked final.
-- [ ] R11 **History stays local:** archived renders are read from `<main-checkout>/.archive/art-iteration/` (gitignored, local only) through the server's allowlist. They aren't copied into git. Without the archive the view still works and says the images aren't available.
+- [x] R9 **Current looks only, labelled by meaning:** the toxic planet is the ember health band (#19), not the old acid-lime look. Planet tiles say what their look means (lava, toxic, ash and healthy bands; lush, ocean and ice as the three healthy looks; gas giant and barren moon as library extras), per the art direction §6. Rings are badged "meaning open".
+- [x] R10 **Iteration view:** a history of the art, showing how each asset family got to its final look (crew, planets and biomes, toxic, lava, clouds, rings, palettes, depth, ASCII FX, drones). Each family is a dated timeline, oldest to final, and each step says what changed and why. Steps that the current code can still render (an old palette or parameter set) are live on the stage; the others show their archived render, badged "archived image". The final step is marked final.
+- [x] R11 **History stays local:** archived renders are read from `<main-checkout>/.archive/art-iteration/` (gitignored, local only) through the server's allowlist. They aren't copied into git. Without the archive the view still works and says the images aren't available.
 
 ## Assumptions
 - [x] The asset viewer's modules can be reused. astronaut.js, artefacts.js, planet-ramps.js, faces.js and palette-map.js are ES modules; viewer.js currently builds its UI at import time and exports little, so a small behaviour-preserving extraction (planet/moon/ring factories) may be needed. The asset viewer's tests must stay green and its output pixel-identical.
@@ -40,7 +40,8 @@ Open the library → browse the catalogue → click an asset → it renders on t
 
 ## Tasks
 - Task: build the asset library in `mockups/asset-library/` (feature agent, branch feature/asset-library), covering R1–R8, in milestones.
-- Task: R9–R11 (feature agent, branch feature/asset-library), after the ember toxic branch (feature/19-toxic-band) is merged into the library line.
+- Task: R9–R11 (feature agent, branch feature/asset-library): done, a6cc792..68da3d9 (library 40/40, viewer 26/26). The history tab has 10 family timelines; the `/art-archive/` route serves an exact allowlist of PNG and GIF files on 127.0.0.1, read-only, with realpath containment.
+- Next: dustier-ash comparison (planet-health-looks P2), hard-coding the asset viewer's bind, and a Drones group (after the drone tweaks land).
 
 ## Completion
 - Merged: —
