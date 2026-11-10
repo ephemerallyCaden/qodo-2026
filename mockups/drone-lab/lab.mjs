@@ -18,6 +18,7 @@ import { PALETTES, SLOTS, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS, showValue } from './params.js';
 import { VARIANTS, PICKED, FINAL, FINAL_PARAMS } from './variants.js';
 import { LOOP, MOTION_LOOP, CYCLES } from './drone.js';
+import { BRANDS } from './brands.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
@@ -28,6 +29,21 @@ const FPS = 15;
 const wanted = process.argv.slice(2);
 const tag = (v) => `${v.id} · ${v.name}${v.id === PICKED ? ' (picked: see D-final)' : ''}`;
 const want = (n) => !wanted.length || wanted.includes(n);
+
+// Thresholds (documented in the README): a pair is distinct at a scale when, in every view,
+// its silhouettes overlap little enough OR its mean colours differ enough:
+//   score = max((1 - IoU) / A4_SHAPE, ΔE / A4_COLOUR) >= 1.
+// A4_SHAPE 0.25: after the best alignment at most 75% of the union is shared.
+// A4_COLOUR 0.06 OKLab: three just-noticeable differences (~0.02 each), about half of BLK 36's
+// smallest step between neighbouring ramp tones (0.1).
+const A4_SHAPE = 0.25, A4_COLOUR = 0.06;
+const SCALES = [
+  { name: 'crew close-up', zoom: 1, w: 80, h: 80, gate: true },
+  { name: 'system distance', zoom: 2.756 / 5.983, w: 40, h: 40, gate: true }, // lab.js SYSTEM_DIST
+  { name: 'far (mid depth step, info only)', zoom: 2.756 / 18.8, w: 24, h: 24, gate: false },
+];
+const A4_VIEWS = [['front', 0], ['3/4', -0.75]];
+
 
 // The crew colours must be what the asset viewer resolves for BLK 36; palettes must fill every slot.
 const blk = mapPalette('blk-36');
@@ -219,6 +235,46 @@ try {
     console.log('  face probe: working = glyphs and no eyes, idle = eyes and no glyphs (A–E and D-final)');
   }
 
+  // ---------------------------------------------------------------- brand drones (phase 2)
+  const bheads = BRANDS.map((b) => [b.name, b.signature]);
+  if (want('brands')) {
+    // All 11 from the front, 3/4 and side at the standard 180p density, x3; names are labels.
+    const { stats } = await render('brand lineup', {
+      title: 'drone lab · brand drones (variations of D-final) · 180p crops at x3 · idle t = 0.9 s · original designs, not affiliated with or endorsed by these companies',
+      w: 100, h: 100, scale: 3, rowLabelW: 56, headH: 96, heads: bheads,
+      rows: VIEWS.map(([label, yaw]) => ({ label, cells: BRANDS.map((b) => ({ brand: b.id, yaw, t: STILL_T })) })),
+    }, path.join(OUT, 'brands-lineup.png'));
+    const hs = stats.filter((s) => s.row === 0).map((s, i) => `${BRANDS[i].id} ${s.heightPx}px`);
+    console.log(`  brand heights at 180p (front, smoke off): ${hs.join(', ')}`);
+  }
+
+  if (want('brand-closeups')) {
+    // Each brand at the 2x close-up: front, 3/4, side, back 3/4; a lab-only eye prototype, if
+    // the brand has one, is a fifth tile badged "new glyph, needs approval" (front, V2 fallback beside it).
+    for (const b of BRANDS) {
+      const cells = [[0, 'front'], [-0.75, '3/4'], [-Math.PI / 2, 'side'], [Math.PI * 0.8, 'back 3/4']].map(([yaw, caption]) => ({ brand: b.id, yaw, t: STILL_T, zoom: 2, caption }));
+      if (b.protoEyes != null) cells.splice(1, 0, { brand: b.id, params: { eyes: b.protoEyes }, yaw: 0, t: STILL_T, zoom: 2, caption: `front, ${PARAMS.find((p) => p.key === 'eyes').options[b.protoEyes]}`, badge: 'new glyph, needs approval' });
+      await render(`closeup ${b.id}`, {
+        title: `${b.name} · 2x close-up (camera at half distance), x3 · ${b.signature}`,
+        w: 160, h: 160, scale: 3,
+        rows: [{ cells }],
+      }, path.join(OUT, `brand-${b.id}-closeup.png`));
+    }
+  }
+
+  if (want('a4')) {
+    // A4: every pair of the 11 drones must be told apart at the crew close-up and at system
+    // distance, by silhouette or by colour. Per drone, view and scale: the smoke-off mask and its
+    // mean OKLab colour. Per pair: silhouette IoU at the best alignment (centroids matched, then
+    // the best integer shift within 2 px) and the OKLab distance of the mean colours.
+    const a4 = await brandDistinctness(page);
+    await writeFile(path.join(OUT, 'brands-a4.json'), `${JSON.stringify(a4, null, 1)}\n`);
+    for (const s of a4.scales) {
+      console.log(`  A4 ${s.name} (drone ~${s.heightPx}px tall): closest pair ${s.closest.a}–${s.closest.b} (score ${s.closest.score.toFixed(2)}: IoU ${s.closest.iou.toFixed(2)}, ΔE ${s.closest.dE.toFixed(3)}); min ΔE ${s.minDE.a}–${s.minDE.b} ${s.minDE.dE.toFixed(3)}; max IoU ${s.maxIoU.a}–${s.maxIoU.b} ${s.maxIoU.iou.toFixed(2)}`);
+      if (s.gate) for (const p of s.pairs) if (p.score < 1) problems.push(`A4 ${s.name}: ${p.a} and ${p.b} too alike (IoU ${p.iou.toFixed(2)}, ΔE ${p.dE.toFixed(3)}, score ${p.score.toFixed(2)} < 1)`);
+    }
+  }
+
   if (want('identity')) {
     // Pixel identity: A–E and D-final must render exactly as they did before the brand
     // geometry existed. test/identity.json holds a hash per tile, recorded from the pre-brand
@@ -253,6 +309,66 @@ try {
   if (want('params')) await writeFile(path.join(OUT, 'params.md'), await paramsDoc());
 } finally {
   await browser.close();
+}
+
+// ---------------------------------------------------------------- A4 distinctness
+async function brandDistinctness(page) {
+  const { rgbOklab, dist } = await import('./oklab.js');
+  const space = parseInt(SPACE.slice(1), 16);
+  const scales = [];
+  for (const sc of SCALES) {
+    const looks = {};
+    for (const b of BRANDS) {
+      looks[b.id] = [];
+      for (const [, yaw] of A4_VIEWS) {
+        const rgb = await page.evaluate(([id, y, z, w, h]) => window.lab.pixels({ brand: id, yaw: y, t: 0.9, zoom: z }, w, h), [b.id, yaw, sc.zoom, sc.w, sc.h]);
+        const mask = rgb.map((c) => c !== space);
+        let n = 0, cx = 0, cy = 0, L = 0, A = 0, B = 0, top = sc.h, bot = -1;
+        mask.forEach((m, i) => {
+          if (!m) return;
+          const x = i % sc.w, y = (i - x) / sc.w, c = rgb[i];
+          const [l, a, bb] = rgbOklab(c >> 16, (c >> 8) & 255, c & 255);
+          n++; cx += x; cy += y; L += l; A += a; B += bb; top = Math.min(top, y); bot = Math.max(bot, y);
+        });
+        if (!n) throw new Error(`A4: ${b.id} rendered empty at ${sc.name}`);
+        looks[b.id].push({ mask, n, cx: cx / n, cy: cy / n, mean: [L / n, A / n, B / n], height: bot - top + 1 });
+      }
+    }
+    const iouOf = (p, q) => {
+      let best = 0;
+      const dx0 = Math.round(p.cx - q.cx), dy0 = Math.round(p.cy - q.cy);
+      for (let dy = dy0 - 2; dy <= dy0 + 2; dy++) for (let dx = dx0 - 2; dx <= dx0 + 2; dx++) {
+        let inter = 0;
+        for (let y = 0; y < sc.h; y++) for (let x = 0; x < sc.w; x++) {
+          if (!q.mask[y * sc.w + x]) continue;
+          const X = x + dx, Y = y + dy;
+          if (X >= 0 && Y >= 0 && X < sc.w && Y < sc.h && p.mask[Y * sc.w + X]) inter++;
+        }
+        best = Math.max(best, inter / (p.n + q.n - inter));
+      }
+      return best;
+    };
+    const pairs = [];
+    for (let i = 0; i < BRANDS.length; i++) for (let j = i + 1; j < BRANDS.length; j++) {
+      const a = BRANDS[i].id, b = BRANDS[j].id;
+      const views = A4_VIEWS.map((_, v) => {
+        const iou = iouOf(looks[a][v], looks[b][v]), dE = dist(looks[a][v].mean, looks[b][v].mean);
+        return { iou, dE, score: Math.max((1 - iou) / A4_SHAPE, dE / A4_COLOUR) };
+      });
+      const worst = views.reduce((m, v) => (v.score < m.score ? v : m));
+      pairs.push({ a, b, ...worst, views });
+    }
+    pairs.sort((p, q) => p.score - q.score);
+    const heights = Object.values(looks).map((l) => l[0].height);
+    scales.push({
+      name: sc.name, gate: sc.gate, zoom: sc.zoom, heightPx: Math.round(heights.reduce((s, h) => s + h, 0) / heights.length),
+      closest: pairs[0],
+      minDE: pairs.reduce((m, p) => (p.dE < m.dE ? p : m)), maxIoU: pairs.reduce((m, p) => (p.iou > m.iou ? p : m)),
+      means: Object.fromEntries(Object.entries(looks).map(([id, l]) => [id, l.map((v) => v.mean.map((x) => Math.round(x * 1000) / 1000))])),
+      pairs,
+    });
+  }
+  return { thresholds: { shape: A4_SHAPE, colour: A4_COLOUR }, views: A4_VIEWS.map(([n]) => n), scales };
 }
 
 async function paramsDoc() {

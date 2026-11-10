@@ -12,7 +12,7 @@
 // scene's 24 s loop. All of it is a pure function of t (no Math.random, no wall clock).
 import * as THREE from 'three';
 import { EYES_GLSL } from '../asset-viewer/faces.js';
-import { DEFAULTS } from './params.js';
+import { DEFAULTS, LAB_EYE } from './params.js';
 import { PALETTES } from './palette.js';
 
 export const LIGHT_DIR = new THREE.Vector3(-0.3, 0.55, 0.78).normalize(); // the viewer's top-left key
@@ -23,6 +23,8 @@ export const PUFF_PERIOD = 1.5; // s: each smoke slot fires at most once per per
 export const CYCLES = { bob: 4, sway: 2, drift: 1, puffs: MOTION_LOOP / PUFF_PERIOD };
 export const MAX_PUFFS = 32;
 export const MAX_SPARKS = 6;
+export const MAX_CROWN = 9;
+export const MAX_SKIRT = 8;
 
 const BMIN = [-0.6, -0.62, -0.6];
 const BMAX = [0.6, 0.46, 0.6];
@@ -57,6 +59,14 @@ const FRAG = /* glsl */ `
   uniform int uAccent; uniform float uAccentY, uAccentW;
   uniform int uSmokeOn, uSmokeStyle, uPuffN; uniform vec3 uPuffC[${MAX_PUFFS}], uPuffV[${MAX_PUFFS}]; uniform float uPuffR[${MAX_PUFFS}], uPuffA[${MAX_PUFFS}];
   uniform int uSparkN; uniform vec3 uSparkC[${MAX_SPARKS}]; uniform float uSparkS[${MAX_SPARKS}];
+  // Brand geometry (phase 2); all off by default.
+  uniform float uHeadHex;
+  uniform int uCrownN; uniform vec3 uCrownC[${MAX_CROWN}]; uniform float uCrownR;
+  uniform int uSkirt, uSkirtN; uniform vec3 uSkA[${MAX_SKIRT}], uSkB[${MAX_SKIRT}], uSkC[${MAX_SKIRT}]; uniform float uSkR;
+  uniform int uSnout; uniform vec3 uSnA, uSnB; uniform vec2 uSnR;
+  uniform int uHookN; uniform vec3 uHook[4];
+  uniform int uSplit; uniform float uSplitY;
+  uniform int uGlyphSet, uScrFlat;
   ${EYES_GLSL}
   in vec3 vPosW;
 
@@ -84,6 +94,23 @@ const FRAG = /* glsl */ `
     return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - e;
   }
 
+  // A pointy-top hexagon (flat sides vertical), apothem r across x (Inigo Quilez's hexagon, axes swapped).
+  float sdHex2(vec2 p, float r) {
+    const vec3 k = vec3(-0.866025404, 0.5, 0.577350269);
+    p = abs(p.yx);
+    p -= 2.0 * min(dot(k.xy, p), 0.0) * k.xy;
+    p -= vec2(clamp(p.x, -k.z * r, k.z * r), r);
+    return length(p) * sign(p.y);
+  }
+  // A hexagonal prism along z (the hexagon faces the viewer), its y stretched by 1 / sy. Mirrored in JS.
+  float sdHexPrism(vec3 p, float a, float h, float sy) {
+    float d2 = sdHex2(vec2(p.x, p.y * sy), a) * min(1.0, 1.0 / sy);
+    vec2 w = vec2(d2, abs(p.z) - h);
+    return min(max(w.x, w.y), 0.0) + length(max(w, 0.0));
+  }
+  // The hexagonal head: apothem headW, point to point 2 headH, rounded by the head's corner radius.
+  float dHexHead(vec3 p) { float r = uHeadK.x; return sdHexPrism(p, uHeadB.x - r, uHeadB.z - r, 1.1547 * uHeadB.x / uHeadB.y) - r; }
+
   // The head family: a rounded box blended toward an ellipsoid, tapered toward the bottom,
   // its bottom optionally cut flat (k = corner radius, round, taper, flat). Mirrored in JS.
   float sdShape(vec3 q, vec3 b, vec4 k) {
@@ -97,13 +124,16 @@ const FRAG = /* glsl */ `
 
   float dHead(vec3 p) {
     float d = sdShape(p, uHeadB, uHeadK);
+    if (uHeadHex > 0.001) d = mix(d, dHexHead(p), uHeadHex);
     if (uChin == 1) d = smin(d, length(p - uChinC) - uChinR, 0.03);
+    for (int i = 0; i < ${MAX_CROWN}; i++) { if (i >= uCrownN) break; d = smin(d, length(p - uCrownC[i]) - uCrownR, 0.012); }
     return d;
   }
   // An elliptical ring hugging the head (scaled torus; under-stepped by the march).
   float dRim(vec3 p) { vec3 q = p - uRimC; float m = min(uRimR.x, uRimR.y); return length(vec2((length(q.xz / uRimR) - 1.0) * m, q.y)) - uRimT; }
   float dEar(vec3 p, int s) {
     if (uEars == 1) return sdCyl(p, uEarC[s], vec3(1.0, 0.0, 0.0), uEarR, uEarT, min(uEarT, uEarR) * 0.6);
+    if (uEars == 3) return sdHexPrism(p - uEarC[s], uEarR - 0.004, uEarT - 0.004, 1.0) - 0.004; // hex pod
     vec3 q = p - uEarC[s]; // swept fin
     float c = cos(uEarSweep), sn = sin(uEarSweep);
     q.yz = mat2(c, -sn, sn, c) * q.yz;
@@ -113,7 +143,16 @@ const FRAG = /* glsl */ `
   float dGog(vec3 p, int i) { return sdRoundBox(gogLocal(p, i), uGogB, uGogR); }
   float dCrest(vec3 p) { return sdEllipsoid(p - uCrestC, uCrestB); }
   float dStalk(vec3 p, int i) { return sdCapsule(p, uAntA[i], uAntB[i], uAntR); }
-  float dTip(vec3 p, int i) { return length(p - uAntB[i]) - uAntTip; }
+  float dTip(vec3 p, int i) { return length(p - (uHookN > 0 ? uHook[uHookN - 1] : uAntB[i])) - uAntTip; }
+  float dHook(vec3 p, int i) { return sdCapsule(p, i == 0 ? uAntB[0] : uHook[i - 1], uHook[i], uAntR); }
+  // Under the head: a leg (one capsule), a tentacle (down, then curling out) or a hem scallop (a sphere).
+  float dSkirt(vec3 p, int i) {
+    if (uSkirt == 3) return length(p - uSkA[i]) - uSkR;
+    float d = sdCapsule(p, uSkA[i], uSkB[i], uSkR);
+    if (uSkirt == 2) d = smin(d, sdCapsule(p, uSkB[i], uSkC[i], uSkR * 0.8), 0.006);
+    return d;
+  }
+  float dSnout(vec3 p) { return sdRoundCone(p, uSnA, uSnB, uSnR.x, uSnR.y); }
   float dThr(vec3 p, int i) { return sdRoundCone(p, uThrA[i], uThrB[i], uThrR.x, uThrR.y); }
 
   float mapBody(vec3 p) {
@@ -126,6 +165,9 @@ const FRAG = /* glsl */ `
     }
     if (uTopper == 2) d = smin(d, dCrest(p), 0.01);
     for (int i = 0; i < 4; i++) { if (i >= uThrN) break; d = smin(d, dThr(p, i), K); }
+    for (int i = 0; i < ${MAX_SKIRT}; i++) { if (i >= uSkirtN) break; d = smin(d, dSkirt(p, i), uSkirt == 3 ? uSkR * 0.7 : K); }
+    if (uSnout == 1) d = smin(d, dSnout(p), 0.008);
+    for (int i = 0; i < 4; i++) { if (i >= uHookN) break; d = smin(d, dHook(p, i), K); }
     return d;
   }
   // Smoke: free-floating particles. Round puffs are three blended spheres (a chunky cloud),
@@ -184,16 +226,37 @@ const FRAG = /* glsl */ `
   // Face screen, in yaw/pitch about the head centre (normalised head space), so it wraps any
   // head shape; past 45 degrees of yaw it wraps round the sides like a visor band.
   // xy = screen coords (-1..1, y up), z = superellipse value (< 1 inside).
+  // A flat screen (screenFlat) is planar instead: straight edges on a flat front face.
   vec3 screenQ(vec3 p) {
     vec3 n = p / uHeadB;
     vec2 q = vec2(atan(n.x, n.z) / atan(uScreen.x), (atan(n.y, length(n.xz)) - atan(uScreen.z)) / atan(uScreen.y));
+    if (uScrFlat == 1) q = n.z > 0.2 ? vec2(n.x / n.z / uScreen.x, (n.y / n.z - uScreen.z) / uScreen.y) : vec2(9.0);
     return vec3(q, pow(abs(q.x), uScreen.w) + pow(abs(q.y), uScreen.w));
   }
   // Screen coords -> the V2 32 x 24 eye box, fitted inside the screen at its real aspect.
   float eyeUnit() { return min(2.0 * uEyePhys.x / 32.0, 2.0 * uEyePhys.y / 24.0); }
   vec2 boxP(vec2 q) { return vec2(16.0, 12.0) + vec2(q.x * uEyePhys.x, -q.y * uEyePhys.y) / eyeUnit(); }
+  // Lab-only eye prototypes (never in faces.js; a new crew glyph needs the human's approval):
+  // upright pills, and a prompt (a > chevron and an _ cursor). Same 32 x 24 box and blink as V2.
+  bool labEyeLit(vec2 uv) {
+    const float W = 32.0, CX = 16.0, CY = 12.0, e = 16.0 * 1.12;
+    vec2 P = uv * vec2(32.0, 24.0);
+    P.y = CY + (P.y - CY) / max(uBlink, 0.05);
+    float d;
+    if (uEyes == ${LAB_EYE.pills}) {
+      d = 1e9;
+      for (int k = -1; k <= 1; k += 2) d = min(d, sdRRect(P, vec2(CX + float(k) * W * 0.17, CY), vec2(e * 0.11, e * 0.25), e * 0.11));
+    } else {
+      float a = e * 0.2, s = e * 0.065;
+      vec2 c0 = vec2(CX - W * 0.27, CY - a), c1 = vec2(CX - W * 0.1, CY), c2 = vec2(CX - W * 0.27, CY + a);
+      d = min(sdSeg(P, c0, c1), sdSeg(P, c1, c2)) - s;
+      d = min(d, sdSeg(P, vec2(CX + W * 0.04, CY + a), vec2(CX + W * 0.27, CY + a)) - s);
+    }
+    return d < 0.0;
+  }
   bool eyesLit(vec2 P) {
     vec2 E = vec2(16.0, 12.0) + (P - vec2(16.0, 12.0) - vec2(uEyeXf.x, -uEyeXf.y)) / uEyeXf.z;
+    if (uEyes >= ${LAB_EYE.pills}) return labEyeLit(E / vec2(32.0, 24.0));
     return eyeLit(E / vec2(32.0, 24.0)); // uBlink (set to uEyeXf.w) squashes them
   }
   float hash1(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
@@ -205,6 +268,10 @@ const FRAG = /* glsl */ `
   // pixelates it. Each cell flips to a new hashed glyph a few times a second on its own phase
   // (typing); coverage fills cells in and clears them out in a hashed order (the scramble).
   const int GLYPH_N = 17;
+  // Brand glyph sets: an asterisk spinner (* + .), diff marks (+ . = x), prompt characters (> ; { } 0 1).
+  const int SET_STAR[4] = int[4](14, 14, 3, 4);
+  const int SET_REVIEW[6] = int[6](3, 3, 4, 4, 13, 1);
+  const int SET_PROMPT[6] = int[6](11, 9, 7, 8, 15, 16);
   const int GLYPHS[119] = int[119](0, 14, 17, 21, 17, 14, 0, 0, 17, 10, 4, 10, 17, 0, 0, 31, 17, 17, 17, 31, 0, 0, 4, 4, 31, 4, 4, 0, 0, 0, 0, 4, 0, 0, 0, 1, 2, 2, 4, 8, 8, 16, 16, 8, 8, 4, 2, 2, 1, 6, 4, 4, 8, 4, 4, 6, 12, 4, 4, 2, 4, 4, 12, 0, 4, 0, 0, 4, 4, 8, 2, 4, 8, 16, 8, 4, 2, 8, 4, 2, 1, 2, 4, 8, 10, 10, 31, 10, 31, 10, 10, 0, 0, 31, 0, 31, 0, 0, 0, 4, 21, 14, 21, 4, 0, 14, 17, 19, 21, 25, 17, 14, 4, 12, 4, 4, 4, 4, 14);
   bool glyphLit(vec2 q, out int tone) {
     tone = 3;
@@ -219,14 +286,24 @@ const FRAG = /* glsl */ `
     vec2 cq = ((ci + 0.5) * cell - n * cell * 0.5) / S * 1.2; // keep cells well inside the screen
     if (pow(abs(cq.x), uScreen.w) + pow(abs(cq.y), uScreen.w) > 1.0) return false;
     float id = ci.x + ci.y * 17.0;
+    // Review marks: a reading line scans down the screen; read rows keep their marks.
+    float scan = mod(floor(uGlyph.y * 2.5), n.y + 2.0);
+    if (uGlyphSet == 2 && ci.y > scan) return false;
     if (hash1(id + 3.1) >= uGlyph.x) return false;
-    float flip = floor(uGlyph.y * uGlyph.z + hash1(id + 7.7) * 4.0);
+    float flip = uGlyphSet == 2 ? floor(uGlyph.y * 2.5 / (n.y + 2.0)) : floor(uGlyph.y * uGlyph.z + hash1(id + 7.7) * 4.0);
     float h = hash2(vec2(id, flip));
     if (h > 0.86) return false; // now and then a blank: the cursor moving on
     int g = int(hash2(vec2(id + 0.5, flip + 0.25)) * float(GLYPH_N)) % GLYPH_N;
+    if (uGlyphSet > 0) {
+      float hg = hash2(vec2(id + 0.5, flip + 0.25));
+      if (uGlyphSet == 1) g = SET_STAR[int(hg * 4.0) % 4];
+      else if (uGlyphSet == 2) g = SET_REVIEW[int(hg * 6.0) % 6];
+      else g = SET_PROMPT[int(hg * 6.0) % 6];
+    }
     ivec2 b = ivec2(floor((P - ci * cell) / gp - 0.5));
     if (b.x < 0 || b.x > 4 || b.y < 0 || b.y > 6) return false;
     tone = h < 0.22 ? 1 : h < 0.6 ? 2 : 3;
+    if (uGlyphSet == 2) tone = ci.y == scan ? 3 : 1;
     return ((GLYPHS[g * 7 + b.y] >> (4 - b.x)) & 1) == 1;
   }
   bool glint(vec2 q) {
@@ -240,10 +317,11 @@ const FRAG = /* glsl */ `
     if (uAccent == 1) return abs(n.y - uAccentY) < uAccentW;
     if (uAccent == 2) return n.z > 0.55 && abs(n.x) < uAccentW * 1.6 && abs(n.y - uAccentY) < uAccentW;
     if (uAccent == 3) return abs(p.x) < uAccentW * uHeadB.x * 0.5 && n.y > -0.25;
+    if (uAccent == 4) return n.y > uAccentY;
     return false;
   }
 
-  // Colour region of a body point: 0 shell, 1 trim, 2 accent, 3 screen, 4 glow, 6 goggle lens.
+  // Colour region of a body point: 0 shell, 1 trim, 2 accent, 3 screen, 4 glow, 6 goggle lens, 8 shell (hem).
   int region(vec3 p, out vec2 sq) {
     sq = vec2(0.0);
     float best = dHead(p), d;
@@ -260,6 +338,10 @@ const FRAG = /* glsl */ `
     }
     if (uTopper == 2) { d = dCrest(p); if (d < best) { best = d; part = 2; } }
     for (int i = 0; i < 4; i++) { if (i >= uThrN) break; d = dThr(p, i); if (d < best) { best = d; part = 7; gi = i; } }
+    // Legs and tentacles take the accent slot; hem scallops are the head's own shell.
+    for (int i = 0; i < ${MAX_SKIRT}; i++) { if (i >= uSkirtN) break; d = dSkirt(p, i); if (d < best) { best = d; part = uSkirt == 3 ? 8 : 2; } }
+    if (uSnout == 1) { d = dSnout(p); if (d < best) { best = d; part = 1; } }
+    for (int i = 0; i < 4; i++) { if (i >= uHookN) break; d = dHook(p, i); if (d < best) { best = d; part = 1; } }
     if (part == 0) {
       vec3 s = screenQ(p);
       sq = s.xy;
@@ -319,6 +401,7 @@ const FRAG = /* glsl */ `
             vec3 refl = reflect(rd, n);
             c = (refl.y > 0.18 && b >= 2) ? uScr[1] : uScr[0];
             if (r == 3) {
+              if (uSplit == 1) c = sq.y < uSplitY ? uScr[1] : uScr[0];
               int tone;
               if (glyphLit(sq, tone)) c = uFaceDebug == 1 ? vec3(0.0, 1.0, 0.0) : uGlow[tone];
               else if (uEyesOn == 1 && eyesLit(boxP(sq))) c = uFaceDebug == 1 ? vec3(1.0, 0.0, 0.0) : uGlow[3];
@@ -389,6 +472,21 @@ export function shapeField(b, k) {
     return d;
   };
 }
+/** The front-facing hexagonal prism head (dHexHead in the shader): apothem b.x, point to point 2 b.y, corner radius r. */
+export function hexField(b, r) {
+  const a = b.x - r, h = b.z - r, sy = (1.1547 * b.x) / b.y;
+  const K = [-0.866025404, 0.5, 0.577350269];
+  return (p) => {
+    // sdHex2 on (x, y * sy) with the axes swapped (point up)
+    let px = Math.abs(p.y * sy), py = Math.abs(p.x);
+    const m = 2 * Math.min(K[0] * px + K[1] * py, 0);
+    px -= m * K[0]; py -= m * K[1];
+    px -= Math.min(Math.max(px, -K[2] * a), K[2] * a); py -= a;
+    const d2 = Math.hypot(px, py) * Math.sign(py) * Math.min(1, 1 / sy);
+    const wz = Math.abs(p.z) - h;
+    return Math.min(Math.max(d2, wz), 0) + Math.hypot(Math.max(d2, 0), Math.max(wz, 0)) - r;
+  };
+}
 /** Where a ray from inside a field leaves it (bisection). */
 export function exitAlong(field, from, dir, maxT = 0.8) {
   let lo = 0, hi = maxT;
@@ -421,7 +519,9 @@ const LAYOUTS = [
 /** The rest layout of a parameter set: every part's size and place, in drone units. */
 export function layout(P) {
   const head = { b: V(P.headW, P.headH, P.headD), k: [P.headCorner * Math.min(P.headW, P.headH, P.headD), P.headRound, P.headTaper, P.headFlat] };
-  const headF = shapeField(head.b, head.k);
+  const shapeF = shapeField(head.b, head.k);
+  const hexF = P.headHex > 0.001 ? hexField(head.b, head.k[0]) : null;
+  const headF = hexF ? (p) => mix(shapeF(p), hexF(p), P.headHex) : shapeF;
   const headBottom = -exitAlong(headF, V(), V(0, -1, 0));
   const chin = { on: P.chin === 1, c: V(0, headBottom - 0.15 * P.chinR, -0.1 * P.headD), r: P.chinR };
   const core = chin.on ? (p) => smin(headF(p), p.clone().sub(chin.c).length() - chin.r, 0.03) : headF;
@@ -432,7 +532,7 @@ export function layout(P) {
   const rim = { c: V(0, rimY, 0), r: [exitAlong(headF, V(0, rimY, 0), V(1, 0, 0)) + 0.35 * P.rimT, exitAlong(headF, V(0, rimY, 0), V(0, 0, 1)) + 0.35 * P.rimT] };
 
   const earY = P.earY * P.headH;
-  const earX = exitAlong(headF, V(0, earY, 0), V(1, 0, 0)) + (P.ears === 1 ? 0.15 : 0.3) * P.earT;
+  const earX = exitAlong(headF, V(0, earY, 0), V(1, 0, 0)) + (P.ears === 3 ? 0.25 * P.earR : (P.ears === 1 ? 0.15 : 0.3) * P.earT);
   const ears = [V(-earX, earY, 0), V(earX, earY, 0)];
 
   const gog = [-1, 1].map((s) => {
@@ -445,11 +545,28 @@ export function layout(P) {
   const crest = { c: V(0, top - 0.012, -0.12 * P.headD), b: V(0.014, P.crestH, 0.6 * P.headD) };
 
   const ant = [];
-  for (let i = 0; i < P.antenna; i++) {
+  const nAnt = P.antenna === 3 ? 1 : P.antenna;
+  for (let i = 0; i < nAnt; i++) {
     const s = P.antenna === 2 ? (i === 0 ? -1 : 1) : 0;
     const base = surfacePoint(headF, V(s * 0.45 * P.headW, P.headH, -0.12 * P.headD)).multiplyScalar(0.97);
     const lean = P.antenna === 2 ? V(s * Math.sin(P.antTilt), Math.cos(P.antTilt), -0.15) : V(0, Math.cos(P.antTilt), -Math.sin(P.antTilt));
     ant.push({ base, dir: lean.normalize() });
+  }
+  // The question hook: the stalk, then a curl over to its right and back down (a "?", seen from the front).
+  const hook = [];
+  if (P.antenna === 3) {
+    const a = ant[0], top = a.base.clone().addScaledVector(a.dir, P.antL), L = P.antL;
+    for (const [x, y] of [[0.35, 0.25], [0.4, 0.62], [0.08, 0.86], [-0.2, 0.7]]) hook.push(top.clone().add(V(x * L, y * L, 0.1 * L)));
+  }
+
+  // Brand parts. Crown puffs sit on the head's outline in an arc over the top (a cloud head).
+  const crown = [];
+  if (P.crown === 1) {
+    for (let i = 0; i < P.crownN; i++) {
+      const th = P.crownN === 1 ? 0 : -P.crownArc + (2 * P.crownArc * i) / (P.crownN - 1);
+      const from = V(0, 0, P.crownZ * P.headD), dir = V(Math.sin(th) * P.headW, Math.cos(th) * P.headH, 0).normalize();
+      crown.push(from.addScaledVector(dir, exitAlong(headF, from, dir) + 0.3 * P.crownR));
+    }
   }
 
   const thr = LAYOUTS[P.thrusters](P.thrSpread).map(([root, axis]) => {
@@ -460,7 +577,52 @@ export function layout(P) {
   });
   const nozzleBottom = Math.min(...thr.map((n) => n.b.y - P.thrR * P.thrFlare));
 
-  return { P, head, headF, core, chin, top, bottom: Math.min(bottom, nozzleBottom), rim, ears, gog, crest, ant, thr };
+  // Under the head: legs in two pairs (a centre gap for the jet), a ring of tentacles that
+  // curl outward, or a ring of hem scallops round the bottom rim. a -> b (-> c) per part.
+  const skirt = [];
+  const down = V(0, -1, 0);
+  if (P.skirt === 1) {
+    const side = Math.max(1, Math.floor(P.skirtN / 2));
+    const xs = [];
+    for (let j = 0; j < side; j++) xs.push(side === 1 ? 1 : 0.4 + (0.6 * j) / (side - 1));
+    const all = [...xs.map((x) => -x), ...xs].concat(P.skirtN % 2 ? [0] : []);
+    for (const x of all) {
+      const from = V(x * P.skirtSpread * P.headW, 0, P.skirtZ * P.headD);
+      const a = from.clone().addScaledVector(down, exitAlong(core, from, down, 1) - 0.4 * P.skirtR);
+      skirt.push({ a, b: a.clone().addScaledVector(down, P.skirtL), c: null });
+    }
+  } else if (P.skirt === 2) {
+    for (let i = 0; i < P.skirtN; i++) {
+      const ph = ((i + 0.5) / P.skirtN) * TAU;
+      const out = V(Math.sin(ph), 0, Math.cos(ph));
+      // On the rim just above the bottom, pulled in to skirtSpread of its radius.
+      const y = bottom + 0.6 * P.skirtR, rimAt = V(0, y, 0);
+      const a = out.clone().multiplyScalar(exitAlong(core, rimAt, out, 1) * P.skirtSpread).setY(y);
+      const b = a.clone().addScaledVector(down, P.skirtL);
+      const c = b.clone().addScaledVector(out, P.skirtCurl * P.skirtL * 0.8).add(V(0, P.skirtCurl * P.skirtL * 0.4, 0));
+      skirt.push({ a, b, c, out });
+    }
+  } else if (P.skirt === 3) {
+    const y = Math.max(bottom, -P.headH) + 0.25 * P.skirtR;
+    const rx = exitAlong(headF, V(0, y, 0), V(1, 0, 0)), rz = exitAlong(headF, V(0, y, 0), V(0, 0, 1));
+    for (let i = 0; i < P.skirtN; i++) {
+      const ph = (i / P.skirtN) * TAU;
+      const out = V(Math.sin(ph), 0, Math.cos(ph));
+      skirt.push({ a: V(out.x * rx * P.skirtSpread, y - 0.2 * P.skirtR, out.z * rz * P.skirtSpread), b: null, c: null, out });
+    }
+  }
+  const skirtBottom = Math.min(...skirt.map((k) => Math.min(k.a.y, k.b?.y ?? 1, k.c?.y ?? 1) - P.skirtR), 1);
+
+  // The snout: a tapered cone out of the lower face, drooping forward.
+  let snout = null;
+  if (P.snout === 1) {
+    const root = surfacePoint(headF, V(0, P.snoutY * P.headH, P.headD));
+    const dir = V(0, -P.snoutDrop, 1).normalize();
+    const a = root.clone().addScaledVector(dir, -0.3 * P.snoutR);
+    snout = { a, b: a.clone().addScaledVector(dir, P.snoutL), r: [P.snoutR, 0.5 * P.snoutR] };
+  }
+
+  return { P, head, headF, core, chin, top, bottom: Math.min(bottom, nozzleBottom, skirtBottom, snout ? snout.b.y - snout.r[1] : 1), rim, ears, gog, crest, ant, hook, crown, skirt, snout, thr };
 }
 
 // ---------------------------------------------------------------- motion
@@ -505,8 +667,10 @@ export function bodyAt(P, t, motion) {
   const bob = P.bobAmp * Math.sin(W12 * t * CYCLES.bob);
   const sway = Math.sin(W12 * t * CYCLES.sway);
   const roll = (motion ? -P.bank * vx : 0) + 0.05 * sway;
-  const pitch = (motion ? 0.6 * P.bank * vz : 0) + 0.04 * Math.sin(W12 * t * CYCLES.sway + 1.3);
-  const yaw = P.lookYaw * behaviour(t, motion).glance;
+  let pitch = (motion ? 0.6 * P.bank * vz : 0) + 0.04 * Math.sin(W12 * t * CYCLES.sway + 1.3);
+  const beh = behaviour(t, motion);
+  if (P.workNod) pitch += P.workNod * beh.work; // a reviewer dips its head to read
+  const yaw = P.lookYaw * beh.glance;
   const m = new THREE.Matrix4().compose(V(x, bob, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, roll, 'YXZ')), V(P.size, P.size, P.size));
   // Thrust effort: more when it accelerates or banks hard, and on each bob's upstroke.
   const effort = (motion && D > 0 ? 0.55 * Math.hypot(ax, 0.6 * az) + 0.3 * Math.abs(vx) * (P.bank / 0.3) : 0) + 0.5 * Math.max(0, Math.cos(W12 * t * CYCLES.bob));
@@ -583,6 +747,8 @@ export function extents(Lay) {
   const { P } = Lay;
   let top = Lay.top;
   for (const a of Lay.ant) top = Math.max(top, a.base.y + a.dir.y * P.antL + P.antTip);
+  for (const h of Lay.hook) top = Math.max(top, h.y + P.antTip);
+  for (const c of Lay.crown) top = Math.max(top, c.y + P.crownR);
   if (P.topper === 2) top = Math.max(top, Lay.crest.c.y + Lay.crest.b.y);
   return { top: top * P.size, bottom: Lay.bottom * P.size };
 }
@@ -612,6 +778,10 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     uPuffR: { value: new Array(MAX_PUFFS).fill(0) }, uPuffA: { value: new Array(MAX_PUFFS).fill(0) },
     uSparkN: { value: 0 }, uSparkC: { value: vecs(MAX_SPARKS) }, uSparkS: { value: new Array(MAX_SPARKS).fill(0) },
     uEyes: { value: 0 }, uBlink: { value: 1 },
+    uHeadHex: { value: 0 }, uCrownN: { value: 0 }, uCrownC: { value: vecs(MAX_CROWN) }, uCrownR: { value: 0 },
+    uSkirt: { value: 0 }, uSkirtN: { value: 0 }, uSkA: { value: vecs(MAX_SKIRT) }, uSkB: { value: vecs(MAX_SKIRT) }, uSkC: { value: vecs(MAX_SKIRT) }, uSkR: { value: 0 },
+    uSnout: { value: 0 }, uSnA: { value: V() }, uSnB: { value: V(0, 0, 1) }, uSnR: { value: new THREE.Vector2() },
+    uHookN: { value: 0 }, uHook: { value: vecs(4) }, uSplit: { value: 0 }, uSplitY: { value: 0 }, uGlyphSet: { value: 0 }, uScrFlat: { value: 0 },
   };
   const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: U, side: THREE.BackSide });
   const proxy = new THREE.Mesh(PROXY_GEO, mat);
@@ -635,12 +805,34 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     Lay.gog.forEach((g, i) => { U.uGogC.value[i].copy(g.c); U.uGogX.value[i].copy(g.x); U.uGogY.value[i].copy(g.y); U.uGogZ.value[i].copy(g.z); });
     U.uGogB.value.set(P.gogW, P.gogH, 0.012); U.uGogR.value = 0.6 * Math.min(P.gogW, P.gogH);
     U.uCrestC.value.copy(Lay.crest.c); U.uCrestB.value.copy(Lay.crest.b);
-    U.uAntN.value = P.antenna; U.uAntTip.value = P.antTip;
+    U.uAntN.value = Lay.ant.length; U.uAntTip.value = P.antTip;
     Lay.ant.forEach((a, i) => { U.uAntA.value[i].copy(a.base); U.uAntB.value[i].copy(a.base).addScaledVector(a.dir, P.antL); });
     U.uThrN.value = Lay.thr.length; Lay.thr.forEach((n, i) => { U.uThrA.value[i].copy(n.a); U.uThrB.value[i].copy(n.b); });
     U.uThrR.value.set(P.thrR, P.thrR * P.thrFlare);
     U.uAccent.value = P.accent; U.uAccentY.value = P.accentY; U.uAccentW.value = P.accentW;
     U.uSmokeStyle.value = P.smoke;
+    // Brand geometry
+    U.uHeadHex.value = P.headHex;
+    U.uCrownN.value = Lay.crown.length; Lay.crown.forEach((c, i) => U.uCrownC.value[i].copy(c)); U.uCrownR.value = P.crownR;
+    U.uSkirt.value = P.skirt; U.uSkirtN.value = Lay.skirt.length; U.uSkR.value = P.skirtR;
+    placeSkirt(0, false);
+    U.uSnout.value = P.snout;
+    if (Lay.snout) { U.uSnA.value.copy(Lay.snout.a); U.uSnB.value.copy(Lay.snout.b); U.uSnR.value.set(...Lay.snout.r); }
+    U.uHookN.value = Lay.hook.length; Lay.hook.forEach((h, i) => U.uHook.value[i].copy(h));
+    U.uSplit.value = P.screenSplit; U.uSplitY.value = P.splitY; U.uGlyphSet.value = P.glyphSet; U.uScrFlat.value = P.screenFlat;
+  }
+  // Skirt parts at time t: hem scallops bob and tentacle tips sway in a wave round the ring,
+  // locked to the bob (whole cycles per loop).
+  function placeSkirt(t, motion) {
+    const P = params, w = P.skirtWave;
+    Lay.skirt.forEach((k, i) => {
+      const ph = W12 * t * CYCLES.bob + (i / Math.max(1, Lay.skirt.length)) * TAU;
+      const s = w * Math.sin(ph);
+      U.uSkA.value[i].copy(k.a);
+      if (P.skirt === 3) U.uSkA.value[i].y += s;
+      if (k.b) U.uSkB.value[i].copy(k.b);
+      if (k.c) U.uSkC.value[i].copy(k.c).addScaledVector(k.out, s).add(V(0, w * Math.cos(ph), 0));
+    });
   }
   setParams({});
 
@@ -664,6 +856,7 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     U.uBlink.value = Math.min(blink ?? beh.blink, face.eyeOpen);
     U.uEyesOn.value = face.eyes ? 1 : 0;
     U.uEyeXf.value.set(P.glance * beh.glance, P.gaze, P.eyeScale, U.uBlink.value);
+    if (P.skirtWave > 0) placeSkirt(t, motion);
     U.uGlyph.value.set(face.glyphs, beh.workT, P.glyphRate, P.glyphPx);
     U.uFaceDebug.value = faceDebug ? 1 : 0;
     U.uSmokeOn.value = smoke ? 1 : 0;

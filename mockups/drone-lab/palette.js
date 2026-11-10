@@ -39,5 +39,39 @@ export const PALETTES = {
 
 export const SLOTS = { shell: 4, trim: 4, screen: 3, glow: 4, accent: 4, smoke: 3 };
 
+// BLK 36 (BurakoIRL, lospec.com/palette-list/blk-36): every brand drone colour comes from it.
+export const BLK36 = ['#000000', '#12173d', '#293268', '#464b8c', '#6b74b2', '#909edd', '#c1d9f2', '#ffffff', '#ffccd0', '#e5959f', '#c16a7d', '#8c4b63', '#66334b', '#3f233c', '#29174c', '#412866', '#643499', '#8c51cc', '#b991f2', '#a5e6ff', '#5ab9e5', '#4185d8', '#354ab2', '#36277f', '#0a2a33', '#0f4a4c', '#14665b', '#22896e', '#42bc7f', '#8cff9b', '#ffe091', '#ff965f', '#cc5250', '#872a38', '#d83843', '#ff6866'];
+
+// Brand drone palettes (phase 2), BLK 36 only, keyed by brand id (brands.js). Brand colours are
+// mapped to BLK 36 by OKLab distance; brands.js BRAND_COLOURS records each mapping and why.
+// The screen keeps the crew's dark visor (or a BLK 36 navy) and the glow stays [OIII] teal, so
+// every drone shares one face language. Seeded trims for per-session variety are in brands.js.
+const VISOR = [...CREW.visor, CREW.glint];
+export const BRAND_PALETTES = {
+  // Clawd's terracotta (#d77757) sits between BLK 36's reds and its orange: the lit front takes
+  // the orange, turned faces the terracotta red, so the shell averages to the brand colour.
+  claude: { name: 'Claude Code', shell: ['#3f233c', '#872a38', '#cc5250', '#ff965f'], trim: ['#3f233c', '#872a38', '#cc5250', '#ff6866'], screen: VISOR, glow: TEAL, accent: ['#3f233c', '#872a38', '#cc5250', '#ff965f'], smoke: ['#ff965f', '#ffe091', '#ffffff'] },
+  // A graphite cube with a white top facet (the logo's light facet), on Cursor's near-black.
+  cursor: { name: 'Cursor', shell: ['#000000', '#12173d', '#293268', '#464b8c'], trim: ['#464b8c', '#909edd', '#c1d9f2', '#ffffff'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], smoke: ['#464b8c', '#909edd', '#c1d9f2'] },
+  // The goggled helmet's blue-to-violet, with light cyan goggle frames and ear pads.
+  copilot: { name: 'GitHub Copilot', shell: ['#29174c', '#36277f', '#354ab2', '#8c51cc'], trim: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], screen: VISOR, glow: TEAL, accent: ['#36277f', '#354ab2', '#4185d8', '#5ab9e5'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
+  // Codey's cornflower blue (#6e9bfa), its navy screen (#232d66 -> #293268).
+  codex: { name: 'OpenAI Codex', shell: ['#354ab2', '#4185d8', '#4185d8', '#909edd'], trim: ['#4185d8', '#909edd', '#c1d9f2', '#ffffff'], screen: ['#12173d', '#293268', '#ffffff'], glow: TEAL, accent: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
+  // Jules's pixel octopus purple (#642cc2 -> #643499), white trim.
+  google: { name: 'Google (Jules, Gemini CLI, Antigravity)', shell: ['#12173d', '#29174c', '#412866', '#643499'], trim: ['#8c51cc', '#b991f2', '#ffffff', '#ffffff'], screen: VISOR, glow: TEAL, accent: ['#354ab2', '#4185d8', '#b991f2', '#ff6866'], smoke: ['#8c51cc', '#b991f2', '#ffffff'] },
+  // Devin's near-black (#0e1015 -> #12173d) for the head, its white hexagons for the side pods.
+  devin: { name: 'Devin', shell: ['#000000', '#000000', '#12173d', '#293268'], trim: ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#000000', '#12173d', '#293268', '#464b8c'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
+  // The white ghost, shaded in Kiro's purple (#9046ff -> #8c51cc).
+  kiro: { name: 'Kiro', shell: ['#643499', '#8c51cc', '#b991f2', '#ffffff'], trim: ['#412866', '#643499', '#8c51cc', '#b991f2'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#412866', '#643499', '#8c51cc', '#b991f2'], smoke: ['#8c51cc', '#b991f2', '#ffffff'] },
+  // OpenCode's block O: a light ring round a dark-over-grey core.
+  opencode: { name: 'OpenCode', shell: ['#464b8c', '#909edd', '#c1d9f2', '#ffffff'], trim: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], screen: ['#000000', '#293268', '#ffffff'], glow: TEAL, accent: ['#12173d', '#293268', '#464b8c', '#6b74b2'], smoke: ['#6b74b2', '#909edd', '#c1d9f2'] },
+  // The hoodie purple (#7a68fa -> #8c51cc), a white snout.
+  qodo: { name: 'Qodo', shell: ['#29174c', '#412866', '#643499', '#8c51cc'], trim: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], screen: VISOR, glow: TEAL, accent: ['#29174c', '#412866', '#643499', '#8c51cc'], smoke: ['#b991f2', '#c1d9f2', '#ffffff'] },
+  // Every other detected tool: D-final's own base palette, with the tool's name as a label.
+  generic: { ...PALETTES.base, name: 'generic (other tools)' },
+  // No tool known: a dull plum no provider uses, no white trim, and dimmed eyes.
+  unknown: { name: 'unknown agent', shell: ['#3f233c', '#3f233c', '#66334b', '#8c4b63'], trim: ['#29174c', '#3f233c', '#66334b', '#8c4b63'], screen: VISOR, glow: ['#004538', '#004538', '#007c66', '#00bc9c'], accent: ['#3f233c', '#3f233c', '#66334b', '#8c4b63'], smoke: ['#3f233c', '#66334b', '#8c4b63'] },
+};
+
 /** Every colour a palette can produce. */
 export const paletteHexes = (pal) => Object.keys(SLOTS).flatMap((k) => pal[k]);

@@ -8,9 +8,10 @@ import { DEFAULTS as ASTRO_DEFAULTS } from '../explorations/astronaut-lab/params
 import { VARIANTS as ASTRO_VARIANTS } from '../explorations/astronaut-lab/variants.js';
 import { CREW, SPACE } from '../explorations/astronaut-lab/crew.js';
 import { makeDrone, extents, intendedPieces } from './drone.js';
-import { PALETTES, paletteHexes } from './palette.js';
+import { PALETTES, BRAND_PALETTES, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS } from './params.js';
 import { VARIANTS, FINAL } from './variants.js';
+import { BRANDS, BRAND_BY_ID, sessionLook } from './brands.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -40,12 +41,55 @@ const crew = CREW_COLORS.map((color, i) => {
   return a;
 });
 
-const paletteOf = (key) => PALETTES[key] ?? PALETTES.base;
+// A palette by key (base, ember or a brand id), or a palette object (a session's seeded trim).
+const paletteOf = (key) => (key && typeof key === 'object' ? key : PALETTES[key] ?? BRAND_PALETTES[key] ?? PALETTES.base);
+
+// More drones for squad scenes (several drones with the crew), made on first use.
+const pool = [drone];
+const droneN = (i) => { while (pool.length <= i) { const d = makeDrone(); d.group.visible = false; scene.add(d.group); pool.push(d); } return pool[i]; };
+// The viewer's system view (viewer.js VIEWS.system) puts the camera 5.98 from the crew spot,
+// against 2.78 for the crew close-up; a squad tile keeps that distance, centred on the squad.
+export const SYSTEM_DIST = Math.hypot(0.1 + 1.35, 1.3 + 0.2, 10.2 - 4.6);
+const CLOSE_DIST = CREW_CAM.pos.distanceTo(CREW_CAM.target);
+
+// A squad: K astronauts and several drones (cell.squad: [{ params, palette, x, y, z, yaw, t }]),
+// seen from the crew close-up or from the system view's distance (cell.view: 'crew' | 'system').
+function renderSquad(cell, w, h) {
+  const { t = 0, smoke = true, motion = false, view = 'crew', astros = [[-0.95, 0.03, -0.2, 0.4], [0.95, 0.03, -0.25, -0.4]] } = cell;
+  if (gl.width !== w || gl.height !== h) renderer.setSize(w, h, false);
+  camera.fov = (2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * (h / FRAME_H)) * 180) / Math.PI;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  crew.forEach((a, i) => {
+    const at = astros[i];
+    a.group.visible = !!at;
+    if (!at) return;
+    a.group.position.set(at[0], at[1], at[2]);
+    a.update(t + i * 3.4, { yaw: at[3], sway: 1, blink: 1 });
+  });
+  pool.forEach((d) => (d.group.visible = false));
+  cell.squad.forEach((m, i) => {
+    const d = droneN(i);
+    d.setParams(m.params);
+    d.setPalette(paletteOf(m.palette));
+    d.group.visible = true;
+    d.group.position.set(m.x, m.y, m.z);
+    d.update(t + (m.t ?? 0), { yaw: m.yaw ?? 0, motion, smoke, pixK: PIXK });
+  });
+  const dir = CREW_CAM.pos.clone().sub(CREW_CAM.target).normalize();
+  const target = CREW_CAM.target.clone().add(new THREE.Vector3(0, cell.lift ?? 0, 0));
+  camera.position.copy(target).addScaledVector(dir, view === 'system' ? SYSTEM_DIST : CLOSE_DIST);
+  camera.lookAt(target);
+  renderer.render(scene, camera);
+  pool.forEach((d, i) => (d.group.visible = i === 0));
+  return gl;
+}
 
 // One w x h tile: a crop of a 180-tall frame centred on the drone, at the standard pixel
 // density (zoom 2 brings the camera twice as close). cell.crew renders the crew shot instead:
 // astronaut, drone, astronaut, as the viewer lines up its crew (0.72 apart, turned 0.4 / 0.05 / -0.4).
 function renderTile(cell, w, h) {
+  if (cell.squad) return renderSquad(cell, w, h);
   const { params = {}, yaw = 0, t = 0, zoom = 1, palette = 'base', motion = false, blink = null, smoke = true, faceDebug = false } = cell;
   const pixK = PIXK / zoom;
   if (gl.width !== w || gl.height !== h) renderer.setSize(w, h, false);
@@ -82,7 +126,8 @@ function renderTile(cell, w, h) {
 const hexInt = (h) => parseInt(h.slice(1), 16);
 function allowedSet(cell) {
   const hexes = [...paletteHexes(paletteOf(cell.palette)), SPACE];
-  if (cell.crew) hexes.push(...CREW.suit, ...CREW.gear, ...CREW.visor, CREW.glint, ...CREW_COLORS.flatMap((c) => CREW.contributors[c]));
+  if (cell.squad) for (const m of cell.squad) hexes.push(...paletteHexes(paletteOf(m.palette)));
+  if (cell.crew || cell.squad) hexes.push(...CREW.suit, ...CREW.gear, ...CREW.visor, CREW.glint, ...CREW_COLORS.flatMap((c) => CREW.contributors[c]));
   return new Set(hexes.map(hexInt));
 }
 // Per tile: stray colours (must be 0), silhouette pieces (8-connected), figure pixels, height.
@@ -185,7 +230,8 @@ function sheet(spec) {
         const fs = tileStats(full, w, h, cell);
         let smokePx = 0;
         for (let i = 0; i < full.length; i += 4) if (full[i] !== bare[i] || full[i + 1] !== bare[i + 1] || full[i + 2] !== bare[i + 2]) smokePx++;
-        stats.push({ row: r, col: c, stray: fs.stray, figure: fs.figure, clipped: fs.clipped, pieces: st.pieces, heightPx: st.heightPx, smokePx, want: intendedPieces() + (cell.crew ? crew.length : 0) });
+        // Squads overlap by design, so their piece count is not checked (want = pieces).
+        stats.push({ row: r, col: c, stray: fs.stray, figure: fs.figure, clipped: fs.clipped, pieces: st.pieces, heightPx: st.heightPx, smokePx, want: cell.squad ? st.pieces : intendedPieces() + (cell.crew ? crew.length : 0) });
       } else {
         renderTile(cell, w, h);
         if (spec.paletteCheck) {
@@ -196,6 +242,12 @@ function sheet(spec) {
       }
       ctx.drawImage(gl, x, y, tw, h * scale);
       if (cell.mark) { ctx.strokeStyle = '#00ffd5'; ctx.lineWidth = 2; ctx.strokeRect(x - 2, y - 2, tw + 4, h * scale + 4); }
+      if (cell.badge) { // a label outside the pixel pass, e.g. "new glyph, needs approval"
+        ctx.font = '600 11px ui-monospace, Menlo, monospace';
+        const bw = ctx.measureText(cell.badge).width + 8;
+        ctx.fillStyle = '#ffe091'; ctx.fillRect(x + 2, y + 2, bw, 16);
+        ctx.fillStyle = '#111'; ctx.fillText(cell.badge, x + 6, y + 4);
+      }
       if (cell.caption) {
         ctx.fillStyle = '#fff6e4';
         ctx.font = '12px ui-monospace, Menlo, monospace';
@@ -225,16 +277,25 @@ function snapLabels(ctx, W, H, rows, { w, h, rowLabelW, gap, top, capH }) {
   ctx.putImageData(img, 0, 0);
 }
 
-/** Direction params by id. */
-const ALL = [...VARIANTS, FINAL];
+/** Direction params by id (variants, D-final and the brand drones). */
+const ALL = [...VARIANTS, FINAL, ...BRANDS];
 const paramsOf = (id) => ({ ...DEFAULTS, ...ALL.find((v) => v.id === id).params });
+// A cell may name a brand (and a session seed): its params, palette and phase come from the brand.
+function resolveCell(c) {
+  if (c.squad) return { ...c, squad: c.squad.map(resolveCell) };
+  if (c.brand) {
+    const look = sessionLook(c.brand, c.seed);
+    return { ...c, params: { ...DEFAULTS, ...look.params, ...(c.params ?? {}) }, palette: c.palette ?? look.palette, t: (c.t ?? 0) + (c.phased ? look.phase : 0) };
+  }
+  return { ...c, params: c.variant ? { ...paramsOf(c.variant), ...(c.params ?? {}) } : c.params };
+}
 
 window.lab = {
   ready: true,
   variants: ALL.map((v) => ({ id: v.id, name: v.name, leaning: v.leaning, params: paramsOf(v.id) })),
   /** Face probe: renders one tile with eyes painted pure red and glyphs pure green; returns their pixel counts. */
   faceProbe(cell, w, h) {
-    renderTile({ ...cell, params: cell.variant ? { ...paramsOf(cell.variant), ...(cell.params ?? {}) } : cell.params, faceDebug: true }, w, h);
+    renderTile({ ...resolveCell(cell), faceDebug: true }, w, h);
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(gl, 0, 0);
     const d = x.getImageData(0, 0, w, h).data;
@@ -246,8 +307,17 @@ window.lab = {
     return { eyes, glyphs };
   },
   /** Renders a sheet spec (cells name directions by `variant`) and returns a PNG data URL and stats. */
+  /** One bare tile (smoke off): its RGB pixels, for the A4 distinctness metrics in lab.mjs. */
+  pixels(cell, w, h) {
+    renderTile({ ...resolveCell(cell), smoke: false }, w, h);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(gl, 0, 0);
+    const d = x.getImageData(0, 0, w, h).data, rgb = new Array(w * h);
+    for (let i = 0; i < w * h; i++) rgb[i] = (d[i * 4] << 16) | (d[i * 4 + 1] << 8) | d[i * 4 + 2];
+    return rgb;
+  },
   sheet(spec) {
-    const rows = spec.rows.map((r) => ({ ...r, cells: r.cells.map((c) => ({ ...c, params: c.variant ? { ...paramsOf(c.variant), ...(c.params ?? {}) } : c.params })) }));
+    const rows = spec.rows.map((r) => ({ ...r, cells: r.cells.map(resolveCell) }));
     const { canvas, stats } = sheet({ ...spec, rows });
     return { png: canvas.toDataURL('image/png'), stats };
   },
