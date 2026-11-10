@@ -28,7 +28,7 @@ Without the archive, the history tab still works and says which images aren't av
 
 | Area | What it does |
 |---|---|
-| Catalogue (left) | Thumbnails grouped by type: astronauts (crew K), planets, moons, rings, clouds, FX, palettes and explorations. Each planet tile says what its look means (art direction §6). The bands run worst to best: lava, toxic (the ember band, #19) and ash (the desert look), then healthy, whose three looks are lush, ocean and ice. Gas giant and barren moon are badged **library extra**, and ring tiles are badged **meaning open**. Final assets carry a teal **final** badge. The exploration archive has dashed amber tiles and an **exploration** badge. ASCII FX that live only in the ascii-fx mockup are listed as **not yet ported**. Click a tile to open it |
+| Catalogue (left) | Thumbnails grouped by type: astronauts (crew K), planets, moons, rings, clouds, FX, palettes and explorations. Each planet tile says what its look means (art direction §6). The bands run worst to best: lava, toxic (the ember band, #19) and ash (the desert look), then healthy, whose three looks are lush, ocean and ice. Gas giant and barren moon are badged **library extra**, and ring tiles are badged **meaning open**. Beside desert, **dustier ash · trial** is a proposed ash look (health-looks P2), badged **trial**; the **Trial: dustier ash** group lays it in the lineup, lava → toxic → ash → ash (trial) → lush down, hero | mid distance across. Final assets carry a teal **final** badge. The exploration archive has dashed amber tiles and an **exploration** badge. ASCII FX that live only in the ascii-fx mockup are listed as **not yet ported**. Click a tile to open it |
 | Stage (centre) | The asset at the internal resolution (320×180 by default), upscaled by the largest whole factor that fits. Drag to orbit, scroll to zoom. The badge says whether it's a final asset or an exploration |
 | inspect | Every control for the open asset (below) |
 | compose scene | Add planets and astronauts (or the asset in the inspector), duplicate or remove them, click one on the stage to select it, **shift-drag** to move it in the view plane, or set x, y and z (depth) exactly. The selected item gets the same controls as the inspector. Presets: the viewer's depth scene, and a planet with three crew |
@@ -39,7 +39,7 @@ Without the archive, the history tab still works and says which images aren't av
 
 Inspector controls by asset:
 - **Astronaut (crew K):** contributor colour (the three BLK 36 presets, or any colour), eye design (auto from the handle, or any of the 10 V2 designs), eye glow colour, handle, bob phase, view angle, blink, framing (full figure, crew close-up, face close-up).
-- **Planet:** biome, seed, size, lava mode, ring (off/thin/wide, width, distance), clouds (cover, float, shadow), moons (on/off; size, orbit, tilt, yaw and phase per moon), artefacts (on, auto by size or 1–5 sectors, teal accent), dark halo, and layer isolation (body, haze, clouds, ring), so moons, rings or clouds can be shown on their own. Moons, rings, clouds and FX are planet configurations that open with their own control group first.
+- **Planet:** biome, seed, size, lava mode, ring (off/thin/wide, width, distance), clouds (cover, float, shadow), moons (on/off; size, orbit, tilt, yaw and phase per moon), artefacts (on, auto by size or 1–5 sectors, teal accent), dark halo, and layer isolation (body, haze, clouds, ring), so moons, rings or clouds can be shown on their own. Moons, rings, clouds and FX are planet configurations that open with their own control group first. A desert planet also has **look: shipped (final) | dustier ash (trial)**, which keeps the seed, and **compare side by side**, which shows the shipped look and the trial in two panes with one camera. The note quotes the measured hero means from `../health-looks/PROPOSALS.md`.
 - **Exploration (astronaut A–J):** variant, contributor preset, eyes, view angle, sway. These render through the astronaut lab's own module (`../explorations/astronaut-lab/astronaut.js`), read-only.
 - **Render (all):** time (pinned or playing), rotate, pixel height, depth fade, depth mode and bands, loop period, surface and cloud turns.
 
@@ -54,11 +54,12 @@ The planet controls say what the biome means, and the ring controls say that a r
 | File | What |
 |---|---|
 | `state.js` | The state object, its defaults and `normalise()`, the one validation boundary for URLs and pasted JSON. Also the hash and JSON encodings. Pure, so it's tested in Node |
-| `palette.js` | The base palette (the viewer's `final` plus the [OIII] teal), the editor's groups, and the edits. They live in one viewer palette, `PALETTES.library`, rewritten in place when the edits change; the viewer then drops its cached depth fades. History palettes are separate viewer palettes (`history-main`, `history-cmp`, `history-thumb`), active only while a history step renders |
+| `palette.js` | The base palette (the viewer's `final` plus the [OIII] teal), the editor's groups, and the edits. They live in one viewer palette, `PALETTES.library`, rewritten in place when the edits change; the viewer then drops its cached depth fades. Look palettes (`lookPalette`) are separate viewer palettes, one per history step's or trial's colours, built once and active only while that step or trial renders: never palette edits, never the base |
 | `engine.js` | `Stage`: a scene of items built from the viewer's factories, posed and tinted in the viewer's frame order. Also the stage render and the off-screen render (one target per size: catalogue and timeline thumbnails, the history comparison) |
 | `catalogue.js` | The catalogue entries (starting configurations), what each planet look means (`BIOME_MEANING`), and the scene presets |
+| `trials.js` | Trial looks: a proposed change shown beside the shipped look. `dusty-ash` is health-looks P2 (sand and rock at OKLab chroma ×0.6, lightness −0.1), checked against `PROPOSALS.md` and the lab's formula by the tests. Pure |
 | `history.js` | The iteration view's data: ten families of dated steps (what changed, why, live view or archived image), the history palettes copied from git (checked against it by the tests), and `IMAGES`, the archive allowlist. Pure |
-| `library.js` | The UI: catalogue, inspector, composer, palette editor, presets, the iteration view, and `window.library` for the tests |
+| `library.js` | The UI: catalogue, inspector, composer, palette editor, presets, the iteration view, trial looks, and `window.library` for the tests. Every render goes through `useLook(stage, look)`, which activates the look's palette and depth and loop settings and retints a stage only when its own look changed |
 | `routes.mjs`, `serve.mjs` | `route()`, the one routing decision (the file allowlist and the archive route), and the loopback dev server. The test harness intercepts requests with the same `route()` |
 | `shots.mjs`, `test/` | Screenshots and tests, both through Playwright request interception |
 
@@ -68,6 +69,7 @@ The planet controls say what the biome means, and the ring controls say that a r
 - The astronaut's eye light is its own uniform (`uEyeGlow`), the same colour as before by default; `setColor(key, eyeGlow)` takes an optional eye-light key, and `resolve()` reads a `#rrggbb` key as that colour. `group.userData.blink = false` holds the eyes open. `makePlanet` returns its parts and moons, and `makeAstronaut` returns its material. `rebuild` takes an optional cloud float.
 - `palette-map.js` exports `rampThrough()`.
 - `shots.mjs` captions the toxic row of the variety sheet `toxic`, no longer `toxic (extra)`, since toxic is now a health band (#19).
+- `serve.mjs` binds `127.0.0.1` only, like this library and the labs; it no longer reads `HOST`. `PORT` still picks the port.
 
 ## Tests
 
@@ -80,6 +82,8 @@ The planet controls say what the biome means, and the ring controls say that a r
 | `test/scene.test.mjs` | R3: a planet with three astronauts renders the same frame after other work and in a fresh page, with every item in the frame; click selects, shift-drag moves only the selection, and the list adds and removes items |
 | `test/routes.test.mjs` | R11 and R8 (Node, a temp fixture archive): the archive route serves only allowlisted PNG/GIF files inside the archive's real root, to GET and HEAD. It rejects traversal (plain, `%2e%2e`, `..%2f`, double-encoded, backslash, null byte, malformed), symlinks out of the archive, image names on non-images, directories, listings, unlisted files and other methods. Without an archive every archive request is a 404. The dev server binds 127.0.0.1 only |
 | `test/history.test.mjs` | R9 and R10 (Node): planet tiles say their meaning worst to best, extras and rings are tagged, and no Nov 3 meaning or acid lime is left outside the history. Every family is dated oldest to final, with one final step and what changed and why for each. Every live step and option is a valid state that survives the URL. The history state is clamped. The copied history palettes match git at their source commits, and every step's commit exists |
+| `test/trials.test.mjs` | The trial (Node): `dusty-ash` matches `PROPOSALS.md`'s ramps and hero means and the lab's formula; it changes sand and rock only, into colours the shipped palette doesn't have. The state keeps a trial to its own biome and out of scenes. The trial tile sits beside desert, and the lineup group runs worst to best at hero and mid (distance 12) |
+| `test/trials-view.test.mjs` | The trial in the browser. With the depth fade off, every pixel that changes from the shipped desert (seeds 3, 31, 90) is an ash ramp colour turned into its own trial step, and every ash ramp pixel changes. The catalogue renders the same while the stage shows the trial, and the base palette and edits stay shipped. The side-by-side panes reload to identical pixels, and the shipped pane is the inspector's shipped render |
 | `test/history-view.test.mjs` | R10 and R11 in the browser: the acid-lime step shows lime on the stage while the catalogue's toxic tile stays ember, even when it renders during the history view. The final toxic step is the inspector's toxic pixel for pixel. Three history URLs with comparisons reload to identical pixels in both panes. An archived step shows the fixture archive's image, or says it isn't available without the archive. The tab, step and compare clicks work, and **open in inspector** keeps the pixels |
 
 Every render test fails on empty output.
@@ -107,3 +111,5 @@ The ASCII FX candidates other than planet artefacts are fog of war, glitch packe
 | `history-lab.png` | Astronaut lab variant C, live, picked from the A–J list |
 | `history-drones.png` | The gear-grey drone shells beside D-final, both archived images |
 | `history-no-archive.png` | The crew's archived step without the archive: "archived image not available" |
+| `trial-compare.png` | The dustier-ash trial beside the shipped desert, same seed and camera |
+| `trial-lineup.png` | The **Trial: dustier ash** group: lava → toxic → ash → ash (trial) → lush, hero and mid |
