@@ -41,7 +41,9 @@ Open the library → browse the catalogue → click an asset → it renders on t
 ## Tasks
 - Task: build the asset library in `mockups/asset-library/` (feature agent, branch feature/asset-library), covering R1–R8, in milestones.
 - Task: R9–R11 (feature agent, branch feature/asset-library): done, a6cc792..68da3d9 (library 40/40, viewer 26/26). The history tab has 10 family timelines; the `/art-archive/` route serves an exact allowlist of PNG and GIF files on 127.0.0.1, read-only, with realpath containment.
-- Next: dustier-ash comparison (planet-health-looks P2), hard-coding the asset viewer's bind, and a Drones group (after the drone tweaks land).
+- Dustier-ash trial + viewer bind: done (4af1dc2..6a332dc).
+- Drones group: done (b1e89ef..b2afd10). 11 provider drones + A–E explorations, a full inspector, drones in scenes, and 10 drones at 0 px against the drone lab's capture page. Known gap: drones in scenes get no depth fade.
+- Debris group: done (b3811cc..69c3116). 24 tiles, an inspector debris section with sweep and selection, debris in scenes, a live debris history (A–E, A2, A3), and 3 cases at 0 px against the viewer. Thumbnails now render on scroll. Library 59/59, viewer 28/28, health-looks 24/24, drone-lab 21/21, debris-lab 24/24.
 
 ## Completion
 - Merged: —
