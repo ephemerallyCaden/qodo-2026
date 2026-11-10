@@ -104,7 +104,10 @@ export async function mergeSides(git: Git, commits: LineageCommit[], lineage: Li
     const batch = merges.slice(i, i + BRANCH_READS);
     const logs = await Promise.all(batch.map((m) => logChanges(git,
       ['log', '--no-merges', '--topo-order', '--reverse', ...DIFF_OPTS, '--name-status', '-z', '--format=%x00%H%x00%ct', `${m}^1..${m}`])));
-    batch.forEach((m, j) => sides.set(seqOf.get(m)!, sideTops(logs[j]!, excluded)));
+    batch.forEach((m, j) => {
+      const seq = seqOf.get(m)!;
+      sides.set(seq, sideTops(logs[j]!, new Set(lineage.topsAt.get(seq)!.keys()), excluded));
+    });
   }
   return sides;
 }
@@ -113,10 +116,11 @@ const topOf = (p: string) => p.slice(0, p.indexOf('/'));
 
 /**
  * Each side commit's top-level folders, by their names at the merge: a folder the branch renamed
- * later (most of its moved files going to one new top-level name) is counted under its new name,
- * so its earlier commits still count for it (Qodo local r1 #1).
+ * later is counted under its new name (the one most of its moved files went to), so its earlier
+ * commits still count for it (Qodo local r1 #1). Only a folder gone by the merge was renamed; one
+ * still there (`atMergeTops`) only had files moved out of it, so it keeps its commits (r2 #2).
  */
-function sideTops(side: LineageCommit[], excluded: (path: string) => boolean): Set<string>[] {
+function sideTops(side: LineageCommit[], atMergeTops: Set<string>, excluded: (path: string) => boolean): Set<string>[] {
   const atMerge = new Map<string, string>();
   const name = (top: string) => atMerge.get(top) ?? top;
   const out: Set<string>[] = [];
@@ -128,7 +132,7 @@ function sideTops(side: LineageCommit[], excluded: (path: string) => boolean): S
     for (const ch of changes) {
       if (ch.status !== 'R' || ch.from === undefined || !ch.from.includes('/') || !ch.path.includes('/') || excluded(ch.from) || excluded(ch.path)) continue;
       const [from, to] = [topOf(ch.from), topOf(ch.path)];
-      if (from === to) continue;
+      if (from === to || atMergeTops.has(from)) continue;
       const t = moved.get(from) ?? new Map<string, number>();
       moved.set(from, t.set(to, (t.get(to) ?? 0) + 1));
     }

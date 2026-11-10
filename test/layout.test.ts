@@ -443,6 +443,19 @@ describe('local Qodo review (#18 r1)', () => {
   });
 });
 
+describe('local Qodo review (#18 r2)', () => {
+  it('#2: a file moved out of a folder that stays is a split, not a rename of the folder', async () => {
+    // lib/ is still there at the merge, so its earlier commit stays lib/'s, not pkg/'s.
+    const commits = [[A('core/a.ts'), A('lib/l.ts'), A('lib/m.ts')], [R('lib/m.ts', 'pkg/m.ts'), M('lib/l.ts')]];
+    const log = lineageCommits(commits);
+    const git = async (args: string[]) => (args[0] === 'rev-list' ? `${log[1]!.sha} ${log[0]!.sha} ${'f'.repeat(40)}\n`
+      : `\0${'b'.repeat(40)}\x00100\0\nM\0lib/l.ts\0M\0core/a.ts\0`
+        + `\0${'c'.repeat(40)}\x00200\0\nR100\0lib/m.ts\0pkg/m.ts\0`);
+    const sides = await mergeSides(git, log, buildLineage(log, () => false), () => false);
+    expect(sides.get(1)).toEqual([new Set(['lib', 'core']), new Set(['lib', 'pkg'])]);
+  });
+});
+
 describe('#18 edge cases', () => {
   it('an empty repo has a star and nothing else', () => {
     const l = run(world([[]]));
