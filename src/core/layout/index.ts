@@ -32,7 +32,7 @@ export interface LayoutNotes {
    * path, a commit over the rename limit), so they were placed as new.
    */
   unsure: number;
-  /** Files whose history didn't match the snapshot at HEAD (it shouldn't happen); they were placed or moved last. */
+  /** Files at HEAD whose history didn't match the snapshot (it shouldn't happen); they were placed or moved last. */
   unmatched: number;
 }
 
@@ -309,7 +309,7 @@ export function layoutReport(snapshot: SnapshotV02, history: StructureHistory, o
     },
     planets,
   };
-  return { layout, notes: { unsure: snapshot.files.filter((f) => stateOf.get(f.path)!.unsure).length, unmatched: closing.length } };
+  return { layout, notes: { unsure: snapshot.files.filter((f) => stateOf.get(f.path)!.unsure).length, unmatched: closing.filter((e) => e.to !== null).length } };
 }
 
 const BANDS = ['lava', 'toxic', 'ash', 'healthy'] as const;
@@ -336,6 +336,6 @@ export function formatLayout(l: LayoutV1, notes: LayoutNotes): string {
     lines.push(`${notes.unsure} file(s) began where git couldn't follow an older file (a copy, a move out of an excluded path, `
       + 'or a commit over the rename limit); they were placed as new');
   }
-  if (notes.unmatched) lines.push(`${notes.unmatched} file(s) had no matching history; they were placed last`);
+  if (notes.unmatched) lines.push(`${notes.unmatched} file(s) didn't match their history; they were placed or moved last`);
   return lines.join('\n') + '\n';
 }

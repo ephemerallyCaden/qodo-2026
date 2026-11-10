@@ -57,37 +57,41 @@ function saveQodoCache(commonDir: string, text: string): boolean {
 
 /**
  * Writes one scan's layout and snapshot as a pair (Qodo local r1 #2, r3 #1): both are staged next
- * to their targets first, so a failed write (a full disk) changes nothing. If a target then can't
- * be replaced, the targets already replaced get their last contents back (or go, if they were new),
- * so the last pair stays published together. The layout's `source.head` names its snapshot.
+ * to their targets first, under names only this process uses (PR51 8e924d0b), so a failed write (a
+ * full disk) or another scan changes nothing. If a target then can't be replaced, the targets
+ * already replaced get their last contents back (or go, if they were new), so the last pair stays
+ * published together. One that existed but couldn't be read is left as it is (PR51 d0357f0b). The
+ * layout's `source.head` names its snapshot, so a pair a killed scan left mixed can still be told apart.
  */
 function writePair(files: [file: string, text: string][]): void {
-  const last = files.map(([file]) => {
+  const staged = (file: string) => `${file}.next-${process.pid}`;
+  // null: absent; undefined: there, but its contents couldn't be read to put back.
+  const last = files.map(([file]): Buffer | null | undefined => {
     try {
       return readFileSync(file);
-    } catch {
-      return null; // absent, or not a file we could restore
+    } catch (e) {
+      return (e as NodeJS.ErrnoException).code === 'ENOENT' ? null : undefined;
     }
   });
   let replaced = 0;
   try {
-    for (const [file, text] of files) writeAtomic(`${file}.next`, text);
+    for (const [file, text] of files) writeAtomic(staged(file), text);
     for (const [file] of files) {
-      renameSync(`${file}.next`, file);
+      renameSync(staged(file), file);
       replaced++;
     }
   } catch (e) {
     for (let i = 0; i < replaced; i++) {
       const [file] = files[i]!;
-      const was = last[i]!;
+      const was = last[i];
       try {
         if (was === null) rmSync(file, { force: true });
-        else writeAtomic(file, was);
+        else if (was !== undefined) writeAtomic(file, was);
       } catch {
         // Keep the first error; the layout's source.head still tells the pair apart.
       }
     }
-    for (const [file] of files) rmSync(`${file}.next`, { force: true });
+    for (const [file] of files) rmSync(staged(file), { force: true });
     throw e;
   }
 }

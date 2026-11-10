@@ -465,9 +465,13 @@ describe('#18 edge cases', () => {
   it('a file the history lacks is still placed, last (nothing in the snapshot is dropped)', () => {
     const w = world([[A('a/1.ts')]]);
     const extra = { ...w.snapshot.files[0]!, id: fileId('a/2.ts'), path: 'a/2.ts' };
-    const l = layout({ ...w.snapshot, files: [...w.snapshot.files, extra] }, w.history);
+    const { layout: l, notes } = layoutReport({ ...w.snapshot, files: [...w.snapshot.files, extra] }, w.history);
     expect(planet(l, 'a').surface.settlements.map((s) => s.fileId).sort()).toEqual([fileId('a/1.ts'), fileId('a/2.ts')].sort());
     expect(cellOf(l, 'a/1.ts')).toBe(cellOf(run(w), 'a/1.ts'));
+    // Counted (Rule 1): one file placed without history. A history file missing at HEAD isn't a placement (Qodo PR51 086107d0).
+    expect(notes.unmatched).toBe(1);
+    const gone = layoutReport({ ...w.snapshot, files: [] }, w.history);
+    expect(gone.notes.unmatched).toBe(0);
   });
 
   it('continents: the top folder seeds at the pole, each subfolder apart from the others', () => {

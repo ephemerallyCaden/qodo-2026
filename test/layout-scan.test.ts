@@ -1,7 +1,7 @@
 // Issue #18 through the scan: `commet scan` writes layout.json, the golden on the structure fixture
 // (test/fixtures/build/structure.ts), and AC3, AC8 and AC9 on real git history.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -132,7 +132,7 @@ describe('local Qodo review (#18 r1)', () => {
     const failed = await cli(['scan', '--no-ingest'], r.dir, { CLAUDE_CONFIG_DIR: NO_LOGS });
     expect(failed.code).toBe(1);
     expect(readFileSync(join(state, 'snapshot.json'), 'utf8')).toBe(before);
-    expect(readdirSync(state).filter((f) => f.endsWith('.next'))).toEqual([]);
+    expect(readdirSync(state).filter((f) => f.includes('.next'))).toEqual([]);
   });
 });
 
@@ -152,7 +152,42 @@ describe('local Qodo review (#18 r3)', () => {
     const failed = await cli(['scan', '--no-ingest'], r.dir, { CLAUDE_CONFIG_DIR: NO_LOGS });
     expect(failed.code).toBe(1);
     expect(readFileSync(join(state, 'layout.json'), 'utf8')).toBe(before);
-    expect(readdirSync(state).filter((f) => f.endsWith('.next'))).toEqual([]);
+    expect(readdirSync(state).filter((f) => f.includes('.next'))).toEqual([]);
+  });
+});
+
+describe('Qodo PR51 r1', () => {
+  const twoCommits = async () => {
+    const r = miniRepo([{ id: 'one', at: '2026-10-01T10:00:00Z', path: 'src/a.ts', lines: ['export const a = 1;'] }]);
+    expect((await cli(['scan', '--no-ingest'], r.dir, { CLAUDE_CONFIG_DIR: NO_LOGS })).code).toBe(0);
+    writeFileSync(join(r.dir, 'src/b.ts'), 'export const b = 2;\n');
+    execFileSync('git', ['add', '-A'], { cwd: r.dir });
+    execFileSync('git', ['commit', '-qm', 'two'], { cwd: r.dir, env: { ...process.env, GIT_AUTHOR_NAME: SELF.name, GIT_AUTHOR_EMAIL: SELF.email,
+      GIT_COMMITTER_NAME: SELF.name, GIT_COMMITTER_EMAIL: SELF.email, GIT_AUTHOR_DATE: '2026-10-02T10:00:00Z', GIT_COMMITTER_DATE: '2026-10-02T10:00:00Z' } });
+    return { dir: r.dir, state: join(r.dir, '.git/commet') };
+  };
+
+  it('8e924d0b: another scan\'s staged files are neither reused nor removed', async () => {
+    const { dir, state } = await twoCommits();
+    writeFileSync(join(state, 'layout.json.next'), 'another scan\'s layout');
+    const r = await cli(['scan', '--no-ingest'], dir, { CLAUDE_CONFIG_DIR: NO_LOGS });
+    expect(r.code).toBe(0);
+    expect(readFileSync(join(state, 'layout.json.next'), 'utf8')).toBe('another scan\'s layout');
+    expect((JSON.parse(readFileSync(join(state, 'layout.json'), 'utf8')) as LayoutV1).source.head)
+      .toBe((JSON.parse(readFileSync(join(state, 'snapshot.json'), 'utf8')) as SnapshotV02).repo.head);
+  });
+
+  it('d0357f0b: a rollback never deletes a target that existed but could not be read', async () => {
+    const { dir, state } = await twoCommits();
+    chmodSync(join(state, 'layout.json'), 0);
+    rmSync(join(state, 'snapshot.json'));
+    mkdirSync(join(state, 'snapshot.json', 'x'), { recursive: true });
+    try {
+      expect((await cli(['scan', '--no-ingest'], dir, { CLAUDE_CONFIG_DIR: NO_LOGS })).code).toBe(1);
+      expect(existsSync(join(state, 'layout.json'))).toBe(true);
+    } finally {
+      chmodSync(join(state, 'layout.json'), 0o600);
+    }
   });
 });
 
