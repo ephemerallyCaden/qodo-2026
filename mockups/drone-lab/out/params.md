@@ -71,7 +71,7 @@ D-final is D with the human's exact set laid over it. Not named in that set, so 
 | `screenY` | Screen centre height on the face (-0.5–0.6) | 0 | 0 | **0.2** | **0.08** | **0.18** | **-0.02** | **0.18** |
 | `screenRound` | Screen corners: 2 = an ellipse (a porthole), 10 = a sharp rectangle (2–10) | 4.5 | **7** | **2** | **6** | **3** | **4** | **3** |
 | `bezel` | Trim bezel round the screen (0 = none) (0–0.6) | 0.2 | **0.12** | **0.34** | **0.14** | **0.18** | **0.16** | **0.18** |
-| `eyes` | V2 eye design (glows teal); the last two are lab-only prototypes (Dots / Cyclops / Visor slit / Binocular / Three eyes / Happy / LED bar / Heartbeat / Slant / X eyes / Pills (lab prototype) / Prompt >_ (lab prototype)) | Dots | **Happy** | Dots | **Slant** | **Binocular** | **LED bar** | **Binocular** |
+| `eyes` | Eye design (glows teal): the 10 V2 designs, then two drone-only ones (Dots / Cyclops / Visor slit / Binocular / Three eyes / Happy / LED bar / Heartbeat / Slant / X eyes / Pills (drone-only) / Prompt >_ (drone-only)) | Dots | **Happy** | Dots | **Slant** | **Binocular** | **LED bar** | **Binocular** |
 | `eyeScale` | Eye size (0.5–1.5) | 1 | 1 | **1.05** | 1 | 1 | 1 | 1 |
 | `gaze` | Resting eye height on the screen, in eye-box pixels (+ up; a shy drone looks down) (-5–5) | 0 | 0 | **-2.5** | 0 | 0 | 0 | 0 |
 | `glance` | How far the eyes glance side to side when looking around (eye-box pixels) (0–8) | 4.5 | **5.5** | **3** | **4** | 4.5 | 4.5 | 4.5 |
@@ -210,7 +210,7 @@ A white-blue shell melts into the K suits at 180p: the phase-1 `frost` slot test
 
 ## Worked example: GitHub Copilot (description only)
 
-*Superseded by the Copilot brand drone (next section). It keeps the goggles, with GitHub's permission (human, 2026-11-10). The pills became a lab-only prototype eye, not a change to `faces.js`; the drone's own eye is the V2 Dots.*
+*Superseded by the Copilot brand drone (next section). It keeps the goggles, with GitHub's permission (human, 2026-11-10). The pills are its eye: a drone-only glyph the human approved (2026-11-10), kept out of `faces.js`, with the V2 Dots as a fallback option.*
 
 **The logo** (`github-copilot-logo.svg`): a wide, rounded helmet head that widens toward the cheeks; two big rounded-rectangle goggle lenses across the top half, almost touching at the bridge; round ear pads low on each side; a wide lower face plate with two upright pill eyes.
 
@@ -234,8 +234,8 @@ Each brand drone is D-final with a parameter set laid over it plus a palette (`b
 |---|---|---|---|
 | **Claude Code** | Claude Code (CLI, web, Action) | Clawd, the CLI block-pixel critter: a wide flat body, two eye notches, a stub each side, four stubby legs | a wide flat block body on four stubby legs (two pairs), side stubs, terracotta orange; works with an asterisk spinner |
 | **Cursor** | Cursor (IDE, CLI, cloud agent) | logo only: an isometric hexagonal cube with a light arrow facet | a crisp graphite cube with a white top facet and a flat screen, sputtering precise dots |
-| **GitHub Copilot** | GitHub Copilot (cloud agent, CLI, app, VS Code) | the goggled helmet head (kept with GitHub's permission, human 2026-11-10): goggles over a lower face plate, round ear pads | a wide helmet with big pilot goggles across the top, low ear pads and a lower face plate; blue to violet with cyan frames |
-| **OpenAI Codex** | OpenAI Codex (CLI, cloud) | Codey, the Codex pet: a cloud-puff head with a dark rounded screen face and >_ glyph eyes | a cloud-puff head round a big dark navy screen, sky blue, puffing clouds; works in prompt characters |
+| **GitHub Copilot** | GitHub Copilot (cloud agent, CLI, app, VS Code) | the goggled helmet head (kept with GitHub's permission, human 2026-11-10): goggles over a lower face plate, round ear pads | a wide helmet with big pilot goggles across the top, low ear pads and a lower face plate with upright pill eyes; blue to violet with cyan frames |
+| **OpenAI Codex** | OpenAI Codex (CLI, cloud) | Codey, the Codex pet: a cloud-puff head with a dark rounded screen face and >_ glyph eyes | a cloud-puff head round a big dark navy screen with >_ prompt eyes, sky blue, puffing clouds; works in prompt characters |
 | **Google** | Google: Jules, Gemini CLI, Antigravity (one drone) | the Jules octopus: a domed head, two oval eyes, curled tentacles (the site's pixel avatar is purple) | a tall purple dome on a ring of six curling tentacles that sway in time with the bob |
 | **Devin** | Devin (cloud, CLI, Devin Desktop, formerly Windsurf) | logo only: three joined white hexagons on near-black | a near-black hexagonal head between two white hexagonal side pods (three hexagons in a row), three eyes |
 | **Kiro** | Kiro (CLI, IDE, cloud agent) and Amazon Q | the Kiro ghost: a white dome with a wavy hem and two black oval eyes | a white ghost dome with a scalloped hem that wobbles, shaded in Kiro purple, trailing wisps; floats high |
@@ -296,7 +296,7 @@ Only parameters that some brand changes from D-final. **Bold** marks a value tha
 | `screenY` | 0.18 | **0.22** | **-0.08** | **-0.42** | **0.02** | **-0.02** | **0.04** | **0.24** | **0.02** | **0.32** | 0.18 | **0.22** |
 | `screenRound` | 3 | **7** | **8** | **3.5** | **4.5** | 3 | **6** | **2.6** | **10** | **4** | 3 | 3 |
 | `bezel` | 0.18 | **0.08** | **0.08** | **0.12** | **0.08** | **0.14** | **0.12** | **0.1** | **0.5** | **0.14** | 0.18 | 0.18 |
-| `eyes` | Binocular | **Dots** | **LED bar** | **Dots** | **Happy** | **Dots** | **Three eyes** | **Dots** | **Cyclops** | **Slant** | Binocular | **Visor slit** |
+| `eyes` | Binocular | **Dots** | **LED bar** | **Pills (drone-only)** | **Prompt >_ (drone-only)** | **Dots** | **Three eyes** | **Dots** | **Cyclops** | **Slant** | Binocular | **Visor slit** |
 | `screenFlat` | off | **on** | **on** | off | off | off | **on** | off | **on** | off | off | off |
 | `screenSplit` | off | off | off | off | off | off | off | off | **on** | off | off | off |
 | `splitY` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | **-0.12** | 0 | 0 | 0 |
@@ -394,12 +394,12 @@ The five closest pairs at each gated scale:
 | Scale | Pair | IoU | ΔE | Score |
 |---|---|---|---|---|
 | crew close-up | cursor–devin | 0.73 | 0.036 | 1.10 |
-| crew close-up | copilot–qodo | 0.79 | 0.067 | 1.12 |
+| crew close-up | copilot–qodo | 0.79 | 0.068 | 1.14 |
 | crew close-up | devin–unknown | 0.78 | 0.071 | 1.19 |
 | crew close-up | cursor–unknown | 0.69 | 0.071 | 1.23 |
-| crew close-up | codex–generic | 0.76 | 0.074 | 1.23 |
+| crew close-up | codex–generic | 0.76 | 0.075 | 1.25 |
 | system distance | cursor–devin | 0.73 | 0.055 | 1.10 |
-| system distance | copilot–qodo | 0.76 | 0.070 | 1.17 |
-| system distance | codex–generic | 0.77 | 0.074 | 1.24 |
+| system distance | codex–generic | 0.77 | 0.069 | 1.16 |
+| system distance | copilot–qodo | 0.79 | 0.071 | 1.19 |
 | system distance | google–unknown | 0.70 | 0.077 | 1.28 |
 | system distance | qodo–generic | 0.78 | 0.078 | 1.30 |

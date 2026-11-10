@@ -12,7 +12,7 @@
 // scene's 24 s loop. All of it is a pure function of t (no Math.random, no wall clock).
 import * as THREE from 'three';
 import { EYES_GLSL } from '../asset-viewer/faces.js';
-import { DEFAULTS, LAB_EYE } from './params.js';
+import { DEFAULTS, DRONE_EYE } from './params.js';
 import { PALETTES } from './palette.js';
 
 export const LIGHT_DIR = new THREE.Vector3(-0.3, 0.55, 0.78).normalize(); // the viewer's top-left key
@@ -236,14 +236,14 @@ const FRAG = /* glsl */ `
   // Screen coords -> the V2 32 x 24 eye box, fitted inside the screen at its real aspect.
   float eyeUnit() { return min(2.0 * uEyePhys.x / 32.0, 2.0 * uEyePhys.y / 24.0); }
   vec2 boxP(vec2 q) { return vec2(16.0, 12.0) + vec2(q.x * uEyePhys.x, -q.y * uEyePhys.y) / eyeUnit(); }
-  // Lab-only eye prototypes (never in faces.js; a new crew glyph needs the human's approval):
+  // Drone-only eyes (approved for drones, 2026-11-10; not in faces.js, so the crew set stays V2):
   // upright pills, and a prompt (a > chevron and an _ cursor). Same 32 x 24 box and blink as V2.
-  bool labEyeLit(vec2 uv) {
+  bool droneEyeLit(vec2 uv) {
     const float W = 32.0, CX = 16.0, CY = 12.0, e = 16.0 * 1.12;
     vec2 P = uv * vec2(32.0, 24.0);
     P.y = CY + (P.y - CY) / max(uBlink, 0.05);
     float d;
-    if (uEyes == ${LAB_EYE.pills}) {
+    if (uEyes == ${DRONE_EYE.pills}) {
       d = 1e9;
       for (int k = -1; k <= 1; k += 2) d = min(d, sdRRect(P, vec2(CX + float(k) * W * 0.17, CY), vec2(e * 0.11, e * 0.25), e * 0.11));
     } else {
@@ -256,7 +256,7 @@ const FRAG = /* glsl */ `
   }
   bool eyesLit(vec2 P) {
     vec2 E = vec2(16.0, 12.0) + (P - vec2(16.0, 12.0) - vec2(uEyeXf.x, -uEyeXf.y)) / uEyeXf.z;
-    if (uEyes >= ${LAB_EYE.pills}) return labEyeLit(E / vec2(32.0, 24.0));
+    if (uEyes >= ${DRONE_EYE.pills}) return droneEyeLit(E / vec2(32.0, 24.0));
     return eyeLit(E / vec2(32.0, 24.0)); // uBlink (set to uEyeXf.w) squashes them
   }
   float hash1(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }

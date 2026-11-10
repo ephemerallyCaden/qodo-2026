@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PARAM_BY_KEY, DEFAULTS, EYES, LAB_EYE } from '../params.js';
+import { PARAM_BY_KEY, DEFAULTS, EYES, DRONE_EYE } from '../params.js';
 import { FINAL } from '../variants.js';
 import { BLK36, BRAND_PALETTES, PALETTES, SLOTS, TEAL } from '../palette.js';
 import { BRANDS, PROVIDERS, BRAND_BY_ID, BRAND_COLOURS, SESSION_VARY, SESSION_SPARKLES, sessionLook } from '../brands.js';
@@ -71,13 +71,17 @@ test('A3 one family: head-is-body, a thruster pack with smoke, a V2 screen face,
     assert.ok(!PARAM_BY_KEY.arms, 'no arms parameter exists');
     assert.ok(L.thr.length >= 1, `${b.id}: thrusters`);
     assert.ok(P.puffRate > 0 && P.puffSize > 0, `${b.id}: smoke`);
-    assert.ok(P.eyes < EYES.length, `${b.id}: canonical eyes must be V2 (${P.eyes})`);
+    if (b.v2Eyes == null) assert.ok(P.eyes < EYES.length, `${b.id}: eyes must be V2 (${P.eyes})`);
     assert.ok(P.screenW > 0 && P.screenH > 0, `${b.id}: screen face`);
     assert.ok(L.crown.length <= MAX_CROWN && L.skirt.length <= MAX_SKIRT, `${b.id}: within the shader limits`);
   }
-  // Lab-only eye prototypes: only where a provider really wants its own glyph, never canonical.
-  const protos = BRANDS.filter((b) => b.protoEyes != null);
-  assert.deepEqual(protos.map((b) => [b.id, b.protoEyes]), [['copilot', LAB_EYE.pills], ['codex', LAB_EYE.prompt]]);
+  // The two drone-only eyes (approved 2026-11-10) are Copilot's and Codex's own, each with a V2 fallback;
+  // every other drone uses a V2 eye. (They're not in faces.js: the crew set stays the 10 V2 designs.)
+  const own = BRANDS.filter((b) => b.params.eyes >= EYES.length);
+  assert.deepEqual(own.map((b) => [b.id, b.params.eyes]), [['copilot', DRONE_EYE.pills], ['codex', DRONE_EYE.prompt]]);
+  for (const b of own) assert.ok(Number.isInteger(b.v2Eyes) && b.v2Eyes < EYES.length, `${b.id}: a V2 fallback`);
+  assert.deepEqual(BRANDS.filter((b) => b.v2Eyes != null).map((b) => b.id), ['copilot', 'codex']);
+  assert.equal(PARAM_BY_KEY.eyes.options.length, 12, 'drones have the 10 V2 eyes plus two drone-only ones');
 });
 
 test('A3 size class: every drone is within D-final\'s size class', () => {

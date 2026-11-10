@@ -7,12 +7,14 @@
 // Per-session variety (R2b / A5): sessionLook(brand, session) hashes a session id into seeded
 // details only (a trim swap, one small shape detail, personality), never the silhouette.
 import { FINAL } from './variants.js';
-import { DEFAULTS, PARAM_BY_KEY, LAB_EYE } from './params.js';
+import { DEFAULTS, PARAM_BY_KEY, DRONE_EYE } from './params.js';
 import { BRAND_PALETTES } from './palette.js';
 import { hashStr } from '../asset-viewer/faces.js';
 
-// Eyes (V2 indices): 0 dots 1 cyclops 2 visor slit 3 binocular 4 three 5 happy 6 LED bar 7 heartbeat 8 slant 9 X.
-// Every brand uses its closest V2 eye; `protoEyes` names a lab-only prototype shown beside it.
+// Eyes (V2 indices): 0 dots 1 cyclops 2 visor slit 3 binocular 4 three 5 happy 6 LED bar 7 heartbeat 8 slant 9 X;
+// then the drone-only 10 pills (Copilot) and 11 prompt >_ (Codex), approved by the human (2026-11-10).
+// Every other brand uses its closest V2 eye. `v2Eyes` is the V2 fallback a drone-only eye replaced,
+// kept as a parameter option (`eyes`) but not rendered in the outputs.
 export const BRANDS = [
   {
     id: 'claude', name: 'Claude Code', covers: 'Claude Code (CLI, web, Action)',
@@ -50,35 +52,35 @@ export const BRANDS = [
   {
     id: 'copilot', name: 'GitHub Copilot', covers: 'GitHub Copilot (cloud agent, CLI, app, VS Code)',
     mascot: 'the goggled helmet head (kept with GitHub\'s permission, human 2026-11-10): goggles over a lower face plate, round ear pads',
-    signature: 'a wide helmet with big pilot goggles across the top, low ear pads and a lower face plate; blue to violet with cyan frames',
+    signature: 'a wide helmet with big pilot goggles across the top, low ear pads and a lower face plate with upright pill eyes; blue to violet with cyan frames',
     params: {
       rim: 0, antenna: 0,
       headW: 0.15, headH: 0.104, headD: 0.12, headRound: 0.55, headCorner: 0.85, headTaper: 1.12, headFlat: 0.15,
       topper: 1, gogW: 0.056, gogH: 0.038, gogX: 0.4, gogY: 0.45,
       ears: 1, earR: 0.045, earT: 0.018, earY: -0.35,
-      screenW: 0.66, screenH: 0.4, screenY: -0.42, screenRound: 3.5, bezel: 0.12, eyes: 0,
+      screenW: 0.66, screenH: 0.4, screenY: -0.42, screenRound: 3.5, bezel: 0.12, eyes: DRONE_EYE.pills,
       thrusters: 0, thrR: 0.025, thrL: 0.025, thrSpread: 0.5, thrFlare: 1.1,
       smoke: 0, puffSize: 1, puffRate: 0.45, sparkles: 2,
       bobAmp: 0.03, drift: 0.17, bank: 0.3, lookYaw: 0.4,
     },
-    protoEyes: LAB_EYE.pills,
+    v2Eyes: 0, // Dots
     detail: { key: 'earR', min: 0.04, max: 0.05 },
     trims: [['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], ['#36277f', '#4185d8', '#5ab9e5', '#ffffff'], ['#643499', '#8c51cc', '#b991f2', '#a5e6ff']],
   },
   {
     id: 'codex', name: 'OpenAI Codex', covers: 'OpenAI Codex (CLI, cloud)',
     mascot: 'Codey, the Codex pet: a cloud-puff head with a dark rounded screen face and >_ glyph eyes',
-    signature: 'a cloud-puff head round a big dark navy screen, sky blue, puffing clouds; works in prompt characters',
+    signature: 'a cloud-puff head round a big dark navy screen with >_ prompt eyes, sky blue, puffing clouds; works in prompt characters',
     params: {
       rim: 0, antenna: 0,
       headW: 0.122, headH: 0.098, headD: 0.11, headRound: 0.9, headCorner: 0.6, headTaper: 1, headFlat: 0.2,
       crown: 1, crownN: 7, crownR: 0.039, crownArc: 2.05, crownZ: -0.2,
-      screenW: 0.76, screenH: 0.55, screenY: 0.02, screenRound: 4.5, bezel: 0.08, eyes: 5,
+      screenW: 0.76, screenH: 0.55, screenY: 0.02, screenRound: 4.5, bezel: 0.08, eyes: DRONE_EYE.prompt,
       thrusters: 0, thrR: 0.026, thrL: 0.022, thrSpread: 0.55, thrFlare: 1.1,
       smoke: 0, puffSize: 1.15, puffRate: 0.45, sparkles: 1, glyphSet: 3,
       bobAmp: 0.03, drift: 0.16, bank: 0.26, lookYaw: 0.4,
     },
-    protoEyes: LAB_EYE.prompt,
+    v2Eyes: 5, // Happy
     detail: { key: 'crownR', min: 0.036, max: 0.042 },
     trims: [['#4185d8', '#5ab9e5', '#a5e6ff', '#ffffff'], ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], ['#5ab9e5', '#a5e6ff', '#ffffff', '#ffffff']],
   },

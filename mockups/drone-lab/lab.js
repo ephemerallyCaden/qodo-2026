@@ -242,12 +242,6 @@ function sheet(spec) {
       }
       ctx.drawImage(gl, x, y, tw, h * scale);
       if (cell.mark) { ctx.strokeStyle = '#00ffd5'; ctx.lineWidth = 2; ctx.strokeRect(x - 2, y - 2, tw + 4, h * scale + 4); }
-      if (cell.badge) { // a label outside the pixel pass, e.g. "new glyph, needs approval"
-        ctx.font = '600 11px ui-monospace, Menlo, monospace';
-        const bw = ctx.measureText(cell.badge).width + 8;
-        ctx.fillStyle = '#ffe091'; ctx.fillRect(x + 2, y + 2, bw, 16);
-        ctx.fillStyle = '#111'; ctx.fillText(cell.badge, x + 6, y + 4);
-      }
       if (cell.caption) {
         ctx.fillStyle = '#fff6e4';
         ctx.font = '12px ui-monospace, Menlo, monospace';

@@ -27,7 +27,7 @@ npm run lab   # regenerates everything in out/: about 2 min for A–E and D-fina
 npm run dev   # live page at http://127.0.0.1:5192/ (loopback only; PORT=... to change)
 ```
 
-`node lab.mjs final working` renders just the named outputs (`lineup`, `crew`, `closeups`, `turntable`, `motion`, `final`, `working`, `params`; for the brands `brands`, `brand-closeups`, `seeds`, `squads`, `brand-gifs`, `a4`; and `identity`, the A–E / D-final pixel-identity check).
+`node lab.mjs final working` renders just the named outputs (`lineup`, `crew`, `closeups`, `turntable`, `motion`, `final`, `working`, `params`; for the brands `brands`, `brand-closeups`, `seeds`, `squads`, `brand-gifs`, `a4`; and `identity`, the A–E / D-final pixel-identity check). Add `brand=copilot,codex` to limit `brand-closeups` and `brand-gifs` to those drones.
 
 ## Outputs (`out/`)
 
@@ -44,7 +44,7 @@ npm run dev   # live page at http://127.0.0.1:5192/ (loopback only; PORT=... to 
 | `<letter>-closeup.png` | One variant with the camera at half distance, ×3: front, 3/4, side, back 3/4 |
 | `params.md` | Every parameter with its range and meaning, each variant's values, the palette slots, the behaviour timeline, the pick (D-final) and its provenance, the working face, and the brand drones (parameters, palettes, colour mapping, per-session variety, A4 numbers) |
 | `brands-lineup.png` | All 11 brand drones from the front, 3/4 and side, 180p crops ×3, labelled outside the pixel pass |
-| `brand-<id>-closeup.png` | One brand drone at the 2× close-up: front, 3/4, side, back 3/4; Copilot and Codex add a badged lab-only eye prototype beside the V2 front |
+| `brand-<id>-closeup.png` | One brand drone at the 2× close-up: front, 3/4, side, back 3/4 |
 | `brand-<id>-turntable.gif`, `brand-<id>-motion.gif` | One brand drone's 6 s turntable and 12 s motion loop (drift, bank, puffs, look-around, its working face), 15 fps, seamless |
 | `brands-seeds.png` | A5: three sessions of each drone, differing only in seeded details |
 | `brands-crew-closeup.png` | K astronauts with the brand drones at the viewer's crew close-up (four 320×180 frames, all 11 drones) |
@@ -58,7 +58,7 @@ Every tile `npm run lab` renders is checked, and the run fails if any check fail
 - nothing is clipped by the tile edge;
 - each GIF shows smoke in at least half its checked frames;
 - each GIF's frame one loop later is pixel-identical to frame 0;
-- the face probe passes for every variant and every brand drone (its prototype eye too): while working, glyph pixels and no eye pixels; at rest, eyes and no glyphs;
+- the face probe passes for every variant and every brand drone (and for Copilot's and Codex's V2 fallback eyes): while working, glyph pixels and no eye pixels; at rest, eyes and no glyphs;
 - A–E and D-final are pixel-identical to their renders before the brand geometry existed (25 hashed tiles in `test/identity.json`);
 - every pair of brand drones passes A4 at the crew close-up and at system distance (see below).
 
@@ -89,12 +89,12 @@ Every tile `npm run lab` renders is checked, and the run fails if any check fail
 
 One drone per approved provider (human, 2026-11-10), plus **generic** (every other detected tool: D-final exactly, with the tool's name as a label) and **unknown agent** (agent evidence with no known tool). Each is D-final with a parameter set laid over it plus a palette (`brands.js`, `palette.js` `BRAND_PALETTES`). They borrow a silhouette, one or two signature features and a colour from the provider's mascot or logo, without copying it. The full parameter, palette and colour tables are generated into `out/params.md`.
 
-| Drone | Covers | Inspired by | What makes it that provider | Eyes (V2) |
+| Drone | Covers | Inspired by | What makes it that provider | Eyes |
 |---|---|---|---|---|
 | Claude Code | CLI, web, Action | Clawd, the CLI's block critter | a wide flat block body on four stubby legs (two pairs), side stubs, terracotta orange; its working face is an asterisk spinner | Dots |
 | Cursor | IDE, CLI, cloud | the isometric cube logo | a crisp graphite cube with a white top facet (the logo's light facet) and a flat screen; sputters precise dots | LED bar |
-| GitHub Copilot | cloud agent, CLI, app, VS Code | the goggled helmet (kept with GitHub's permission) | big pilot goggles across the top of a wide helmet, low ear pads, a lower face plate; blue to violet with cyan frames | Dots (prototype: Pills) |
-| OpenAI Codex | CLI, cloud | Codey, the Codex pet | a cloud-puff head round a big navy screen, sky blue, puffing round clouds; works in prompt characters | Happy (prototype: Prompt `>_`) |
+| GitHub Copilot | cloud agent, CLI, app, VS Code | the goggled helmet (kept with GitHub's permission) | big pilot goggles across the top of a wide helmet, low ear pads, a lower face plate with upright pill eyes; blue to violet with cyan frames | Pills (drone-only) |
+| OpenAI Codex | CLI, cloud | Codey, the Codex pet | a cloud-puff head round a big navy screen with `>_` prompt eyes, sky blue, puffing round clouds; works in prompt characters | Prompt `>_` (drone-only) |
 | Google | Jules, Gemini CLI, Antigravity | the Jules octopus | a tall purple dome on six curling lilac tentacles that sway with the bob | Dots |
 | Devin | cloud, CLI, Devin Desktop (ex-Windsurf) | the three-hexagon logo | a near-black hexagonal head between two white hexagonal side pods (three hexagons in a row) | Three eyes |
 | Kiro | Kiro CLI/IDE/cloud, Amazon Q | the Kiro ghost | a white ghost dome shaded in Kiro purple, with a scalloped hem that wobbles; trails wisps and floats high | Dots |
@@ -113,11 +113,11 @@ Brand colours were sampled from the references and mapped to BLK 36 by OKLab dis
 
 ### Eye glyphs (art direction §8)
 
-Every drone's own eye is its closest V2 design (above). Two providers really want a glyph of their own, so those are **prototyped inside the drone lab only** (`drone.js` `labEyeLit`, never `asset-viewer/faces.js`) and shown beside the V2 fallback, badged "new glyph, needs approval", in `brand-copilot-closeup.png` and `brand-codex-closeup.png`:
-- **Pills** (Copilot): two upright rounded bars, the goggled head's eyes. The fallback is Dots.
-- **Prompt `>_`** (Codex): a chevron and a cursor, Codey's eyes. The fallback is Happy (`^ ^`, one of Codey's own expressions).
+Nine drones use their closest V2 design (above). Copilot and Codex each have a glyph of their own, which the human approved on 2026-11-10:
+- **Pills** (Copilot): two upright rounded bars, the goggled head's eyes. The V2 fallback is Dots.
+- **Prompt `>_`** (Codex): a chevron and a cursor, Codey's eyes. The V2 fallback is Happy (`^ ^`, one of Codey's own expressions).
 
-**These need the human's approval.** If they're approved, they belong in the shared V2 set (`faces.js`) so astronauts could use them too.
+**They are drone-only.** They live in `drone.js` (`droneEyeLit`), not in `asset-viewer/faces.js`, so the crew keeps the 10 V2 designs and drones have 12. The V2 fallback stays available as an `eyes` option (`brands.js` `v2Eyes`, face-probed by the lab), but no output renders it.
 
 ### A4: telling them apart
 
@@ -136,7 +136,7 @@ A pair scores max((1 − IoU) / 0.25, ΔE / 0.06), and must score at least 1 in 
 | far (the mid depth step) | 6 px | no (info) | Qodo–generic (0.84: 0.86, 0.050) | Google–Qodo 0.022 | Claude–Qodo 0.88 |
 
 - **The closest pair is Cursor–Devin.** Both are near-black with white details, so they separate by shape: a cube with a white top against a hexagon between white pods.
-- **The next closest:** Copilot–Qodo (1.12 at close-up, 1.17 at system distance), then Devin–unknown and Codex–generic (1.19–1.24).
+- **The next closest:** at the close-up, Copilot–Qodo (1.14) and Devin–unknown (1.19); at system distance, Codex–generic (1.16) and Copilot–Qodo (1.19).
 - **Generic–unknown** share D-final's silhouette (IoU 0.96), so they separate by colour alone (ΔE 0.18).
 - **At 6 px** the purples (Google, Qodo, Kiro, Copilot) and generic start to merge. That scale isn't gated, and it's where the name labels carry identity.
 
@@ -165,7 +165,7 @@ The silhouette, shell, screen, glow, accent and smoke never vary, so two Claude 
 | `screenSplit`, `splitY` | OpenCode | the screen's lower part in its second tone |
 | `glyphSet` | Claude, Codex, Qodo | the working face's glyphs: an asterisk spinner, prompt characters, or diff marks read row by row |
 | `workNod` | Qodo | the head dips while working (reviewing) |
-| `eyes` = Pills / Prompt `>_` | Copilot, Codex (prototype tiles only) | lab-only eye prototypes; needs approval |
+| `eyes` = Pills / Prompt `>_` | Copilot, Codex | the two drone-only eyes (approved 2026-11-10; not in `faces.js`) |
 
 The live page (`npm run dev`) has the brand drones in its picker, and picking one switches to its palette.
 

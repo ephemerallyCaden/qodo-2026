@@ -6,10 +6,10 @@
 import { EYE_DESIGNS } from '../asset-viewer/faces.js';
 
 export const EYES = EYE_DESIGNS.map((d) => d.name); // the astronauts' V2 set, read-only
-// Lab-only eye prototypes (drone.js), never added to faces.js: a new crew glyph needs the human's
-// approval (art direction §8). Brands use the closest V2 eye; these render beside it, badged.
-export const LAB_EYES = ['Pills (lab prototype)', 'Prompt >_ (lab prototype)'];
-export const LAB_EYE = { pills: EYES.length, prompt: EYES.length + 1 };
+// Drone-only eyes (drone.js), approved by the human for drones (2026-11-10): Copilot's pills and
+// Codex's prompt. They are not in faces.js, so the crew's set stays the 10 V2 designs; drones have 12.
+export const DRONE_EYES = ['Pills (drone-only)', 'Prompt >_ (drone-only)'];
+export const DRONE_EYE = { pills: EYES.length, prompt: EYES.length + 1 };
 export const THRUSTERS = ['twin under-pods', 'single under-jet', 'quad corner nozzles', 'single rear jet', 'twin rear jets'];
 export const SMOKE = ['round puffs', 'wispy trails', 'sputter dots'];
 
@@ -69,7 +69,7 @@ export const PARAMS = [
   { key: 'screenY', group: 'face', min: -0.5, max: 0.6, step: 0.01, def: 0, words: 'Screen centre height on the face' },
   { key: 'screenRound', group: 'face', min: 2, max: 10, step: 0.1, def: 4.5, words: 'Screen corners: 2 = an ellipse (a porthole), 10 = a sharp rectangle' },
   { key: 'bezel', group: 'face', min: 0, max: 0.6, step: 0.01, def: 0.2, words: 'Trim bezel round the screen (0 = none)' },
-  { key: 'eyes', group: 'face', type: 'select', options: [...EYES, ...LAB_EYES], def: 0, words: 'V2 eye design (glows teal); the last two are lab-only prototypes' },
+  { key: 'eyes', group: 'face', type: 'select', options: [...EYES, ...DRONE_EYES], def: 0, words: 'Eye design (glows teal): the 10 V2 designs, then two drone-only ones' },
   { key: 'eyeScale', group: 'face', min: 0.5, max: 1.5, step: 0.01, def: 1, words: 'Eye size' },
   { key: 'gaze', group: 'face', min: -5, max: 5, step: 0.1, def: 0, words: 'Resting eye height on the screen, in eye-box pixels (+ up; a shy drone looks down)' },
   { key: 'glance', group: 'face', min: 0, max: 8, step: 0.1, def: 4.5, words: 'How far the eyes glance side to side when looking around (eye-box pixels)' },

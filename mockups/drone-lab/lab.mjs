@@ -26,7 +26,10 @@ const ORIGIN = 'http://lab.local';
 const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
 const VIEWS = [['front', 0], ['3/4', -0.75], ['side', -Math.PI / 2]];
 const FPS = 15;
-const wanted = process.argv.slice(2);
+const wanted = process.argv.slice(2).filter((a) => !a.startsWith('brand='));
+// brand=copilot,codex limits brand-closeups and brand-gifs to those drones.
+const onlyIds = process.argv.slice(2).find((a) => a.startsWith('brand='))?.slice(6).split(',');
+const only = (list) => (onlyIds ? list.filter((b) => onlyIds.includes(b.id)) : list);
 const tag = (v) => `${v.id} · ${v.name}${v.id === PICKED ? ' (picked: see D-final)' : ''}`;
 const want = (n) => !wanted.length || wanted.includes(n);
 
@@ -235,13 +238,13 @@ try {
     console.log('  face probe: working = glyphs and no eyes, idle = eyes and no glyphs (A–E and D-final)');
   }
   if (want('brands')) {
-    // The same face probe for every brand drone (its V2 eye, and its lab prototype if any).
+    // The same face probe for every brand drone (its own eye, and the V2 fallback where it has one).
     for (const b of BRANDS) {
-      for (const eyes of [null, b.protoEyes ?? null].filter((e, i) => i === 0 || e != null)) {
+      for (const eyes of [null, b.v2Eyes ?? null].filter((e, i) => i === 0 || e != null)) {
         for (const [t, working] of [[0.5, false], [3.2, false], [7.0, true], [8.6, true]]) {
           const p = await page.evaluate(([id, tt, e]) => window.lab.faceProbe({ brand: id, params: e == null ? {} : { eyes: e }, t: tt, yaw: 0, zoom: 2, motion: true, smoke: false }, 160, 160), [b.id, t, eyes]);
           const ok = working ? p.eyes === 0 && p.glyphs > 20 : p.eyes > 10 && p.glyphs === 0;
-          if (!ok) problems.push(`face probe ${b.id}${eyes == null ? '' : ' (prototype eyes)'} t = ${t}: ${p.eyes} eye px, ${p.glyphs} glyph px`);
+          if (!ok) problems.push(`face probe ${b.id}${eyes == null ? '' : ' (V2 fallback eyes)'} t = ${t}: ${p.eyes} eye px, ${p.glyphs} glyph px`);
         }
       }
     }
@@ -262,11 +265,9 @@ try {
   }
 
   if (want('brand-closeups')) {
-    // Each brand at the 2x close-up: front, 3/4, side, back 3/4; a lab-only eye prototype, if
-    // the brand has one, is a fifth tile badged "new glyph, needs approval" (front, V2 fallback beside it).
-    for (const b of BRANDS) {
+    // Each brand at the 2x close-up: front, 3/4, side, back 3/4.
+    for (const b of only(BRANDS)) {
       const cells = [[0, 'front'], [-0.75, '3/4'], [-Math.PI / 2, 'side'], [Math.PI * 0.8, 'back 3/4']].map(([yaw, caption]) => ({ brand: b.id, yaw, t: STILL_T, zoom: 2, caption }));
-      if (b.protoEyes != null) cells.splice(1, 0, { brand: b.id, params: { eyes: b.protoEyes }, yaw: 0, t: STILL_T, zoom: 2, caption: `front, ${PARAMS.find((p) => p.key === 'eyes').options[b.protoEyes]}`, badge: 'new glyph, needs approval' });
       await render(`closeup ${b.id}`, {
         title: `${b.name} · 2x close-up (camera at half distance), x3 · ${b.signature}`,
         w: 160, h: 160, scale: 3,
@@ -318,7 +319,7 @@ try {
 
   if (want('brand-gifs')) {
     // Per drone: the 6 s turntable and the 12 s motion loop, as for D-final.
-    for (const b of BRANDS) {
+    for (const b of only(BRANDS)) {
       await loopGif(`brand-${b.id}-turntable`, LOOP, (f) => ({
         w: 220, h: 220, scale: 3, crispLabels: true,
         rows: [{ cells: [{ brand: b.id, yaw: -0.75 - (Math.PI * 2 * f) / (LOOP * FPS), t: f / FPS, zoom: 2, caption: `${b.name} · turntable, 6 s` }] }],
