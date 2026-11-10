@@ -4,7 +4,7 @@
 // belongs to. Without it, or where it can't be followed, a file errs to fogged with
 // `lineage-unknown` (Rule 1).
 import { byCodepoint } from '../canonical-json.js';
-import type { ChartAction, FileFog, FogCounts, FogReason, FogView } from '../contract/fog.js';
+import type { ChartAction, ChartStale, FileFog, FogCounts, FogReason, FogView } from '../contract/fog.js';
 import { sha256Hex } from '../hash.js';
 import type { PathHistory, Unrowed } from '../renames.js';
 import type { Commit, CommitFile, DirId, FileEntry, FileId, PersonId, Sha, SnapshotV02 } from '../snapshot/types.js';
@@ -267,15 +267,17 @@ export function fogFrom(base: FogBase, chart: ChartState): FogView {
 export const fogView = (snapshot: SnapshotV02, chart: ChartState, history: PathHistory | null): FogView =>
   fogFrom(fogBase(snapshot, history), chart);
 
-export type ChartApplied = { ok: true; chart: ChartState } | { ok: false; error: string };
+export type ChartApplied = { ok: true; chart: ChartState } | ChartStale | { ok: false; error: string; head?: undefined };
 
 /**
- * Applies one ChartAction (the only write vocabulary) at the snapshot's head. `chart` records the
- * file's id and the head, and drops older charts of the same file, which the new one covers.
- * `baseline` pushes the head; `baseline-undo` pops the last baseline and touches nothing else.
+ * Applies one ChartAction (the only write vocabulary) at the snapshot's head. An action whose `at`
+ * isn't that head was decided on an older view, so it's refused as stale (#58) and changes nothing.
+ * `chart` records the file's id and the head, and drops older charts of the same file, which the new
+ * one covers. `baseline` pushes the head; `baseline-undo` pops the last baseline and touches nothing else.
  */
 export function applyChartAction(base: FogBase, chart: ChartState, action: ChartAction): ChartApplied {
   const head = base.snapshot.repo.head;
+  if (action.at !== head) return { ok: false, error: 'stale', head };
   if (action.kind === 'baseline') return { ok: true, chart: { ...chart, baselines: [...chart.baselines, head] } };
   if (action.kind === 'baseline-undo') {
     if (chart.baselines.length === 0) return { ok: false, error: 'no baseline to undo' };

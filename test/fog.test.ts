@@ -13,9 +13,12 @@ import { AGENT, expectedReasons, MATE, Model, NOT_YOURS, prng, randomOps, SELF, 
 const fileAt = (fog: FogView, path: string) => fog.files.find((f) => f.fileId === fileIdOf(path))!;
 const fogOf = (m: Model, chart: ChartState, opts: Parameters<Model['snapshot']>[0] = {}) => fogView(m.snapshot(opts), chart, m.history(opts.at));
 
-/** Applies an action at the model's head (or `at`), failing the test on an error result. */
-function act(m: Model, chart: ChartState, action: Parameters<typeof applyChartAction>[2], at = m.head): ChartState {
-  const r = applyChartAction(fogBase(m.snapshot({ at }), m.history(at)), chart, action);
+/** A ChartAction without its `at`, which act fills in from the head it acts at. */
+type Act = { kind: 'chart'; fileId: FileId } | { kind: 'baseline' } | { kind: 'baseline-undo' };
+
+/** Applies an action at the model's head (or `at`), as a view showing that head would, failing the test on an error result. */
+function act(m: Model, chart: ChartState, action: Act, at = m.head): ChartState {
+  const r = applyChartAction(fogBase(m.snapshot({ at }), m.history(at)), chart, { ...action, at: m.sha(at) });
   if (!r.ok) throw new Error(r.error);
   return r.chart;
 }
@@ -153,13 +156,27 @@ describe('fogView', () => {
     chart = act(m, chart, { kind: 'baseline-undo' });
     expect(fogOf(m, chart).baseline).toBe(m.sha(0));
     chart = act(m, chart, { kind: 'baseline-undo' });
-    expect(applyChartAction(fogBase(m.snapshot(), m.history()), chart, { kind: 'baseline-undo' })).toEqual({ ok: false, error: 'no baseline to undo' });
+    expect(applyChartAction(fogBase(m.snapshot(), m.history()), chart, { kind: 'baseline-undo', at: m.sha(m.head) })).toEqual({ ok: false, error: 'no baseline to undo' });
+  });
+
+  it('refuses an action decided at another head as stale, and changes nothing (#58)', () => {
+    const m = new Model();
+    m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }]);
+    const seen = m.sha(m.head);
+    const before = act(m, emptyChart(), { kind: 'baseline' });
+    m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
+    const base = fogBase(m.snapshot(), m.history());
+    for (const action of [{ kind: 'chart', fileId: fileIdOf('src/a.ts'), at: seen }, { kind: 'baseline', at: seen }, { kind: 'baseline-undo', at: seen },
+      { kind: 'chart', fileId: fileIdOf('src/a.ts'), at: 'c'.repeat(40) }] as const) {
+      expect(applyChartAction(base, before, action)).toEqual({ ok: false, error: 'stale', head: m.sha(m.head) });
+    }
+    expect(fileAt(fogView(m.snapshot(), before, m.history()), 'src/a.ts').state).toBe('fogged');
   });
 
   it('refuses to chart a file that is not in the snapshot', () => {
     const m = new Model();
     m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }]);
-    expect(applyChartAction(fogBase(m.snapshot(), m.history()), emptyChart(), { kind: 'chart', fileId: fileIdOf('src/zz.ts') }))
+    expect(applyChartAction(fogBase(m.snapshot(), m.history()), emptyChart(), { kind: 'chart', fileId: fileIdOf('src/zz.ts'), at: m.sha(m.head) }))
       .toEqual({ ok: false, error: 'no such file in the latest snapshot' });
   });
 });
@@ -269,12 +286,14 @@ describe('chart state on disk', () => {
     for (const text of bad) expect(() => parseChartState(text), text).toThrow();
   });
 
-  it('accepts exactly one ChartAction', () => {
-    expect(parseChartAction({ kind: 'chart', fileId: 'f_000000000001' })).toEqual({ kind: 'chart', fileId: 'f_000000000001' });
-    expect(parseChartAction({ kind: 'baseline' })).toEqual({ kind: 'baseline' });
-    expect(parseChartAction({ kind: 'baseline-undo' })).toEqual({ kind: 'baseline-undo' });
-    for (const body of [null, [], 'baseline', { kind: 'chart' }, { kind: 'chart', fileId: '../x' }, { kind: 'baseline', all: true },
-      { kind: 'clear' }, { kind: 'chart', fileId: 'f_000000000001', at: sha }]) expect(parseChartAction(body)).toBeNull();
+  it('accepts exactly one ChartAction, always with the head it was decided at (#58)', () => {
+    expect(parseChartAction({ kind: 'chart', fileId: 'f_000000000001', at: sha })).toEqual({ kind: 'chart', fileId: 'f_000000000001', at: sha });
+    expect(parseChartAction({ kind: 'baseline', at: sha })).toEqual({ kind: 'baseline', at: sha });
+    expect(parseChartAction({ kind: 'baseline-undo', at: 'b'.repeat(64) })).toEqual({ kind: 'baseline-undo', at: 'b'.repeat(64) });
+    for (const body of [null, [], 'baseline', { kind: 'chart', at: sha }, { kind: 'chart', fileId: '../x', at: sha }, { kind: 'baseline', all: true, at: sha },
+      { kind: 'clear', at: sha }, { kind: 'chart', fileId: 'f_000000000001' }, { kind: 'baseline' }, { kind: 'baseline-undo' },
+      { kind: 'baseline', at: 'HEAD' }, { kind: 'baseline', at: sha.slice(1) }, { kind: 'baseline', at: sha.toUpperCase() },
+      { kind: 'baseline', at: `--output=${sha}` }, { kind: 'baseline', at: null }]) expect(parseChartAction(body), JSON.stringify(body)).toBeNull();
   });
 });
 

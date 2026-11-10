@@ -59,8 +59,11 @@ export function parseChartState(json: string): ChartState {
 
 /** Validates an untrusted ChartAction (the server's POST body). Null when it isn't exactly one. */
 export function parseChartAction(body: unknown): ChartAction | null {
-  if (!isObject(body)) return null;
-  if (body['kind'] === 'chart') return hasKeys(body, ['kind', 'fileId']) && isFileId(body['fileId']) ? { kind: 'chart', fileId: body['fileId'] } : null;
-  if (body['kind'] === 'baseline' || body['kind'] === 'baseline-undo') return hasKeys(body, ['kind']) ? { kind: body['kind'] } : null;
+  if (!isObject(body) || !isSha(body['at'])) return null;
+  const at = body['at'];
+  if (body['kind'] === 'chart') {
+    return hasKeys(body, ['kind', 'fileId', 'at']) && isFileId(body['fileId']) ? { kind: 'chart', fileId: body['fileId'], at } : null;
+  }
+  if (body['kind'] === 'baseline' || body['kind'] === 'baseline-undo') return hasKeys(body, ['kind', 'at']) ? { kind: body['kind'], at } : null;
   return null;
 }

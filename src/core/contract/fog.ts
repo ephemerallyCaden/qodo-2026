@@ -39,8 +39,16 @@ export interface FogView {
   star: FogCounts;
 }
 
-/** The only writes the local server accepts for chart state (R14 AC4). */
+/**
+ * The only writes the local server accepts for chart state (R14 AC4). `at` is the `FogView.head`
+ * the user was looking at (#58). A write whose `at` isn't the current head is refused with
+ * `ChartStale` and changes nothing, so a change that arrived after the view's last fetch is never
+ * marked reviewed unseen (AGENTS.md Rule 1).
+ */
 export type ChartAction =
-  | { kind: 'chart'; fileId: FileId }
-  | { kind: 'baseline' }
-  | { kind: 'baseline-undo' };
+  | { kind: 'chart'; fileId: FileId; at: Sha }
+  | { kind: 'baseline'; at: Sha }
+  | { kind: 'baseline-undo'; at: Sha };
+
+/** A refused write: the action's `at` isn't the current head. Refetch the fog (at `head`) and act again. */
+export interface ChartStale { ok: false; error: 'stale'; head: Sha }

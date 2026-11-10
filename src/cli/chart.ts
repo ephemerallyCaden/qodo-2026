@@ -140,7 +140,7 @@ async function chartFile(src: FogSource, io: Io, arg: string): Promise<number> {
       : `commet: ${label(path)} isn't in the latest snapshot (excluded, uncommitted or newer than the scan: run \`commet scan\`)\n`);
     return EXIT.usage;
   }
-  const r = await writeChart(src, { kind: 'chart', fileId: file.id });
+  const r = await writeChart(src, { kind: 'chart', fileId: file.id, at: src.base.snapshot.repo.head });
   if (!r.ok) throw new CommetError(r.error, EXIT.internal);
   const after = fogFrom(src.base, r.chart);
   const was = fogFrom(src.base, r.prev).files.find((f) => f.fileId === file.id)!;
@@ -155,7 +155,8 @@ async function chartFile(src: FogSource, io: Io, arg: string): Promise<number> {
 }
 
 async function baseline(src: FogSource, io: Io, undo: boolean): Promise<number> {
-  const r = await writeChart(src, { kind: undo ? 'baseline-undo' : 'baseline' });
+  // The CLI has no view that could be stale: it acts on the snapshot it just read (#58).
+  const r = await writeChart(src, { kind: undo ? 'baseline-undo' : 'baseline', at: src.base.snapshot.repo.head });
   if (!r.ok) {
     io.stderr(`commet: ${r.error}\n`);
     return EXIT.state;

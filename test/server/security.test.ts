@@ -13,6 +13,9 @@ import { writeAtomic } from '../../src/state/io.js';
 import { miniFog } from '../fixtures/contract/mini.js';
 import { liveEvents, openStream, rawHttp, req, waitFor } from '../fixtures/http.js';
 
+/** A head the view was showing; every chart action carries one (#58). */
+const AT = 'a'.repeat(40);
+
 const HEAD_A = 'a'.repeat(40);
 const HEAD_B = 'b'.repeat(40);
 const SECRET = 'TOP-SECRET-CANARY-outside-the-bundle';
@@ -84,13 +87,17 @@ describe('guards (unit)', () => {
     }
   });
 
-  it('accepts exactly the contract chart actions', () => {
-    expect(parseChartAction({ kind: 'chart', fileId: 'f_000000000001' })).toEqual({ kind: 'chart', fileId: 'f_000000000001' });
-    expect(parseChartAction({ kind: 'baseline' })).toEqual({ kind: 'baseline' });
-    expect(parseChartAction({ kind: 'baseline-undo' })).toEqual({ kind: 'baseline-undo' });
-    for (const v of [null, [], 'chart', { kind: 'chart' }, { kind: 'chart', fileId: '../x' }, { kind: 'chart', fileId: 'f_1' }, { kind: 'chart', fileId: 'f_000000000001\n' },
-      { kind: 'chart', fileId: 'f_000000000001', extra: 1 }, { kind: 'baseline', fileId: 'f_000000000001' }, { kind: 'beacon' },
-      { kind: 'unchart', fileId: 'f_000000000001' }]) {
+  it('accepts exactly the contract chart actions, each with the head it was decided at (#58)', () => {
+    expect(parseChartAction({ kind: 'chart', fileId: 'f_000000000001', at: AT })).toEqual({ kind: 'chart', fileId: 'f_000000000001', at: AT });
+    expect(parseChartAction({ kind: 'baseline', at: AT })).toEqual({ kind: 'baseline', at: AT });
+    expect(parseChartAction({ kind: 'baseline-undo', at: AT })).toEqual({ kind: 'baseline-undo', at: AT });
+    expect(parseChartAction({ kind: 'baseline', at: 'b'.repeat(64) })).toEqual({ kind: 'baseline', at: 'b'.repeat(64) });
+    for (const v of [null, [], 'chart', { kind: 'chart', at: AT }, { kind: 'chart', fileId: '../x', at: AT }, { kind: 'chart', fileId: 'f_1', at: AT },
+      { kind: 'chart', fileId: 'f_000000000001\n', at: AT }, { kind: 'chart', fileId: 'f_000000000001', extra: 1, at: AT },
+      { kind: 'baseline', fileId: 'f_000000000001', at: AT }, { kind: 'beacon', at: AT }, { kind: 'unchart', fileId: 'f_000000000001', at: AT },
+      // `at` is required, and only a full lowercase SHA (#58).
+      { kind: 'chart', fileId: 'f_000000000001' }, { kind: 'baseline' }, { kind: 'baseline-undo' }, { kind: 'baseline', at: 'HEAD' },
+      { kind: 'baseline', at: AT.slice(1) }, { kind: 'baseline', at: AT.toUpperCase() }, { kind: 'baseline', at: `${AT}\n` }, { kind: 'baseline', at: 1 }]) {
       expect(parseChartAction(v), JSON.stringify(v)).toBeNull();
     }
   });
@@ -211,7 +218,7 @@ describe('R14 server on a real socket', () => {
     });
 
     it('refuses cross-origin writes and reads even with the token', async () => {
-      const body = JSON.stringify({ kind: 'baseline' });
+      const body = JSON.stringify({ kind: 'baseline', at: AT });
       for (const headers of [{ origin: 'http://evil.example' }, { origin: 'null' }, { origin: `http://127.0.0.1:${f.port + 1}` },
         { 'sec-fetch-site': 'cross-site' }, { 'sec-fetch-site': 'same-site' }]) {
         expect((await api(API.chart, { ...headers, 'content-type': 'application/json' }, 'POST', body)).status).toBe(403);
@@ -250,12 +257,14 @@ describe('R14 server on a real socket', () => {
 
     it('validates chart bodies, then reports not implemented until R5', async () => {
       const json = { 'content-type': 'application/json' };
-      expect((await api(API.chart, { 'content-type': 'text/plain' }, 'POST', '{"kind":"baseline"}')).status).toBe(415);
-      expect((await api(API.chart, {}, 'POST', '{"kind":"baseline"}')).status).toBe(415);
+      const baseline = JSON.stringify({ kind: 'baseline', at: AT });
+      expect((await api(API.chart, { 'content-type': 'text/plain' }, 'POST', baseline)).status).toBe(415);
+      expect((await api(API.chart, {}, 'POST', baseline)).status).toBe(415);
       expect((await api(API.chart, json, 'POST', '{nope')).status).toBe(400);
-      expect((await api(API.chart, json, 'POST', '{"kind":"chart","fileId":"../../etc"}')).status).toBe(400);
-      expect((await api(API.chart, json, 'POST', JSON.stringify({ kind: 'baseline', pad: 'x'.repeat(5000) }))).status).toBe(413);
-      const r = await api(API.chart, { 'content-type': 'application/json; charset=utf-8' }, 'POST', '{"kind":"chart","fileId":"f_000000000001"}');
+      expect((await api(API.chart, json, 'POST', JSON.stringify({ kind: 'chart', fileId: '../../etc', at: AT }))).status).toBe(400);
+      expect((await api(API.chart, json, 'POST', '{"kind":"baseline"}')).status).toBe(400);
+      expect((await api(API.chart, json, 'POST', JSON.stringify({ kind: 'baseline', at: AT, pad: 'x'.repeat(5000) }))).status).toBe(413);
+      const r = await api(API.chart, { 'content-type': 'application/json; charset=utf-8' }, 'POST', JSON.stringify({ kind: 'chart', fileId: 'f_000000000001', at: AT }));
       expect(r.status).toBe(501);
       expect(JSON.parse(r.body)).toEqual({ ok: false, error: 'chart writes are not implemented yet (R5)' });
     });
@@ -433,10 +442,10 @@ describe('R14 server: missing bundle, missing snapshot, and the R5 seams', () =>
     try {
       expect(await stream.status).toBe(200);
       const r = await req(f.port, { method: 'POST', path: API.chart, headers: { [TOKEN_HEADER]: f.token, 'content-type': 'application/json' },
-        body: '{"kind":"chart","fileId":"f_000000000001"}' });
+        body: JSON.stringify({ kind: 'chart', fileId: 'f_000000000001', at: AT }) });
       expect(r.status).toBe(200);
       expect(JSON.parse(r.body)).toEqual({ ok: true, fog: miniFog });
-      expect(seen).toEqual([{ kind: 'chart', fileId: 'f_000000000001' }]);
+      expect(seen).toEqual([{ kind: 'chart', fileId: 'f_000000000001', at: AT }]);
       await waitFor(() => liveEvents(stream.text()).length >= 1, 10_000, 'fog event');
       expect(liveEvents(stream.text())).toEqual([{ type: 'fog', head: miniFog.head }]);
       const fog = await req(f.port, { path: API.fog, headers: { [TOKEN_HEADER]: f.token } });
@@ -457,7 +466,7 @@ describe('R14 server: missing bundle, missing snapshot, and the R5 seams', () =>
     try {
       const auth = { [TOKEN_HEADER]: token, 'content-type': 'application/json' };
       const fog = await req(server.port, { path: `${API.fog}?t=${token}`, headers: auth });
-      const chart = await req(server.port, { method: 'POST', path: API.chart, headers: auth, body: '{"kind":"baseline"}' });
+      const chart = await req(server.port, { method: 'POST', path: API.chart, headers: auth, body: JSON.stringify({ kind: 'baseline', at: AT }) });
       for (const r of [fog, chart]) {
         expect(r.status).toBe(500);
         expect(JSON.parse(r.body)).toEqual({ error: 'internal error' });
