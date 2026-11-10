@@ -8,6 +8,7 @@
 import { chromium } from 'playwright';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveFile } from './serve.mjs';
@@ -216,6 +217,37 @@ try {
       }
     }
     console.log('  face probe: working = glyphs and no eyes, idle = eyes and no glyphs (A–E and D-final)');
+  }
+
+  if (want('identity')) {
+    // Pixel identity: A–E and D-final must render exactly as they did before the brand
+    // geometry existed. test/identity.json holds a hash per tile, recorded from the pre-brand
+    // code (a79516d); UPDATE_IDENTITY=1 re-records it, only ever deliberately.
+    const file = path.join(ROOT, 'test', 'identity.json');
+    const tiles = {};
+    for (const v of [...VARIANTS, FINAL]) {
+      const cells = [
+        ['front idle', 100, 100, { yaw: 0, t: STILL_T }],
+        ['3/4 idle 2x', 160, 160, { yaw: -0.75, t: STILL_T, zoom: 2 }],
+        ['3/4 working 2x', 160, 160, { yaw: -0.5, t: 7.0, zoom: 2, motion: true }],
+        ['3/4 glance', 100, 100, { yaw: -0.5, t: 2.2, motion: true }],
+      ];
+      if (v.id === FINAL.id) cells.push(['crew', 320, 180, { crew: true, t: STILL_T }]);
+      for (const [label, w, h, cell] of cells) {
+        const { png } = await page.evaluate((s) => window.lab.sheet(s), { w, h, scale: 1, check: false, rows: [{ cells: [{ variant: v.id, ...cell }] }] });
+        tiles[`${v.id} ${label}`] = createHash('sha256').update(png).digest('hex').slice(0, 16);
+      }
+    }
+    let saved = null;
+    try { saved = JSON.parse(await readFile(file, 'utf8')); } catch { /* first run */ }
+    if (!saved || process.env.UPDATE_IDENTITY === '1') {
+      await writeFile(file, `${JSON.stringify(tiles, null, 1)}\n`);
+      console.log(`identity: recorded ${Object.keys(tiles).length} tiles to test/identity.json`);
+    } else {
+      const off = Object.keys(saved).filter((k) => saved[k] !== tiles[k]);
+      if (off.length) problems.push(`identity: ${off.length} tile(s) of A–E / D-final changed: ${off.join(', ')}`);
+      else console.log(`  identity: ${Object.keys(saved).length} A–E and D-final tiles pixel-identical to the pre-brand renders`);
+    }
   }
 
   if (want('params')) await writeFile(path.join(OUT, 'params.md'), await paramsDoc());
