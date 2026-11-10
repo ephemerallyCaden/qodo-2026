@@ -3,17 +3,20 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FileQodo, SnapshotV02 } from '../src/core/snapshot/types.js';
 import type { PrFindings } from '../src/core/qodo.js';
 import { parsePrFindings, tallyFindings } from '../src/core/qodo.js';
 import { formatSummary } from '../src/core/summary.js';
 import { scan } from '../src/scan/index.js';
+import { BIND_HOST } from '../src/server/guard.js';
 import { cli } from './fixtures/cli.js';
 import { SELF } from './fixtures/build/basic.js';
 import { miniRepo, type MiniRepo } from './fixtures/mini.js';
 
+/** Directories allowed to import node:http to listen (R14, #32). Pinned in the no-network test below. */
+const LISTENER_DIRS = ['src/server'];
 const NO_LOGS = mkdtempSync(join(tmpdir(), 'commet-qodo-claude-'));
 const REAL_GIT = realpathSync(execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim());
 
@@ -187,10 +190,40 @@ describe('#17 AC1: --with-qodo is off by default and the default scan spawns no 
       .flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : [join(dir, e.name)]));
     const src = files(join(import.meta.dirname, '../src')).filter((f) => f.endsWith('.ts'));
     expect(src.length).toBeGreaterThan(10);
-    for (const f of src) {
+    // R14 (#32): `commet open`'s server is the CONSTITUTION's one approved listener. It has its own,
+    // stricter check below. Exactly this list: adding to it is a review decision, never a side effect.
+    expect(LISTENER_DIRS).toEqual(['src/server']);
+    const listener = (f: string) => LISTENER_DIRS.some((d) => f.startsWith(join(import.meta.dirname, '..', d) + sep));
+    for (const f of src.filter((f) => !listener(f))) {
       const text = readFileSync(f, 'utf8');
       expect(/from '(node:)?(https?|http2|net|tls|dgram|dns)'|\bfetch\(|XMLHttpRequest|WebSocket/.test(text), f).toBe(false);
     }
+  });
+
+  it('the R14 server only listens, binds 127.0.0.1, and never sends a request (#32)', () => {
+    const dir = join(import.meta.dirname, '..', LISTENER_DIRS[0]!);
+    const server = readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.ts'))
+      .map((f) => [f, readFileSync(join(dir, f), 'utf8')] as const);
+    expect(server.length).toBeGreaterThan(0);
+    let listens = 0;
+    for (const [f, text] of server) {
+      // node:http is the only network module, and only to listen: no other module, no client calls.
+      expect(/from '(node:)?(https|http2|net|tls|dgram|dns)'/.test(text), f).toBe(false);
+      expect(/\bfetch\(|\bhttps?\.(request|get)\(|XMLHttpRequest|WebSocket/.test(text), f).toBe(false);
+      // Every node:http import is named (no `http.*` namespace) and names only createServer or types.
+      const httpImports = [...text.matchAll(/import (type )?\{([^}]*)\} from '(node:)?http'/g)];
+      expect(httpImports.length, f).toBe(text.match(/from '(node:)?http'/g)?.length ?? 0);
+      const values = httpImports.filter((m) => !m[1]).flatMap((m) => m[2]!.split(',').map((n) => n.trim()))
+        .filter((n) => n && !n.startsWith('type '));
+      expect(values.filter((n) => n !== 'createServer'), f).toEqual([]);
+      // One bind, on 127.0.0.1: every listen() passes BIND_HOST, which is the loopback literal.
+      for (const m of text.matchAll(/\.listen\(([^)]*)/g)) {
+        listens++;
+        expect(m[1], f).toMatch(/^\{ host: BIND_HOST,/);
+      }
+    }
+    expect(listens).toBe(1);
+    expect(BIND_HOST).toBe('127.0.0.1');
   });
 });
 

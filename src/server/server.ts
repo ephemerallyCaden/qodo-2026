@@ -1,7 +1,6 @@
 // The hardened local server behind `commet open` (R14). The only listener Commet has: 127.0.0.1,
 // Host-checked, token-gated data routes, no CORS. Surface: docs/contracts/phase2.md.
 import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { API, TOKEN_HEADER, type ChartResult, type LiveEvent } from '../core/contract/api.js';
 import type { ChartAction, FogView } from '../core/contract/fog.js';
 import { CommetError } from '../core/errors.js';
@@ -169,8 +168,8 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
       resolve();
     });
   });
-  const addr = server.address() as AddressInfo;
-  if (addr.address !== BIND_HOST) {
+  const addr = server.address();
+  if (addr === null || typeof addr === 'string' || addr.address !== BIND_HOST) {
     server.close();
     throw new Error('refusing to serve: the listener is not on 127.0.0.1');
   }
