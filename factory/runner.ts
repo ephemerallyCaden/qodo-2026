@@ -439,6 +439,8 @@ class Tick {
     let marker: string | null = null;
     let ci: CiState = { kind: 'pending', why: 'not polled' };
     let qs: QodoState = { kind: 'pending', why: 'not polled' };
+    // The PR must be confirmed open on the head in the same poll that finds the review done.
+    let prOk = false;
     for (let poll = 1; deps.clock.now() + cfg.pollMs <= deadline; poll++) {
       // Nothing can have finished the moment after a push, so each poll waits first.
       await deps.clock.sleep(cfg.pollMs);
@@ -449,7 +451,8 @@ class Tick {
         this.qodo(['read', 'pr-review-session', 'findings', '--pr-url', pr.url, '--extended', '--json']),
       ]);
       this.assertSnapshot(issue);
-      if (view.code === 0) {
+      prOk = view.code === 0;
+      if (prOk) {
         const v = this.json<{ headRefOid: string; state: string }>(view.stdout, 'gh pr view');
         if (v.headRefOid !== head) throw new Stop(`the PR head moved to ${shortSha(v.headRefOid)}; someone else pushed`);
         if (v.state !== 'OPEN') throw new Stop(`the PR is ${v.state.toLowerCase()}`);
@@ -471,11 +474,12 @@ class Tick {
         findings: q?.findings.length ?? null, qodoExit: qres.code,
       });
       if (qs.kind === 'skipped') throw new Stop(`review skipped: Qodo's run on ${shortSha(head)} has review_effort=skip, which is not a clean review`);
-      if (ci.kind === 'complete' && qs.kind === 'complete') return { ci: ci.runs, failed: ci.failed, run: qs.run, findings: qs.findings };
+      if (prOk && ci.kind === 'complete' && qs.kind === 'complete') return { ci: ci.runs, failed: ci.failed, run: qs.run, findings: qs.findings };
     }
     const ciWhy = ci.kind === 'pending' ? ci.why : `done, ${ci.failed.length} failed`;
     const qWhy = qs.kind === 'pending' ? qs.why : qs.kind;
-    throw new Stop(`review incomplete: no finished CI + Qodo review of ${shortSha(head)} within ${cfg.reviewTimeoutMs / 60_000} min (CI: ${ciWhy}; Qodo: ${qWhy})`);
+    throw new Stop(`review incomplete: no finished CI + Qodo review of ${shortSha(head)} within ${cfg.reviewTimeoutMs / 60_000} min ` +
+      `(CI: ${ciWhy}; Qodo: ${qWhy}; PR: ${prOk ? 'open on head' : 'state unavailable'})`);
   }
 
   private async failedLog(run: CheckRun): Promise<string> {

@@ -374,6 +374,17 @@ describe('review loop (R6, R7)', () => {
     expect(w.gitCalls('push')).toHaveLength(1);
   });
 
+  it('never calls a review done while the PR itself is unreadable (Qodo PR37 bb7977bf)', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.claude.push(implementDone());
+    const exec: typeof w.exec = (cmd, args, opts) => (args[0] === 'pr' && args[1] === 'view'
+      ? Promise.resolve({ code: 1, stdout: '', stderr: 'HTTP 502', timedOut: false }) : w.exec(cmd, args, opts));
+    const out = await w.tick({}, { exec });
+    expect(out).toMatchObject({ state: 'needs-help', reason: expect.stringMatching(/^review incomplete: .*PR: state unavailable/) });
+    expect(labels(w, 24)).not.toContain(LABELS.done);
+  });
+
   it('stops if someone else moves the PR head', async () => {
     const w = world();
     w.addIssue(24);
