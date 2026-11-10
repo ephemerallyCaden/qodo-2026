@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const HOST = process.env.HOST ?? '127.0.0.1';
+const HOST = '127.0.0.1'; // loopback only, not configurable (the mockup rules); PORT=... still picks the port
 const PORT = Number(process.env.PORT ?? 5180);
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.png': 'image/png' };
 
