@@ -21,16 +21,17 @@ Node ≥ 20.19, npm. From the repo (or worktree) root:
 - `npm run test:render`: Playwright + SwiftShader render tests (R8). Goldens are authoritative only in CI's pinned container; locally the golden compare is informational (`test/render/README.md`).
 - Parallel agents: run full suites through `lockf -k /tmp/commet-fullsuite.lock <cmd>` so only one runs at a time.
 - `npm test`: Vitest (unit, golden, privacy canaries, lint rules). Golden snapshots live in `test/golden/`; regenerate only deliberately with `UPDATE_GOLDEN=1 npm test` and a `Golden-Update: <reason>` line in the commit.
-- `node dist/cli.js scan [--window <months>] [--no-ingest] [--out <file>]`: run inside a clone. Writes `<git-common-dir>/commet/snapshot.json`. Exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error. `CLAUDE_CONFIG_DIR` overrides `~/.claude`.
+- `node dist/cli.js scan [--window <months>] [--no-ingest] [--out <file>]`: run inside a clone. Writes `<git-common-dir>/commet/snapshot.json` and `layout.json` (`--out x.json` writes `x.json` plus `x.layout.json`). Exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error. `CLAUDE_CONFIG_DIR` overrides `~/.claude`.
 - `node dist/cli.js open [--port <n>] [--no-open]`: serves the view on 127.0.0.1 only (R14, `docs/contracts/phase2.md`). It prints `http://127.0.0.1:<port>/#t=<token>` once and needs a snapshot first (exit 5 otherwise). `--no-open` keeps the token out of process lists. Exit 6: server bind failure.
 - `node dist/cli.js chart status | baseline [--undo] | [--] <file>`: fog of war and chart state (R5). Chart state lives in `<git-common-dir>/commet/chart.json` (ids and SHAs only, mode 0600), with `chart.lock` as its write lock. A bad path or a folder exits 2; damaged or symlinked state exits 5 and is never reset.
 - `npm run factory -- labels|install|uninstall|tick [--once|--dry-run [--issue N]]`: the agent runner (`factory/`, built separately, not in the published package; see AGENTS.md "Agent runner"). `labels` and `install` are the human's to run. Runner state (lock, `ticks.jsonl`, `runs/`, the installed copy) lives in `<git-common-dir>/factory/`, never in the work tree.
 
 The design mockups live on `feature/hype-gif` under `mockups/asset-viewer/` (`npm install && npm test` there). They are throwaway prototypes, not product code.
 
-## Layout (planned)
+## Layout
 - `snapshot.json` and `layout.json` produced by `commet scan`; local state in `.git/commet/` (snapshot, layout, `chart.json` + `chart.lock`, beacons, events).
-- `layout(snapshot) → positions` is a pure function. Space mapping: repo = system, top-level dirs = planets, second-level dirs = moons, files = surface features.
+- `layout(snapshot, history)` (`src/core/layout`) is a pure function. `history` comes from the full lineage replay, so layout.json can't be rebuilt from snapshot.json alone. Shape: `LayoutV1` in `src/core/contract/layout.ts`.
+- Space mapping (#18): repo = star; top-level folders holding a non-test, non-test-data file = planets; second-level folders = continents; files = settlements; test files = moons of the planet they test; root files and unmatched tests = moonlets; test data is counted on the star, never drawn.
 
 ## Rules
 - Read files before editing. Don't guess what exists.
