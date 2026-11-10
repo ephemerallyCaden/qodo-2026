@@ -122,11 +122,12 @@ export type QodoReason = 'qodo not installed' | 'gh not installed' | 'not logged
  * cache it wrote, as of `head` (the HEAD it was fetched at); `prs` were read and `skipped` (closed,
  * never merged) were not; `unreviewed` of those read had no complete Qodo review of their head
  * commit, so the files they change are null; `offHead` open findings sat on no file at this HEAD and
- * `onUnknown` on a file whose count is null; `addedSince` files are new since `head`, so null too.
+ * `onUnknown` on a file whose count is null; `changedSince` files (not already unknown for an
+ * unreviewed PR) were added, re-added or changed since `head`, so null too.
  */
 export type QodoSource =
   | { status: 'none' }
-  | { status: 'read'; head: Sha; prs: number; skipped: number; unreviewed: number; offHead: number; onUnknown: number; addedSince: number }
+  | { status: 'read'; head: Sha; prs: number; skipped: number; unreviewed: number; offHead: number; onUnknown: number; changedSince: number }
   | { status: 'unavailable'; reason: QodoReason };
 
 /** An unmerged local or remote-tracking branch (no network: only refs already on disk). */

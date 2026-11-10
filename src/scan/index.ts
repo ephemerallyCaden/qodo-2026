@@ -62,6 +62,17 @@ function mergeIngest(into: ClaudeIngest, more: ClaudeIngest): void {
 }
 
 export async function scan(o: ScanOptions): Promise<ScanResult> {
+  // A scan that fails part-way stops any Qodo fetch still running, so no gh or qodo child outlives it
+  // or keeps the CLI from exiting (PR #35 r1). After a scan that succeeds, the fetch is already done.
+  const stop = new AbortController();
+  try {
+    return await scanUntil(o, stop.signal);
+  } finally {
+    stop.abort();
+  }
+}
+
+async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResult> {
   const git = gitRunner(o.repoDir);
   const repo = await readRepo(git);
   const sinceMs = minusMonths(repo.headMs, o.windowMonths);
@@ -72,7 +83,7 @@ export async function scan(o: ScanOptions): Promise<ScanResult> {
   const isSelf = (c: RawCommit) => repo.selfEmail !== null && c.email === repo.selfEmail;
   const rawP = windowCommits(git, repo.head, since);
   // Only with the opt-in; it runs alongside the git reads and never rejects.
-  const qodoP = o.qodo?.fetch ? fetchQodo(o.repoDir, o.qodo.timeoutMs) : null;
+  const qodoP = o.qodo?.fetch ? fetchQodo(o.repoDir, o.qodo.timeoutMs, signal) : null;
   // Commits that could come out human bound which outside sessions discovery searches first.
   const selfTimes = rawP.then((cs) => cs.filter((c) => isSelf(c) && !c.isMerge).map((c) => c.dateMs));
   // A git failure surfaces once, through rawP below; discovery may never await this copy, so it
@@ -223,13 +234,17 @@ async function readQodo(o: ScanOptions, git: Git, commonDir: string, head: strin
   if (cache === null) return { ...none, source: { status: 'none' } };
   if (typeof cache === 'string') return { ...none, source: { status: 'unavailable', reason: cache } };
   if (fetching) return { ...applyCache(cache, headPaths), fetched: cache };
-  // A file that didn't exist at the cached HEAD has no evidence either way (Qodo local r2 #1).
-  let addedSince = new Set<string>();
+  // A file changed since the cached HEAD may hold findings from PRs the cache never saw, and a new or
+  // re-added one is another file: no evidence either way (Qodo local r2 #1, PR #35 r1). Both ends and
+  // every commit between are compared, so a file deleted and re-added, or changed on a line HEAD has
+  // since left, counts as changed too.
+  let changedSince = new Set<string>();
   if (cache.head !== head) {
-    const tree = await tryGit(git, ['ls-tree', '-r', '-z', '--name-only', '--full-tree', cache.head]);
-    if (tree === null) return { ...none, source: { status: 'unavailable', reason: 'cache HEAD not found' } };
-    const then = new Set(tree.split('\0'));
-    addedSince = new Set(headPaths.filter((p) => !then.has(p)));
+    const opts = ['--no-ext-diff', '--no-textconv', '--no-renames', '--name-only', '-z'];
+    const [ends, between] = await Promise.all([tryGit(git, ['diff', ...opts, cache.head, head]),
+      tryGit(git, ['log', ...opts, '--diff-merges=first-parent', '--format=', `${cache.head}..${head}`])]);
+    if (ends === null || between === null) return { ...none, source: { status: 'unavailable', reason: 'cache HEAD not found' } };
+    changedSince = new Set(`${ends}\0${between}`.split('\0'));
   }
-  return { ...applyCache(cache, headPaths, addedSince), fetched: null };
+  return { ...applyCache(cache, headPaths, changedSince), fetched: null };
 }

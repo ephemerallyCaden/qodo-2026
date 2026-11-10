@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FileQodo, SnapshotV02 } from '../src/core/snapshot/types.js';
-import { parsePrFindings } from '../src/core/qodo.js';
+import type { PrFindings } from '../src/core/qodo.js';
+import { parsePrFindings, tallyFindings } from '../src/core/qodo.js';
 import { formatSummary } from '../src/core/summary.js';
 import { scan } from '../src/scan/index.js';
 import { cli } from './fixtures/cli.js';
@@ -98,7 +99,7 @@ function stubs(o: { prs?: unknown; findings?: Record<number, unknown>; views?: R
   const data = join(bin, 'data.json');
   writeFileSync(data, JSON.stringify({ prs: o.prs ?? PRS, findings: o.findings ?? FINDINGS, views: o.views ?? VIEWS }));
   const head = (tool: string) => `#!${process.execPath}\nconst fs = require('node:fs');\nconst args = process.argv.slice(2);\n`
-    + `fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ tool: ${JSON.stringify(tool)}, args }) + '\\n');\n`
+    + `const log = ${JSON.stringify(log)};\nfs.appendFileSync(log, JSON.stringify({ tool: ${JSON.stringify(tool)}, args }) + '\\n');\n`
     + `const data = JSON.parse(fs.readFileSync(${JSON.stringify(data)}, 'utf8'));\n`;
   const body = {
     gh: 'process.stdout.write(JSON.stringify(args[1] === "view" ? data.views[args[2].split("/").pop()] : data.prs));\n',
@@ -257,7 +258,7 @@ describe('#17 AC2: read-only tools only, unresolved findings on files at HEAD on
     const s = stubs();
     const r = await onPath(s, () => scanCli(repo, ['--with-qodo']));
     const snap = readSnap(repo);
-    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 4, skipped: 1, unreviewed: 2, offHead: 4, onUnknown: 1, addedSince: 0 });
+    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 4, skipped: 1, unreviewed: 2, offHead: 4, onUnknown: 1, changedSince: 0 });
     expect(r.out).toContain('qodo findings: 6 open: 5 on 2 file(s) (action_required 1 · remediation_recommended 2 · informational 1 · other 1), '
       + '1 more on files whose count is unknown, '
       + `from 2 reviewed PR(s) as of ${snap.repo.head.slice(0, 7)}`);
@@ -272,7 +273,7 @@ describe('#17 AC2: read-only tools only, unresolved findings on files at HEAD on
     expect(r.code).toBe(0);
     expect(s.calls().map((c) => c.tool)).toEqual(['gh']);
     const snap = readSnap(repo);
-    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 0, skipped: 0, unreviewed: 0, offHead: 0, onUnknown: 0, addedSince: 0 });
+    expect(snap.qodo).toEqual({ status: 'read', head: snap.repo.head, prs: 0, skipped: 0, unreviewed: 0, offHead: 0, onUnknown: 0, changedSince: 0 });
     expect(snap.files.map((f) => f.qodo)).toEqual([null, null, null, null]);
     expect(r.out).toContain('qodo findings: unknown (no PR has a complete Qodo review)');
   });
@@ -335,9 +336,9 @@ describe('#17 AC4: files[].qodo, and a scan without the flag reads the cache', (
     const snap = readSnap(repo);
     expect(qodoOf(snap)['src/c.ts']).toBeNull();
     expect(qodoOf(snap)['src/a.ts']).toEqual(open(levels(1, 1, 1, 1)));
-    expect(snap.qodo).toMatchObject({ status: 'read', addedSince: 1 });
+    expect(snap.qodo).toMatchObject({ status: 'read', changedSince: 1 });
     expect(r.out).toContain('2 PR(s) have no complete Qodo review of their head commit; the 2 file(s) at HEAD they change are unknown, not 0');
-    expect(r.out).toContain('1 file(s) added since the cached HEAD are unknown, not 0');
+    expect(r.out).toContain('1 file(s) changed since the cached HEAD are unknown, not 0');
   });
 
   it('a cache whose HEAD commit is gone is unavailable, not 0', async () => {
@@ -357,7 +358,7 @@ describe('#17 AC4: files[].qodo, and a scan without the flag reads the cache', (
     const r = await onPath(stubs({ omit: ['gh', 'qodo'] }), () => scanCli(repo));
     const snap = readSnap(repo);
     expect(qodoOf(snap)).toEqual({ 'README.md': null, 'src/a.ts': open(levels(1, 1, 1, 1)), 'src/new.ts': null });
-    expect(snap.qodo).toEqual({ status: 'read', head: fetchHead, prs: 4, skipped: 1, unreviewed: 2, offHead: 5, onUnknown: 1, addedSince: 0 });
+    expect(snap.qodo).toEqual({ status: 'read', head: fetchHead, prs: 4, skipped: 1, unreviewed: 2, offHead: 5, onUnknown: 1, changedSince: 0 });
     expect(r.out).toContain(`as of ${fetchHead.slice(0, 7)} (HEAD has moved since)`);
   });
 
@@ -503,5 +504,81 @@ describe('#17 AC5: a failed fetch exits 0 with qodo null and an "unavailable (<r
       window: { months: 24, since: '2026-01-01T00:00:00Z', until: '2026-02-01T00:00:00Z', firstParent: true } } as unknown as SnapshotV02;
     expect(formatSummary({ ...base, qodo: { status: 'unavailable', reason: 'network error' } }, null))
       .toContain("qodo findings: unavailable (network error); every file's finding count is unknown, not zero");
+  });
+});
+
+describe('PR #35 Qodo review r1', () => {
+  const scanWith = (timeoutMs = 20_000) => scan({ repoDir: repo.dir, windowMonths: 24, ingest: false, claudeProjectsDir: join(NO_LOGS, 'projects'),
+    keyFor: () => new Uint8Array(32).fill(7), qodo: { fetch: true, stateDir: () => join(repo.dir, '.git/commet'), timeoutMs } });
+
+  it('a scan that fails stops its Qodo reads and kills the tools still running (08aa2842)', async () => {
+    // qodo records its pid and hangs; git fails only `log`, so the fetch starts and then the scan rejects.
+    const s = stubs({ fail: { qodo: 'fs.appendFileSync(log + ".pids", process.pid + "\\n");\nsetTimeout(() => {}, 60000);\n' } });
+    rmSync(join(s.bin, 'git'));
+    writeFileSync(join(s.bin, 'git'), `#!/bin/sh\nfor a in "$@"; do [ "$a" = log ] && exit 128; done\nexec '${REAL_GIT}' "$@"\n`, { mode: 0o755 });
+    // PATH stays on the stubs while waiting, so a read that kept going reaches the fake qodo, never the real one.
+    await onPath(s, async () => {
+      await expect(scanWith()).rejects.toThrow();
+      // Long enough for gh to list the PRs and the workers to start qodo, had the fetch kept going.
+      await new Promise((done) => setTimeout(done, 2000));
+    });
+    const pids = existsSync(`${s.log}.pids`) ? readFileSync(`${s.log}.pids`, 'utf8').trim().split('\n').map(Number) : [];
+    const alive = pids.filter((pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    for (const pid of alive) process.kill(pid, 'SIGKILL');
+    expect(alive).toEqual([]);
+  });
+
+  it('a finding listed on an old path and on a current one counts on the current file, in either order (81d4956f)', () => {
+    const on = (path: string): PrFindings => ({ reviewed: true, open: [{ id: 'x', level: 'actionRequired', path }] });
+    for (const prs of [[on('src/old.ts'), on('src/a.ts')], [on('src/a.ts'), on('src/old.ts')]]) {
+      const c = tallyFindings({ prs, skipped: 0, unreviewedPaths: [] }, new Set(['src/a.ts']), HEAD_OF(1));
+      expect(Object.fromEntries(c.files)).toEqual({ 'src/a.ts': levels(1, 0, 0, 0) });
+      expect(c.offHead).toBe(0);
+    }
+  });
+
+  it('a file deleted and re-added since the cached HEAD is unknown, even with the same content (bb92ad6f)', async () => {
+    await onPath(stubs(), () => scanCli(repo, ['--with-qodo']));
+    const text = readFileSync(join(repo.dir, 'src/a.ts'), 'utf8');
+    commit(repo, '2026-10-06T10:00:00Z', ['rm', '-q', 'src/a.ts'], 'chore: drop a');
+    writeFileSync(join(repo.dir, 'src/a.ts'), text);
+    commit(repo, '2026-10-07T10:00:00Z', ['add', 'src/a.ts'], 'feat: a again');
+    const r = await onPath(stubs({ omit: ['gh', 'qodo'] }), () => scanCli(repo));
+    const snap = readSnap(repo);
+    expect(qodoOf(snap)['src/a.ts']).toBeNull();
+    // Untouched since the fetch, so its count still stands.
+    expect(qodoOf(snap)['src/b.ts']).toEqual(open(levels(0, 1, 0, 0)));
+    // a.ts's 4 known findings join new.ts's 1 on files whose count is unknown, never dropped.
+    expect(snap.qodo).toMatchObject({ changedSince: 1, onUnknown: 5, offHead: 4 });
+    expect(r.out).toContain('1 file(s) changed since the cached HEAD are unknown, not 0');
+  });
+
+  it('a file edited since the cached HEAD is unknown: a PR the cache never saw may have changed it', async () => {
+    await onPath(stubs(), () => scanCli(repo, ['--with-qodo']));
+    writeFileSync(join(repo.dir, 'src/b.ts'), 'export const b = 3;\nexport const b2 = b + 1;\n');
+    commit(repo, '2026-10-06T10:00:00Z', ['add', 'src/b.ts'], 'fix: b');
+    const snap = (await onPath(stubs({ omit: ['gh', 'qodo'] }), () => scanCli(repo)), readSnap(repo));
+    expect(qodoOf(snap)).toEqual({ 'README.md': null, 'src/a.ts': open(levels(1, 1, 1, 1)), 'src/b.ts': null, 'src/new.ts': null });
+    expect(snap.qodo).toMatchObject({ changedSince: 1, onUnknown: 2 });
+  });
+
+  it('after a reset to another line, a file that differs from the cached HEAD is unknown', async () => {
+    // The cache is fetched on a commit that edits b.ts; HEAD then moves to a sibling that never touches b.ts.
+    writeFileSync(join(repo.dir, 'src/b.ts'), 'export const b = 3;\nexport const b2 = b + 1;\n');
+    commit(repo, '2026-10-06T10:00:00Z', ['add', 'src/b.ts'], 'fix: b');
+    await onPath(stubs(), () => scanCli(repo, ['--with-qodo']));
+    execFileSync('git', ['reset', '-q', '--hard', 'HEAD~1'], { cwd: repo.dir });
+    writeFileSync(join(repo.dir, 'README.md'), '# Widgets\nA fixture, again.\n');
+    commit(repo, '2026-10-07T10:00:00Z', ['add', 'README.md'], 'docs: readme');
+    const snap = (await onPath(stubs({ omit: ['gh', 'qodo'] }), () => scanCli(repo)), readSnap(repo));
+    expect(qodoOf(snap)['src/b.ts']).toBeNull();
+    expect(qodoOf(snap)['src/a.ts']).toEqual(open(levels(1, 1, 1, 1)));
   });
 });

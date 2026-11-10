@@ -97,10 +97,10 @@ function reviewedLines(s: SnapshotV02, q: Extract<QodoSource, { status: 'read' }
     + `${q.onUnknown} more on files whose count is unknown` : `${known} open on ${withOpen.length} file(s) (${levels})`;
   const out = [`${label}: ${counts}, from ${q.prs - q.unreviewed} reviewed PR(s) as of ${q.head.slice(0, 7)}${stale}`];
   if (q.unreviewed) {
-    const unknown = s.files.filter((f) => f.qodo === null).length - q.addedSince;
+    const unknown = s.files.filter((f) => f.qodo === null).length - q.changedSince;
     out.push(`${q.unreviewed} PR(s) have no complete Qodo review of their head commit; `
       + `the ${unknown} file(s) at HEAD they change are unknown, not 0`);
   }
-  if (q.addedSince) out.push(`${q.addedSince} file(s) added since the cached HEAD are unknown, not 0`);
+  if (q.changedSince) out.push(`${q.changedSince} file(s) changed since the cached HEAD are unknown, not 0`);
   return out;
 }

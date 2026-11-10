@@ -73,9 +73,13 @@ function parseFiles(v: unknown): string[] | 'malformed response' | 'truncated re
  * Never rejects; any failure is a reason, and the whole read is then unknown (a partial read could
  * hide findings).
  */
-export async function fetchQodo(repoDir: string, timeoutMs = QODO_TIMEOUT_MS): Promise<QodoFetch | QodoReason> {
+export async function fetchQodo(repoDir: string, timeoutMs = QODO_TIMEOUT_MS, signal?: AbortSignal): Promise<QodoFetch | QodoReason> {
+  // The first failure, or the caller giving up (`signal`), stops the reads and kills the calls in flight.
+  const stop = new AbortController();
+  if (signal?.aborted) stop.abort();
+  signal?.addEventListener('abort', () => stop.abort(), { once: true });
   const listed = await run('gh', ['pr', 'list', '--state', 'all', '--limit', String(PR_LIMIT), '--json', 'number,url,state,headRefOid'],
-    repoDir, timeoutMs);
+    repoDir, timeoutMs, stop.signal);
   if ('reason' in listed) return listed.reason;
   const prs = parseJson(listed.stdout);
   if (!Array.isArray(prs)) return 'malformed response';
@@ -89,10 +93,9 @@ export async function fetchQodo(repoDir: string, timeoutMs = QODO_TIMEOUT_MS): P
     if (!isSha(head)) return 'malformed response';
     read.push({ url, head });
   }
-  // PARALLEL workers take the next PR; the first failure stops them and kills the calls in flight.
+  // PARALLEL workers take the next PR; the first failure stops them.
   const out: PrFindings[] = [];
   const unreviewedPaths: string[] = [];
-  const stop = new AbortController();
   let failed: QodoReason | undefined;
   let next = 0;
   const worker = async () => {

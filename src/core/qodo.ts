@@ -75,12 +75,17 @@ export function tallyFindings({ prs, skipped, unreviewedPaths }: QodoFetch, head
   const files = new Map<string, QodoByLevel>();
   const seen = new Set<string>();
   let offHead = 0;
-  for (const f of prs.flatMap((p) => p.open)) {
+  // Occurrences on a HEAD file go first, so a finding one PR lists on an old path and another on a
+  // current one counts on the current file, whatever order the PRs came in (PR #35 r1).
+  type Open = PrFindings['open'][number];
+  const atHead = (f: Open): f is Open & { path: string } => f.path !== null && headPaths.has(f.path);
+  const all = prs.flatMap((p) => p.open);
+  for (const f of [...all.filter(atHead), ...all.filter((f) => !atHead(f))]) {
     if (f.id !== null) {
       if (seen.has(f.id)) continue;
       seen.add(f.id);
     }
-    if (f.path === null || !headPaths.has(f.path)) {
+    if (!atHead(f)) {
       offHead++;
       continue;
     }
@@ -138,16 +143,16 @@ export function parseCache(text: string): QodoCache | null {
 /**
  * files[].qodo for each HEAD path, and the snapshot's source. A cached file missing from this HEAD
  * adds its findings to `offHead` rather than vanishing. A file an unreviewed PR changes, or one
- * `addedSince` the cached HEAD, is unknown (null). With no reviewed PR at all there is no evidence,
- * so every file is unknown; never 0. Known findings on any unknown file go to `onUnknown`.
+ * changed since the cached HEAD (`changed`), is unknown (null). With no reviewed PR at all there is
+ * no evidence, so every file is unknown; never 0. Known findings on any unknown file go to `onUnknown`.
  */
-export function applyCache(c: QodoCache, headPaths: readonly string[], addedSince: ReadonlySet<string> = new Set()):
+export function applyCache(c: QodoCache, headPaths: readonly string[], changed: ReadonlySet<string> = new Set()):
   { perFile: Map<string, FileQodo | null>; source: QodoSource } {
   const at = new Set(headPaths);
   const unknown = new Set(c.unknown);
   const reviewed = hasReview(c);
   const perFile = new Map(headPaths.map((p): [string, FileQodo | null] => {
-    if (!reviewed || unknown.has(p) || addedSince.has(p)) return [p, null];
+    if (!reviewed || unknown.has(p) || changed.has(p)) return [p, null];
     const byLevel = c.files.get(p) ?? zeroLevels();
     return [p, { open: qodoTotal(byLevel), byLevel: { ...byLevel } }];
   }));
@@ -158,5 +163,6 @@ export function applyCache(c: QodoCache, headPaths: readonly string[], addedSinc
     else if (perFile.get(path) === null) onUnknown += qodoTotal(l);
   }
   return { perFile, source: { status: 'read', head: c.head, prs: c.prs, skipped: c.skipped, unreviewed: c.unreviewed, offHead, onUnknown,
-    addedSince: headPaths.filter((p) => addedSince.has(p)).length } };
+    // Files already unknown for an unreviewed PR are counted there, not again here.
+    changedSince: headPaths.filter((p) => changed.has(p) && !unknown.has(p)).length } };
 }
