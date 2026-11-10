@@ -20,6 +20,12 @@ Share of debris pixels within the distance of: the planet's own on-screen colour
 | A2 | lush | 465 | 4.5% | 7.3% | 0.0% | 0.0% | 14.0% | 0.0% |
 | A2 | ocean | 465 | 4.5% | 23.4% | 0.0% | 0.0% | 14.0% | 0.0% |
 | A2 | ice | 465 | 0.0% | 16.1% | 0.0% | 0.0% | 14.0% | 0.0% |
+| A3 | lava | 742 | 0.0% | 16.0% | 0.0% | 0.0% | 16.0% | 0.0% |
+| A3 | toxic | 742 | 0.0% | 0.0% | 0.0% | 0.0% | 16.0% | 0.0% |
+| A3 | desert | 742 | 0.0% | 0.0% | 0.0% | 0.0% | 16.0% | 0.0% |
+| A3 | lush | 742 | 0.0% | 0.0% | 0.0% | 0.0% | 16.0% | 0.0% |
+| A3 | ocean | 742 | 0.0% | 0.0% | 0.0% | 0.0% | 16.0% | 0.0% |
+| A3 | ice | 742 | 0.0% | 0.0% | 0.0% | 0.0% | 16.0% | 0.0% |
 | B | lava | 473 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | B | toxic | 469 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | B | desert | 473 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
@@ -49,14 +55,15 @@ Share of debris pixels within the distance of: the planet's own on-screen colour
 
 Share of debris pixels within 0.05 of each planet ramp family (and the drone tells), taking the band where it is highest; the polar cap also at 0.03.
 
-| direction | ring | moons | cap | ocean | land | ice | cloud | sand | lava | toxic | drone | cap < .03 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A | 0.0% | 0.0% | 27.4% | 3.5% | 0.0% | 14.1% | 1.4% | 0.0% | 0.0% | 0.0% | 0.0% | 27.4% |
-| A2 | 0.0% | 0.0% | 4.5% | 16.1% | 0.0% | 57.0% | 2.8% | 0.0% | 14.0% | 0.0% | 0.0% | 4.5% |
-| B | 0.0% | 0.0% | 4.6% | 4.4% | 0.0% | 37.3% | 4.1% | 0.0% | 0.0% | 0.0% | 0.0% | 4.6% |
-| C | 0.0% | 0.0% | 18.3% | 2.7% | 0.0% | 14.5% | 2.7% | 0.0% | 0.0% | 0.0% | 0.0% | 18.3% |
-| D | 0.0% | 0.0% | 10.5% | 6.4% | 0.0% | 23.8% | 3.9% | 6.8% | 0.0% | 0.0% | 0.0% | 10.5% |
-| E | 0.0% | 0.0% | 18.3% | 2.4% | 0.0% | 22.0% | 1.9% | 0.0% | 0.0% | 0.0% | 0.0% | 18.3% |
+| direction | ring | moons | cap | ocean | land | ice | cloud | sand | lava | toxic | drone | cap < .03 | red outline + lights |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A | 0.0% | 0.0% | 27.4% | 3.5% | 0.0% | 14.1% | 1.4% | 0.0% | 0.0% | 0.0% | 0.0% | 27.4% | 17.6% |
+| A2 | 0.0% | 0.0% | 4.5% | 16.1% | 0.0% | 57.0% | 2.8% | 0.0% | 14.0% | 0.0% | 0.0% | 4.5% | 27.1% |
+| A3 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 16.0% | 0.0% | 0.0% | 0.0% | 39.4% |
+| B | 0.0% | 0.0% | 4.6% | 4.4% | 0.0% | 37.3% | 4.1% | 0.0% | 0.0% | 0.0% | 0.0% | 4.6% | 10.9% |
+| C | 0.0% | 0.0% | 18.3% | 2.7% | 0.0% | 14.5% | 2.7% | 0.0% | 0.0% | 0.0% | 0.0% | 18.3% | 17.2% |
+| D | 0.0% | 0.0% | 10.5% | 6.4% | 0.0% | 23.8% | 3.9% | 6.8% | 0.0% | 0.0% | 0.0% | 10.5% | 9.1% |
+| E | 0.0% | 0.0% | 18.3% | 2.4% | 0.0% | 22.0% | 1.9% | 0.0% | 0.0% | 0.0% | 0.0% | 18.3% | 4.3% |
 
 ## Hull options (direction A, 8 items)
 
@@ -74,6 +81,12 @@ Share of debris pixels within 0.05 of each planet ramp family (and the drone tel
 | gear-light | lush | 1.4% | 4.9% | 0.0% | 0.0% |
 | gear-light | ocean | 1.4% | 4.9% | 0.0% | 0.0% |
 | gear-light | ice | 0.0% | 0.0% | 0.0% | 0.0% |
+| grey | lava | 0.0% | 0.0% | 0.0% | 0.0% |
+| grey | toxic | 0.0% | 0.0% | 0.0% | 0.0% |
+| grey | desert | 0.0% | 0.0% | 0.0% | 0.0% |
+| grey | lush | 0.0% | 0.0% | 0.0% | 0.0% |
+| grey | ocean | 0.0% | 0.0% | 0.0% | 0.0% |
+| grey | ice | 0.0% | 0.0% | 0.0% | 0.0% |
 | violet | lava | 0.0% | 0.0% | 3.5% | 0.0% |
 | violet | toxic | 0.0% | 0.0% | 3.5% | 0.0% |
 | violet | desert | 0.0% | 0.0% | 3.5% | 0.0% |
@@ -97,6 +110,8 @@ Bright-step share: debris pixels at #643499 or #8c51cc. L** is Helmholtz-Kohlrau
 | gear | ocean | 0.0% | 59.4 | 60.6 | 0.0% | 0.115 | 0.093 |
 | gear-light | lush | 0.0% | 59.4 | 65.6 | 0.0% | 0.122 | 0.105 |
 | gear-light | ocean | 0.0% | 59.4 | 60.6 | 0.0% | 0.117 | 0.093 |
+| grey | lush | 0.0% | 60.9 | 65.6 | 0.0% | 0.089 | 0.105 |
+| grey | ocean | 0.0% | 60.9 | 60.6 | 0.0% | 0.085 | 0.093 |
 | violet | lush | 32.0% | 60.9 | 65.6 | 0.0% | 0.148 | 0.105 |
 | violet | ocean | 21.7% | 60.9 | 60.6 | 0.0% | 0.136 | 0.093 |
 | violet-dark | lush | 0.0% | 48.1 | 65.6 | 0.0% | 0.122 | 0.105 |
@@ -110,6 +125,7 @@ A nearest-colour classifier votes every disc pixel to the band whose debris-free
 |---|---|---|---|---|---|---|
 | A | ok, 100.0% → 99.4%, cover 0.8% | ok, 100.0% → 99.3%, cover 0.8% | ok, 100.0% → 99.2%, cover 0.8% | ok, 100.0% → 99.2%, cover 0.8% | ok, 54.7% → 54.8%, cover 0.8% | ok, 56.5% → 57.0%, cover 0.8% |
 | A2 | ok, 100.0% → 99.6%, cover 0.4% | ok, 100.0% → 99.9%, cover 0.4% | ok, 100.0% → 99.6%, cover 0.4% | ok, 100.0% → 99.6%, cover 0.4% | ok, 54.7% → 54.7%, cover 0.4% | ok, 56.5% → 56.6%, cover 0.4% |
+| A3 | ok, 100.0% → 99.4%, cover 0.7% | ok, 100.0% → 99.6%, cover 0.7% | ok, 100.0% → 99.3%, cover 0.7% | ok, 100.0% → 99.3%, cover 0.7% | ok, 54.7% → 54.7%, cover 0.7% | ok, 56.5% → 56.8%, cover 0.7% |
 | B | ok, 100.0% → 100.0%, cover 0.0% | ok, 100.0% → 100.0%, cover 0.0% | ok, 100.0% → 100.0%, cover 0.0% | ok, 100.0% → 100.0%, cover 0.0% | ok, 54.7% → 54.7%, cover 0.0% | ok, 56.5% → 56.5%, cover 0.0% |
 | C | ok, 100.0% → 100.0%, cover 0.2% | ok, 100.0% → 99.8%, cover 0.2% | ok, 100.0% → 99.8%, cover 0.2% | ok, 100.0% → 99.8%, cover 0.2% | ok, 54.7% → 54.7%, cover 0.2% | ok, 56.5% → 56.5%, cover 0.2% |
 | D | ok, 100.0% → 97.8%, cover 3.8% | ok, 100.0% → 97.6%, cover 3.8% | ok, 100.0% → 96.2%, cover 3.8% | ok, 100.0% → 96.4%, cover 3.8% | ok, 54.7% → 54.2%, cover 3.8% | ok, 56.5% → 54.8%, cover 3.8% |
@@ -121,6 +137,7 @@ Disc cover over the loop (lush, 24 items, 8 phases):
 |---|---|---|
 | A | 1.3% | 5.5% |
 | A2 | 1.1% | 5.0% |
+| A3 | 1.9% | 8.0% |
 | B | 0.0% | 0.0% |
 | C | 0.8% | 3.3% |
 | D | 1.3% | 5.2% |
@@ -134,6 +151,7 @@ Lush with the thin ring and 8 items. Components are 8-connected pixel groups. Pl
 |---|---|---|---|---|---|---|---|---|---|
 | A | 17 | 22 | 64.7% | 10 | 54 | 100.0% | 48° (16°) | 25.0% | 0.32 |
 | A2 | 17 | 22 | 64.7% | 12 | 36 | 100.0% | 48° (16°) | 25.0% | 0.42 |
+| A3 | 17 | 22 | 64.7% | 13 | 34 | 92.3% | 48° (16°) | 25.0% | 0.36 |
 | B | 17 | 22 | 64.7% | 2 | 262 | 100.0% | — (heaps) | 0.0% | 0.27 |
 | C | 17 | 22 | 64.7% | 10 | 27 | 100.0% | 48° (16°) | 25.0% | 0.33 |
 | D | 17 | 22 | 64.7% | 11 | 38 | 90.9% | 80° (53°) | 0.0% | 0.24 |
@@ -149,6 +167,7 @@ Roundness: pixel area over the area of the circle through the farthest pixel (1 
 |---|---|---|---|
 | A | 0.81 | 4 | 0.60 |
 | A2 | 0.81 | 4 | 0.33 |
+| A3 | 0.81 | 4 | 0.44 |
 | B | 0.81 | 4 | 0.46 |
 | C | 0.81 | 4 | 0.47 |
 | D | 0.81 | 4 | 0.55 |
@@ -164,17 +183,19 @@ Each class tumbling alone at hero range, 12 orientations x 3 diff sizes, leave-o
 |---|---|---|---|---|
 | hardware (A, B, E) | 144 | 81.3% | 81.3% | 2.66 / 4.51 / 1.78 / 1.22 |
 | satellite (A2) | 144 | 80.6% | 77.1% | 2.80 / 4.62 / 1.86 / 2.06 |
+| outlined (A3) | 144 | 73.6% | 74.3% | 2.14 / 3.33 / 1.67 / 1.98 |
 | blocks (C) | 144 | 70.1% | 68.1% | 1.59 / 3.10 / 2.05 / 1.27 |
 | canister (D) | 144 | 28.5% | 97.2% | 1.99 / 1.99 / 1.98 / 1.98 |
 
 ## Age steps (D2, close-ups)
 
-Per step (columns): for the rust kits the share of debris pixels in rust; for A2 the shares in bright paint, dull paint and navy (scorch plus solar cells). Then the median number of separate pieces. (The rust and paint ramps share colours, so each kit shows only its own cue.)
+Per step (columns): for the rust kits the share of debris pixels in rust; for A2 the shares in bright paint, dull paint and navy (scorch plus solar cells); for A3 the shares in bright outline, dim outline, lit nav lights (close-ups hold the lights steady) and dark grey (scorch plus cells). Then the median number of separate pieces. (Some ramps share colours, so each kit shows only its own cue.)
 
 | kit | step 1 | step 2 | step 3 |
 |---|---|---|---|
 | hardware | intact: rust 0.0%; 1 piece | rusted: rust 49.1%; 1 piece | broken: rust 83.1%; 2 pieces |
 | satellite | intact: bright paint 39.8%, dull 0.0%, navy 0.0%; 1 piece | weathered: bright paint 20.6%, dull 19.2%, navy 16.7%; 1 piece | broken: bright paint 10.9%, dull 30.3%, navy 24.9%; 3 pieces |
+| outlined | intact: bright outline 39.3%, dim outline 0.0%, lights 3.8%, dark grey 0.8%; 1 piece | weathered: bright outline 0.0%, dim outline 40.5%, lights 2.4%, dark grey 16.3%; 1 piece | broken: bright outline 0.0%, dim outline 29.4%, lights 0.0%, dark grey 31.5%; 3 pieces |
 | blocks | intact: rust 0.0%; 1 piece | rusted: rust 53.4%; 1 piece | broken: rust 77.5%; 2 pieces |
 | canister | intact: rust 0.0%; 1 piece | rusted: rust 42.0%; 1 piece | broken: rust 64.0%; 2 pieces |
 
@@ -184,6 +205,7 @@ Per step (columns): for the rust kits the share of debris pixels in rust; for A2
 |---|---|---|---|
 | A | 0 px | 2265 px | 2401 px |
 | A2 | 0 px | 2184 px | 2377 px |
+| A3 | 0 px | 2311 px | 2578 px |
 | B | 0 px | 1922 px | 2066 px |
 | C | 0 px | 2040 px | 2219 px |
 | D | 0 px | 2170 px | 2432 px |
@@ -195,6 +217,7 @@ Per step (columns): for the rust kits the share of debris pixels in rust; for A2
 |---|---|---|---|---|
 | A | sw-2 | 96 | 0 | 0 |
 | A2 | sw-2 | 80 | 0 | 0 |
+| A3 | sw-2 | 80 | 0 | 0 |
 | B | sw-0 | 69 | 0 | 174 (heaps and the wake re-pack) |
 | C | sw-2 | 81 | 0 | 0 |
 | D | sw-2 | 126 | 0 | 0 |

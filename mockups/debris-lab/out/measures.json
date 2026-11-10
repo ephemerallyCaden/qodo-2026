@@ -10,6 +10,11 @@
    "maxStep": 2377,
    "oneLoopLater": 0
   },
+  "A3": {
+   "wrap": 2311,
+   "maxStep": 2578,
+   "oneLoopLater": 0
+  },
   "B": {
    "wrap": 1922,
    "maxStep": 2066,
@@ -41,6 +46,14 @@
    "othersStay": true
   },
   "A2": {
+   "piece": "sw-2",
+   "start": 1,
+   "tealDuring": 80,
+   "tealAfter": 0,
+   "diffVsNextScan": 0,
+   "othersStay": true
+  },
+  "A3": {
    "piece": "sw-2",
    "start": 1,
    "tealDuring": 80,
@@ -104,6 +117,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    },
    "toxic": {
@@ -127,6 +141,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    },
    "desert": {
@@ -150,6 +165,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    },
    "lush": {
@@ -173,6 +189,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    },
    "ocean": {
@@ -196,6 +213,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    },
    "ice": {
@@ -219,6 +237,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    }
   },
@@ -244,6 +263,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.2709677419354839,
     "cap03": 0.04516129032258064
    },
    "toxic": {
@@ -267,6 +287,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.2709677419354839,
     "cap03": 0.04516129032258064
    },
    "desert": {
@@ -290,6 +311,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.2709677419354839,
     "cap03": 0.04516129032258064
    },
    "lush": {
@@ -313,6 +335,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.2709677419354839,
     "cap03": 0.04516129032258064
    },
    "ocean": {
@@ -336,6 +359,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.2709677419354839,
     "cap03": 0.04516129032258064
    },
    "ice": {
@@ -359,7 +383,154 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.2709677419354839,
     "cap03": 0.04516129032258064
+   }
+  },
+  "A3": {
+   "lava": {
+    "debrisPx": 742,
+    "nearOwn03": 0,
+    "nearOwn05": 0.16037735849056603,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.16037735849056603,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0.16037735849056603,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.3935309973045822,
+    "cap03": 0
+   },
+   "toxic": {
+    "debrisPx": 742,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.16037735849056603,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0.16037735849056603,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.3935309973045822,
+    "cap03": 0
+   },
+   "desert": {
+    "debrisPx": 742,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.16037735849056603,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0.16037735849056603,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.3935309973045822,
+    "cap03": 0
+   },
+   "lush": {
+    "debrisPx": 742,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.16037735849056603,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0.16037735849056603,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.3935309973045822,
+    "cap03": 0
+   },
+   "ocean": {
+    "debrisPx": 742,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.16037735849056603,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0.16037735849056603,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.3935309973045822,
+    "cap03": 0
+   },
+   "ice": {
+    "debrisPx": 742,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.16037735849056603,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0.16037735849056603,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.3935309973045822,
+    "cap03": 0
    }
   },
   "B": {
@@ -384,6 +555,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.10570824524312897,
     "cap03": 0.04439746300211417
    },
    "toxic": {
@@ -407,6 +579,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.10660980810234541,
     "cap03": 0.04477611940298507
    },
    "desert": {
@@ -430,6 +603,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.10570824524312897,
     "cap03": 0.04439746300211417
    },
    "lush": {
@@ -453,6 +627,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.10570824524312897,
     "cap03": 0.04439746300211417
    },
    "ocean": {
@@ -476,6 +651,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.10893246187363835,
     "cap03": 0.0457516339869281
    },
    "ice": {
@@ -499,6 +675,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1059322033898305,
     "cap03": 0.04449152542372881
    }
   },
@@ -524,6 +701,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1717557251908397,
     "cap03": 0.183206106870229
    },
    "toxic": {
@@ -547,6 +725,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1717557251908397,
     "cap03": 0.183206106870229
    },
    "desert": {
@@ -570,6 +749,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1717557251908397,
     "cap03": 0.183206106870229
    },
    "lush": {
@@ -593,6 +773,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1717557251908397,
     "cap03": 0.183206106870229
    },
    "ocean": {
@@ -616,6 +797,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1717557251908397,
     "cap03": 0.183206106870229
    },
    "ice": {
@@ -639,6 +821,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1717557251908397,
     "cap03": 0.183206106870229
    }
   },
@@ -664,6 +847,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.09090909090909091,
     "cap03": 0.10537190082644628
    },
    "toxic": {
@@ -687,6 +871,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.09090909090909091,
     "cap03": 0.10537190082644628
    },
    "desert": {
@@ -710,6 +895,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.09090909090909091,
     "cap03": 0.10537190082644628
    },
    "lush": {
@@ -733,6 +919,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.09090909090909091,
     "cap03": 0.10537190082644628
    },
    "ocean": {
@@ -756,6 +943,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.09090909090909091,
     "cap03": 0.10537190082644628
    },
    "ice": {
@@ -779,6 +967,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.09090909090909091,
     "cap03": 0.10537190082644628
    }
   },
@@ -804,6 +993,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.04259259259259259,
     "cap03": 0.18333333333333332
    },
    "toxic": {
@@ -827,6 +1017,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.04259259259259259,
     "cap03": 0.18333333333333332
    },
    "desert": {
@@ -850,6 +1041,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.04259259259259259,
     "cap03": 0.18333333333333332
    },
    "lush": {
@@ -873,6 +1065,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.04259259259259259,
     "cap03": 0.18333333333333332
    },
    "ocean": {
@@ -896,6 +1089,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.04259259259259259,
     "cap03": 0.18333333333333332
    },
    "ice": {
@@ -919,6 +1113,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.04259259259259259,
     "cap03": 0.18333333333333332
    }
   }
@@ -946,6 +1141,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    },
    "toxic": {
@@ -969,6 +1165,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    },
    "desert": {
@@ -992,6 +1189,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    },
    "lush": {
@@ -1015,6 +1213,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    },
    "ocean": {
@@ -1038,6 +1237,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    },
    "ice": {
@@ -1061,6 +1261,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.2735191637630662
    }
   },
@@ -1086,6 +1287,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.013937282229965157
    },
    "toxic": {
@@ -1109,6 +1311,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.013937282229965157
    },
    "desert": {
@@ -1132,6 +1335,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.013937282229965157
    },
    "lush": {
@@ -1155,6 +1359,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.013937282229965157
    },
    "ocean": {
@@ -1178,6 +1383,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.013937282229965157
    },
    "ice": {
@@ -1201,7 +1407,154 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0.013937282229965157
+   }
+  },
+  "grey": {
+   "lava": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.1759581881533101,
+    "cap03": 0
+   },
+   "toxic": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.1759581881533101,
+    "cap03": 0
+   },
+   "desert": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.1759581881533101,
+    "cap03": 0
+   },
+   "lush": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.1759581881533101,
+    "cap03": 0
+   },
+   "ocean": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.1759581881533101,
+    "cap03": 0
+   },
+   "ice": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0,
+     "cloud": 0,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "redShare": 0.1759581881533101,
+    "cap03": 0
    }
   },
   "violet": {
@@ -1226,6 +1579,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    },
    "toxic": {
@@ -1249,6 +1603,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    },
    "desert": {
@@ -1272,6 +1627,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    },
    "lush": {
@@ -1295,6 +1651,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    },
    "ocean": {
@@ -1318,6 +1675,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    },
    "ice": {
@@ -1341,6 +1699,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    }
   },
@@ -1366,6 +1725,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    },
    "toxic": {
@@ -1389,6 +1749,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    },
    "desert": {
@@ -1412,6 +1773,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    },
    "lush": {
@@ -1435,6 +1797,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    },
    "ocean": {
@@ -1458,6 +1821,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    },
    "ice": {
@@ -1481,6 +1845,7 @@
      "toxic": 0,
      "drone": 0
     },
+    "redShare": 0.1759581881533101,
     "cap03": 0
    }
   }
@@ -1572,6 +1937,50 @@
     "trueShareOff": 0.5653846153846154,
     "trueShareOn": 0.5662087912087912,
     "cover": 0.0038461538461538464
+   }
+  },
+  "A3": {
+   "lava": {
+    "winOff": "lava",
+    "winOn": "lava",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9942307692307693,
+    "cover": 0.006593406593406593
+   },
+   "toxic": {
+    "winOff": "toxic",
+    "winOn": "toxic",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9961538461538462,
+    "cover": 0.006593406593406593
+   },
+   "desert": {
+    "winOff": "desert",
+    "winOn": "desert",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9934065934065934,
+    "cover": 0.006593406593406593
+   },
+   "lush": {
+    "winOff": "lush",
+    "winOn": "lush",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9934065934065934,
+    "cover": 0.006593406593406593
+   },
+   "ocean": {
+    "winOff": "ocean",
+    "winOn": "ocean",
+    "trueShareOff": 0.546978021978022,
+    "trueShareOn": 0.546978021978022,
+    "cover": 0.006593406593406593
+   },
+   "ice": {
+    "winOff": "ice",
+    "winOn": "ice",
+    "trueShareOff": 0.5653846153846154,
+    "trueShareOn": 0.5684065934065934,
+    "cover": 0.006593406593406593
    }
   },
   "B": {
@@ -1760,6 +2169,10 @@
    "mean": 0.011126373626373625,
    "max": 0.05
   },
+  "A3": {
+   "mean": 0.01895604395604395,
+   "max": 0.07967032967032966
+  },
   "B": {
    "mean": 0,
    "max": 0
@@ -1803,6 +2216,19 @@
    "retrograde": 0.25,
    "arrangement": "orbits",
    "tumbleAreaCV": 0.4175161408750043
+  },
+  "A3": {
+   "ringComps": 17,
+   "ringMedianArea": 22,
+   "ringMultiTone": 0.6470588235294118,
+   "debrisComps": 13,
+   "debrisMedianArea": 34,
+   "debrisMultiTone": 0.9230769230769231,
+   "planeAngleMedian": 47.55929360352427,
+   "planeAngleMin": 16.44659663443805,
+   "retrograde": 0.25,
+   "arrangement": "orbits",
+   "tumbleAreaCV": 0.3560237979076577
   },
   "B": {
    "ringComps": 17,
@@ -1868,6 +2294,11 @@
    "moonTones": 4,
    "debrisRound": 0.3349329297256143
   },
+  "A3": {
+   "moonRound": 0.8091974444718721,
+   "moonTones": 4,
+   "debrisRound": 0.4369067391541276
+  },
   "B": {
    "moonRound": 0.8091974444718721,
    "moonTones": 4,
@@ -1914,6 +2345,17 @@
     "agent": 2.0636467520229735
    }
   },
+  "outlined": {
+   "samples": 144,
+   "silhouetteAccuracy": 0.7361111111111112,
+   "withColourAccuracy": 0.7430555555555556,
+   "aspect": {
+    "pr": 2.1415938748126853,
+    "branch": 3.332912659762782,
+    "merged": 1.6696036602892275,
+    "agent": 1.9782328185583855
+   }
+  },
   "blocks": {
    "samples": 144,
    "silhouetteAccuracy": 0.7013888888888888,
@@ -1945,6 +2387,10 @@
     "paint": 0,
     "dull": 0,
     "navy": 0.0125,
+    "outlineBright": 0,
+    "outlineDim": 0,
+    "light": 0,
+    "dark": 0,
     "components": 1
    },
    {
@@ -1953,6 +2399,10 @@
     "paint": 0.3870029417731792,
     "dull": 0.10353519983769527,
     "navy": 0.0125,
+    "outlineBright": 0,
+    "outlineDim": 0.27833485494015014,
+    "light": 0,
+    "dark": 0,
     "components": 1
    },
    {
@@ -1961,6 +2411,10 @@
     "paint": 0.5521039564210513,
     "dull": 0.2788308785783133,
     "navy": 0.0024271844660194173,
+    "outlineBright": 0,
+    "outlineDim": 0.21611272321272718,
+    "light": 0,
+    "dark": 0,
     "components": 2
    }
   ],
@@ -1971,6 +2425,10 @@
     "paint": 0.3977313457152166,
     "dull": 0,
     "navy": 0,
+    "outlineBright": 0.09124918540241121,
+    "outlineDim": 0.010227272727272727,
+    "light": 0.11191552623004236,
+    "dark": 0,
     "components": 1
    },
    {
@@ -1979,6 +2437,10 @@
     "paint": 0.2057816063864451,
     "dull": 0.1919497393287716,
     "navy": 0.16676034538937762,
+    "outlineBright": 0.04772727272727273,
+    "outlineDim": 0,
+    "light": 0.05458007494297816,
+    "dark": 0,
     "components": 1
    },
    {
@@ -1987,6 +2449,48 @@
     "paint": 0.10895652120497322,
     "dull": 0.3026044045745995,
     "navy": 0.2488632028882879,
+    "outlineBright": 0.02819548872180451,
+    "outlineDim": 0,
+    "light": 0.03611233967271119,
+    "dark": 0,
+    "components": 3
+   }
+  ],
+  "outlined": [
+   {
+    "step": "intact",
+    "rust": 0,
+    "paint": 0.4313838614710929,
+    "dull": 0,
+    "navy": 0,
+    "outlineBright": 0.3932721758683946,
+    "outlineDim": 0,
+    "light": 0.038111685602698384,
+    "dark": 0.007722350434936978,
+    "components": 1
+   },
+   {
+    "step": "weathered",
+    "rust": 0.405212296486559,
+    "paint": 0.4287518879703956,
+    "dull": 0,
+    "navy": 0,
+    "outlineBright": 0,
+    "outlineDim": 0.405212296486559,
+    "light": 0.023539591483836653,
+    "dark": 0.1628863786102072,
+    "components": 1
+   },
+   {
+    "step": "broken",
+    "rust": 0.29399361220781256,
+    "paint": 0.29399361220781256,
+    "dull": 0,
+    "navy": 0,
+    "outlineBright": 0,
+    "outlineDim": 0.29399361220781256,
+    "light": 0,
+    "dark": 0.3151969804439483,
     "components": 3
    }
   ],
@@ -1997,6 +2501,10 @@
     "paint": 0,
     "dull": 0,
     "navy": 0,
+    "outlineBright": 0,
+    "outlineDim": 0,
+    "light": 0,
+    "dark": 0,
     "components": 1
    },
    {
@@ -2005,6 +2513,10 @@
     "paint": 0.3938874633431085,
     "dull": 0.13969254032258066,
     "navy": 0,
+    "outlineBright": 0,
+    "outlineDim": 0.32791651392961874,
+    "light": 0,
+    "dark": 0,
     "components": 1
    },
    {
@@ -2013,6 +2525,10 @@
     "paint": 0.3946769781144781,
     "dull": 0.37994370791245796,
     "navy": 0.01171875,
+    "outlineBright": 0,
+    "outlineDim": 0.13034248737373738,
+    "light": 0,
+    "dark": 0,
     "components": 2
    }
   ],
@@ -2023,6 +2539,10 @@
     "paint": 0,
     "dull": 0,
     "navy": 0.07575757575757576,
+    "outlineBright": 0,
+    "outlineDim": 0,
+    "light": 0,
+    "dark": 0,
     "components": 1
    },
    {
@@ -2031,6 +2551,10 @@
     "paint": 0.18181818181818182,
     "dull": 0.23863636363636365,
     "navy": 0.03787878787878788,
+    "outlineBright": 0,
+    "outlineDim": 0.053030303030303025,
+    "light": 0,
+    "dark": 0,
     "components": 1
    },
    {
@@ -2039,6 +2563,10 @@
     "paint": 0.4029640912798737,
     "dull": 0.23724903731422553,
     "navy": 0.0030120481927710845,
+    "outlineBright": 0,
+    "outlineDim": 0.12095707679493889,
+    "light": 0,
+    "dark": 0,
     "components": 2
    }
   ]
@@ -2077,6 +2605,24 @@
     "discHKMedian": 60.55328007107343,
     "aboveDiscP75": 0,
     "debrisChroma": 0.11683162706777049,
+    "discChroma": 0.09287074833387662
+   }
+  },
+  "grey": {
+   "lush": {
+    "brightShare": 0,
+    "debrisHKMedian": 60.8896544374211,
+    "discHKMedian": 65.62543090673228,
+    "aboveDiscP75": 0,
+    "debrisChroma": 0.08920690948632175,
+    "discChroma": 0.10549985451530274
+   },
+   "ocean": {
+    "brightShare": 0,
+    "debrisHKMedian": 60.8896544374211,
+    "discHKMedian": 60.55328007107343,
+    "aboveDiscP75": 0,
+    "debrisChroma": 0.08453905402011846,
     "discChroma": 0.09287074833387662
    }
   },

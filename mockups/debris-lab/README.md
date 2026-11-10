@@ -1,6 +1,6 @@
 # Debris lab
 
-> **Exploration, 2026-11-09/10: five space-debris directions (A–E). The human picked A and asked for it in grey and red, with real satellite parts; A2 is that refinement, waiting for their approval.** Debris is stale work (R13): stale PRs, abandoned branches, merged-but-not-deleted branches and orphaned agent branches, drifting near the planets they touch. The feature doc is `docs/features/space-debris.md` on `docs/art-meaning` (requirements D1–D8). The picked direction gets ported into the asset viewer and the asset library later, as its own task.
+> **Exploration, 2026-11-09/10: five space-debris directions (A–E). The human picked A and asked for it in grey and red with real satellite parts (A2), then for neutral grey with red only as an outline and blinking lights (A3). A3 is waiting for their approval.** Debris is stale work (R13): stale PRs, abandoned branches, merged-but-not-deleted branches and orphaned agent branches, drifting near the planets they touch. The feature doc is `docs/features/space-debris.md` on `docs/art-meaning` (requirements D1–D8). The picked direction gets ported into the asset viewer and the asset library later, as its own task.
 
 There's one debris factory (`debris.js`), and it's a modifier any viewer planet can carry. A direction is just a parameter set (`variants.js`): a **kit** (what a piece is), an **arrangement** (where the pieces sit and how they move) and a **cap** (how many are drawn before the rest is counted). A, B and E differ only in arrangement; A, C and D differ only in kit. So any mix, such as "C's blocks in E's wake", is a one-line edit.
 
@@ -17,7 +17,7 @@ npm run dev   # live page at http://127.0.0.1:5193/debris-lab/ (loopback only; P
 
 `node lab.mjs lineup clutter closeups loops sweep hulls crew a-vs-a2 measures` names the outputs (no names = all). `measures` re-renders the lineups and close-ups it reads; `node lab.mjs report` rewrites `measures.md` from `measures.json` without rendering.
 
-## The directions (A–E, and A2)
+## The directions (A–E, A2 and A3)
 
 | | Direction | Kit (class cue) | Arrangement | Cap |
 |---|---|---|---|---|
@@ -27,6 +27,7 @@ npm run dev   # live page at http://127.0.0.1:5193/debris-lab/ (loopback only; P
 | D | **tagged canisters** | canisters: one shape, the class is a painted colour band | near-polar orbits, all one way | 12 |
 | E | **wake** | hardware | a comet-like tail off one side, youngest item nearest the planet | 10 |
 | A2 | **satellites** (A refined) | satellite: grey metal, red paint, solar panels | own orbits, as A | 12 |
+| A3 | **outlined satellites** (A2 refined) | outlined: neutral grey, a red 1 px outline, blinking red nav lights | own orbits, as A | 12 |
 
 - **A · derelicts.** Dead spacecraft, each on its own loose orbit and tumbling: a satellite (stale PR), a girder (abandoned branch), a spent stage (merged, not deleted) and a cargo crate (orphaned agent branch). It reads as "a planet with junk around it" from any camera angle.
 - **B · junkyard.** A's hardware, parked in two slow heaps beside the disc, never in front of it. The heap size is the count. It's tidy, but pieces in a heap overlap, so classes are harder to tell apart.
@@ -34,7 +35,59 @@ npm run dev   # live page at http://127.0.0.1:5193/debris-lab/ (loopback only; P
 - **D · tagged canisters.** Every piece is the same canister; its class is a painted BLK 36 band (yellow PR, orange branch, lilac merged, pink agent). Polar orbits stand across any ring plane. The class reads instantly as long as the band faces the light, and the band stretches D8 (debris is meant to be metal and rust).
 - **E · wake.** A's hardware trailing off one side like a comet's tail, ordered by age, so a tidy repo has a short tail and old junk sits at the end. The disc stays clear, but the tail's direction is fixed in the world, so it's tuned for the default camera.
 
-## The pick: A, refined as A2
+## The pick: A, refined as A2, then A3
+
+### A3: neutral grey, a red outline and nav lights (current)
+
+The human, on A2: "Make it more grey and less blue, it's ok to not use the palette exactly. Then, let's leave the red as an outline effect instead of part of the device, but you can do things like flashing lights on the debris that are red." They kept the bright red `#d83843`. A3 is that (`a2-vs-a3.png`):
+
+- **Metal:** a neutral grey ramp, very slightly warm in the light (`#3d3d3d #616161 #8e8c8a #b4b2b0`). It's off BLK 36, a human-approved exception for debris only. Each step was picked for distance from every planet colour; the nearest are the lava-ash and barren-moon greys, at 0.046–0.053. Solar cells and scorch are the darkest step, so the panels are grey-led.
+- **The red outline** (`#d83843`) is an inverted hull: each fragment is drawn again, back faces only, pushed out along its smoothed normals by 1.2 px at each vertex's own depth.
+  - It's ordinary geometry in the z-buffer, so it sorts against the planet, clouds and moons with no post pass, and fades with depth per pixel.
+  - It covers 84–98% of each silhouette's edge, with at most 1 px anywhere 2 px thick (`test/render.test.mjs`).
+  - It's a debris-only exception to the no-outlines rule (art direction §3). Nothing else in the viewer gets it.
+  - A3's parts are A2's shapes rebuilt for it: no paint segments, joints overlapping or inside a collar, the satellite's bus taller than its wings, and the solar array's gap wide enough to stay open around the outline. Earlier tries outlined every internal seam, or filled the array's notch.
+- **Nav lights:** 2 px `#ff6866` points, two per piece at its tips. Each blinks 8 times per 24 s loop and is lit for 22% of each blink. Every light's phase is seeded, so they never flash together. They're loop-locked and deterministic, and close-ups hold them steady.
+- **Age, without paint:**
+  - **Intact:** a bright `#d83843` outline and both lights blinking.
+  - **Weathered:** the outline dims to `#872a38`, one light is dead, and 30% of the metal is scorched.
+  - **Broken:** fragments, both lights dead, a dim outline on the biggest fragment only, and 50% scorch.
+
+**A3 measured** (`measures.md`; A2 for comparison):
+
+| | A3 | A2 |
+|---|---|---|
+| Class from the silhouette alone, tumbling (chance 25%) | 73.6% | 80.6% |
+| … with colour | 74.3% | 77.1% |
+| Age steps (close-ups): bright outline share | 39.3% → 0% → 0% | — |
+| Age steps: dim outline share | 0% → 40.5% → 29.4% | — |
+| Age steps: lit nav lights share | 3.8% → 2.4% → 0% | — |
+| Age steps: dark-grey scorch share | 0.8% → 16.3% → 31.5% | — |
+| Age steps: separate pieces | 1 → 1 → 3 | 1 → 1 → 3 |
+| Health band, 24 items: every band reads as itself | yes; vote share drops at most 0.7 points | yes; at most 0.4 |
+| Disc cover over the loop (lush, 24 items), mean / max | 1.9% / 8.0% | 1.1% / 5.0% |
+| Grey metal within 0.05 of any planet ramp (ring, moons, cap, ocean, land, ice, cloud, sand, toxic) or the drone tells | **0%** | ocean 16%, ice 57%, cap 4.5% |
+| Polar cap within 0.03 | **0%** | 4.5% |
+| Red (outline and lights) share of debris pixels | 39.4% | (paint) |
+| Debris pixels within 0.05 of the lava ramp | 16.0%, all bright outline | 14.0%, all paint |
+| Not a ring: groups, median px, multi-tone (ring 17, 22 px, 65%) | 13, 34 px, 92% | 12, 36 px, 100% |
+| Not a moon: roundness (moons 0.81); tumble area CV (moon 0.08) | 0.44; 0.36 | 0.33; 0.42 |
+| Loop: a loop later vs frame 0; wrap vs largest step | 0 px; 2,311 ≤ 2,578 px | 0 px; 2,184 ≤ 2,377 px |
+| Sweep: teal px during / after; px vs the next scan | 80 / 0; 0 | 80 / 0; 0 |
+
+**The red outline against lava:**
+- Every bright outline pixel is `#d83843`, 0.048 from the lava rim `#c9361a`. That's 16.0% of all A3 debris pixels, or 41% of the red ones.
+- The dim outline (`#872a38`) and the lights (`#ff6866`) are 0.074 or more from every lava and toxic colour.
+- No band reading changes: with 24 items, a lava disc still votes 99.4% lava and a lush disc 99.3% lush.
+
+**What the numbers say:**
+- The grey is the clean part. It's nowhere near any planet ramp, so debris can't be mistaken for a polar cap or ice any more.
+- The outline costs two things. Cover over the loop rises to 8.0% at most, because each piece is 2 px bigger. The silhouette class read drops to 74%, because the outline rounds the shapes off.
+- A3 is still well clear of a ring or a moon, and the health band holds.
+
+**Recommendation:** approve A3. If cover over the disc matters, the outline could go on intact pieces only (one line in `layout.js`), which also gives back some of the class read: without an outline, A2's look reads 7 points better.
+
+### A2: grey and red paint
 
 The human picked **A · derelicts** (2026-11-10) with changes: "A but make them Grey and red, to really be noticeable and look more like satellite pieces. You can add in solar panel pieces and actual satellite looking pieces." For the hull they chose the gear blue-grey. **A2 · satellites** is that refinement, kept beside A for before and after (`a-vs-a2.png`). It's waiting for their approval before the port.
 
@@ -85,7 +138,7 @@ Even broken junk keeps some red, so old debris stays noticeable.
 
 **Proximity, compared with A:** the polar-cap overlap drops from 27.4% to 4.5%, because A2's metal moves `#464b8c` to the terminator band. The ice overlap rises, because the lit metal `#6b74b2` is 0.027 from the ice ramp's `#5a78ac`. On the ice planet itself none of it is within 0.03 (0.0%), and the band reading is unchanged.
 
-**Recommendation:** approve A2 as it stands, in the gear-light metal with `#d83843` paint. If the human finds the red too close to lava on a lava world, `#cc5250` is the safe swap.
+A2's recommendation was to approve it in the gear-light metal with `#d83843` paint, swapping to `#cc5250` if the red read too lava-like. The human kept `#d83843` and asked for A3 instead.
 
 ## Recommendation (before the pick)
 
@@ -168,7 +221,7 @@ Measured (`measures.md`): teal shows during the flash (69–126 px, under 0.3% o
 
 ## House rules (D7)
 
-- **Live 3D** through the viewer's pixel pass (320×180, nearest), lit in four flat bands and darkened in the planet's shadow (the ring's own shadow test). No sprites, outlines or dithering.
+- **Live 3D** through the viewer's pixel pass (320×180, nearest), lit in four flat bands and darkened in the planet's shadow (the ring's own shadow test). No sprites or dithering, and no outlines except A3's red debris outline, the human's exception (above).
 - **2 px:** every kept part is at least 2 px across at hero range, and a detail drops out rather than thinning (`test/pure.test.mjs`). One exception by design: a satellite panel seen edge-on is 1–2 px thick for a moment as it tumbles.
 - **Deterministic:** the same seed, items and time give the same pixels, and nothing reads the clock (only the live page's playback).
 - **Loop-locked:** each orbit, heap circle and wake circle makes 1 turn per 24 s, and each tumble 1 or 2. Measured: the frame one loop later is identical to frame 0 in every direction, and the wrap diff (1,900–2,265 px) is under the largest frame-to-frame step (2,061–2,432 px).
@@ -178,14 +231,14 @@ Measured (`measures.md`): teal shows during the flash (69–126 px, under 0.3% o
 
 | File | Shows |
 |---|---|
-| `lineup-A.png` … `lineup-E.png`, `lineup-A2.png` | 8 stale items on every health band (lava, toxic, ash, lush, ocean, ice), at planet size 1 and 0.55, same items and seed throughout |
-| `clutter-A.png` … `clutter-E.png`, `clutter-A2.png` | 0, 1, 3, 8 and 24 items on lush and lava, with the "+N" overflow |
-| `closeups-hardware.png`, `closeups-satellite.png`, `closeups-blocks.png`, `closeups-canister.png` | Each kit: four classes × three ages at hero range (×5), three diff sizes, and the ages again 3× closer |
-| `loop-A.gif` … `loop-E.gif`, `loop-A2.gif` | One seamless 24 s loop per direction on the lush hero with 8 items, 15 fps, ×2 |
-| `a-vs-a2.png` | Before and after: A and A2 on lush, ocean, ice, toxic and lava with 8 items, and lush with 24 |
-| `sweep.gif` | The sweep in A2, 3.5 s, ×2 |
+| `lineup-A.png` … `lineup-E.png`, `lineup-A2.png`, `lineup-A3.png` | 8 stale items on every health band (lava, toxic, ash, lush, ocean, ice), at planet size 1 and 0.55, same items and seed throughout |
+| `clutter-A.png` … `clutter-E.png`, `clutter-A2.png`, `clutter-A3.png` | 0, 1, 3, 8 and 24 items on lush and lava, with the "+N" overflow |
+| `closeups-hardware.png`, `closeups-satellite.png` (A2), `closeups-satellite-A3.png`, `closeups-blocks.png`, `closeups-canister.png` | Each kit: four classes × three ages at hero range (×5), three diff sizes, and the ages again 3× closer |
+| `loop-A.gif` … `loop-E.gif`, `loop-A2.gif`, `loop-A3.gif` (with the blinking lights) | One seamless 24 s loop per direction on the lush hero with 8 items, 15 fps, ×2 |
+| `a-vs-a2.png`, `a2-vs-a3.png` | Before and after: A and A2, and A2 and A3, on lush, ocean, ice, toxic and lava with 8 items, and lush with 24 |
+| `sweep.gif` | The sweep in A3, 3.5 s, ×2 |
 | `sweep-strip.png` | The sweep in every direction, frame by frame (64 px crops ×3 that follow the piece) |
-| `hulls.png` | Direction A on every band in the gear, gear-light, violet and violet-dark hulls |
+| `hulls.png` | Direction A on every band in the gear, gear-light, grey, violet and violet-dark hulls |
 | `crew-scale.png` | Each direction behind the viewer's crew close-up (the depth view), for scale |
 | `measures.md`, `measures.json` | Every number in this README |
 
@@ -200,14 +253,15 @@ Every tile `npm run lab` renders goes through `checks.mjs`, and the run fails on
 - **Depth sorting:** pieces behind the planet draw nothing through it (and the test proves some do pass behind).
 - **Loop seam:** the frame one loop later is pixel-identical to frame 0, and the wrap diff is no bigger than the largest frame-to-frame step.
 - **Sweep:** teal during, none after, and no trace against the next scan.
+- **A3 outline and lights:** the outline touches the body everywhere (no floating or 2 px-thick runs beyond 1 px), covers more than 80% of the silhouette's edge, and the lights blink within a loop and repeat exactly a loop later.
 
 ## How it's built
 
 | File | What |
 |---|---|
-| `kits.js` | The four kits (hardware, satellite, blocks, canister) as part tables per class (pure data): sizes from diffs, the 2 px detail rule, solar-panel grids, fragments, rust cells |
+| `kits.js` | The five kits (hardware, satellite, outlined, blocks, canister) as part tables per class (pure data): sizes from diffs, the 2 px detail rule, solar-panel grids, fragments, rust cells |
 | `layout.js` | Items → pieces (`plan`), the arrangements (`place`, plus `prepare` for the two that pack), loop-locked poses (`fragPoses`) and the sweep's timeline (`sweepAt`). Pure, tested in Node |
-| `variants.js` | The directions (A–E and A2), sample stale items, the bands and sizes |
+| `variants.js` | The directions (A–E, A2, A3), sample stale items, the bands and sizes |
 | `palette.js`, `colour.js` | Debris colours (checked against `mapPalette('blk-36')`), OKLab, CIELAB and Helmholtz–Kohlrausch lightness |
 | `debris.js` | The factory: `makeDebris()` → `{ group, rebuild(items, variant, { seed, radius, hull }), update(phase, { centre, radius, sweeps, selected }), setDebug, layout }` |
 | `lab.js`, `index.html` | The page: scenes from the viewer's factories, off-screen tiles, per-tile stats, sheets, frames, the live view |
@@ -230,6 +284,8 @@ The debris shader is the viewer's toon recipe: four light bands from `dot(normal
 - **Satellite panels** are 1–2 px thick for a moment when seen edge-on. The 2 px rule holds for every designed feature, but not for a flat panel's edge.
 - **D's paint is dark on the night side,** so the class is unreadable while a canister is in shadow. Its paint colours are also outside D8's metal and rust.
 - **Retrograde is random per item** (about 30% expected). The 8-item lineup sample happens to have none; the 24-item plan has 25%.
+- **A3's outline is an exception to §3** (no outlines). It lives only in the debris shader, and the port must keep it debris-only. A3's grey is likewise a debris-only exception to BLK 36.
+- **A3's outline adds about 2 px to every piece,** so pieces cover more of the disc (8.0% at most) and silhouettes read a little less well (74%).
 - **A2's red sits near the lava rim** (`#d83843`, 0.048), and its lit metal near ice (`#6b74b2`, 0.027). Neither moves a band reading; the swap is `#cc5250`.
 - **Flat solar parts** are 1–2 px thick for a moment when seen edge-on, as A's panels are.
 - **Repo weight:** each loop GIF is about 2.3–2.5 MB (about 15 MB for the six), ×2 at 15 fps, like the drone lab's.
