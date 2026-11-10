@@ -1,6 +1,6 @@
 # Phase 2 contract (#29)
 
-**Status: locked 2026-11-09.** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
+**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
 
 | Shape | Types | Produced by | Consumed by |
 |---|---|---|---|
@@ -9,16 +9,17 @@
 | Local HTTP surface | `src/core/contract/api.ts` (`API`, `TOKEN_HEADER`, `WEB_DIST`, `LiveEvent`) | #32 R14 | #30 view |
 | Render hook | `src/core/contract/api.ts` (`RenderHook`, `RenderInput`, `RenderStats`, `TEST_MODE_PARAM`) | #30 view | #31 render tests |
 
-**Fixtures:** `test/fixtures/contract/mini.ts` (typed source) and its JSON twins `mini.layout.json` and `mini.fog.json`. They describe 3 planets, moonlets, a moon overflow, a ring, a surface overflow, unknown debt and one charted file. `test/contract.test.ts` keeps the twins byte-equal and checks the invariants. Regenerate the twins only with `UPDATE_GOLDEN=1` and a `Golden-Update:` line.
+**Fixtures:** `test/fixtures/contract/mini.ts` (typed source) and its JSON twins `mini.layout.json` and `mini.fog.json`. They describe 3 planets, moonlets, a moon overflow, a surface overflow, unknown debt and one charted file. `test/contract.test.ts` keeps the twins byte-equal and checks the invariants. Regenerate the twins only with `UPDATE_GOLDEN=1` and a `Golden-Update:` line.
 
 ## Layout
 - **Integers only:** `canonicalJson` only takes integers, so lengths are world units ×1000 (`…Milli`) and angles are thousandths of a turn.
 - **Ids:** every body is keyed by the snapshot's stable `DirId` / `FileId`. Paths are for labels only.
 - **Orbits:** slot 0 is innermost. `slotSpacingMilli ≥ 2 × maxPlanetRadiusMilli`, so growth never forces a move (#18). `phaseMilliturn` is the frame-0 angle. Orbital motion is the renderer's job, as a function of frame number.
 - **Surface:** a Fibonacci sphere of `grid.cells` cells. Cell `i` is centred at `fibonacciCell(i, cells)`, and both `layout()` and the renderer use that one helper. "Nearest free cell" means nearest by angle.
-- **Overflow is counted, never dropped (Rule 1):** `moonOverflow`, `ringOverflow`, `surface.overflow`, `moonletOverflow`.
-- **Health:** `band` is one of `lava | toxic | ash | lush`. Thresholds live in one constants file owned by #18. `qodoUnknown` is true exactly when `qodoOpen` is null. Unreadable debt is counted in `debtUnknownFiles`, never as 0.
-- **Decorative:** `biomeSeed` is decorative only (principle 4).
+- **Overflow is counted, never dropped (Rule 1):** `moonOverflow`, `surface.overflow`, `moonletOverflow`.
+- **Health:** `band` is one of `lava | toxic | ash | healthy`. A healthy planet is drawn as lush, ocean or ice, picked by `biomeSeed`. Thresholds live in one constants file owned by #18. `qodoUnknown` is true exactly when `qodoOpen` is null. Unreadable debt is counted in `debtUnknownFiles`, never as 0.
+- **Seeded variety:** `biomeSeed` only varies the look inside a band (principle 4).
+- **No rings (amended 2026-11-10):** the human decided on 2026-11-09 that rings no longer mean unmerged branches. Their meaning is open, so the layout has no rings and the product view draws none. Stale branches belong to debris (R13), later. See art-direction §6 on `docs/art-meaning`.
 - **#23 (decided by the human, 2026-11-09):**
   - Partner detection looks through merge commits to the merged branch's own commits.
   - Test data (non-test files under a test folder) rides with the tests. It is never a planet or surface, and is counted in `star.testData`. So `test/` is never a planet.

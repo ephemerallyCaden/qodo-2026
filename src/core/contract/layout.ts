@@ -1,10 +1,13 @@
 // Phase 2 contract (#29): the shape of `layout.json`. Types plus one pure geometry helper that both
 // `layout()` (#18) and the renderer (#30) must agree on. Locked: change only through the team lead.
 // Every number is an integer, because canonicalJson only takes integers (Rule 3, byte-stable output).
-import type { DirId, FileId, IsoUtc, Sha } from '../snapshot/types.js';
+import type { DirId, FileId, Sha } from '../snapshot/types.js';
 
-/** Worst to best (art-direction §6, #19). */
-export type HealthBand = 'lava' | 'toxic' | 'ash' | 'lush';
+/**
+ * Worst to best (art-direction §6, human 2026-11-09). `healthy` is drawn as lush, ocean or ice,
+ * picked by `biomeSeed`: seeded variety inside one meaning, never a separate band.
+ */
+export type HealthBand = 'lava' | 'toxic' | 'ash' | 'healthy';
 
 export interface Health {
   band: HealthBand;
@@ -54,9 +57,6 @@ export interface Moon { fileId: FileId; testOf: FileId | DirId; slot: number }
 /** Root files and unmatched tests, on the innermost orbit around the star. */
 export interface Moonlet { fileId: FileId; kind: 'root-file' | 'unmatched-test'; slot: number }
 
-/** An unmerged branch touching the planet (from snapshot.branches[]). */
-export interface Ring { branch: string; slot: number; aheadCount: number; lastCommitDate: IsoUtc }
-
 export interface Planet {
   dirId: DirId;
   path: string;
@@ -66,16 +66,13 @@ export interface Planet {
   /** Body radius in world units ×1000, from clamped log2(1 + LOC). */
   radiusMilli: number;
   loc: number;
-  /** Decorative only (principle 4): seeds terrain noise and the biome where health doesn't apply. */
+  /** Seeded variety only (principle 4): terrain noise, and the lush/ocean/ice choice for a healthy planet. */
   biomeSeed: number;
   health: Health;
   surface: { grid: SurfaceGrid; continents: Continent[]; settlements: Settlement[]; overflow: number };
   /** Up to 24, oldest first. */
   moons: Moon[];
   moonOverflow: number;
-  /** Up to 4, oldest first. */
-  rings: Ring[];
-  ringOverflow: number;
 }
 
 export interface LayoutV1 {
@@ -87,7 +84,6 @@ export interface LayoutV1 {
     slotSpacingMilli: number;
     maxPlanetRadiusMilli: number;
     moonCap: number;
-    ringCap: number;
   };
   star: {
     repoId: string;

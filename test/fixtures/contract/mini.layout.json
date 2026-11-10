@@ -2,7 +2,6 @@
   "constants": {
     "maxPlanetRadiusMilli": 12000,
     "moonCap": 24,
-    "ringCap": 4,
     "slotSpacingMilli": 24000
   },
   "planets": [
@@ -11,7 +10,7 @@
       "bornSeq": 1,
       "dirId": "d_00000000000a",
       "health": {
-        "band": "lush",
+        "band": "healthy",
         "debtUnknownFiles": 0,
         "markersPerKlocMilli": 0,
         "qodoOpen": null,
@@ -29,8 +28,6 @@
       "partner": null,
       "path": "src",
       "radiusMilli": 10000,
-      "ringOverflow": 0,
-      "rings": [],
       "slot": {
         "index": 0,
         "phaseMilliturn": 0,
@@ -60,7 +57,7 @@
             "dirId": "d_00000000000a",
             "fileId": "f_00000000000a",
             "health": {
-              "band": "lush",
+              "band": "healthy",
               "debtUnknownFiles": 0,
               "markersPerKlocMilli": 0,
               "qodoOpen": null,
@@ -74,7 +71,7 @@
             "dirId": "d_00000000000a",
             "fileId": "f_00000000000b",
             "health": {
-              "band": "lush",
+              "band": "healthy",
               "debtUnknownFiles": 0,
               "markersPerKlocMilli": 0,
               "qodoOpen": null,
@@ -88,7 +85,7 @@
             "dirId": "d_00000000000b",
             "fileId": "f_00000000000c",
             "health": {
-              "band": "lush",
+              "band": "healthy",
               "debtUnknownFiles": 0,
               "markersPerKlocMilli": 0,
               "qodoOpen": null,
@@ -238,15 +235,6 @@
       "partner": "d_00000000000a",
       "path": "web",
       "radiusMilli": 7000,
-      "ringOverflow": 0,
-      "rings": [
-        {
-          "aheadCount": 3,
-          "branch": "feature/web-ui",
-          "lastCommitDate": "2026-11-01T10:00:00Z",
-          "slot": 0
-        }
-      ],
       "slot": {
         "index": 1,
         "phaseMilliturn": 250,
@@ -300,8 +288,6 @@
       "partner": null,
       "path": "docs",
       "radiusMilli": 5000,
-      "ringOverflow": 0,
-      "rings": [],
       "slot": {
         "index": 2,
         "phaseMilliturn": 600,

@@ -1,19 +1,19 @@
 // Hand-written Phase 2 contract fixtures (#29). The renderer (#30) and render tests (#31) load the
 // JSON twins next to this file; test/contract.test.ts keeps them byte-equal to these values.
-// Three planets: src (lush, no partner), web (toxic, partner src, one ring, moon overflow), docs
+// Three planets: src (healthy, no partner), web (toxic, partner src, moon overflow), docs
 // (ash, debt partly unknown, surface overflow). Root files and an unmatched test are moonlets.
 import type { FogView } from '../../../src/core/contract/fog.js';
 import type { Health, LayoutV1 } from '../../../src/core/contract/layout.js';
 
 const HEAD = '1111111111111111111111111111111111111111';
-const lush: Health = { band: 'lush', markersPerKlocMilli: 0, debtUnknownFiles: 0, qodoOpen: null, qodoUnknown: true };
+const healthy: Health = { band: 'healthy', markersPerKlocMilli: 0, debtUnknownFiles: 0, qodoOpen: null, qodoUnknown: true };
 const toxic: Health = { band: 'toxic', markersPerKlocMilli: 9000, debtUnknownFiles: 0, qodoOpen: null, qodoUnknown: true };
 const ash: Health = { band: 'ash', markersPerKlocMilli: 3000, debtUnknownFiles: 1, qodoOpen: null, qodoUnknown: true };
 
 export const miniLayout: LayoutV1 = {
   schemaVersion: 'layout.1',
   source: { repoId: 'r_000000000001', head: HEAD },
-  constants: { slotSpacingMilli: 24000, maxPlanetRadiusMilli: 12000, moonCap: 24, ringCap: 4 },
+  constants: { slotSpacingMilli: 24000, maxPlanetRadiusMilli: 12000, moonCap: 24 },
   star: {
     repoId: 'r_000000000001',
     moonlets: [
@@ -28,7 +28,7 @@ export const miniLayout: LayoutV1 = {
     {
       dirId: 'd_00000000000a', path: 'src', bornSeq: 1, partner: null,
       slot: { index: 0, radiusMilli: 30000, phaseMilliturn: 0 },
-      radiusMilli: 10000, loc: 1200, biomeSeed: 1234567, health: lush,
+      radiusMilli: 10000, loc: 1200, biomeSeed: 1234567, health: healthy,
       surface: {
         grid: { kind: 'fibonacci', cells: 64 },
         continents: [
@@ -36,14 +36,14 @@ export const miniLayout: LayoutV1 = {
           { dirId: 'd_00000000000b', parent: 'd_00000000000a', seedCell: 21 },
         ],
         settlements: [
-          { fileId: 'f_00000000000a', dirId: 'd_00000000000a', cell: 0, loc: 600, size: 4, health: lush },
-          { fileId: 'f_00000000000b', dirId: 'd_00000000000a', cell: 13, loc: 300, size: 3, health: lush },
-          { fileId: 'f_00000000000c', dirId: 'd_00000000000b', cell: 21, loc: 300, size: 3, health: lush },
+          { fileId: 'f_00000000000a', dirId: 'd_00000000000a', cell: 0, loc: 600, size: 4, health: healthy },
+          { fileId: 'f_00000000000b', dirId: 'd_00000000000a', cell: 13, loc: 300, size: 3, health: healthy },
+          { fileId: 'f_00000000000c', dirId: 'd_00000000000b', cell: 21, loc: 300, size: 3, health: healthy },
         ],
         overflow: 0,
       },
       moons: [{ fileId: 'f_0000000000a1', testOf: 'f_00000000000a', slot: 0 }],
-      moonOverflow: 0, rings: [], ringOverflow: 0,
+      moonOverflow: 0,
     },
     {
       dirId: 'd_00000000000c', path: 'web', bornSeq: 4, partner: 'd_00000000000a',
@@ -57,8 +57,6 @@ export const miniLayout: LayoutV1 = {
       },
       moons: Array.from({ length: 24 }, (_, i) => ({ fileId: `f_0000000000${(0xb0 + i).toString(16)}` as const, testOf: 'f_00000000000d' as const, slot: i })),
       moonOverflow: 2,
-      rings: [{ branch: 'feature/web-ui', slot: 0, aheadCount: 3, lastCommitDate: '2026-11-01T10:00:00Z' }],
-      ringOverflow: 0,
     },
     {
       dirId: 'd_00000000000d', path: 'docs', bornSeq: 2, partner: null,
@@ -73,7 +71,7 @@ export const miniLayout: LayoutV1 = {
         ],
         overflow: 1,
       },
-      moons: [], moonOverflow: 0, rings: [], ringOverflow: 0,
+      moons: [], moonOverflow: 0,
     },
   ],
 };

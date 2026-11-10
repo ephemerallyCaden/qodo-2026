@@ -26,7 +26,6 @@ describe('Phase 2 contract fixtures', () => {
     for (const p of planets) {
       expect(p.radiusMilli).toBeLessThanOrEqual(constants.maxPlanetRadiusMilli);
       expect(p.moons.length).toBeLessThanOrEqual(constants.moonCap);
-      expect(p.rings.length).toBeLessThanOrEqual(constants.ringCap);
       const cells = p.surface.settlements.map((s) => s.cell);
       expect(new Set(cells).size).toBe(cells.length);
       for (const c of cells) expect(c).toBeLessThan(p.surface.grid.cells);
