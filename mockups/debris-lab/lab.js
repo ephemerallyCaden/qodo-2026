@@ -12,7 +12,7 @@ import { eyesFor } from '../asset-viewer/faces.js';
 import { makeDebris } from './debris.js';
 import { variant as variantOf, sampleItems, VARIANTS, BANDS, CLUTTER } from './variants.js';
 import { LOOP, centreAt, phaseAt, ranked } from './layout.js';
-import { restColours, TEAL, HULL_KEYS } from './palette.js';
+import { restColours, TEAL, HULL_KEYS, PAINT, DULL, TAGS } from './palette.js';
 import { hexToInt } from './colour.js';
 
 setLoop({ ...VIEWER_LOOP, period: LOOP }); // the viewer's loop (2 surface : 3 cloud turns)
@@ -55,7 +55,7 @@ function full(cell) {
     biome: 'lush', seed: 7, size: 1, pos: [0, 0, 0], ring: 'off', moons: true, planet: true, crew: false, w: 320, h: 180, t: 3,
     ...cell,
     debris: cell.v ? {
-      v: cell.v, hull: cell.hull ?? 'gear', seed: cell.debrisSeed ?? cell.seed ?? 7, sweeps: cell.sweeps ?? {}, selected: cell.selected ?? null,
+      v: cell.v, hull: cell.hull ?? variantOf(cell.v).hull ?? 'gear', seed: cell.debrisSeed ?? cell.seed ?? 7, sweeps: cell.sweeps ?? {}, selected: cell.selected ?? null,
       items: cell.items ?? sampleItems(cell.n ?? 8, { prefix: cell.prefix ?? 'item' }),
       arrangement: cell.arrangement,
     } : null,
@@ -230,8 +230,7 @@ function focusCrop(c) {
 function tileStats(c) {
   const check = shot(c, 'check'), off = shot(c, 'off'), ids = shot(c, 'ids'), alone = shot(c, 'alone');
   const n = c.w * c.h, layout = debris.layout;
-  const tagged = layout.pieces.some((p) => p.parts.some((q) => q.tag));
-  const allowed = new Set(restColours(c.debris?.hull ?? 'gear', tagged).map(hexToInt));
+  const allowed = new Set(restColours(c.debris?.hull ?? 'gear', layout.kit ?? 'hardware').map(hexToInt));
   const teal = new Set(TEAL.map(hexToInt));
   const dk = disc(c);
   const ps = onScreen(c);
@@ -376,13 +375,25 @@ function compare(raw, t) {
   return { ring: added(shot(c, 'ring-off', t), base), moons: added(shot(c, 'moons-off', t), base), debris: added(shot(c, 'check', t)), ringNormal: normal.toArray() };
 }
 
-/** Per-piece screen area and silhouette over time (the debris-alone id pass): tumble and class measures. */
+// Colour groups a piece's pixels are counted in for the class measure (shares per piece).
+const GROUPS = { red: [...PAINT, ...DULL], dark: ['#12173d'], ...Object.fromEntries(Object.entries(TAGS).map(([k, v]) => [`tag-${k}`, [v]])) };
+const GROUP_OF = new Map(Object.entries(GROUPS).flatMap(([g, hexes]) => hexes.map((h) => [hexToInt(h), g])));
+
+/** Per-piece screen area, silhouette and colour shares over time (the debris-alone id pass): tumble and class measures. */
 function areas(raw, times) {
   const c = configure(raw);
   return times.map((t) => {
     const img = shot(c, 'alone', t);
-    const px = {};
-    for (let i = 0; i < c.w * c.h; i++) if (img[i * 4 + 2] === 254) (px[img[i * 4] - 1] ??= []).push([i % c.w, Math.floor(i / c.w)]);
+    const look = shot(c, 'check', t);
+    const px = {}, groups = {};
+    for (let i = 0; i < c.w * c.h; i++) {
+      if (img[i * 4 + 2] !== 254) continue;
+      const k = img[i * 4] - 1;
+      (px[k] ??= []).push([i % c.w, Math.floor(i / c.w)]);
+      const g = GROUP_OF.get(rgbAt(look, i));
+      groups[k] ??= Object.fromEntries(Object.keys(GROUPS).map((x) => [x, 0]));
+      if (g) groups[k][g]++;
+    }
     // principal-axis aspect (rotation-free) and fill against the moment ellipse (~1 for an ellipse)
     return Object.fromEntries(Object.entries(px).map(([k, pts]) => {
       const n = pts.length, mx = pts.reduce((s, p) => s + p[0], 0) / n, my = pts.reduce((s, p) => s + p[1], 0) / n;
@@ -390,7 +401,8 @@ function areas(raw, times) {
       for (const [x, y] of pts) { sxx += (x - mx) ** 2; syy += (y - my) ** 2; sxy += (x - mx) * (y - my); }
       const tr = (sxx + syy) / n, det = (sxx * syy - sxy * sxy) / (n * n), root = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
       const l1 = tr / 2 + root + 1 / 12, l2 = Math.max(1e-6, tr / 2 - root) + 1 / 12; // + a pixel's own variance, so a 1 px line isn't infinite
-      return [k, { area: n, aspect: Math.sqrt(l1 / l2), fill: n / (4 * Math.PI * Math.sqrt(l1 * l2)) }];
+      const shares = Object.fromEntries(Object.entries(groups[k]).map(([g, m]) => [g, m / n]));
+      return [k, { area: n, aspect: Math.sqrt(l1 / l2), fill: n / (4 * Math.PI * Math.sqrt(l1 * l2)), shares }];
     }));
   });
 }

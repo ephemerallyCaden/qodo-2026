@@ -10,6 +10,10 @@ export const VARIANTS = [
     blurb: 'Dead spacecraft, one silhouette per class, each on its own crooked orbit (a third retrograde), tumbling.',
   },
   {
+    id: 'A2', name: 'satellites', kit: 'satellite', arrangement: 'orbits', cap: 12, hull: 'gear-light',
+    blurb: "The human's pick, refined: A's orbits with grey metal, red paint and real satellite parts (a dish satellite, a snapped boom, a spent stage, a solar array).",
+  },
+  {
     id: 'B', name: 'junkyard', kit: 'hardware', arrangement: 'heaps', cap: 20,
     blurb: "A's hardware parked in two churning heaps on the planet's leading and trailing sides, so the disc stays clear.",
   },
@@ -27,8 +31,8 @@ export const VARIANTS = [
   },
 ];
 export const variant = (id) => VARIANTS.find((v) => v.id === id);
-// The recommended direction (README), which gets the sweep GIF.
-export const PICK = 'A';
+// The human's pick (A, refined as A2), which gets the sweep GIF.
+export const PICK = 'A2';
 
 // Ages (days) and diffs (lines) that land on each age step and across the size range.
 export const AGES = [21, 110, 400]; // intact, rusted, broken (layout.AGE_STEPS = 60, 180)

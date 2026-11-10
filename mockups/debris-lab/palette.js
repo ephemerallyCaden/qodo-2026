@@ -12,8 +12,12 @@ import { ACCENTS } from '../asset-viewer/planet-ramps.js';
 // `violet-dark` keeps the violets to their two darker steps and takes the highlights from the
 // rust ramp's mauve, because art direction §4 bans saturated violet on rings: against land green
 // it reads brighter and nearer than the planet (Helmholtz-Kohlrausch). README: "Violet check".
+// `gear-light` (A2) is the same gear family lifted one step, so the metal reads as grey beside the
+// red paint and the darkest navy is left to the solar cells and scorch; it stops below the drone
+// shell's lit #909edd.
 export const HULLS = {
   gear: ['#12173d', '#293268', '#464b8c', '#6b74b2'],
+  'gear-light': ['#293268', '#464b8c', '#6b74b2', '#6b74b2'],
   violet: ['#29174c', '#412866', '#643499', '#8c51cc'],
   'violet-dark': ['#29174c', '#29174c', '#412866', '#8c4b63'],
 };
@@ -36,8 +40,23 @@ export const TAGS = { pr: '#ffe091', branch: '#ff965f', merged: '#b991f2', agent
 // and the teal eyes. Debris at rest must show none of them.
 export const DRONE_TELLS = ['#909edd', '#c1d9f2', '#ffffff', ...TEAL];
 
-/** Every colour debris can put on screen at rest (hull, rust and, for D, the class paint). */
-export const restColours = (hull = 'gear', tags = false) => [...HULLS[hull], ...RUST, ...(tags ? Object.values(TAGS) : [])];
+// A2 (satellites, the human's pick refined, 2026-11-10: "grey and red, to really be noticeable"):
+// red is deliberate paint, not rust. PAINT is BLK 36's reds, dark -> light; #d83843 is the
+// strongest red, 0.048 (OKLab) from the lava rim #c9361a (swap it for #cc5250, 0.060, if that
+// ever matters). Age then can't lean on red, so it uses value and structure: the paint chips and
+// dulls to DULL (dark mauves, about 0.19 L darker on the lit band), the metal scorches to NAVY,
+// and old pieces break apart. NAVY is also the solar panels' cell colour: the gear and navy
+// family, never the ocean blues.
+export const PAINT = ['#872a38', '#cc5250', '#d83843', '#ff6866'];
+export const DULL = ['#66334b', '#66334b', '#66334b', '#8c4b63'];
+export const NAVY = ['#12173d', '#12173d', '#12173d', '#12173d']; // flat: solar cells and scorch stay the darkest navy in any light
+
+// Which colour roles each kit can put on screen at rest.
+const KIT_ROLES = { hardware: ['rust'], blocks: ['rust'], canister: ['rust', 'tag'], satellite: ['paint', 'dull', 'navy'] };
+const ROLE = { rust: RUST, tag: Object.values(TAGS), paint: PAINT, dull: DULL, navy: NAVY };
+
+/** Every colour a kit's debris can put on screen at rest: its hull and its roles. */
+export const restColours = (hull = 'gear', kit = 'hardware') => [...new Set([...HULLS[hull], ...KIT_ROLES[kit].flatMap((r) => ROLE[r])])];
 
 /** The ramps as a viewer palette role, so resolve('debris.hull.gear') etc. work for depth tints. */
-export const paletteRole = () => ({ hull: { ...HULLS }, rust: RUST, teal: TEAL, tag: { ...TAGS } });
+export const paletteRole = () => ({ hull: { ...HULLS }, rust: RUST, teal: TEAL, tag: { ...TAGS }, paint: PAINT, dull: DULL, navy: NAVY });

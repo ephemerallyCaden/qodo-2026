@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mapPalette } from '../../asset-viewer/palette-map.js';
 import { LOSPEC } from '../../asset-viewer/palettes.js';
 import { V2_PLANET_RAMPS } from '../../asset-viewer/planet-ramps.js';
-import { HULLS, RUST, TAGS, DRONE_TELLS, restColours } from '../palette.js';
+import { HULLS, RUST, TAGS, PAINT, DULL, NAVY, DRONE_TELLS, restColours } from '../palette.js';
 import { KITS, CLASSES, HERO_PX, MIN_FEATURE_PX, extent, thinnest, sizeNorm, blockCount } from '../kits.js';
 import { plan, fragPoses, centreAt, sweepAt, ageStep, AGE_STEPS, SWEEP, ranked, repacks } from '../layout.js';
 import { VARIANTS, sampleItems, variant } from '../variants.js';
@@ -16,15 +16,15 @@ const BLK = new Set(LOSPEC['blk-36'].colors.map((c) => `#${c}`));
 const blk = mapPalette('blk-36');
 
 test('every debris colour is BLK 36 (D8)', () => {
-  for (const hex of [...Object.values(HULLS).flat(), ...RUST, ...Object.values(TAGS)]) assert.ok(BLK.has(hex), `${hex} is not in BLK 36`);
+  for (const hex of [...Object.values(HULLS).flat(), ...RUST, ...Object.values(TAGS), ...PAINT, ...DULL, ...NAVY]) assert.ok(BLK.has(hex), `${hex} is not in BLK 36`);
   // gear is the crew's gear ramp one step darker, starting from the visor's near-black
   assert.deepEqual(HULLS.gear, [blk.visor[0], ...blk.gear.slice(0, 3)]);
   assert.deepEqual(RUST, ['#66334b', '#872a38', '#8c4b63', '#cc5250']); // D8's warm reds and mauves
 });
 
 test('debris at rest shows no drone tell and no teal', () => {
-  for (const hull of Object.keys(HULLS)) for (const tags of [false, true]) {
-    const rest = restColours(hull, tags);
+  for (const hull of Object.keys(HULLS)) for (const kit of Object.keys(KITS)) {
+    const rest = restColours(hull, kit);
     for (const t of DRONE_TELLS) assert.ok(!rest.includes(t), `${hull}: ${t} is a drone colour`);
   }
 });
@@ -61,7 +61,7 @@ test('size follows diff size (D2): monotonic, and the range is real', () => {
 });
 
 test('the four classes are four different shapes in the silhouette kits (D1)', () => {
-  for (const name of ['hardware', 'blocks']) {
+  for (const name of ['hardware', 'blocks', 'satellite']) {
     const sig = CLASSES.map((cls) => JSON.stringify(KITS[name].build(cls, 2000).parts.map((p) => [p.shape, p.size, p.r, p.r2, p.len, p.pos])));
     assert.equal(new Set(sig).size, 4, name);
   }
@@ -69,6 +69,36 @@ test('the four classes are four different shapes in the silhouette kits (D1)', (
   assert.equal(new Set(Object.values(TAGS)).size, 4);
   assert.ok(CLASSES.every((cls) => KITS.canister.build(cls, 2000).parts.some((p) => p.tag)));
   assert.ok(CLASSES.every((cls) => !KITS.hardware.build(cls, 2000).parts.some((p) => p.tag)));
+});
+
+test('solar panels (A2): grid lines and cells at least 2 px at hero range, never ocean blue', () => {
+  for (const cls of CLASSES) for (const diff of DIFFS) {
+    const { parts, scale } = KITS.satellite.build(cls, diff);
+    for (const p of parts.filter((q) => q.panel)) {
+      const [nx, ny, lx, ly] = p.grid;
+      [[nx, lx, p.size[0]], [ny, ly, p.size[1]]].forEach(([n, lw, len]) => {
+        const px = (len * scale) / HERO_PX;
+        assert.ok(Math.abs(lw * px - 2) < 1e-9, 'lines are 2 px');
+        if (n > 0) assert.ok((px - (n + 1) * 2) / n >= 2 - 1e-9, `${cls} ${diff}: cells under 2 px`);
+      });
+    }
+  }
+  assert.ok(KITS.satellite.build('agent', 10000).parts.some((p) => p.panel && p.grid[0] >= 1 && p.grid[1] >= 1), 'big arrays show a cell grid');
+  assert.ok(KITS.satellite.build('pr', 10000).parts.some((p) => p.panel && p.grid[0] >= 1), 'big satellites show framed wings');
+  const OCEAN = [...V2_PLANET_RAMPS.ocean, ...V2_PLANET_RAMPS.water];
+  for (const n of NAVY) assert.ok(!OCEAN.includes(n) && Math.min(...OCEAN.map((o) => okDist(oklab(n), oklab(o)))) > 0.03, `${n} is too close to the ocean`);
+});
+
+test('A2 ages by paint and scorch, not rust: three readable steps', () => {
+  const step = (age) => plan([{ id: 'x', cls: 'pr', diff: 500, age }], variant('A2')).pieces[0];
+  const [a, b, c] = [10, 100, 400].map(step);
+  assert.deepEqual([a.rust, b.rust, c.rust], [0, 0, 0]);
+  assert.ok(a.dull === 0 && a.scorch === 0, 'intact: bright paint, clean metal');
+  assert.ok(b.dull > 0.3 && b.dull < 0.5 && b.scorch > 0, 'weathered: chipped paint (most red stays), some scorch');
+  assert.ok(c.dull > b.dull && c.scorch > b.scorch && c.frags.every((f) => f.spread > 0), 'broken: duller paint, more scorch, fragments');
+  // the other kits keep rust and no paint ageing
+  const h = plan([{ id: 'x', cls: 'pr', diff: 500, age: 100 }], variant('A')).pieces[0];
+  assert.ok(h.rust > 0 && h.dull === 0 && h.scorch === 0);
 });
 
 test('age steps (D2): intact < 60 days <= rusted < 180 <= broken', () => {

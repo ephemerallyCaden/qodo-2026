@@ -1,9 +1,12 @@
 // Debris kits: what one piece is made of, per stale-work class (D1). Pure data, no three.js, so
 // the shapes are testable in Node; debris.js turns parts into meshes.
 //
-// A part is { shape, pos, frag, tag?, detail? } plus its size:
+// A part is { shape, pos, frag, tag?, detail?, paint?, panel? } plus its size:
 //   box:  size [x, y, z]
-//   cyl:  r (at -x), r2 (at +x, default r), len; the axis is x (a cone when r2 != r)
+//   cyl:  r (at -x), r2 (at +x, default r), len; the axis is x (a cone when r2 != r), or y with axis: 'y'
+// `paint` parts take the A2 red paint; a `panel` box (thin in z) draws a solar cell grid on its
+// big faces, with `grid` [cells along x, cells along y, line width along x, along y] set by the kit.
+// The cells are a detail too: a panel with no room for a 2 px cell between 2 px lines is a metal plate.
 // Parts are in kit units; a piece's world size is kit units x `scale`. `frag` groups parts into
 // the fragments a broken piece (D2) or a swept piece (D6) falls apart into. `cell` is the rust
 // patch size in kit units: rust is decided per cell of a grid in the piece's own frame, so patches
@@ -88,7 +91,8 @@ export const blockCount = (diff) => Math.round(lerp(BLOCKS[0], BLOCKS[1], sizeNo
 export function extent(parts) {
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (const p of parts) {
-    const half = p.shape === 'box' ? p.size.map((s) => s / 2) : [p.len / 2, Math.max(p.r, p.r2 ?? p.r), Math.max(p.r, p.r2 ?? p.r)];
+    const rr = Math.max(p.r ?? 0, p.r2 ?? p.r ?? 0);
+    const half = p.shape === 'box' ? p.size.map((s) => s / 2) : p.axis === 'y' ? [rr, p.len / 2, rr] : [p.len / 2, rr, rr];
     for (let i = 0; i < 3; i++) {
       lo[i] = Math.min(lo[i], p.pos[i] - half[i]);
       hi[i] = Math.max(hi[i], p.pos[i] + half[i]);
@@ -112,8 +116,61 @@ function centred(parts, whole = false) {
   return parts.map((p) => ({ ...p, pos: p.pos.map((x, i) => x - c[i]) }));
 }
 
-// Every kit's build(cls, diff) returns { parts, scale, cell, spread }: `spread` is how far broken
-// fragments part, in kit units (a piece's length for the scaled kits, a block for blocks).
+// Every kit's build(cls, diff) returns { parts, scale, cell, spread, age? }: `spread` is how far broken
+// fragments part, in kit units (a piece's length for the scaled kits, a block for blocks); `age`
+// 'paint' means age shows as paint and scorch instead of rust (A2).
+// --------------------------------------------------------------- satellites (A2)
+// The human's pick (A) refined: grey metal with red paint, and pieces that read as satellite parts.
+// Red is about a third of every piece, so debris shows at a glance (the human: "really be noticeable").
+//   stale PR             a comms satellite: a red bus and dish between two solar wings (a request sent, no reply)
+//   abandoned branch     a snapped radio-mast boom in red and grey bands (a limb that never connected)
+//   merged, not deleted  a spent stage with a red band and nose (the job was done; never jettisoned)
+//   orphaned agent       a detached 2x2 solar array on a red boom with a torn mount (power for work
+//                        that went nowhere: an agent's part, left behind)
+const SATELLITE = {
+  pr: [
+    { shape: 'box', size: [0.3, 0.3, 0.3], pos: [0, 0, 0], frag: 0, paint: true },
+    { shape: 'box', size: [0.56, 0.38, 0.05], pos: [-0.44, 0, 0], frag: 1, panel: true },
+    { shape: 'box', size: [0.56, 0.38, 0.05], pos: [0.44, 0, 0], frag: 2, panel: true },
+    { shape: 'cyl', axis: 'y', r: 0.07, r2: 0.24, len: 0.1, pos: [0, 0.2, 0], frag: 0, paint: true },
+  ],
+  branch: [ // a radio-mast boom: red and grey bands, snapped in two
+    { shape: 'box', size: [0.14, 0.3, 0.3], pos: [-0.74, 0, 0], frag: 0, paint: true },
+    { shape: 'box', size: [0.3, 0.23, 0.23], pos: [-0.52, 0, 0], frag: 0 },
+    { shape: 'box', size: [0.22, 0.23, 0.23], pos: [-0.26, 0, 0], frag: 0, paint: true },
+    { shape: 'box', size: [0.3, 0.23, 0.23], pos: [0, 0, 0], frag: 0 },
+    { shape: 'box', size: [0.22, 0.23, 0.23], pos: [0.26, 0, 0], frag: 1, paint: true },
+    { shape: 'box', size: [0.34, 0.23, 0.23], pos: [0.54, 0, 0], frag: 1 },
+  ],
+  merged: [
+    { shape: 'cyl', r: 0.21, len: 0.12, pos: [-0.22, 0, 0], frag: 0 },
+    { shape: 'cyl', r: 0.21, len: 0.16, pos: [-0.08, 0, 0], frag: 0, paint: true },
+    { shape: 'cyl', r: 0.21, len: 0.18, pos: [0.09, 0, 0], frag: 0 },
+    { shape: 'cyl', r: 0.11, r2: 0.25, len: 0.2, pos: [0.28, 0, 0], frag: 1 },
+    { shape: 'cyl', r: 0.08, r2: 0.21, len: 0.12, pos: [-0.34, 0, 0], frag: 2, paint: true },
+  ],
+  agent: [ // a 2x2 array on a red boom, with its torn red mount (a cross spar read as a first-aid sign)
+    { shape: 'box', size: [1.08, 0.24, 0.12], pos: [0, 0, 0], frag: 0, paint: true },
+    { shape: 'box', size: [0.18, 0.34, 0.26], pos: [-0.63, 0, 0], frag: 0, paint: true },
+    { shape: 'box', size: [0.42, 0.42, 0.06], pos: [-0.33, 0.33, 0], frag: 0, panel: true },
+    { shape: 'box', size: [0.42, 0.42, 0.06], pos: [0.33, 0.33, 0], frag: 1, panel: true },
+    { shape: 'box', size: [0.42, 0.42, 0.06], pos: [-0.33, -0.33, 0], frag: 2, panel: true },
+    { shape: 'box', size: [0.42, 0.42, 0.06], pos: [0.33, -0.33, 0], frag: 3, panel: true },
+  ],
+};
+const SATELLITE_SCALE = [0.22, 0.36]; // 11.5-19 px across at hero range: a step bigger than A, so the grids and paint read
+const GRID = { line: 2, cell: 2 }; // px at hero range: grid lines and the smallest cell
+
+/** A panel's cell grid at this scale: as many >= 2 px cells as fit between >= 2 px lines (0: no cells, a plain metal plate). */
+export function panelGrid(p, scale) {
+  const along = (len) => {
+    const px = (len * scale) / HERO_PX;
+    return [Math.max(0, Math.floor((px - GRID.line) / (GRID.cell + GRID.line))), GRID.line / px];
+  };
+  const [nx, lx] = along(p.size[0]), [ny, ly] = along(p.size[1]);
+  return [nx, ny, lx, ly];
+}
+
 /** A kit whose pieces are one part table per class, scaled by the diff. */
 const scaledKit = (partsOf, [s0, s1]) => ({
   build(cls, diff) {
@@ -133,6 +190,13 @@ export const KITS = {
     },
   },
   canister: scaledKit(() => CANISTER, CANISTER_SCALE),
+  // age shows as chipped, dulled paint and scorch (palette PAINT, DULL, NAVY), not rust
+  satellite: {
+    build(cls, diff) {
+      const b = scaledKit((c) => SATELLITE[c], SATELLITE_SCALE).build(cls, diff);
+      return { ...b, parts: b.parts.map((p) => (p.panel ? { ...p, grid: panelGrid(p, b.scale) } : p)), age: 'paint' };
+    },
+  },
 };
 
 /** Fragment ids of a built piece, in order. */

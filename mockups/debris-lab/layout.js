@@ -12,7 +12,11 @@ export const LOOP = 24; // s: the scene loop (art direction §7); every motion m
 // Age steps (D2): days since the item's last activity. Thresholds are one documented constant.
 export const AGE_STEPS = [60, 180]; // intact < 60 <= rusted < 180 <= broken
 export const AGE_LABEL = ['intact', 'rusted', 'broken'];
+export const PAINT_AGE_LABEL = ['intact', 'weathered', 'broken']; // paint-aged kits (A2)
 const RUST_SHARE = [0, 0.62, 0.86]; // share of rust cells per step
+// Paint-aged kits (A2): share of paint cells chipped to the dull mauves, and of metal cells scorched.
+const DULL_SHARE = [0, 0.45, 0.75]; // even broken junk keeps some red, so old debris stays noticeable
+const SCORCH_SHARE = [0, 0.3, 0.5]; // scorch darkens toward navy; kept moderate so old pieces don't vanish into space
 export const ageStep = (days) => (days < AGE_STEPS[0] ? 0 : days < AGE_STEPS[1] ? 1 : 2);
 
 // The sweep (D6): a one-shot on its own clock (seconds since the scan that found the item gone),
@@ -134,7 +138,7 @@ export function ranked(items) {
 
 /**
  * Plans a planet's debris. variant: { kit, arrangement, cap }. radius: the planet's radius (its size).
- * Returns { pieces, overflow (items counted, not drawn), mass (changed lines in all items) }.
+ * Returns { kit, pieces, overflow (items counted, not drawn), mass (changed lines in all items) }.
  */
 export function plan(items, variant, { seed = 1, radius = 1 } = {}) {
   const order = ranked(items);
@@ -168,10 +172,11 @@ export function plan(items, variant, { seed = 1, radius = 1 } = {}) {
     });
     return {
       id: it.id, cls: it.cls, step, parts: b.parts, scale: b.scale, cell: b.cell, size: b.size,
-      rust: RUST_SHARE[step], hashOff: Math.floor(rnd() * 997), motion, tumble, frags,
+      rust: b.age === 'paint' ? 0 : RUST_SHARE[step], dull: b.age === 'paint' ? DULL_SHARE[step] : 0, scorch: b.age === 'paint' ? SCORCH_SHARE[step] : 0,
+      hashOff: Math.floor(rnd() * 997), motion, tumble, frags,
     };
   });
-  return { pieces, overflow: order.length - shown.length, mass: items.reduce((s, it) => s + it.diff, 0) };
+  return { kit: variant.kit, pieces, overflow: order.length - shown.length, mass: items.reduce((s, it) => s + it.diff, 0) };
 }
 
 /** The loop phase [0, 1) of time t (s). */
