@@ -476,7 +476,8 @@ describe('run log (R9, task AC6)', () => {
     w.addIssue(24);
     w.claude.push((x) => {
       x.commit();
-      return claudeOut({ result: `token=${FAKE_TOKEN} in ${x.repoDir}/src and ${x.home}/.aws\n` + '```json\n{"status":"done","summary":"s","criteria":[]}\n```' });
+      const summary = `token=${FAKE_TOKEN} in ${x.repoDir}/src and ${x.home}/.aws`;
+      return claudeOut({ result: '```json\n' + JSON.stringify({ status: 'done', summary, criteria: [] }) + '\n```' });
     }, fixDone());
     await w.tick();
     const log = runLog(w);
@@ -496,6 +497,34 @@ describe('run log (R9, task AC6)', () => {
     expect(raw).not.toContain(w.root);
     expect(raw).toContain('in ./src and ~/.aws');
     expect(raw).toContain(OWNER);
+  });
+});
+
+describe('agent output stays out of the run files (Qodo PR37 8310c5ac, AGENTS.md Rule 2)', () => {
+  it('keeps only a regex category of each denied command, and none of the free text', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.claude.push((x) => {
+      x.commit();
+      return claudeOut({
+        result: 'Here is the code: CANARY-RESULT-TEXT\n```json\n{"status":"done","summary":"s","criteria":[]}\n```',
+        denials: [
+          { tool_name: 'Bash', tool_use_id: 't1', tool_input: { command: 'gh pr create --title CANARY-BASH-CMD', description: 'CANARY-DESC' } },
+          { tool_name: 'Bash', tool_use_id: 't2', tool_input: { command: 'git push origin HEAD --force # CANARY-PUSH' } },
+          { tool_name: 'Write', tool_use_id: 't3', tool_input: { file_path: '.github/workflows/x.yml', content: 'CANARY-FILE-CONTENT' } },
+        ],
+      });
+    });
+    await w.tick();
+    const dir = w.runDir();
+    const all = [join(w.commonDir, 'factory/ticks.jsonl'), ...readdirSync(dir).map((f) => join(dir, f))]
+      .filter((f) => statSync(f).isFile()).map((f) => readFileSync(f, 'utf8')).join('\n');
+    for (const canary of ['CANARY-RESULT-TEXT', 'CANARY-BASH-CMD', 'CANARY-DESC', 'CANARY-PUSH', 'CANARY-FILE-CONTENT', '.github/workflows/x.yml']) {
+      expect(all).not.toContain(canary);
+    }
+    expect(runLog(w).find((e) => e['event'] === 'agent-end')!['permission_denials']).toEqual([
+      { tool: 'Bash', kind: 'gh' }, { tool: 'Bash', kind: 'git push' }, { tool: 'Write' },
+    ]);
   });
 });
 

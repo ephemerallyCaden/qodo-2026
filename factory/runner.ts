@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import {
-  agentEnv, claudeArgs, fixPrompt, fixResult, implementPrompt, implementResult, isPrTitle, readClaude,
+  agentEnv, agentRecord, claudeArgs, fixPrompt, fixResult, implementPrompt, implementResult, isPrTitle, readClaude,
   systemPrompt, type AgentCall, type Disposition, type FixInput, type ImplementResult,
 } from './agent.js';
 import { LABELS, machinePaths, ticksFile, type Config } from './config.js';
@@ -332,19 +332,15 @@ class Tick {
     this.log.event('agent-start', { call: k, resume: resume ?? null, maxTurns, budgetUsd: budget });
     const args = claudeArgs({ prompt, systemPrompt: systemPrompt(this.branch, cfg.base), maxTurns, maxBudgetUsd: budget, ...(resume ? { resume } : {}) });
     const res = await this.sh(cfg.claude, args, { cwd: this.worktree, timeoutMs, env: this.agentEnv });
-    this.writeRunFile(`agent-${k}.json`, res.stdout, false);
     const call = readClaude(res, Math.round(timeoutMs / 60_000));
     if (call.out) {
       this.turns += call.out.num_turns ?? 0;
       this.costUsd += call.out.total_cost_usd ?? 0;
       if (call.out.session_id) this.sessionId = call.out.session_id;
     }
-    this.log.event('agent-end', {
-      call: k, ok: call.ok, subtype: call.out?.subtype ?? null, num_turns: call.out?.num_turns ?? null,
-      total_cost_usd: call.out?.total_cost_usd ?? null, session_id: call.out?.session_id ?? null,
-      terminal_reason: call.out?.terminal_reason ?? null, permission_denials: call.out?.permission_denials ?? [],
-      ...(call.ok ? {} : { reason: call.reason }),
-    });
+    const record = agentRecord(res, call);
+    this.writeRunFile(`agent-${k}.json`, JSON.stringify({ ...record, block: call.ok ? call.block : null }, null, 2), false);
+    this.log.event('agent-end', { call: k, ...record });
     if (call.ok) return call;
     const hours = await midwayHoursLeft(cfg.midwayCookie, this.deps.clock.now());
     throw new Stop(hours === null || hours <= 0 ? `Midway credentials expired (${call.reason})` : call.reason);

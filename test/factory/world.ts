@@ -64,10 +64,12 @@ export function firstHeadOnly<T>(a: T, b: T): (head: string) => T {
   return (head) => ((first ??= head) === head ? a : b);
 }
 
-export function claudeOut(o: { result?: string; subtype?: string; is_error?: boolean; code?: number; session?: string; turns?: number; cost?: number }): ExecResult {
+export function claudeOut(o: {
+  result?: string; subtype?: string; is_error?: boolean; code?: number; session?: string; turns?: number; cost?: number; denials?: unknown[];
+}): ExecResult {
   const json = {
     type: 'result', subtype: o.subtype ?? 'success', is_error: o.is_error ?? false, result: o.result ?? '',
-    session_id: o.session ?? 'sess-1', num_turns: o.turns ?? 10, total_cost_usd: o.cost ?? 1.25, permission_denials: [],
+    session_id: o.session ?? 'sess-1', num_turns: o.turns ?? 10, total_cost_usd: o.cost ?? 1.25, permission_denials: o.denials ?? [],
   };
   return { code: o.code ?? 0, stdout: JSON.stringify(json), stderr: '', timedOut: false };
 }

@@ -195,6 +195,52 @@ export function readClaude(res: ExecResult, timeoutMin: number): AgentCall {
   return { ok: true, out, block };
 }
 
+// AGENTS.md Rule 2: a Bash command is only regex-tested, then discarded. A denied command is
+// kept as one of these fixed categories, never as its text.
+const DENIAL_KINDS: [RegExp, string][] = [
+  [/<<|\$\(|`/, 'heredoc or substitution'],
+  [/^\s*git\s+push\b/, 'git push'],
+  [/^\s*git\s+(-C|-c)\b/, 'git -C/-c'],
+  [/^\s*git\s+(merge|rebase|reset|commit\s+--amend|pull)\b/, 'git history rewrite'],
+  [/^\s*git\s+(checkout|switch|branch|worktree|tag|update-ref)\b/, 'git ref change'],
+  [/^\s*git\s+(config|remote|fetch)\b/, 'git config or remote'],
+  [/^\s*gh\b/, 'gh'],
+  [/^\s*qodo\b/, 'qodo'],
+  [/^\s*(curl|wget|ssh|scp|nc)\b/, 'network'],
+  [/^\s*npm\s+(install|i|publish)\b/, 'npm install or publish'],
+];
+
+export interface Denial {
+  tool: string;
+  kind?: string;
+}
+
+/** Each permission denial as its tool name and, for Bash, a fixed category. No tool input survives. */
+export function denials(list: unknown[] | undefined): Denial[] {
+  return (list ?? []).map((d) => {
+    const { tool_name: name, tool_input: input } = (d ?? {}) as { tool_name?: unknown; tool_input?: { command?: unknown } };
+    const tool = typeof name === 'string' && /^[A-Za-z]{1,40}$/.test(name) ? name : 'other';
+    if (tool !== 'Bash') return { tool };
+    const cmd = typeof input?.command === 'string' ? input.command : '';
+    return { tool, kind: DENIAL_KINDS.find(([re]) => re.test(cmd))?.[1] ?? 'other' };
+  });
+}
+
+/**
+ * What the runner logs of one agent call: counters, ids and denial categories. The free-text
+ * result and every tool input are dropped; the run keeps only this plus the parsed result block,
+ * which the PR body publishes anyway.
+ */
+export function agentRecord(res: ExecResult, call: AgentCall): Record<string, unknown> {
+  const o = call.out;
+  return {
+    exit: res.code, timedOut: res.timedOut, ok: call.ok, ...(call.ok ? {} : { reason: call.reason }),
+    subtype: o?.subtype ?? null, is_error: o?.is_error ?? null, num_turns: o?.num_turns ?? null,
+    total_cost_usd: o?.total_cost_usd ?? null, session_id: o?.session_id ?? null, terminal_reason: o?.terminal_reason ?? null,
+    permission_denials: denials(o?.permission_denials),
+  };
+}
+
 export interface CriterionEvidence {
   met: boolean | null;
   evidence: string;
