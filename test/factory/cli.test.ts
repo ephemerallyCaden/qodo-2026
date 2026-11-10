@@ -109,6 +109,32 @@ describe('install and uninstall (R11)', () => {
   });
 });
 
+describe('CLI output shows no absolute machine paths (Qodo PR37 5ffe421b)', () => {
+  it('in a not-a-checkout error', async () => {
+    const w = new World();
+    const exec: CliDeps['exec'] = (cmd, args, opts) => (cmd === 'git' ? Promise.resolve({ code: 128, stdout: '', stderr: 'fatal', timedOut: false }) : w.exec(cmd, args, opts));
+    const { d, err } = deps(w, { exec, cwd: join(w.home, 'somewhere') });
+    expect(await main(['tick'], d)).toBe(2);
+    expect(err.join('')).toContain('not inside a git checkout');
+    expect(err.join('')).not.toContain(w.root);
+  });
+
+  it('in install, install --dry-run and uninstall', async () => {
+    const w = new World();
+    const dist = join(w.repoDir, 'factory/dist');
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(join(dist, 'bin.js'), '// runner');
+    const { d, out } = deps(w, { script: join(dist, 'bin.js'), node: join(w.home, '.local/share/mise/installs/node/22/bin/node') });
+    expect(await main(['install', '--dry-run'], d)).toBe(0);
+    expect(await main(['install'], d)).toBe(0);
+    expect(await main(['uninstall'], d)).toBe(0);
+    const text = out.join('');
+    expect(text).toContain('~/Library/LaunchAgents/dev.commet.agent-runner.plist');
+    expect(text).toContain('./.git/factory');
+    expect(text).not.toContain(w.root);
+  });
+});
+
 describe('labels', () => {
   it('creates or updates the four labels with --force, so it is idempotent', async () => {
     const w = new World();

@@ -69,7 +69,7 @@ export async function install(cfg: Config, d: InstallDeps, intervalSec: number):
   const plist = plistPath(cfg.home);
   const text = renderPlist({ cfg, node: d.node, user: d.user, intervalSec });
   if (cfg.dryRun) {
-    d.print(`would copy ${d.distDir}/*.js to ${bin}\nwould write ${plist}:\n${text}would run launchctl bootstrap gui/${d.uid} ${plist}\n`);
+    d.print(`would copy the compiled runner to ${bin}\nwould write ${plist}:\n${text}would run launchctl bootstrap gui/${d.uid} ${plist}\n`);
     return 0;
   }
   rmSync(bin, { recursive: true, force: true });

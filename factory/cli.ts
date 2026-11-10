@@ -4,7 +4,7 @@ import { configError, defaults, machinePaths, slugFromRemote, ticksFile, type Co
 import type { Exec } from './exec.js';
 import { guarded } from './guard.js';
 import { install, setupLabels, uninstall } from './launchd.js';
-import { RunLog, type Clock } from './log.js';
+import { redact, RunLog, type Clock } from './log.js';
 import { runTick, type Outcome } from './runner.js';
 
 export const USAGE = `usage: agent-runner <command> [options]
@@ -89,9 +89,9 @@ async function resolveConfig(a: Args, d: CliDeps, exec: Exec): Promise<Config | 
   const start = resolve(d.cwd, a.repo ?? '.');
   const git = (args: string[]) => exec('git', args, { cwd: start, timeoutMs: 30_000, env: d.env });
   const common = await git(['rev-parse', '--path-format=absolute', '--git-common-dir']);
-  if (common.code !== 0) return `${start} is not inside a git checkout`;
+  if (common.code !== 0) return `${a.repo ? '--repo' : 'the current directory'} is not inside a git checkout`;
   const commonDir = common.stdout.trim();
-  if (basename(commonDir) !== '.git') return `expected a .git common dir, got ${commonDir}`;
+  if (basename(commonDir) !== '.git') return 'the git common dir is not a .git directory (a bare repo?)';
   let slug = a.github;
   if (!slug) {
     const url = await git(['remote', 'get-url', 'origin']);
@@ -107,7 +107,11 @@ async function resolveConfig(a: Args, d: CliDeps, exec: Exec): Promise<Config | 
 
 const exitCode = (o: Outcome) => (o.state === 'error' || o.state === 'preflight-failed' ? 1 : 0);
 
-export async function main(argv: readonly string[], d: CliDeps): Promise<number> {
+export async function main(argv: readonly string[], raw: CliDeps): Promise<number> {
+  // No absolute machine paths in anything the CLI prints (AGENTS.md Rule 2): HOME shows as ~,
+  // and the repo as . once it's known.
+  let paths: [string, string][] = [[raw.home, '~']];
+  const d: CliDeps = { ...raw, print: (t) => raw.print(redact(t, paths)), printErr: (t) => raw.printErr(redact(t, paths)) };
   const a = parse(argv);
   if (typeof a === 'string') {
     d.printErr(`agent-runner: ${a}\n${USAGE}`);
@@ -128,6 +132,7 @@ export async function main(argv: readonly string[], d: CliDeps): Promise<number>
     d.printErr(`agent-runner: ${cfg}\n`);
     return 2;
   }
+  paths = machinePaths(cfg);
   const inst = { exec, print: d.print, uid: d.uid, user: d.user, node: d.node, distDir: dirname(d.script) };
   if (a.command === 'install') return install(cfg, inst, a.interval);
   if (a.command === 'uninstall') return uninstall(cfg, inst);
