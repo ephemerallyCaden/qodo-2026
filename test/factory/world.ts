@@ -28,6 +28,7 @@ export interface FakeIssue {
   labels: Set<string>;
   labeler: string | null;
   comments: string[];
+  state: 'OPEN' | 'CLOSED';
 }
 
 export interface FakePr {
@@ -169,7 +170,7 @@ export class World {
   addIssue(n: number, over: Partial<FakeIssue> = {}): FakeIssue {
     const issue: FakeIssue = {
       number: n, title: 'Scan: windowCommits splits numstat on U+0001', body: AC_BODY, author: OWNER,
-      createdAt: '2026-11-06T19:22:03Z', labels: new Set([LABELS.ready]), labeler: OWNER, comments: [], ...over,
+      createdAt: '2026-11-06T19:22:03Z', labels: new Set([LABELS.ready]), labeler: OWNER, comments: [], state: 'OPEN', ...over,
     };
     this.issues.set(n, issue);
     return issue;
@@ -231,12 +232,15 @@ export class World {
     if (a === 'issue' && b === 'list') {
       const label = flag('--label');
       // Newest first, so the runner has to sort for itself.
-      const list = [...this.issues.values()].filter((i) => i.labels.has(label)).sort((x, y) => y.number - x.number);
+      const list = [...this.issues.values()].filter((i) => i.state === 'OPEN' && i.labels.has(label)).sort((x, y) => y.number - x.number);
       return ok(JSON.stringify(list.map((i) => ({ number: i.number, createdAt: i.createdAt }))));
     }
     if (a === 'issue' && b === 'view') {
       const i = issue(args[2]!);
-      return ok(JSON.stringify({ number: i.number, ...this.issueText(i), author: { login: i.author }, url: `https://github.com/${SLUG}/issues/${i.number}`, state: 'OPEN' }));
+      return ok(JSON.stringify({
+        number: i.number, ...this.issueText(i), author: { login: i.author }, url: `https://github.com/${SLUG}/issues/${i.number}`,
+        state: i.state, labels: [...i.labels].map((name) => ({ name })),
+      }));
     }
     if (a === 'issue' && b === 'edit') {
       const i = issue(args[2]!);

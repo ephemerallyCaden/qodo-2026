@@ -102,6 +102,49 @@ describe('refuse before any agent (R3, R12)', () => {
   });
 });
 
+describe('a ticket revoked before the claim is left alone (Qodo PR37 d3e445f7)', () => {
+  const revoke: [string, (w: World, n: number) => void][] = [
+    ['closed', (w, n) => { w.issues.get(n)!.state = 'CLOSED'; }],
+    ['unlabelled', (w, n) => { w.issues.get(n)!.labels.delete(LABELS.ready); }],
+  ];
+  it.each(revoke)('%s between the list and the read', async (_, change) => {
+    const w = world();
+    w.addIssue(24);
+    const exec: typeof w.exec = async (cmd, args, opts) => {
+      const res = await w.exec(cmd, args, opts);
+      if (args[0] === 'issue' && args[1] === 'list') change(w, 24);
+      return res;
+    };
+    expect(await w.tick({}, { exec })).toMatchObject({ state: 'skipped', issue: 24 });
+    expect(w.callsTo('claude')).toHaveLength(0);
+    expect(w.issues.get(24)!.comments).toEqual([]);
+    expect(w.callsTo('gh').filter((c) => c.args[1] === 'edit')).toHaveLength(0);
+  });
+
+  it.each(revoke)('%s during pre-flight', async (_, change) => {
+    const w = world();
+    w.addIssue(24);
+    const exec: typeof w.exec = async (cmd, args, opts) => {
+      if (cmd.endsWith('qodo') && args[1] === 'whoami') change(w, 24);
+      return w.exec(cmd, args, opts);
+    };
+    expect(await w.tick({}, { exec })).toMatchObject({ state: 'skipped', issue: 24 });
+    expect(w.callsTo('claude')).toHaveLength(0);
+    expect(w.callsTo('gh').filter((c) => c.args[1] === 'edit' || c.args[1] === 'comment')).toHaveLength(0);
+  });
+
+  it('an edit during pre-flight waits for the next tick instead of claiming stale text', async () => {
+    const w = world();
+    w.addIssue(24);
+    const exec: typeof w.exec = async (cmd, args, opts) => {
+      if (cmd.endsWith('qodo') && args[1] === 'whoami') w.editAt = w.now;
+      return w.exec(cmd, args, opts);
+    };
+    expect(await w.tick({}, { exec })).toMatchObject({ state: 'skipped', reason: expect.stringContaining('changed') });
+    expect(labels(w, 24)).toEqual([LABELS.ready]);
+  });
+});
+
 describe('pre-flight (R13)', () => {
   const cases: [string, (w: World) => void, string][] = [
     ['an expired Midway session', (w) => w.setCookieHours(-1), 'midway'],

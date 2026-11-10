@@ -32,6 +32,8 @@ export type Outcome =
   | { state: 'error'; reason: string }
   | { state: 'preflight-failed'; issue: number; reasons: string[] }
   | { state: 'refused'; issue: number; reason: string }
+  /** The ticket was closed, unlabelled or edited before the claim: nothing touched, the next tick re-reads it. */
+  | { state: 'skipped'; issue: number; reason: string }
   | { state: 'dry-run'; issue: number; decision: string }
   | { state: 'done'; issue: number; pr: string }
   | { state: 'needs-help'; issue: number; reason: string };
@@ -53,6 +55,23 @@ const needsHuman = (n: number) => new Stop(`${n} action_required finding(s) the 
 /** Every gh and git command a tick runs passes the runtime guardrails (R8). */
 export function runTick(cfg: Config, deps: Deps): Promise<Outcome> {
   return new Tick(cfg, { ...deps, exec: guarded(deps.exec) }).run();
+}
+
+interface IssueView {
+  number: number;
+  title: string;
+  body?: string;
+  author?: { login?: string };
+  url: string;
+  state: string;
+  labels?: { name: string }[];
+}
+
+/** Why an issue the owner has revoked (closed or unlabelled) must not be claimed, or null. */
+function revoked(v: IssueView): string | null {
+  if (v.state !== 'OPEN') return `#${v.number} is ${v.state.toLowerCase()}`;
+  if (!v.labels?.some((l) => l.name === LABELS.ready)) return `#${v.number} no longer has ${LABELS.ready}`;
+  return null;
 }
 
 interface Review {
@@ -134,17 +153,16 @@ class Tick {
   /** Trust and acceptance checks, pre-flight, claim, then the work (R2, R3, R12, R13). */
   private async take(n: number): Promise<Outcome> {
     const { cfg } = this;
-    const [view, labeler] = await Promise.all([
-      this.ghOk(['issue', 'view', String(n), '--repo', cfg.slug, '--json', 'number,title,body,author,url,state'], `read #${n}`),
-      this.labeler(n),
-    ]);
-    const raw = this.json<{ number: number; title: string; body?: string; author?: { login?: string }; url: string; state: string }>(view, `#${n}`);
+    const [raw, labeler] = await Promise.all([this.viewIssue(n), this.labeler(n)]);
     const ticket: Ticket = { number: raw.number, title: raw.title, body: raw.body ?? '', url: raw.url, author: raw.author?.login ?? '' };
     this.ticket = ticket;
     const criteria = acceptanceCriteria(ticket.body);
     this.log.event('assess', {
       issue: n, title: ticket.title, author: ticket.author, labeler, owner: cfg.owner, state: raw.state, criteria: criteria?.length ?? null,
     });
+    // The list is a moment old: the owner may have closed or unlabelled the ticket since (a preview may be of anything).
+    const gone = cfg.previewIssue === null ? revoked(raw) : null;
+    if (gone) return this.skip(n, gone);
     if (ticket.author !== cfg.owner) return this.refuse(`it was opened by @${ticket.author || 'unknown'}, not the repo owner @${cfg.owner}`);
     if (labeler !== cfg.owner) return this.refuse(`\`${LABELS.ready}\` was applied by ${labeler ? `@${labeler}` : 'nobody visible'}, not the repo owner @${cfg.owner}`);
     if (criteria === null) return this.refuse('it has no `## Acceptance criteria` section');
@@ -166,6 +184,12 @@ class Tick {
       ]);
     }
 
+    // Pre-flight takes seconds; re-read right before the claim so a revoke or an edit in that window wins.
+    const again = await this.viewIssue(n);
+    const late = revoked(again) ?? (ticketHash(again.title, again.body ?? '') !== ticketHash(ticket.title, ticket.body)
+      ? `#${n} changed while it was being checked` : null);
+    if (late) return this.skip(n, late);
+
     this.startRunLog();
     try {
       await this.claim();
@@ -186,6 +210,16 @@ class Tick {
     const out = await this.ghOk(['api', '--paginate', `repos/${this.cfg.slug}/issues/${n}/events`, '--jq',
       `.[] | select(.event == "labeled" and .label.name == "${LABELS.ready}") | .actor.login`], `read #${n} events`);
     return out.trim().split('\n').filter(Boolean).at(-1) ?? null;
+  }
+
+  private async viewIssue(n: number): Promise<IssueView> {
+    return this.json<IssueView>(await this.ghOk(['issue', 'view', String(n), '--repo', this.cfg.slug, '--json',
+      'number,title,body,author,url,state,labels'], `read #${n}`), `#${n}`);
+  }
+
+  private skip(n: number, reason: string): Outcome {
+    this.log.event('end', { state: 'skipped', reason });
+    return { state: 'skipped', issue: n, reason };
   }
 
   /** A dry run's answer: what it would do, with nothing done (task AC4). */
