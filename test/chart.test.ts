@@ -1,7 +1,7 @@
 // `commet chart` and chart state on disk (#33, R5), end to end on a real git repo: charting, refog,
 // a rename, baseline and undo, re-scans, and the state I/O guarantees (AC 4–6).
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -135,6 +135,14 @@ describe('commet chart on a real repo', () => {
     for (const f of snap.files) expect(f.id).toBe(fileIdOf(f.path));
   });
 
+  it('charts a file by its absolute path even after it was deleted from the working tree (Qodo local r3)', async () => {
+    rmSync(join(r.dir, 'README.md'));
+    const res = await r.run('chart', join(r.dir, 'README.md'));
+    r.git(['checkout', '--', 'README.md']);
+    expect([res.code, res.err]).toEqual([0, '']);
+    expect(res.out).toMatch(/^Charted README\.md at/);
+  });
+
   it('resolves paths from a subfolder and refuses folders, unknown files, outside paths and bad usage', async () => {
     const sub = await cli(['chart', 'b.ts'], join(r.dir, 'src'), { CLAUDE_CONFIG_DIR: '/nonexistent' });
     expect(sub.code).toBe(0);
@@ -214,13 +222,20 @@ describe('chart state I/O refusals (exit 5)', () => {
     const r = await scanned();
     const file = join(r.dir, '.git/commet/snapshot.json');
     const snap = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
-    for (const damaged of [{ ...snap, commits: [null] }, { ...snap, files: [{ id: 1 }] }, { ...snap, dirs: 'x' }]) {
+    const canary = join(tempDir('commet-chart-canary-'), 'written-by-git');
+    const repo = snap['repo'] as Record<string, unknown>;
+    const commits = snap['commits'] as Record<string, unknown>[];
+    // A head that git would read as an option must never reach git (Qodo local r3).
+    const asOption = { ...snap, repo: { ...repo, head: `--output=${canary}` }, commits: commits.map((c) => ({ ...c, sha: `--output=${canary}` })) };
+    for (const damaged of [{ ...snap, commits: [null] }, { ...snap, files: [{ id: 1 }] }, { ...snap, dirs: 'x' }, asOption,
+      { ...snap, commits: commits.map((c) => ({ ...c, sha: 'HEAD~1' })) }]) {
       writeFileSync(file, JSON.stringify(damaged));
       for (let k = 0; k < 2; k++) {
         expect(await r.run('chart', 'status')).toMatchObject({ code: 5,
           err: 'commet: state error: .git/commet/snapshot.json is damaged or from another commet version; run `commet scan`\n' });
       }
     }
+    expect(existsSync(canary)).toBe(false);
     expect((await r.run('scan')).code).toBe(0);
     expect((await r.run('chart', 'status')).code).toBe(0);
   });

@@ -31,15 +31,17 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 
 const all = (v: unknown, ok: (x: Record<string, unknown>) => boolean) => Array.isArray(v) && v.every((x) => isObject(x) && ok(x));
 const str = (v: unknown) => typeof v === 'string';
+/** A full commit SHA. Anything else (an option such as `--output=…`, a rev like `HEAD~1`) never reaches git. */
+const sha = (v: unknown) => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(v);
 
 /** The fields fog reads, checked so a damaged snapshot is a state error, never an internal one. */
 function isSnapshot(v: unknown): v is SnapshotV02 {
   if (!isObject(v) || v['schemaVersion'] !== '0.2' || !isObject(v['repo'])) return false;
   const repo = v['repo'];
-  return str(repo['head']) && Array.isArray(repo['selfPersonIds']) && repo['selfPersonIds'].every(str)
+  return sha(repo['head']) && Array.isArray(repo['selfPersonIds']) && repo['selfPersonIds'].every(str)
     && all(v['files'], (f) => str(f['id']) && str(f['path']) && typeof f['isTest'] === 'boolean' && (f['testOf'] === null || str(f['testOf'])))
     && all(v['dirs'], (d) => str(d['id']) && str(d['path']) && Number.isInteger(d['depth']))
-    && all(v['commits'], (c) => Number.isInteger(c['seq']) && str(c['sha']) && str(c['author']) && isObject(c['attribution'])
+    && all(v['commits'], (c) => Number.isInteger(c['seq']) && sha(c['sha']) && str(c['author']) && isObject(c['attribution'])
       && str(c['attribution']['class']) && typeof c['attribution']['selfCommittedAgentWritten'] === 'boolean'
       && Array.isArray(c['files']) && c['files'].every((r) => Array.isArray(r) && str(r[0]) && Number.isInteger(r[1]) && Number.isInteger(r[2])));
 }

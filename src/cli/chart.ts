@@ -1,7 +1,7 @@
 // `commet chart` (#33, R5): fog status, the first-run baseline and charting one file. Charting a
 // file here stands in for opening its diff until the view (#30) exists.
 import { realpathSync } from 'node:fs';
-import { isAbsolute, posix, relative, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, posix, relative, sep } from 'node:path';
 import { byCodepoint } from '../core/canonical-json.js';
 import type { FogView } from '../core/contract/fog.js';
 import { CommetError, EXIT } from '../core/errors.js';
@@ -87,12 +87,16 @@ async function repoPath(cwd: string, arg: string): Promise<string | null> {
   if (isAbsolute(arg)) {
     const top = await tryGit(git, ['rev-parse', '--show-toplevel']);
     if (top === null) return null;
-    let rel: string;
-    try {
-      rel = relative(realpathSync.native(top.replace(/\n$/, '')), realpathSync.native(arg));
-    } catch {
-      return null;
-    }
+    // A file deleted from the working tree can still be charted: its folder resolves instead.
+    const real = (p: string): string => {
+      try {
+        return realpathSync.native(p);
+      } catch {
+        const parent = dirname(p);
+        return parent === p ? p : join(real(parent), basename(p));
+      }
+    };
+    const rel = relative(real(top.replace(/\n$/, '')), real(arg));
     return rel === '' || rel.startsWith('..') || isAbsolute(rel) ? null : rel.split(sep).join('/');
   }
   const prefix = await tryGit(git, ['rev-parse', '--show-prefix']);
