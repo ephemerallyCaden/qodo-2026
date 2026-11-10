@@ -232,10 +232,11 @@ export class World {
     };
     if (a === 'api' && b === 'user') return this.ghAuth ? ok(`${this.ghUser}\n`) : fail();
     if (a === 'issue' && b === 'list') {
-      const label = flag('--label');
+      // `--label x`, or GitHub search's `label:a,b` (either label).
+      const wanted = args.includes('--label') ? [flag('--label')] : (/\blabel:(\S+)/.exec(flag('--search'))?.[1] ?? '').split(',');
       // Newest first, so the runner has to sort for itself.
-      const list = [...this.issues.values()].filter((i) => i.state === 'OPEN' && i.labels.has(label)).sort((x, y) => y.number - x.number);
-      return ok(JSON.stringify(list.map((i) => ({ number: i.number, createdAt: i.createdAt }))));
+      const list = [...this.issues.values()].filter((i) => i.state === 'OPEN' && wanted.some((l) => i.labels.has(l))).sort((x, y) => y.number - x.number);
+      return ok(JSON.stringify(list.map((i) => ({ number: i.number, createdAt: i.createdAt, labels: [...i.labels].map((name) => ({ name })) }))));
     }
     if (a === 'issue' && b === 'view') {
       const i = issue(args[2]!);

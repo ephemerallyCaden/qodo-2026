@@ -135,19 +135,42 @@ class Tick {
     }
   }
 
-  /** The oldest open `ready-for-agent` issue (R1), or the `--issue` preview. */
+  /**
+   * The oldest open `ready-for-agent` issue (R1), or the `--issue` preview. The same single list
+   * call finds `agent-working` orphans, which are swept first.
+   */
   private async pick(): Promise<number | null> {
     if (this.cfg.previewIssue !== null) {
       this.log.event('picked', { issue: this.cfg.previewIssue, preview: true });
       return this.cfg.previewIssue;
     }
-    const list = this.json<{ number: number; createdAt: string }[]>(await this.ghOk(['issue', 'list', '--repo', this.cfg.slug,
-      '--label', LABELS.ready, '--state', 'open', '--search', 'sort:created-asc', '--limit', '100', '--json', 'number,createdAt'],
-    'list labelled issues'), 'labelled issues');
-    if (!list.length) return null;
-    list.sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.number - b.number));
-    this.log.event('picked', { issue: list[0]!.number, labelled: list.map((i) => i.number) });
-    return list[0]!.number;
+    const list = this.json<{ number: number; createdAt: string; labels?: { name: string }[] }[]>(await this.ghOk(['issue', 'list',
+      '--repo', this.cfg.slug, '--state', 'open', '--search', `sort:created-asc label:${LABELS.ready},${LABELS.working}`,
+      '--limit', '100', '--json', 'number,createdAt,labels'], 'list labelled issues'), 'labelled issues');
+    const has = (i: (typeof list)[number], label: string) => !!i.labels?.some((l) => l.name === label);
+    for (const orphan of list.filter((i) => has(i, LABELS.working))) await this.sweep(orphan.number);
+    const ready = list.filter((i) => has(i, LABELS.ready) && !has(i, LABELS.working));
+    if (!ready.length) return null;
+    ready.sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.number - b.number));
+    this.log.event('picked', { issue: ready[0]!.number, labelled: ready.map((i) => i.number) });
+    return ready[0]!.number;
+  }
+
+  /**
+   * A tick runs under the lock, so no live run owns an `agent-working` ticket: its run died
+   * (killed, rebooted, past the time cap). Hand it to the human rather than leave it claimed.
+   */
+  private async sweep(n: number): Promise<void> {
+    const action = `#${n} has ${LABELS.working} but no live run: relabel ${LABELS.help} and comment`;
+    if (this.cfg.dryRun) {
+      this.log.event('would', { action });
+      return;
+    }
+    this.log.event('orphan', { issue: n });
+    await this.post('issue', String(n), `The agent runner stopped mid-run on this ticket (killed, rebooted or past its time cap) ` +
+      `and could not report why. Its log is in \`.git/factory/runs/\` (the latest \`*-issue${n}\`). Re-apply \`${LABELS.ready}\` to retry.`,
+    join(this.cfg.stateDir, 'sweep', `${stamp(this.deps.clock.now())}-issue${n}`));
+    await this.relabel(LABELS.working, LABELS.help, n);
   }
 
   /** Trust and acceptance checks, pre-flight, claim, then the work (R2, R3, R12, R13). */
@@ -638,13 +661,13 @@ class Tick {
     return (await this.git(this.worktree, ['rev-parse', 'HEAD'])).trim();
   }
 
-  private async relabel(from: string, to: string): Promise<void> {
-    const n = String(this.ticket!.number);
+  private async relabel(from: string, to: string, issue = this.ticket!.number): Promise<void> {
+    const n = String(issue);
     await this.ghOk(['issue', 'edit', n, '--repo', this.cfg.slug, '--remove-label', from, '--add-label', to], `relabel #${n} ${from} → ${to}`);
   }
 
-  private async post(kind: 'issue' | 'pr', target: string, body: string): Promise<void> {
-    const file = this.writeRunFile(`${kind}-comment.md`, body);
+  private async post(kind: 'issue' | 'pr', target: string, body: string, dir = this.runDir): Promise<void> {
+    const file = this.writeRunFile(`${kind}-comment-${target.split('/').at(-1)}.md`, body, true, dir);
     await this.ghOk([kind, 'comment', target, ...(kind === 'issue' ? ['--repo', this.cfg.slug] : []), '--body-file', file], `comment on ${kind} ${target}`);
   }
 
@@ -656,10 +679,10 @@ class Tick {
     }
   }
 
-  /** The only writer into the run directory; everything it writes is redacted. */
-  private writeRunFile(name: string, text: string, numbered = true): string {
-    mkdirSync(this.runDir, { recursive: true });
-    const file = join(this.runDir, numbered ? `${String(++this.files).padStart(2, '0')}-${name}` : name);
+  /** The only writer into the run directory (or the sweep's); everything it writes is redacted. */
+  private writeRunFile(name: string, text: string, numbered = true, dir = this.runDir): string {
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, numbered ? `${String(++this.files).padStart(2, '0')}-${name}` : name);
     writeFileSync(file, redact(text, machinePaths(this.cfg)));
     return file;
   }

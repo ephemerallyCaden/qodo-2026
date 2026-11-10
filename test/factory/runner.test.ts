@@ -54,6 +54,35 @@ describe('pick (R1)', () => {
   });
 });
 
+describe('a run that died mid-way (Qodo PR37 db513e99)', () => {
+  it('a locked tick marks an orphaned agent-working ticket needs-help, then carries on', async () => {
+    const w = world();
+    w.addIssue(21, { labels: new Set([LABELS.working]), createdAt: '2026-11-01T00:00:00Z' });
+    w.addIssue(24);
+    w.claude.push(agentError);
+    const out = await w.tick();
+    expect(labels(w, 21)).toEqual([LABELS.help]);
+    expect(w.issues.get(21)!.comments[0]).toMatch(/stopped mid-run/);
+    expect(out).toMatchObject({ issue: 24 });
+    expect(w.callsTo('gh').filter((c) => c.args[1] === 'list')).toHaveLength(1);
+  });
+
+  it('an idle tick with an orphan still makes one list call, then sweeps', async () => {
+    const w = world();
+    w.addIssue(21, { labels: new Set([LABELS.working]) });
+    expect(await w.tick()).toEqual({ state: 'idle' });
+    expect(labels(w, 21)).toEqual([LABELS.help]);
+  });
+
+  it('a dry run only says it would', async () => {
+    const w = world();
+    w.addIssue(21, { labels: new Set([LABELS.working]) });
+    expect(await w.tick({ dryRun: true })).toEqual({ state: 'idle' });
+    expect(labels(w, 21)).toEqual([LABELS.working]);
+    expect(w.issues.get(21)!.comments).toEqual([]);
+  });
+});
+
 describe('refuse before any agent (R3, R12)', () => {
   it('refuses a ticket without an Acceptance criteria section: needs-help, a comment, no agent', async () => {
     const w = world();

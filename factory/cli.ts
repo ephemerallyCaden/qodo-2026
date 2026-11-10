@@ -27,8 +27,12 @@ options:
 /** lockf's "lock is held" exit code (EX_TEMPFAIL with -t 0). */
 const LOCK_BUSY = 75;
 const LOCKED_ENV = 'COMMET_FACTORY_LOCKED';
-/** Outer cap on a whole locked run; every step inside has its own, shorter timer. */
-const RUN_CAP_MS = 6 * 60 * 60_000;
+/**
+ * Outer cap on a whole locked run, above the sum of the inner timers (agent 45 min, three
+ * verifies of up to 60 min, two 30 min fix rounds, three 30 min waits, npm ci: about 7 h). A run
+ * killed here is swept to agent-needs-help by the next tick.
+ */
+const RUN_CAP_MS = 8 * 60 * 60_000;
 
 export interface CliDeps {
   exec: Exec;
