@@ -1,6 +1,6 @@
 # Drone lab
 
-> **Exploration, 2026-11-06: five base drones (A–E) to the human's brief. The human picked D; D-final (D with the human's exact parameters) is the base drone.** Phase 2 (2026-11-10) adapts it into one drone per approved agent provider, plus a generic and an "unknown agent" drone, each a parameter set plus a palette: see [Phase 2](#phase-2-brand-drones).
+> **Exploration, 2026-11-06: five base drones (A–E) to the human's brief. The human picked D; D-final (D with the human's exact parameters) is the base drone.** Phase 2 (2026-11-10) adapts it into one drone per approved agent provider, plus a generic and an "unknown agent" drone, each a parameter set plus a palette: see [Phase 2](#phase-2-brand-drones). Later that day the human asked for four changes. Copilot and Claude Code keep D-final's exact shape and add one accessory each: flat goggles, and stubby legs. The unknown agent becomes the generic drone. Codex's cloud head becomes one smooth shape. Qodo gets sunglasses. See [Accessory drones](#accessory-drones), [Codex's cloud head](#codexs-cloud-head) and [Qodo's sunglasses](#qodos-sunglasses).
 >
 > **The brand drones are original designs. They aren't affiliated with or endorsed by Anthropic, Anysphere (Cursor), GitHub, OpenAI, Google, Cognition (Devin), Amazon (Kiro), the OpenCode project or Qodo.** No logo is drawn, and names appear only as plain-text labels outside the pixel pass.
 
@@ -27,7 +27,7 @@ npm run lab   # regenerates everything in out/: about 2 min for A–E and D-fina
 npm run dev   # live page at http://127.0.0.1:5192/ (loopback only; PORT=... to change)
 ```
 
-`node lab.mjs final working` renders just the named outputs (`lineup`, `crew`, `closeups`, `turntable`, `motion`, `final`, `working`, `params`; for the brands `brands`, `brand-closeups`, `seeds`, `squads`, `brand-gifs`, `a4`; and `identity`, the A–E / D-final pixel-identity check). Add `brand=copilot,codex` to limit `brand-closeups` and `brand-gifs` to those drones.
+`node lab.mjs final working` renders just the named outputs (`lineup`, `crew`, `closeups`, `turntable`, `motion`, `final`, `working`, `params`; for the brands `brands`, `brand-closeups`, `seeds`, `squads`, `brand-gifs`, `codex-before-after`, `a4`; and `identity`, the A–E / D-final pixel-identity check). Add `brand=copilot,codex` to limit `brand-closeups` and `brand-gifs` to those drones.
 
 ## Outputs (`out/`)
 
@@ -44,12 +44,13 @@ npm run dev   # live page at http://127.0.0.1:5192/ (loopback only; PORT=... to 
 | `<letter>-closeup.png` | One variant with the camera at half distance, ×3: front, 3/4, side, back 3/4 |
 | `params.md` | Every parameter with its range and meaning, each variant's values, the palette slots, the behaviour timeline, the pick (D-final) and its provenance, the working face, and the brand drones (parameters, palettes, colour mapping, per-session variety, A4 numbers) |
 | `brands-lineup.png` | All 11 brand drones from the front, 3/4 and side, 180p crops ×3, labelled outside the pixel pass |
-| `brand-<id>-closeup.png` | One brand drone at the 2× close-up: front, 3/4, side, back 3/4 |
+| `brand-<id>-closeup.png` | One brand drone at the 2× close-up: front, 3/4, side, back 3/4. The unknown agent is the generic drone, so it uses `brand-generic-*` (here and for the GIFs) |
 | `brand-<id>-turntable.gif`, `brand-<id>-motion.gif` | One brand drone's 6 s turntable and 12 s motion loop (drift, bank, puffs, look-around, its working face), 15 fps, seamless |
 | `brands-seeds.png` | A5: three sessions of each drone, differing only in seeded details |
 | `brands-crew-closeup.png` | K astronauts with the brand drones at the viewer's crew close-up (four 320×180 frames, all 11 drones) |
 | `brands-crew-system.png` | All 11 drones and two K astronauts at the viewer's system-view distance (320×180, ×4) |
 | `brands-a4.json` | The A4 distinctness measurements: per scale, view and pair, the silhouette IoU, the mean-colour ΔE and the score |
+| `brand-codex-before-after.png` | Codex's head before (seven small puffs, sky blue) and after (one smooth blended cloud, mid blue), 2× close-up |
 
 Every tile `npm run lab` renders is checked, and the run fails if any check fails:
 - only the drone's palette plus space appears (plus BLK 36 crew colours in the crew shot), so there's no antialiasing and no dithering;
@@ -60,7 +61,7 @@ Every tile `npm run lab` renders is checked, and the run fails if any check fail
 - each GIF's frame one loop later is pixel-identical to frame 0;
 - the face probe passes for every variant and every brand drone (and for Copilot's and Codex's V2 fallback eyes): while working, glyph pixels and no eye pixels; at rest, eyes and no glyphs;
 - A–E and D-final are pixel-identical to their renders before the brand geometry existed (25 hashed tiles in `test/identity.json`);
-- every pair of brand drones passes A4 at the crew close-up and at system distance (see below).
+- every pair of brand drones passes A4 at the crew close-up and at system distance (see below; the unknown agent is the generic drone, so it isn't measured again).
 
 ## How it's built
 
@@ -91,25 +92,59 @@ One drone per approved provider (human, 2026-11-10), plus **generic** (every oth
 
 | Drone | Covers | Inspired by | What makes it that provider | Eyes |
 |---|---|---|---|---|
-| Claude Code | CLI, web, Action | Clawd, the CLI's block critter | a wide flat block body on four stubby legs (two pairs), side stubs, terracotta orange; its working face is an asterisk spinner | Dots |
+| Claude Code | CLI, web, Action | Clawd, the CLI's block critter | **D-final's exact shape** in terracotta orange, with Clawd's four stubby legs (two pairs) under the saucer; its working face is an asterisk spinner | Dots |
 | Cursor | IDE, CLI, cloud | the isometric cube logo | a crisp graphite cube with a white top facet (the logo's light facet) and a flat screen; sputters precise dots | LED bar |
-| GitHub Copilot | cloud agent, CLI, app, VS Code | the goggled helmet (kept with GitHub's permission) | big pilot goggles across the top of a wide helmet, low ear pads, a lower face plate with upright pill eyes; blue to violet with cyan frames | Pills (drone-only) |
-| OpenAI Codex | CLI, cloud | Codey, the Codex pet | a cloud-puff head round a big navy screen with `>_` prompt eyes, sky blue, puffing round clouds; works in prompt characters | Prompt `>_` (drone-only) |
+| GitHub Copilot | cloud agent, CLI, app, VS Code | the goggled head (its goggles kept with GitHub's permission) | **D-final's exact shape** in blue to violet, with flat pilot goggles worn flush across the top of its screen (two lenses joined by a bridge, strapped round the head), above upright pill eyes | Pills (drone-only) |
+| OpenAI Codex | CLI, cloud | Codey, the Codex pet | one smooth mid-blue cloud head (five broad, low lobes blended into one shape) round a big navy screen with `>_` prompt eyes; works in prompt characters | Prompt `>_` (drone-only) |
 | Google | Jules, Gemini CLI, Antigravity | the Jules octopus | a tall purple dome on six curling lilac tentacles that sway with the bob | Dots |
 | Devin | cloud, CLI, Devin Desktop (ex-Windsurf) | the three-hexagon logo | a near-black hexagonal head between two white hexagonal side pods (three hexagons in a row) | Three eyes |
 | Kiro | Kiro CLI/IDE/cloud, Amazon Q | the Kiro ghost | a white ghost dome shaded in Kiro purple, with a scalloped hem that wobbles; trails wisps and floats high | Dots |
 | OpenCode | CLI, GitHub agent | the pixel block "O" | a tall sharp white block whose square screen is a thick ring round a dark-over-grey split core | Cyclops (a ring, the "O") |
-| Qodo | the review bot and its fix commits | the hoodie anteater | a purple hooded head with a long white snout and a shades-shaped visor; **reviews**: it dips its head and reads diff marks (`+ · = ✕`) row by row | Slant (shades) |
+| Qodo | the review bot and its fix commits | the hoodie anteater | a purple hooded head with a long white snout and black sunglasses for a screen, its eyes glowing through; **reviews**: it dips its head and reads diff marks (`+ · = ✕`) row by row | Slant, behind the sunglasses |
 | generic | every other detected tool | — | D-final exactly, named by a label | Binocular |
-| unknown agent | agent evidence with no known tool | — | D-final's saucer in a dusty plum no provider uses, no white trim, dim eyes in a narrow faceless visor, and a question-mark antenna | Visor slit |
+| unknown agent | agent evidence with no known tool | — | the generic drone exactly (D-final), labelled "unknown agent" (human, 2026-11-10; it was a dusty-plum saucer with a question-mark antenna until then) | Binocular |
+
+### Accessory drones
+
+The human, 2026-11-10: "with copilot don't change the shape of the drone from generic use the generics shape but just add cute goggles on, also the goggles should be connected", and "same with claude actually keep it the same shape just add the tentacles and orange". So Copilot and Claude Code are now **accessory drones**: D-final's exact shape (head, saucer rim, antenna, under-jet, size, screen) and motion, plus one signature accessory and the brand palette.
+- `brands.js` `ACCESSORIES` holds each accessory's own parameters and its seeded detail. An accessory drone sets only those, plus its face (`eyes`, `glyphSet`). `npm test` fails if anything else differs from D-final.
+- Accessories take the accent slot; goggle lenses take the screen tones.
+- Other brands could switch to the same pattern later. They haven't (the human hasn't been asked yet).
+
+| Accessory | What | Used by |
+|---|---|---|
+| goggles | two flat lenses worn flush across the top of the screen, joined by a bridge (`gogBridge`), with a strap from the lenses down round the back of the head (`gogStrap`, `gogStrapY`); frames, bridge and strap about 2 px thick at 180p (`gogFrame`) | Copilot |
+| legs | four stubby legs in two pairs, hanging below the saucer | Claude Code |
+| tentacles | six curling tentacles under the saucer, swaying with the bob | none (Claude's option b, kept as a parameter set) |
+
+**The human's picks (2026-11-10).** For each, the human saw two options side by side, a and b:
+- **Copilot:** a, its own blue-to-violet palette. Option b was the generic's palette with only the goggles in Copilot's cyan; it scored 0.33–0.40 against generic in A4.
+- **Claude:** a, the stubby legs. Option b was tentacles.
+- **Goggles:** the human tried them pushed up onto the crown, then asked for "the flat goggles not raised", as in phase 2 (with the bridge and strap from the earlier ask).
+
+The options are no longer rendered.
+
+### Codex's cloud head
+
+The human, 2026-11-10, with a reference image of Codey: "codex mascot isn't that bumpy, and it's blended all into one shape". The head is now one continuous blob: five broad, low lobes (three across the top, one swelling each side) sit partly inside the head (`crownOut` −0.3) and are smooth-unioned with a generous blend (`crownK` 0.032, against the old 0.012), so the outline is only gently scalloped. The screen is bigger (0.82 × 0.6). The reference's little body, arms and legs are left out (head-is-body). The thruster puffs stay: they're white and separate below the head, so they read as smoke, not as more head. `out/brand-codex-before-after.png` shows before and after.
+
+### Qodo's sunglasses
+
+The human, 2026-11-10, with Qodo's mascot: "give the qodo one sunglasses". The reference shows classic black sunglasses: two rounded-trapezoid solid-black lenses under one straight brow bar that runs across both lenses and a little past them, with no frame colour. Qodo's screen is now that shape (`screenShades`):
+- **Lenses:** the screen tones `#000000` with a `#12173d` sheen, and a white glint on the left lens.
+- **Brow bar:** about 2 px at 180p.
+- **No bezel:** the shades sit straight on the purple hood.
+- **Eyes:** the Slant eyes (a little smaller, `eyeScale` 0.8) glow teal through the lenses, so Qodo keeps the family's face. Its working face (diff marks read row by row) shows through the lenses too.
+
+The rest of the Qodo drone is unchanged.
 
 ### Colour (BLK 36 only)
 
 Brand colours were sampled from the references and mapped to BLK 36 by OKLab distance. Every brand palette is BLK 36 only, and the glow stays [OIII] teal, so every drone shares one face language. Where a palette doesn't use the nearest entry, `brands.js` `BRAND_COLOURS` says why, and `npm test` fails if a reason is missing. The full table, with distances, is in `out/params.md`. The notable calls:
 - **Claude's terracotta `#d77757`** is a poor match. Its nearest, `#ff6866` (ΔE 0.079), is a pink-red coral (hue 24° against 39°) and the coral contributor's brightest tone. The lit front takes `#ff965f` (the hue) and turned faces take `#cc5250` (the lightness), so the shell averages to a terracotta orange (measured mean hue 26°).
 - **Teal slates are off limits.** The nearest BLK 36 entry to Cursor's and OpenCode's greys is `#0f4a4c`, which is ΔE 0.037 from the [OIII] event teal `#004538` and would read as an event. They use the gear greys and navies instead.
-- **Codex** isn't its nearest `#909edd`, because that is the generic drone's shell (A4 measured them too alike). It uses a lighter, cyan-leaning sky ramp (`#4185d8` `#5ab9e5` `#a5e6ff`).
-- **Copilot's** lit helmet is `#8c51cc`, one step darker than the nearest `#b991f2`, so it stays blue-to-violet and apart from Kiro's lilac.
+- **Codex** is Codey's mid blue from the human's reference: `#4a6cf0` lit maps to `#4185d8` (ΔE 0.077), and the darker shaded rim (about `#3a52c0`, estimated from the reference) maps to `#354ab2` (ΔE 0.031). The rim blue also takes the mid band, so `#4185d8` shows only where the light hits. Without that, A4 measured Codex too close to Copilot (0.75 at the crew close-up).
+- **Copilot's** lit shell is `#8c51cc`, one step darker than the nearest `#b991f2`, so it stays blue-to-violet and apart from Kiro's lilac. Its visor is the darkest pair, `#000000` and `#12173d`, not the crew's visor. With the generic's shape and flat goggles, A4 measured it too close to the generic drone with the crew's visor (0.86 at the crew close-up, 0.77 at system distance).
 
 ### Eye glyphs (art direction §8)
 
@@ -121,7 +156,7 @@ Nine drones use their closest V2 design (above). Copilot and Codex each have a g
 
 ### A4: telling them apart
 
-Measured by `node lab.mjs a4` into `out/brands-a4.json`, for every pair of the 11 drones in the front and 3/4 views (smoke off):
+Measured by `node lab.mjs a4` into `out/brands-a4.json`, for every pair of the 10 distinct drones in the front and 3/4 views (smoke off). The unknown agent is the generic drone (`sameAs`), so its pairs are generic's:
 - **silhouette:** the IoU at the best alignment (centroids matched, then the best shift within 2 px);
 - **colour:** the OKLab distance ΔE between the mean colours.
 
@@ -131,20 +166,21 @@ A pair scores max((1 − IoU) / 0.25, ΔE / 0.06), and must score at least 1 in 
 
 | Scale | Drone height | Gated | Closest pair (score: IoU, ΔE) | Smallest ΔE | Largest IoU |
 |---|---|---|---|---|---|
-| crew close-up | 37 px | yes | **Cursor–Devin** (1.10: 0.73, 0.036) | Cursor–Devin 0.036 | generic–unknown 0.96 |
-| system distance (5.98, the viewer's system view) | 18 px | yes | **Cursor–Devin** (1.10: 0.73, 0.055) | Cursor–Devin 0.055 | generic–unknown 0.96 |
-| far (the mid depth step) | 6 px | no (info) | Qodo–generic (0.84: 0.86, 0.050) | Google–Qodo 0.022 | Claude–Qodo 0.88 |
+| crew close-up | 38 px | yes | **Cursor–Devin** (1.10: 0.73, 0.036) | Cursor–Devin 0.036 | Copilot–generic 0.99 |
+| system distance (5.98, the viewer's system view) | 18 px | yes | **Cursor–Devin** (1.10: 0.73, 0.055) | Cursor–Devin 0.055 | Copilot–generic 1.00 |
+| far (the mid depth step) | 6 px | no (info) | Copilot–generic (0.74: 1.00, 0.045) | Google–Qodo 0.013 | Copilot–generic 1.00 |
 
 - **The closest pair is Cursor–Devin.** Both are near-black with white details, so they separate by shape: a cube with a white top against a hexagon between white pods.
-- **The next closest:** at the close-up, Copilot–Qodo (1.14) and Devin–unknown (1.19); at system distance, Codex–generic (1.16) and Copilot–Qodo (1.19).
-- **Generic–unknown** share D-final's silhouette (IoU 0.96), so they separate by colour alone (ΔE 0.18).
-- **At 6 px** the purples (Google, Qodo, Kiro, Copilot) and generic start to merge. That scale isn't gated, and it's where the name labels carry identity.
+- **Next closest:** Copilot–Codex, at 1.12 at the close-up and 1.14 at system distance. Both are blue with a dark screen, and they separate by colour (ΔE 0.067–0.068).
+- **Copilot–generic** have the same silhouette (IoU 0.99–1.00): the flat goggles sit inside it. They separate by colour alone (ΔE 0.079–0.088; scores 1.46 at the close-up and 1.31 at system distance).
+- **Copilot–Qodo** was close before (1.10–1.14). With Qodo's sunglasses it's now 1.38 / 1.36. **Codex–generic**, the closest pair before that, is 2.53 / 2.44.
+- **At 6 px** Copilot and generic merge (0.74), and so nearly do Qodo and generic (1.03). That scale isn't gated, and it's where the name labels carry identity.
 
 ### A5: per-session variety
 
 `sessionLook(brand, session)` hashes `<brand>:<session>` into seeded details only:
 - a trim from the brand's own list (2–3 BLK 36 ramps);
-- one small shape detail per brand (Claude's leg length, Copilot's ear pads, Codex's puff size, Qodo's snout, and so on);
+- one small shape detail per brand (Claude's leg length, how high Copilot's goggles sit, the size of Codex's cloud lobes, Qodo's snout, and so on; an accessory drone's comes with its accessory);
 - personality: `puffRate`, `gaze`, `glance`, `lookYaw` and ±2 sparkles;
 - a phase, so sessions bob out of step.
 
@@ -156,12 +192,14 @@ The silhouette, shell, screen, glow, accent and smoke never vary, so two Claude 
 |---|---|---|
 | `headHex` | Devin | blend the head toward a front-facing hexagonal prism, point up |
 | `ears` = hex pods | Devin | front-facing hexagonal side pods |
-| `crown` (`crownN`, `crownR`, `crownArc`, `crownZ`) | Codex | puffs round the top of the head, a cloud outline |
-| `skirt` = stub legs / tentacles / ghost hem (`skirtN`, `skirtL`, `skirtR`, `skirtSpread`, `skirtZ`, `skirtCurl`, `skirtWave`) | Claude, Google, Kiro | legs in two pairs; a ring of curling tentacles; a scalloped hem. Tentacles and hem wobble with the bob (loop-locked) |
+| `crown` (`crownN`, `crownR`, `crownArc`, `crownZ`, `crownOut`, `crownK`) | Codex | lobes round the top of the head, smooth-unioned into one cloud outline (`crownOut` sinks them in, `crownK` sets the blend) |
+| `skirt` = stub legs / tentacles / ghost hem (`skirtN`, `skirtL`, `skirtR`, `skirtSpread`, `skirtZ`, `skirtCurl`, `skirtWave`) | Claude (legs), Google, Kiro | legs in two pairs; a ring of curling tentacles; a scalloped hem. Tentacles and hem wobble with the bob (loop-locked) |
+| `topper` = goggles (`gogW`, `gogH`, `gogX`, `gogY`, `gogT`, `gogFrame`, `gogBridge`, `gogStrap`, `gogStrapY`) | Copilot | flat lenses on the head, a bridge between them, a strap in a plane tilted from the lenses down to `gogStrapY` at the back; frames, bridge and strap in the accent colour |
+| `screenShades` | Qodo | the screen is a pair of sunglasses: two rounded-trapezoid lenses under a straight brow bar, no bezel, the eyes glowing through |
 | `snout` (`snoutL`, `snoutR`, `snoutY`, `snoutDrop`) | Qodo | a long tapered snout out of the lower face |
-| `antenna` = question hook | unknown | a stalk curled into a "?" |
+| `antenna` = question hook | none (the old unknown agent) | a stalk curled into a "?" |
 | `accent` = top facet | Cursor | the top face in the accent colour |
-| `screenFlat` | Claude, Cursor, Devin, OpenCode | a planar screen with straight edges on a flat face |
+| `screenFlat` | Cursor, Devin, OpenCode | a planar screen with straight edges on a flat face |
 | `screenSplit`, `splitY` | OpenCode | the screen's lower part in its second tone |
 | `glyphSet` | Claude, Codex, Qodo | the working face's glyphs: an asterisk spinner, prompt characters, or diff marks read row by row |
 | `workNod` | Qodo | the head dips while working (reviewing) |
