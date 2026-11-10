@@ -12,8 +12,8 @@
 import { PALETTES, usePalette } from '../asset-viewer/viewer.js';
 import { LOSPEC } from '../asset-viewer/palettes.js';
 import { rampThrough } from '../asset-viewer/palette-map.js';
-import { ACCENTS } from '../asset-viewer/planet-ramps.js';
-import { CONTRIBUTOR_PRESETS } from './state.js';
+import { ACCENTS, V2_PLANET_RAMPS } from '../asset-viewer/planet-ramps.js';
+import { CONTRIBUTOR_PRESETS, isObj } from './state.js';
 
 const BLK36 = LOSPEC['blk-36'].colors.map((h) => `#${h}`);
 export const BLK36_SET = new Set(BLK36);
@@ -59,18 +59,50 @@ function setPath(obj, path, hex) {
 
 const LIBRARY = 'library';
 let applied = null; // the edit set PALETTES.library holds (JSON)
-/** Makes PALETTES.library the base plus `edits` and activates it; returns { palette, changed } (changed: retint). */
-export function activate(edits) {
+/** Rebuilds PALETTES.library as the base plus `edits` when they changed (activating it and dropping the
+ *  viewer's cached depth fades); returns { palette, edited }. */
+export function library(edits) {
   const clean = cleanEdits(edits);
   const key = JSON.stringify(clean);
-  if (key === applied) return { palette: PALETTES[LIBRARY], changed: usePalette(LIBRARY) };
+  if (key === applied) return { palette: PALETTES[LIBRARY], edited: false };
   applied = key;
   const pal = structuredClone(BASE);
   for (const [path, hex] of Object.entries(clean)) setPath(pal, path, hex);
   pal.spaceBands = [pal.space, pal.space, pal.space]; // the flat background follows the space colour
   pal.name = `library (${Object.keys(clean).length} edits)`;
   PALETTES[LIBRARY] = pal;
-  return { palette: pal, changed: usePalette(LIBRARY, { edited: true }), edited: true };
+  usePalette(LIBRARY, { edited: true });
+  return { palette: pal, edited: true };
+}
+/** Makes PALETTES.library the base plus `edits` and activates it; returns { palette, edited }. */
+export function activate(edits) {
+  const r = library(edits);
+  usePalette(LIBRARY);
+  return r;
+}
+
+// History palettes (R10): an old step's colours (history.js: { base, world, set }), each built once
+// as its own viewer palette and active only while that step renders. They are never palette
+// edits, so old looks stay out of the catalogue, the inspector and the palette tab. No spec is the
+// base, exactly.
+export function buildHistoryPalette(spec = {}) {
+  const pal = structuredClone(spec.base ? { ...PALETTES[spec.base], accent: ACCENTS.reveal } : BASE);
+  if (spec.world) Object.assign(pal, structuredClone(V2_PLANET_RAMPS));
+  for (const [k, v] of Object.entries(spec.set ?? {})) pal[k] = isObj(v) && isObj(pal[k]) ? { ...pal[k], ...structuredClone(v) } : structuredClone(v);
+  if (!spec.set?.spaceBands) pal.spaceBands = [pal.space, pal.space, pal.space];
+  return pal;
+}
+const historyNames = new Map(); // spec (JSON) -> its viewer palette's name
+/** Activates the history palette for `spec`, building it on first use; returns it. */
+export function historyPalette(spec) {
+  const key = JSON.stringify(spec ?? {});
+  if (!historyNames.has(key)) {
+    const name = `history-${historyNames.size}`;
+    PALETTES[name] = { ...buildHistoryPalette(spec ?? {}), name };
+    historyNames.set(key, name);
+  }
+  usePalette(historyNames.get(key));
+  return PALETTES[historyNames.get(key)];
 }
 
 /** The contributor ramp key for an astronaut colour (a preset key, or a hex registered on the palette). */

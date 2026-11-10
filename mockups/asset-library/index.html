@@ -47,6 +47,7 @@
     .badge.final { color: var(--final); border: 1px solid #00453880; }
     .badge.explore { color: var(--explore); border: 1px solid #6b5a2a; }
     .badge.todo { color: var(--faint); border: 1px solid var(--line2); }
+    .badge.tag { color: var(--hi); border: 1px solid var(--line2); }
 
     #stage { position: relative; display: grid; grid-template-rows: 1fr auto; min-width: 0; min-height: 0; }
     #well { display: grid; place-items: center; overflow: hidden; min-height: 0; }
@@ -58,6 +59,45 @@
     #stage-badge { position: absolute; top: 10px; left: 12px; line-height: 1.3; padding: 2px 7px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; background: #0d0b16d9; }
     #stage-badge.final { color: var(--final); border: 1px solid #007c66; }
     #stage-badge.explore { color: var(--explore); border: 1px solid var(--explore); }
+    /* the iteration view (history tab): one pane, or two side by side, each captioned */
+    .pane { margin: 0; }
+    .pane figcaption, .pane .miss { display: none; }
+    #well:not(.history) .pane img.arch { display: none !important; }
+    #well.history .pane { display: grid; justify-items: center; align-content: center; gap: 6px; min-width: 0; }
+    #well.history .pane figcaption { display: block; line-height: 1.5; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    #well.history .pane figcaption b { color: var(--head); font-weight: 600; }
+    #well.history .pane .miss:not([hidden]) { display: grid; place-items: center; width: min(560px, 90%); aspect-ratio: 16 / 9; margin: 0; padding: 16px; color: var(--faint); text-align: center; border: 1px dashed var(--line2); }
+    #well.cmp { grid-template-columns: 1fr 1fr; gap: 0 12px; padding: 0 8px; }
+    #well.cmp.stack { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; gap: 12px 0; padding: 4px 8px; }
+    .pane .pic { line-height: 0; }
+    .pane canvas, .pane img.arch { display: block; image-rendering: pixelated; }
+    [hidden] { display: none !important; }
+    .hb { display: inline-block; margin-left: 4px; padding: 0 4px; font-size: 9.5px; line-height: 14px; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid var(--line2); color: var(--dim); vertical-align: 1px; }
+    .hb.live { color: var(--hi); }
+    .hb.final { color: var(--final); border-color: #007c66; }
+    .hb.explore { color: var(--explore); border-color: #6b5a2a; }
+    .hb.tag { color: var(--hi); }
+    .btns.fam button { padding: 2px 6px; }
+    .timeline { list-style: none; margin: 8px 0; padding: 0; }
+    .timeline .step { position: relative; margin: 0 0 8px 10px; padding: 6px 7px 4px; border: 1px solid var(--line); background: var(--panel2); cursor: pointer; }
+    .timeline .step::before { content: ''; position: absolute; left: -10px; top: -9px; bottom: -9px; border-left: 1px solid var(--line2); }
+    .timeline .step::after { content: ''; position: absolute; left: -13px; top: 12px; width: 5px; height: 5px; background: var(--line2); }
+    .timeline .step.final::after { background: var(--final); }
+    .timeline .step:hover { border-color: var(--line2); }
+    .timeline .step.sel { border-color: var(--hi); box-shadow: 0 0 0 1px var(--hi); cursor: default; }
+    .timeline .step.cmp { border-color: var(--explore); }
+    .timeline .step:focus-visible { outline: 2px solid var(--hi); outline-offset: 1px; }
+    .timeline .top { display: grid; grid-template-columns: 112px 1fr; gap: 7px; align-items: start; }
+    .timeline .thumb { display: grid; place-items: center; width: 112px; height: 63px; background: var(--bg); overflow: hidden; border: 1px solid #0006; }
+    .timeline .thumb canvas { display: block; image-rendering: pixelated; }
+    .timeline .thumb img { width: 112px; height: 63px; object-fit: contain; }
+    .timeline .thumb .ph { color: var(--faint); font-size: 10px; text-align: center; padding: 4px; }
+    .timeline .head { min-width: 0; }
+    .timeline .head .when { display: block; color: var(--faint); font-size: 10.5px; }
+    .timeline .head b { display: block; color: var(--head); font-weight: 600; margin: 1px 0 2px; }
+    .timeline .head .hb { margin: 0 3px 2px 0; }
+    .timeline p { margin: 5px 0 0; color: var(--text); font-size: 11px; }
+    .timeline p i { font-style: normal; color: var(--faint); text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.05em; }
     #status { display: flex; gap: 16px; padding: 6px 12px; color: var(--dim); border-top: 1px solid var(--line); background: var(--panel); white-space: nowrap; overflow: hidden; }
     #status b { color: var(--text); font-weight: 400; }
 
@@ -125,6 +165,7 @@
       <button data-tab="inspect">inspect</button>
       <button data-tab="scene">compose scene</button>
       <button data-tab="palette">palette</button>
+      <button data-tab="history" title="How each asset family got to its final look">history</button>
     </nav>
     <div class="actions">
       <button id="copy-url" title="Copy a link that reopens exactly this configuration">copy URL</button>
@@ -138,10 +179,20 @@
     <aside id="catalogue" aria-label="Catalogue"></aside>
     <section id="stage" aria-label="Stage">
       <div id="well">
-        <div id="frame">
-          <canvas id="view"></canvas>
-          <div id="sel"><span></span></div>
-        </div>
+        <figure class="pane" id="pane-main">
+          <figcaption></figcaption>
+          <div id="frame">
+            <canvas id="view"></canvas>
+            <img class="arch" alt="archived render" hidden>
+            <div id="sel"><span></span></div>
+          </div>
+          <p class="miss" hidden></p>
+        </figure>
+        <figure class="pane" id="pane-cmp" hidden>
+          <figcaption></figcaption>
+          <div class="pic"><canvas id="cmp-view"></canvas><img class="arch" alt="archived render" hidden></div>
+          <p class="miss" hidden></p>
+        </figure>
       </div>
       <div id="stage-badge"></div>
       <div id="status"></div>

@@ -1,13 +1,14 @@
-// Asset library: catalogue (R1), inspector (R2), scene composer (R3), palette editor (R4) and
-// presets (R5) over the asset viewer's real assets. The whole screen is one state object
+// Asset library: catalogue (R1), inspector (R2), scene composer (R3), palette editor (R4),
+// presets (R5) and the iteration view (R10) over the asset viewer's real assets. The whole screen is one state object
 // (state.js); every change goes through apply(), which validates it, rebuilds what changed,
 // renders and writes the URL. Labels and UI are HTML outside the pixel pass.
 import { EYE_DESIGNS, eyesFor } from '../asset-viewer/faces.js';
 import { BIOMES, WEATHER } from '../asset-viewer/viewer.js';
 import { renderer, camera, controls, frameWidth, Stage, applyRender, retintStage, placeCamera, renderToCanvas, renderToImage, FRAMING_CAMERAS, labVariant } from './engine.js';
 import * as S from './state.js';
-import { GROUPS as CATALOGUE, ITEMS, showcaseScene, crewScene } from './catalogue.js';
+import { GROUPS as CATALOGUE, ITEMS, showcaseScene, crewScene, BIOME_MEANING, EXTRA, RING_TAG } from './catalogue.js';
 import * as P from './palette.js';
+import * as H from './history.js';
 
 const $ = (id) => document.getElementById(id);
 const clone = structuredClone;
@@ -15,52 +16,83 @@ const canvas = renderer.domElement;
 controls.enableDamping = false; // the camera stops where it's released, so the URL records what's on screen
 
 // ---------------------------------------------------------------- state
-const stages = { asset: new Stage(), scene: new Stage() };
+const stages = { asset: new Stage(), scene: new Stage(), history: new Stage() };
 const thumbStages = {}; // one per asset kind, made on first use
 const thumbStage = (kind) => (thumbStages[kind] ??= new Stage());
-const allStages = () => [...Object.values(stages), ...Object.values(thumbStages)];
+const offStages = {}; // the iteration view's off-screen stages: 'cmp' (the comparison) and 'thumb' (its timeline)
+const offStage = (key) => (offStages[key] ??= new Stage());
+const allStages = () => [...Object.values(stages), ...Object.values(thumbStages), ...Object.values(offStages)];
 let state = S.decodeHash(location.hash) ?? { ...S.defaultState(), render: { ...S.RENDER_DEFAULTS, play: true } };
-let tab = state.mode === 'scene' ? 'scene' : 'inspect';
-let pal = null; // the active palette object
-let lastRender = '';
+const tabFor = (mode) => ({ scene: 'scene', history: 'history' })[mode] ?? 'inspect';
+let tab = tabFor(state.mode);
+let pal = null; // the library palette object (base + edits): catalogue, inspector, composer
+let hv = null; // history mode: the step on the stage (historyView)
+let hc = null; // history mode: the step beside it, or null
 let lastCamera = '';
 let dirty = true;
 let current = null; // catalogue id the inspector was opened from
 let playFrom = { t: state.render.t, at: performance.now() };
 let editPath = null; // palette swatch being edited
 
-const items = () => (state.mode === 'asset' ? [state.asset] : state.scene.items);
+const items = () => (state.mode === 'asset' ? [state.asset] : state.mode === 'scene' ? state.scene.items : hv?.live ? hv.items : []);
 const stage = () => stages[state.mode];
 const isLab = () => state.mode === 'asset' && state.asset.kind === 'lab';
 const now = () => (state.render.play ? playFrom.t + (performance.now() - playFrom.at) / 1000 : state.render.t);
 
 function cameraFor() {
+  if (state.mode === 'history') return hv?.live ? state.history.camera ?? hv.camera : null;
   if (state.mode === 'scene') {
     const key = { depth: 'depth', crew: 'scene-crew', system: 'system' }[state.scene.framing];
     return state.scene.camera ?? FRAMING_CAMERAS[key];
   }
   return state.camera ?? FRAMING_CAMERAS[state.framing];
 }
-const minDistance = () => (state.mode === 'asset' && state.asset.kind === 'planet' ? 1.35 * state.asset.size : 0.3);
+function minDistance() {
+  const solo = state.mode === 'asset' ? state.asset : state.mode === 'history' && hv?.items.length === 1 ? hv.items[0] : null;
+  return solo?.kind === 'planet' ? 1.35 * solo.size : 0.3;
+}
+
+// ---------------------------------------------------------------- looks
+// The viewer's active palette and its loop and depth settings are globals. Every render first
+// makes them its own (useLook): the library palette (the stage, the catalogue thumbnails) or a
+// history step's palette (R10), with that render's loop and depth settings. A stage's materials
+// stay tinted for its own look, so switching back needs no retint.
+const LOOK_RENDER = ['depth', 'depthMode', 'depthBands', 'period', 'surfaceTurns', 'cloudTurns']; // what applyRender reads
+let activeLook = '';
+const lookKey = ({ history = false, spec = null, render }) => JSON.stringify([history && (spec ?? {}), LOOK_RENDER.map((k) => render[k])]);
+/** look: { history, spec, render }; true when it wasn't already active. */
+function useLook(look) {
+  const { history = false, spec = null, render } = look;
+  const key = lookKey(look);
+  if (key === activeLook) return false;
+  activeLook = key;
+  if (history) P.historyPalette(spec);
+  else P.activate(state.palette);
+  applyRender(render); // depth uniforms read the active palette's depth tints, so palette changes re-apply them too
+  return true;
+}
+const libraryLook = () => ({ render: state.render });
+const stageLook = () => (hv?.live ? { history: true, spec: hv.palette, render: hv.render } : libraryLook());
 
 /** The one way state changes. opts.panel: rebuild the control panel (structural changes only). */
 function apply(next, { panel = true } = {}) {
   const prevPlay = state.render.play;
   state = S.normalise(next);
   if (state.render.play && !prevPlay) playFrom = { t: state.render.t, at: performance.now() };
-  const act = P.activate(state.palette); // a no-op unless the edits changed
-  if (act.edited && pal) thumbsSoon(); // (the first activation at boot queues them anyway)
-  pal = act.palette;
-  // depth uniforms read the palette's depth tints, so palette edits re-apply them too
-  const renderKey = JSON.stringify(state.render);
-  let retint = act.changed;
-  if (renderKey !== lastRender || act.edited) retint = applyRender(state.render) || retint;
-  lastRender = renderKey;
-  if (retint) allStages().forEach(retintStage);
-  stage().sync(items(), pal);
+  const lib = P.library(state.palette); // a no-op unless the edits changed
+  if (lib.edited) {
+    activeLook = ''; // the library palette was rebuilt (and activated)
+    if (pal) thumbsSoon(); // (the first build at boot queues them anyway)
+  }
+  pal = lib.palette;
+  // history mode: a live step renders in its own palette and render settings (R10)
+  hv = state.mode === 'history' ? historyView(state.history) : null;
+  hc = hv && state.history.compare >= 0 ? historyView(state.history, state.history.compare) : null;
+  if (useLook(stageLook())) allStages().forEach(retintStage);
+  if (!hv || hv.live) stage().sync(items(), hv?.live ? P.historyPalette(hv.palette) : pal);
   const cam = cameraFor();
   const camKey = JSON.stringify([state.mode, cam]);
-  if (camKey !== lastCamera) {
+  if (cam && camKey !== lastCamera) {
     lastCamera = camKey;
     placeCamera(cam, minDistance());
   }
@@ -82,7 +114,7 @@ addEventListener('hashchange', () => { const s = S.decodeHash(location.hash); if
 controls.addEventListener('end', () => {
   const r = (v) => v.toArray().map((x) => Math.round(x * 1e4) / 1e4);
   const cam = { pos: r(camera.position), target: r(controls.target) };
-  update((n) => { if (n.mode === 'scene') n.scene.camera = cam; else n.camera = cam; }, { panel: false });
+  update((n) => { if (n.mode === 'scene') n.scene.camera = cam; else if (n.mode === 'history') n.history.camera = cam; else n.camera = cam; }, { panel: false });
 });
 
 // ---------------------------------------------------------------- render loop
@@ -93,6 +125,8 @@ function sizes() {
   return { w, h, scale };
 }
 function drawStage() {
+  if (state.mode === 'history') return drawHistory();
+  useLook(stageLook()); // an off-screen render may have switched it
   const { w, h, scale } = sizes();
   canvas.style.width = `${w * scale}px`;
   canvas.style.height = `${h * scale}px`;
@@ -117,6 +151,7 @@ function drawSelection(w, h, scale) {
 }
 renderer.setAnimationLoop(() => {
   renderThumbs(2);
+  renderHistoryThumbs();
   if (dirty || state.render.play) {
     dirty = false;
     drawStage();
@@ -143,6 +178,7 @@ function thumbsDirty() {
   for (const [group, cv] of paletteCanvases) paletteThumb(cv, group);
 }
 function renderThumbs(n) {
+  if (thumbQueue.length) useLook(libraryLook()); // (the stage may hold a history step's)
   for (let k = 0; k < n && thumbQueue.length; k++) {
     const it = thumbQueue.shift();
     const st = S.normalise({ ...it.state, asset: it.state.asset });
@@ -176,7 +212,7 @@ function buildCatalogue() {
       const b = document.createElement('button');
       b.className = `tile${it.final ? '' : ' explore'}`;
       b.dataset.id = it.id;
-      const badge = it.ported === false ? '<span class="badge todo">not yet ported</span>' : it.final ? '<span class="badge final">final</span>' : '<span class="badge explore">exploration</span>';
+      const badge = it.ported === false ? '<span class="badge todo">not yet ported</span>' : it.tag ? `<span class="badge tag">${it.tag}</span>` : it.final ? '<span class="badge final">final</span>' : '<span class="badge explore">exploration</span>';
       if (it.state || it.palette) {
         const cv = document.createElement('canvas');
         cv.width = THUMB_W; cv.height = THUMB_H;
@@ -187,7 +223,8 @@ function buildCatalogue() {
         b.insertAdjacentHTML('beforeend', `<span class="ph">${it.note}</span>`);
       }
       b.insertAdjacentHTML('beforeend', `${badge}<span class="cap"><b>${it.title}</b><i>${it.sub ?? (it.variant ? labVariant(it.variant).name : '')}</i></span>`);
-      b.title = it.variant ? `${labVariant(it.variant).name}: ${labVariant(it.variant).leaning}` : `${it.title} · ${it.sub ?? ''}`;
+      const meaning = it.state?.asset.kind === 'planet' && g.id === 'planets' ? ` · ${BIOME_MEANING[it.state.asset.biome]}` : '';
+      b.title = it.variant ? `${labVariant(it.variant).name}: ${labVariant(it.variant).leaning}` : `${it.title} · ${it.sub ?? ''}${meaning}`;
       b.onclick = () => openItem(it);
       grid.append(b);
     }
@@ -199,7 +236,8 @@ function openItem(it) {
   current = it.id;
   if (it.palette) {
     tab = 'palette';
-    apply(state);
+    if (state.mode === 'history') update((n) => { n.mode = 'asset'; });
+    else apply(state);
     document.querySelector(`[data-pal-group="${it.palette}"]`)?.scrollIntoView({ block: 'start' });
     return;
   }
@@ -280,12 +318,14 @@ function planetControls(it, patch) {
   const groups = {
     planet: () => section('planet', open('planet'),
       select('biome', it.biome, Object.entries(BIOMES).map(([k, b]) => [k, b.label]), (v) => patch({ biome: v, cover: null, float: null })),
+      note(`means ${BIOME_MEANING[it.biome]}`),
       slider('seed', it.seed, { min: 1, max: 999, step: 1, fmt: String }, (v) => patch({ seed: v }, live)),
       buttons(btn('seed −1', () => patch({ seed: Math.max(1, it.seed - 1) })), btn('seed +1', () => patch({ seed: it.seed + 1 }))),
       slider('size', it.size, { min: 0.25, max: 2.2, title: 'planet scale: size stands for LOC' }, (v) => patch({ size: v }, live)),
       it.biome === 'lava' ? select('lava mode', it.lavaMode, S.LAVA_MODES.map((m) => [m, m === 'layered' ? 'layered (final)' : `${m} (A/B)`]), (v) => patch({ lavaMode: v })) : null),
     ring: () => section('ring', open('ring'),
-      select('ring', it.ring, [['off', 'off'], ['thin', 'thin'], ['wide', 'wide (shared lib)']], (v) => patch({ ring: v, ...(S.RING_PRESETS[v] ? { ringWidth: S.RING_PRESETS[v].width, ringInner: S.RING_PRESETS[v].inner } : {}) })),
+      note('meaning open: rings stay in the library, out of the product view, until they encode something'),
+      select('ring', it.ring, [['off', 'off'], ['thin', 'thin'], ['wide', 'wide']], (v) => patch({ ring: v, ...(S.RING_PRESETS[v] ? { ringWidth: S.RING_PRESETS[v].width, ringInner: S.RING_PRESETS[v].inner } : {}) })),
       slider('width', it.ringWidth, { min: 0.03, max: 1, disabled: it.ring === 'off', title: 'radial width in planet radii' }, (v) => patch({ ringWidth: v }, live)),
       slider('distance', it.ringInner, { min: 1.2, max: 2.8, disabled: it.ring === 'off', title: 'inner edge in planet radii' }, (v) => patch({ ringInner: v }, live))),
     clouds: () => section('clouds', open('clouds'),
@@ -378,19 +418,27 @@ function labControls(it, patch) {
   ];
 }
 
-function renderControls() {
-  const r = state.render;
-  const set = (p, opts) => update((n) => Object.assign(n.render, p), opts);
-  const t = now();
-  return section('render', state.mode === 'scene' || isLab(),
+const setRender = (p, opts) => update((n) => Object.assign(n.render, p), opts);
+/** Play/pause, step and scrub the shared time over a loop of `period` seconds, and the pixel height. */
+function timeControls(period, ...extra) {
+  const r = state.render, set = setRender, t = now();
+  return [
     h('div', { class: 'btns' },
       btn(r.play ? 'pause' : 'play', () => set(r.play ? { play: false, t: Math.round(t * 100) / 100 } : { play: true, t: r.t }), { on: r.play }),
       btn('t = 0', () => set({ play: false, t: 0 })),
       btn('−1 s', () => set({ play: false, t: Math.max(0, Math.round((t - 1) * 100) / 100) })),
-      btn('+1 s', () => set({ play: false, t: Math.round((t + 1) * 100) / 100 }))),
-    slider('time', r.play ? t % r.period : r.t, { min: 0, max: r.period, step: 0.05, fmt: (v) => `${v.toFixed(2)}`, title: 'seconds into the shared loop' }, (v) => set({ play: false, t: v }, live)),
+      btn('+1 s', () => set({ play: false, t: Math.round((t + 1) * 100) / 100 })), ...extra),
+    slider('time', r.play ? t % period : r.t, { min: 0, max: period, step: 0.05, fmt: (v) => `${v.toFixed(2)}`, title: 'seconds into the shared loop' }, (v) => set({ play: false, t: v }, live)),
+  ];
+}
+const pixelSlider = () => slider('pixel h', state.render.pixelH, { min: 120, max: 480, step: 10, fmt: String, title: 'internal height; width is 16:9' }, (v) => setRender({ pixelH: v }, live));
+
+function renderControls() {
+  const r = state.render, set = setRender;
+  return section('render', state.mode === 'scene' || isLab(),
+    ...timeControls(r.period),
     check('rotate', r.spin, (v) => set({ spin: v })),
-    slider('pixel h', r.pixelH, { min: 120, max: 480, step: 10, fmt: String, title: 'internal height; width is 16:9' }, (v) => set({ pixelH: v }, live)),
+    pixelSlider(),
     check('depth fade', r.depth, (v) => set({ depth: v })),
     select('depth mode', r.depthMode, S.DEPTH_MODES.map((m) => [m, m === 'pixel-smooth' ? 'pixel-smooth (final)' : m]), (v) => set({ depthMode: v })),
     select('depth bands', r.depthBands, S.DEPTH_BANDS.map((b) => [b, b]), (v) => set({ depthBands: v }), { disabled: r.depthMode !== 'pixel-stepped' }),
@@ -530,13 +578,243 @@ function paletteControls() {
   return kids;
 }
 
+// ---------------------------------------------------------------- iteration view (R10)
+// Each family is a dated timeline, oldest to final (history.js). A live step renders on the stage
+// in its own palette (palette.js historyPalette); an archived one shows its render from the local
+// art archive (/art-archive/, routes.mjs) as whole pixels. A second step can sit beside it for
+// comparison, rendered off-screen (stage 'cmp'), as are the timeline thumbnails (stage 'thumb').
+// Each render first makes the viewer's palette and settings its own (useLook).
+const ARCHIVE_URL = '/art-archive/';
+const HT_W = 112, HT_H = 63; // timeline thumbnails, at internal resolution
+const SCENE_FRAMING = { depth: 'depth', 'scene-crew': 'crew', system: 'system' };
+const FAMILY_FOCUS = { rings: 'ring', clouds: 'clouds', fx: 'fx' };
+
+/** Step i of the history state as the stage renders it: H.view plus normalised items, render and camera.
+ *  own: the step's own time (thumbnails), not the stage's. */
+function historyView(hs, i = hs.step, { own = false } = {}) {
+  const v = H.view({ family: hs.family, step: i, option: i === hs.step ? hs.option : 0 });
+  if (!v.live) return v;
+  const items = v.items.map((it) => S.normaliseItem(it));
+  const r = state.render;
+  const render = S.normaliseRender(own ? v.render : { ...v.render, t: r.t, play: r.play, pixelH: r.pixelH });
+  return { ...v, items, render, camera: v.camera ?? FRAMING_CAMERAS[v.framing ?? 'planet'], key: JSON.stringify(items) };
+}
+/** The step's own start time: its render t, else the default. */
+const stepTime = (famId, i) => H.view({ family: famId, step: i }).render?.t ?? S.RENDER_DEFAULTS.t;
+
+function openFamily(id) {
+  const steps = H.family(id).steps;
+  tab = 'history';
+  update((n) => {
+    n.mode = 'history';
+    n.history = { family: id, step: steps.length - 1, option: 0, compare: -1, camera: null };
+    n.render = { ...n.render, t: stepTime(id, steps.length - 1), play: false };
+  });
+}
+function openStep(i) {
+  update((n) => {
+    n.history = { ...n.history, step: i, option: 0, camera: null, compare: n.history.compare === i ? -1 : n.history.compare };
+    n.render = { ...n.render, t: stepTime(n.history.family, i), play: false };
+  });
+}
+/** A live step without a history palette, opened in the inspector (one asset) or the composer (a scene). */
+const canOpen = (step) => step.live && !step.live.palette && !step.live.options?.list.some((o) => o.palette);
+function openInInspector() {
+  const v = hv, fam = state.history.family;
+  const render = H.view(state.history).render;
+  if (v.items.length === 1) {
+    const it = v.items[0];
+    tab = 'inspect';
+    current = null;
+    update((n) => {
+      Object.assign(n, { mode: 'asset', asset: it, camera: null, focus: it.kind === 'planet' ? FAMILY_FOCUS[fam] ?? 'planet' : it.kind, framing: v.framing ?? undefined });
+      n.render = { ...n.render, ...render };
+    });
+    return;
+  }
+  tab = 'scene';
+  update((n) => {
+    n.mode = 'scene';
+    n.scene = { items: v.items, selected: -1, framing: SCENE_FRAMING[v.framing] ?? 'depth', camera: SCENE_FRAMING[v.framing] ? null : v.camera };
+    n.render = { ...n.render, ...render };
+  });
+}
+
+/** Renders a live step off-screen in its own look; returns ImageData. */
+function renderOff(v, slot, w, h, cam, t) {
+  const st = offStage(slot);
+  const look = { history: true, spec: v.palette, render: v.render };
+  useLook(look);
+  const key = v.key + lookKey(look);
+  if (st.key !== key) { // a new step: rebuild, and tint for its look
+    st.sync(v.items, P.historyPalette(v.palette));
+    retintStage(st);
+    st.key = key;
+  }
+  return renderToImage(st, t, v.render, w, h, cam);
+}
+
+// Archived renders: <img> elements from /art-archive/, with their load state (the archive may be absent).
+const imgState = new Map(); // src -> 'ok' | 'error'
+const archiveSrc = (rel) => ARCHIVE_URL + rel.split('/').map(encodeURIComponent).join('/');
+function archiveImg(img, rel) {
+  const src = archiveSrc(rel);
+  if (img.dataset.src !== src) {
+    img.dataset.src = src;
+    img.onload = () => { imgState.set(src, 'ok'); dirty = true; };
+    img.onerror = () => { imgState.set(src, 'error'); dirty = true; };
+    img.src = src;
+  }
+  return imgState.get(src);
+}
+/** Sizes an archived render to fit w x h. A 320x180 frame at a whole scale (the viewer's shots) shows at
+ *  the largest whole number of screen pixels per internal pixel, like a live pane; anything else (sheets)
+ *  steps by x2, x3, ... or 1/2, 1/3, ..., crisp when that divides evenly. */
+function fitImage(img, w, h) {
+  const nw = img.naturalWidth, nh = img.naturalHeight;
+  const s = nh / 180;
+  const frame = Number.isInteger(s) && nw === 320 * s;
+  const fit = frame ? Math.min(w / 320, h / 180) : Math.min(w / nw, h / nh);
+  const k = frame ? Math.max(1, Math.floor(fit)) / s : fit >= 1 ? Math.floor(fit) : 1 / Math.ceil(1 / fit);
+  const crisp = frame || (Number.isInteger(nw * k) && Number.isInteger(nh * k));
+  Object.assign(img.style, { width: `${Math.round(nw * k)}px`, height: `${Math.round(nh * k)}px`, imageRendering: crisp ? 'pixelated' : 'auto' });
+}
+const NO_ARCHIVE = 'archived image not available: the local art archive (.archive/art-iteration/) isn\'t here';
+const BADGE_CLASS = { live: 'live', final: 'final', exploration: 'explore', [RING_TAG]: 'tag' }; // archived and no render: plain
+const badgeHtml = (step) => H.badgesOf(step).map((b) => `<span class="hb ${BADGE_CLASS[b] ?? ''}">${b}</span>`).join('');
+
+/** One pane: its caption, then the live render (a canvas) or the archived image. */
+function drawPane(pane, v, { w, h, scale, boxW, boxH }, liveCanvas) {
+  const cap = `<b>${v.step.date}</b> · ${v.step.title} ${badgeHtml(v.step)}`;
+  const fc = pane.querySelector('figcaption');
+  if (fc.innerHTML !== cap) fc.innerHTML = cap;
+  const img = pane.querySelector('img.arch'), miss = pane.querySelector('.miss');
+  liveCanvas.hidden = !v.live;
+  if (v.live) {
+    liveCanvas.style.width = `${w * scale}px`;
+    liveCanvas.style.height = `${h * scale}px`;
+    img.hidden = miss.hidden = true;
+    return;
+  }
+  const st = v.img ? archiveImg(img, v.img) : 'none';
+  img.hidden = st !== 'ok';
+  miss.hidden = st === 'ok' || st === undefined; // undefined: still loading
+  miss.textContent = st === 'none' ? 'no render was archived for this step' : NO_ARCHIVE;
+  if (st === 'ok') fitImage(img, boxW, boxH);
+}
+
+function drawHistory() {
+  const hs = state.history;
+  const cmp = hs.compare >= 0;
+  const h = state.render.pixelH, w = frameWidth(h);
+  // one pane, or two side by side or stacked, whichever upscales more (each has a caption above it)
+  const W = $('well').clientWidth, Hw = $('well').clientHeight, CAP = 28;
+  const fit = (b) => Math.floor(Math.min(b.boxW / w, b.boxH / h));
+  const side = { boxW: (W - 40) / 2, boxH: Hw - 16 - CAP }, stack = { boxW: W - 16, boxH: (Hw - 28) / 2 - CAP };
+  const stacked = cmp && fit(stack) > fit(side);
+  const b = !cmp ? { boxW: W - 16, boxH: Hw - 16 - CAP } : stacked ? stack : side;
+  $('well').classList.toggle('stack', stacked);
+  const box = { w, h, scale: Math.max(1, fit(b)), ...b };
+  const { scale } = box;
+  // the comparison first: an off-screen render, after which the stage switches back
+  if (cmp) {
+    const cv = $('cmp-view');
+    if (hc.live) {
+      const same = hv.live && hc.framing === hv.framing && hc.camera === hv.camera; // same framing: follow the stage's orbit
+      const cam = same ? { pos: camera.position.toArray(), target: controls.target.toArray() } : hc.camera;
+      if (cv.width !== w || cv.height !== h) Object.assign(cv, { width: w, height: h });
+      cv.getContext('2d').putImageData(renderOff(hc, 'cmp', w, h, cam, now()), 0, 0);
+    }
+    drawPane($('pane-cmp'), hc, box, cv);
+    $('pane-cmp').style.order = hs.compare < hs.step ? -1 : 1; // oldest first (left, or on top)
+  }
+  if (hv.live) {
+    useLook(stageLook()); // the comparison or a thumbnail may have switched it
+    renderToCanvas(stages.history, now(), hv.render, w, h);
+  }
+  drawPane($('pane-main'), hv, box, canvas);
+  const fam = H.family(hs.family);
+  const status = [
+    `<span><b>${w}×${h}</b> ×${scale}</span>`,
+    `<span>t <b>${now().toFixed(2)} s</b></span>`,
+    `<span>history <b>${fam.title}</b> · step ${hs.step + 1} of ${fam.steps.length}${cmp ? ` · comparing step ${hs.compare + 1}` : ''}</span>`,
+    `<span>${hv.live ? (hv.palette ? 'history colours' : 'base palette') : 'archived image'}</span>`,
+  ].join('');
+  if (status !== drawStage.status) $('status').innerHTML = drawStage.status = status;
+}
+
+// Timeline thumbnails: live steps render off-screen once each (a few per frame), archived ones are <img>s.
+const histThumbs = new Map(); // 'family:step' -> element (kept across panel rebuilds)
+const histQueue = [];
+function historyThumb(famId, i, step) {
+  const key = `${famId}:${i}`;
+  if (histThumbs.has(key)) return histThumbs.get(key);
+  let el;
+  if (step.live) {
+    el = h('canvas', { width: HT_W, height: HT_H });
+    histQueue.push({ famId, i, el });
+  } else if (step.img) {
+    el = h('img', { alt: '', loading: 'lazy', src: archiveSrc(step.img) });
+    el.onerror = () => el.replaceWith(h('span', { class: 'ph' }, 'not in the archive'));
+  } else {
+    el = h('span', { class: 'ph' }, 'no render');
+  }
+  const wrap = h('span', { class: 'thumb' }, el);
+  histThumbs.set(key, wrap);
+  return wrap;
+}
+function renderHistoryThumbs() {
+  const job = histQueue.shift();
+  if (!job) return;
+  const v = historyView({ family: job.famId, step: job.i, option: 0 }, job.i, { own: true });
+  const cam = FRAMING_CAMERAS[`thumb-${v.framing}`] ?? v.camera;
+  job.el.getContext('2d').putImageData(renderOff(v, 'thumb', HT_W, HT_H, cam, v.render.t), 0, 0);
+}
+
+function historyControls() {
+  const hs = state.history;
+  const fam = H.family(hs.family);
+  const card = (step, i) => {
+    const sel = i === hs.step, cmp = i === hs.compare;
+    const opts = sel ? step.live?.options : null;
+    const li = h('li', { class: `step${sel ? ' sel' : ''}${cmp ? ' cmp' : ''}${step.final ? ' final' : ''}`, tabindex: 0, role: 'button', 'aria-pressed': String(sel), 'data-step': i },
+      h('div', { class: 'top' }, historyThumb(fam.id, i, step),
+        h('div', { class: 'head' }, h('span', { class: 'when' }, `${step.date} · ${step.rev}`), h('b', {}, step.title), h('span', { class: 'hbs' }))),
+      h('p', {}, h('i', {}, 'changed '), step.changed),
+      h('p', {}, h('i', {}, 'why '), step.why),
+      opts ? select(opts.label, hs.option, opts.list.map((o, k) => [k, o.label]), (v) => update((n) => { n.history.option = +v; })) : null,
+      buttons(
+        btn(cmp ? 'comparing' : 'compare', () => update((n) => { n.history.compare = cmp ? -1 : i; }), { on: cmp, disabled: sel, title: 'show this step beside the one on the stage' }),
+        sel && canOpen(step) ? btn(hv.items.length > 1 ? 'open in composer' : 'open in inspector', openInInspector, { title: 'today\'s code renders this step: configure it further' }) : null));
+    li.querySelector('.hbs').innerHTML = badgeHtml(step);
+    li.onclick = (e) => { if (!e.target.closest('button, select') && !sel) openStep(i); };
+    li.onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === li) { e.preventDefault(); openStep(i); } };
+    return li;
+  };
+  return [
+    section('family', true,
+      h('div', { class: 'btns fam' }, H.FAMILIES.map((f) => btn(f.title, () => openFamily(f.id), { on: f.id === fam.id }))),
+      note(fam.note)),
+    h('ol', { class: 'timeline', 'aria-label': `${fam.title} timeline` }, fam.steps.map(card)),
+    note('live steps render with today\'s code (old palettes as history colours, never palette edits). Archived images come from the local art archive, .archive/art-iteration/ (gitignored); without it they show as unavailable.'),
+    section('time', false,
+      ...timeControls(hv?.live ? hv.render.period : S.RENDER_DEFAULTS.period, btn('reset camera', () => update((n) => { n.history.camera = null; }), { disabled: !hs.camera })),
+      pixelSlider()),
+  ];
+}
+
 // ---------------------------------------------------------------- panel + chrome
 function buildPanel() {
   const panel = $('panel');
   const top = panel.scrollTop;
   panel.textContent = '';
   let title, sub, body;
-  if (tab === 'palette') {
+  if (tab === 'history') {
+    const fam = H.family(state.history.family);
+    title = `history · ${fam.title}`;
+    sub = 'how each asset family got to its final look, oldest to final';
+    body = historyControls();
+  } else if (tab === 'palette') {
     title = 'palette editor';
     sub = 'v2 world · BLK 36 crew · [OIII] teal · lava';
     body = paletteControls();
@@ -558,19 +836,30 @@ function buildPanel() {
 
 function syncChrome() {
   for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === tab);
+  const hist = state.mode === 'history';
+  $('well').classList.toggle('history', hist);
+  $('well').classList.toggle('cmp', hist && state.history.compare >= 0);
+  $('pane-cmp').hidden = !(hist && state.history.compare >= 0);
+  canvas.hidden = hist && !hv.live;
+  $('stage-badge').hidden = hist;
+  for (const id of ['png1', 'png4']) $(id).disabled = hist && !hv.live;
   for (const t of document.querySelectorAll('.tile')) t.classList.toggle('sel', state.mode === 'asset' && t.dataset.id === current);
   $('frame').classList.toggle('scene', state.mode === 'scene');
   const badge = $('stage-badge');
   const explore = isLab() || (state.mode === 'asset' && state.asset.kind === 'planet' && state.asset.lavaMode !== 'layered' && state.asset.biome === 'lava');
+  const planet = state.mode === 'asset' && state.asset.kind === 'planet' ? state.asset : null;
+  const tag = planet && (BIOMES[planet.biome].extra ? EXTRA : state.focus === 'ring' ? `ring ${RING_TAG}` : null);
   badge.className = state.mode === 'scene' ? 'final' : explore ? 'explore' : 'final';
-  badge.textContent = state.mode === 'scene' ? 'composed scene · final assets' : explore ? 'exploration · not final' : 'final asset';
+  badge.textContent = state.mode === 'scene' ? 'composed scene · final assets' : explore ? 'exploration · not final' : `final asset${tag ? ` · ${tag}` : ''}`;
 }
 
 for (const b of document.querySelectorAll('[data-tab]')) {
   b.onclick = () => {
     tab = b.dataset.tab;
     if (tab === 'scene' && state.mode !== 'scene') update((n) => { n.mode = 'scene'; if (!n.scene.items.length) n.scene = showcaseScene(); });
-    else if (tab === 'inspect' && state.mode !== 'asset') update((n) => { n.mode = 'asset'; });
+    else if (tab === 'history' && state.mode !== 'history') openFamily(state.history.family);
+    // (palette edits apply to the inspector and the composer, not to the history)
+    else if ((tab === 'inspect' && state.mode !== 'asset') || (tab === 'palette' && state.mode === 'history')) update((n) => { n.mode = 'asset'; });
     else apply(state);
   };
 }
@@ -604,7 +893,7 @@ $('import-json').onclick = () => openJson(S.toJSON(state));
 $('json-apply').onclick = (e) => {
   try {
     const next = S.fromJSON($('json-text').value);
-    tab = next.mode === 'scene' ? 'scene' : 'inspect';
+    tab = tabFor(next.mode);
     current = null;
     apply(next);
   } catch (err) {
@@ -637,11 +926,11 @@ $('png4').onclick = () => png(4);
 window.library = {
   ready: false,
   thumbsDone: false,
+  get histDone() { return !histQueue.length; }, // the iteration view's timeline thumbnails are rendered
   /** Applies a state (paused), renders it twice synchronously like viewer.set, returns its URL hash. */
   set(next) {
     if (next.tab) tab = next.tab;
-    else if (next.mode === 'scene') tab = 'scene';
-    else if (tab === 'scene') tab = 'inspect';
+    else if (tabFor(next.mode) !== 'inspect' || tab !== 'palette') tab = tabFor(next.mode);
     apply(S.normalise(next));
     drawStage();
     drawStage();

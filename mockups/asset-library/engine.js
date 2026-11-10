@@ -170,14 +170,22 @@ export function renderToCanvas(stage, t, render, w, h) {
   renderer.render(stage.scene, camera);
 }
 
-let thumb = null; // { rt, px, img }: the off-screen target and its read-back buffers (one size)
-/** Renders a stage off-screen with a fixed camera; returns ImageData (w x h), leaving the stage view untouched. */
+// 'w x h' -> { rt, px, img }: an off-screen target and its read-back buffers, per size. The few sizes
+// in use (catalogue and timeline thumbnails, the history comparison) stay; the oldest others go.
+const targets = new Map();
+const MAX_TARGETS = 4;
+/** Renders a stage off-screen with a fixed camera; returns ImageData (w x h, reused per size), leaving the stage view untouched. */
 export function renderToImage(stage, t, render, w, h, cam) {
-  if (thumb?.img.width !== w || thumb?.img.height !== h) {
-    thumb?.rt.dispose();
-    thumb = { rt: new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false }), px: new Uint8Array(w * h * 4), img: new ImageData(w, h) };
+  const size = `${w}x${h}`;
+  if (!targets.has(size)) {
+    if (targets.size >= MAX_TARGETS) {
+      const [old, { rt: oldRt }] = targets.entries().next().value;
+      oldRt.dispose();
+      targets.delete(old);
+    }
+    targets.set(size, { rt: new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false }), px: new Uint8Array(w * h * 4), img: new ImageData(w, h) });
   }
-  const { rt, px, img } = thumb;
+  const { rt, px, img } = targets.get(size);
   const saved = { pos: camera.position.clone(), quat: camera.quaternion.clone() };
   camera.position.set(...cam.pos);
   camera.lookAt(TMP.set(...cam.target));
