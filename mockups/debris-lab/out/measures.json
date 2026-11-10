@@ -1,0 +1,1004 @@
+{
+ "loops": {
+  "A": {
+   "wrap": 2265,
+   "maxStep": 2401,
+   "oneLoopLater": 0
+  },
+  "B": {
+   "wrap": 1922,
+   "maxStep": 2066,
+   "oneLoopLater": 0
+  },
+  "C": {
+   "wrap": 2040,
+   "maxStep": 2219,
+   "oneLoopLater": 0
+  },
+  "D": {
+   "wrap": 2170,
+   "maxStep": 2432,
+   "oneLoopLater": 0
+  },
+  "E": {
+   "wrap": 1900,
+   "maxStep": 2061,
+   "oneLoopLater": 0
+  }
+ },
+ "sweep": {
+  "A": {
+   "piece": "sw-2",
+   "start": 1,
+   "tealDuring": 96,
+   "tealAfter": 0,
+   "diffVsNextScan": 0,
+   "othersStay": true
+  },
+  "B": {
+   "piece": "sw-0",
+   "start": 1,
+   "tealDuring": 69,
+   "tealAfter": 0,
+   "diffVsNextScan": 174,
+   "othersStay": false
+  },
+  "C": {
+   "piece": "sw-2",
+   "start": 1,
+   "tealDuring": 81,
+   "tealAfter": 0,
+   "diffVsNextScan": 0,
+   "othersStay": true
+  },
+  "D": {
+   "piece": "sw-2",
+   "start": 1,
+   "tealDuring": 126,
+   "tealAfter": 0,
+   "diffVsNextScan": 0,
+   "othersStay": true
+  },
+  "E": {
+   "piece": "sw-1",
+   "start": 1,
+   "tealDuring": 86,
+   "tealAfter": 0,
+   "diffVsNextScan": 139,
+   "othersStay": false
+  }
+ },
+ "colour": {
+  "A": {
+   "lava": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "toxic": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "desert": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "lush": {
+    "debrisPx": 574,
+    "nearOwn03": 0.2735191637630662,
+    "nearOwn05": 0.2874564459930314,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ocean": {
+    "debrisPx": 574,
+    "nearOwn03": 0.2735191637630662,
+    "nearOwn05": 0.32229965156794427,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ice": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0.03484320557491289,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   }
+  },
+  "B": {
+   "lava": {
+    "debrisPx": 473,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "toxic": {
+    "debrisPx": 469,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "desert": {
+    "debrisPx": 473,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "lush": {
+    "debrisPx": 473,
+    "nearOwn03": 0.04439746300211417,
+    "nearOwn05": 0.08456659619450317,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ocean": {
+    "debrisPx": 459,
+    "nearOwn03": 0.0457516339869281,
+    "nearOwn05": 0.13071895424836602,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ice": {
+    "debrisPx": 472,
+    "nearOwn03": 0,
+    "nearOwn05": 0.0423728813559322,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   }
+  },
+  "C": {
+   "lava": {
+    "debrisPx": 262,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "toxic": {
+    "debrisPx": 262,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "desert": {
+    "debrisPx": 262,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "lush": {
+    "debrisPx": 262,
+    "nearOwn03": 0.183206106870229,
+    "nearOwn05": 0.2099236641221374,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ocean": {
+    "debrisPx": 262,
+    "nearOwn03": 0.183206106870229,
+    "nearOwn05": 0.2366412213740458,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ice": {
+    "debrisPx": 262,
+    "nearOwn03": 0,
+    "nearOwn05": 0.026717557251908396,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   }
+  },
+  "D": {
+   "lava": {
+    "debrisPx": 484,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "toxic": {
+    "debrisPx": 484,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "desert": {
+    "debrisPx": 484,
+    "nearOwn03": 0,
+    "nearOwn05": 0.06818181818181818,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "lush": {
+    "debrisPx": 484,
+    "nearOwn03": 0.10537190082644628,
+    "nearOwn05": 0.1446280991735537,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ocean": {
+    "debrisPx": 484,
+    "nearOwn03": 0.10537190082644628,
+    "nearOwn05": 0.20867768595041322,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ice": {
+    "debrisPx": 484,
+    "nearOwn03": 0,
+    "nearOwn05": 0.0640495867768595,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   }
+  },
+  "E": {
+   "lava": {
+    "debrisPx": 540,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "toxic": {
+    "debrisPx": 540,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "desert": {
+    "debrisPx": 540,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "lush": {
+    "debrisPx": 540,
+    "nearOwn03": 0.18333333333333332,
+    "nearOwn05": 0.20185185185185187,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ocean": {
+    "debrisPx": 540,
+    "nearOwn03": 0.18333333333333332,
+    "nearOwn05": 0.22592592592592592,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ice": {
+    "debrisPx": 540,
+    "nearOwn03": 0,
+    "nearOwn05": 0.024074074074074074,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   }
+  }
+ },
+ "hulls": {
+  "gear": {
+   "lava": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "toxic": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "desert": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "lush": {
+    "debrisPx": 574,
+    "nearOwn03": 0.2735191637630662,
+    "nearOwn05": 0.2874564459930314,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ocean": {
+    "debrisPx": 574,
+    "nearOwn03": 0.2735191637630662,
+    "nearOwn05": 0.32229965156794427,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ice": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0.03484320557491289,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   }
+  },
+  "violet": {
+   "lava": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0.03484320557491289,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "toxic": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0.03484320557491289,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "desert": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0.03484320557491289,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "lush": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0.04878048780487805,
+    "nearRing05": 0.03484320557491289,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ocean": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0.04878048780487805,
+    "nearRing05": 0.03484320557491289,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ice": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0.03484320557491289,
+    "nearRing05": 0.03484320557491289,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   }
+  },
+  "violet-dark": {
+   "lava": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0.04878048780487805,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "toxic": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0.04878048780487805,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "desert": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0.04878048780487805,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "lush": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0.32229965156794427,
+    "nearRing05": 0.04878048780487805,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ocean": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0.32229965156794427,
+    "nearRing05": 0.04878048780487805,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   },
+   "ice": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0.04878048780487805,
+    "nearRing05": 0.04878048780487805,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0
+   }
+  }
+ },
+ "bands": {
+  "A": {
+   "lava": {
+    "winOff": "lava",
+    "winOn": "lava",
+    "trueShareOff": 1,
+    "trueShareOn": 0.993956043956044,
+    "cover": 0.007692307692307693
+   },
+   "toxic": {
+    "winOff": "toxic",
+    "winOn": "toxic",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9928571428571429,
+    "cover": 0.007692307692307693
+   },
+   "desert": {
+    "winOff": "desert",
+    "winOn": "desert",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9923076923076923,
+    "cover": 0.007692307692307693
+   },
+   "lush": {
+    "winOff": "lush",
+    "winOn": "lush",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9923076923076923,
+    "cover": 0.007692307692307693
+   },
+   "ocean": {
+    "winOff": "ocean",
+    "winOn": "ocean",
+    "trueShareOff": 0.546978021978022,
+    "trueShareOn": 0.5478021978021979,
+    "cover": 0.007692307692307693
+   },
+   "ice": {
+    "winOff": "ice",
+    "winOn": "ice",
+    "trueShareOff": 0.5653846153846154,
+    "trueShareOn": 0.570054945054945,
+    "cover": 0.007692307692307693
+   }
+  },
+  "B": {
+   "lava": {
+    "winOff": "lava",
+    "winOn": "lava",
+    "trueShareOff": 1,
+    "trueShareOn": 1,
+    "cover": 0
+   },
+   "toxic": {
+    "winOff": "toxic",
+    "winOn": "toxic",
+    "trueShareOff": 1,
+    "trueShareOn": 1,
+    "cover": 0
+   },
+   "desert": {
+    "winOff": "desert",
+    "winOn": "desert",
+    "trueShareOff": 1,
+    "trueShareOn": 1,
+    "cover": 0
+   },
+   "lush": {
+    "winOff": "lush",
+    "winOn": "lush",
+    "trueShareOff": 1,
+    "trueShareOn": 1,
+    "cover": 0
+   },
+   "ocean": {
+    "winOff": "ocean",
+    "winOn": "ocean",
+    "trueShareOff": 0.546978021978022,
+    "trueShareOn": 0.546978021978022,
+    "cover": 0
+   },
+   "ice": {
+    "winOff": "ice",
+    "winOn": "ice",
+    "trueShareOff": 0.5653846153846154,
+    "trueShareOn": 0.5653846153846154,
+    "cover": 0
+   }
+  },
+  "C": {
+   "lava": {
+    "winOff": "lava",
+    "winOn": "lava",
+    "trueShareOff": 1,
+    "trueShareOn": 1,
+    "cover": 0.0016483516483516484
+   },
+   "toxic": {
+    "winOff": "toxic",
+    "winOn": "toxic",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9983516483516484,
+    "cover": 0.0016483516483516484
+   },
+   "desert": {
+    "winOff": "desert",
+    "winOn": "desert",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9983516483516484,
+    "cover": 0.0016483516483516484
+   },
+   "lush": {
+    "winOff": "lush",
+    "winOn": "lush",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9983516483516484,
+    "cover": 0.0016483516483516484
+   },
+   "ocean": {
+    "winOff": "ocean",
+    "winOn": "ocean",
+    "trueShareOff": 0.546978021978022,
+    "trueShareOn": 0.546978021978022,
+    "cover": 0.0016483516483516484
+   },
+   "ice": {
+    "winOff": "ice",
+    "winOn": "ice",
+    "trueShareOff": 0.5653846153846154,
+    "trueShareOn": 0.5653846153846154,
+    "cover": 0.0016483516483516484
+   }
+  },
+  "D": {
+   "lava": {
+    "winOff": "lava",
+    "winOn": "lava",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9782967032967033,
+    "cover": 0.037637362637362635
+   },
+   "toxic": {
+    "winOff": "toxic",
+    "winOn": "toxic",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9763736263736263,
+    "cover": 0.037637362637362635
+   },
+   "desert": {
+    "winOff": "desert",
+    "winOn": "desert",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9623626373626374,
+    "cover": 0.037637362637362635
+   },
+   "lush": {
+    "winOff": "lush",
+    "winOn": "lush",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9637362637362638,
+    "cover": 0.037637362637362635
+   },
+   "ocean": {
+    "winOff": "ocean",
+    "winOn": "ocean",
+    "trueShareOff": 0.546978021978022,
+    "trueShareOn": 0.542032967032967,
+    "cover": 0.037637362637362635
+   },
+   "ice": {
+    "winOff": "ice",
+    "winOn": "ice",
+    "trueShareOff": 0.5653846153846154,
+    "trueShareOn": 0.5483516483516484,
+    "cover": 0.037637362637362635
+   }
+  },
+  "E": {
+   "lava": {
+    "winOff": "lava",
+    "winOn": "lava",
+    "trueShareOff": 1,
+    "trueShareOn": 1,
+    "cover": 0
+   },
+   "toxic": {
+    "winOff": "toxic",
+    "winOn": "toxic",
+    "trueShareOff": 1,
+    "trueShareOn": 1,
+    "cover": 0
+   },
+   "desert": {
+    "winOff": "desert",
+    "winOn": "desert",
+    "trueShareOff": 1,
+    "trueShareOn": 1,
+    "cover": 0
+   },
+   "lush": {
+    "winOff": "lush",
+    "winOn": "lush",
+    "trueShareOff": 1,
+    "trueShareOn": 1,
+    "cover": 0
+   },
+   "ocean": {
+    "winOff": "ocean",
+    "winOn": "ocean",
+    "trueShareOff": 0.546978021978022,
+    "trueShareOn": 0.546978021978022,
+    "cover": 0
+   },
+   "ice": {
+    "winOff": "ice",
+    "winOn": "ice",
+    "trueShareOff": 0.5653846153846154,
+    "trueShareOn": 0.5653846153846154,
+    "cover": 0
+   }
+  }
+ },
+ "cover": {
+  "A": {
+   "mean": 0.013358516483516483,
+   "max": 0.05549450549450549
+  },
+  "B": {
+   "mean": 0,
+   "max": 0
+  },
+  "C": {
+   "mean": 0.00834478021978022,
+   "max": 0.032692307692307694
+  },
+  "D": {
+   "mean": 0.012809065934065934,
+   "max": 0.05247252747252747
+  },
+  "E": {
+   "mean": 0,
+   "max": 0
+  }
+ },
+ "ring": {
+  "A": {
+   "ringComps": 17,
+   "ringMedianArea": 22,
+   "ringMultiTone": 0.6470588235294118,
+   "debrisComps": 10,
+   "debrisMedianArea": 54,
+   "debrisMultiTone": 1,
+   "planeAngleMedian": 47.559293603524274,
+   "planeAngleMin": 16.44659663443805,
+   "retrograde": 0.25,
+   "arrangement": "orbits",
+   "tumbleAreaCV": 0.315368206277291
+  },
+  "B": {
+   "ringComps": 17,
+   "ringMedianArea": 22,
+   "ringMultiTone": 0.6470588235294118,
+   "debrisComps": 2,
+   "debrisMedianArea": 262,
+   "debrisMultiTone": 1,
+   "planeAngleMedian": null,
+   "planeAngleMin": null,
+   "retrograde": 0,
+   "arrangement": "heaps",
+   "tumbleAreaCV": 0.27453927209471546
+  },
+  "C": {
+   "ringComps": 17,
+   "ringMedianArea": 22,
+   "ringMultiTone": 0.6470588235294118,
+   "debrisComps": 10,
+   "debrisMedianArea": 27,
+   "debrisMultiTone": 1,
+   "planeAngleMedian": 47.559293603524274,
+   "planeAngleMin": 16.44659663443807,
+   "retrograde": 0.25,
+   "arrangement": "orbits",
+   "tumbleAreaCV": 0.3297497341180501
+  },
+  "D": {
+   "ringComps": 17,
+   "ringMedianArea": 22,
+   "ringMultiTone": 0.6470588235294118,
+   "debrisComps": 11,
+   "debrisMedianArea": 38,
+   "debrisMultiTone": 0.9090909090909091,
+   "planeAngleMedian": 80.18027618975665,
+   "planeAngleMin": 53.03356743411549,
+   "retrograde": 0,
+   "arrangement": "polar",
+   "tumbleAreaCV": 0.2410262726237051
+  },
+  "E": {
+   "ringComps": 17,
+   "ringMedianArea": 22,
+   "ringMultiTone": 0.6470588235294118,
+   "debrisComps": 11,
+   "debrisMedianArea": 41,
+   "debrisMultiTone": 0.9090909090909091,
+   "planeAngleMedian": null,
+   "planeAngleMin": null,
+   "retrograde": 0,
+   "arrangement": "wake",
+   "tumbleAreaCV": 0.16359598599942676
+  }
+ },
+ "moon": {
+  "A": {
+   "moonRound": 0.8091974444718721,
+   "moonTones": 4,
+   "debrisRound": 0.6012761549054125
+  },
+  "B": {
+   "moonRound": 0.8091974444718721,
+   "moonTones": 4,
+   "debrisRound": 0.462775999996322
+  },
+  "C": {
+   "moonRound": 0.8091974444718721,
+   "moonTones": 4,
+   "debrisRound": 0.47458170989552273
+  },
+  "D": {
+   "moonRound": 0.8091974444718721,
+   "moonTones": 4,
+   "debrisRound": 0.5539143614264648
+  },
+  "E": {
+   "moonRound": 0.8091974444718721,
+   "moonTones": 4,
+   "debrisRound": 0.513488474990967
+  }
+ },
+ "moonAreaCV": 0.07590661858363545,
+ "moonClearFrames": 10,
+ "classes": {
+  "hardware": {
+   "samples": 144,
+   "silhouetteAccuracy": 0.8333333333333334,
+   "aspect": {
+    "pr": 2.663982256884532,
+    "branch": 4.507127850080288,
+    "merged": 1.7828766587211033,
+    "agent": 1.2157811699452252
+   }
+  },
+  "blocks": {
+   "samples": 144,
+   "silhouetteAccuracy": 0.6111111111111112,
+   "aspect": {
+    "pr": 1.5908172836979406,
+    "branch": 3.099570203988994,
+    "merged": 2.045468552856298,
+    "agent": 1.2697475164115886
+   }
+  },
+  "canister": {
+   "samples": 144,
+   "silhouetteAccuracy": 0.18055555555555555,
+   "aspect": {
+    "pr": 1.9880263710390953,
+    "branch": 1.993738648804925,
+    "merged": 1.9815538800935206,
+    "agent": 1.977867407664907
+   }
+  }
+ },
+ "ages": {
+  "hardware": [
+   {
+    "step": "intact",
+    "rust": 0,
+    "components": 1
+   },
+   {
+    "step": "rusted",
+    "rust": 0.49053814161087445,
+    "components": 1
+   },
+   {
+    "step": "broken",
+    "rust": 0.8309348349993647,
+    "components": 2
+   }
+  ],
+  "blocks": [
+   {
+    "step": "intact",
+    "rust": 0,
+    "components": 1
+   },
+   {
+    "step": "rusted",
+    "rust": 0.5335800036656891,
+    "components": 1
+   },
+   {
+    "step": "broken",
+    "rust": 0.774620686026936,
+    "components": 2
+   }
+  ],
+  "canister": [
+   {
+    "step": "intact",
+    "rust": 0,
+    "components": 1
+   },
+   {
+    "step": "rusted",
+    "rust": 0.4204545454545454,
+    "components": 1
+   },
+   {
+    "step": "broken",
+    "rust": 0.6402131285940992,
+    "components": 2
+   }
+  ]
+ },
+ "violet": {
+  "gear": {
+   "lush": {
+    "brightShare": 0,
+    "debrisHKMedian": 59.41824041558126,
+    "discHKMedian": 65.62543090673228,
+    "aboveDiscP75": 0,
+    "debrisChroma": 0.12268842111582134,
+    "discChroma": 0.10549985451530274
+   },
+   "ocean": {
+    "brightShare": 0,
+    "debrisHKMedian": 59.41824041558126,
+    "discHKMedian": 60.55328007107343,
+    "aboveDiscP75": 0,
+    "debrisChroma": 0.1145430671084511,
+    "discChroma": 0.09287074833387662
+   }
+  },
+  "violet": {
+   "lush": {
+    "brightShare": 0.3201646090534979,
+    "debrisHKMedian": 60.8896544374211,
+    "discHKMedian": 65.62543090673228,
+    "aboveDiscP75": 0,
+    "debrisChroma": 0.14786328487489792,
+    "discChroma": 0.10549985451530274
+   },
+   "ocean": {
+    "brightShare": 0.2169811320754717,
+    "debrisHKMedian": 60.8896544374211,
+    "discHKMedian": 60.55328007107343,
+    "aboveDiscP75": 0,
+    "debrisChroma": 0.13555000276599807,
+    "discChroma": 0.09287074833387662
+   }
+  },
+  "violet-dark": {
+   "lush": {
+    "brightShare": 0,
+    "debrisHKMedian": 48.114913580489926,
+    "discHKMedian": 65.62543090673228,
+    "aboveDiscP75": 0,
+    "debrisChroma": 0.1223541315421012,
+    "discChroma": 0.10549985451530274
+   },
+   "ocean": {
+    "brightShare": 0,
+    "debrisHKMedian": 48.114913580489926,
+    "discHKMedian": 60.55328007107343,
+    "aboveDiscP75": 0,
+    "debrisChroma": 0.11583218977853096,
+    "discChroma": 0.09287074833387662
+   }
+  }
+ }
+}
