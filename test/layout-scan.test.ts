@@ -14,7 +14,7 @@ import type { LayoutNotes } from '../src/core/layout/index.js';
 import type { ScanOptions } from '../src/scan/index.js';
 import { exclusionOf } from '../src/scan/exclusions.js';
 import { gitRunner } from '../src/scan/git.js';
-import { lineageLog } from '../src/scan/structure.js';
+import { lineageLog, mergeSides } from '../src/scan/structure.js';
 import { SELF } from './fixtures/build/basic.js';
 import { buildStructureRepo, scanStructure, type StructureRepo } from './fixtures/build/structure.js';
 import { cli } from './fixtures/cli.js';
@@ -188,6 +188,43 @@ describe('Qodo PR51 r1', () => {
     } finally {
       chmodSync(join(state, 'layout.json'), 0o600);
     }
+  });
+});
+
+describe('#18 AC8 under Rule 7', () => {
+  it('a merged branch\'s folder named with U+0001, a newline and a tab is read whole', async () => {
+    // The branch adds the folder alone, then touches core/ in another commit. Read whole, the folder's own
+    // commit doesn't touch core/, so it has no partner; misread, it would fall back to the merge (core/).
+    const odd = 'a\u0001b\nc\td';
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-layout-rule7-')));
+    let n = 0;
+    const git = (...args: string[]) => {
+      const at = `2026-10-${String(++n).padStart(2, '0')}T10:00:00Z`;
+      return execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: SELF.name,
+        GIT_AUTHOR_EMAIL: SELF.email, GIT_COMMITTER_NAME: SELF.name, GIT_COMMITTER_EMAIL: SELF.email, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } });
+    };
+    git('init', '-q', '-b', 'main');
+    git('config', 'commit.gpgsign', 'false');
+    mkdirSync(join(dir, 'core'));
+    writeFileSync(join(dir, 'core/a.ts'), 'export const a = 1;\n');
+    git('add', '-A');
+    git('commit', '-qm', 'root');
+    git('checkout', '-qb', 'pr');
+    mkdirSync(join(dir, odd));
+    writeFileSync(join(dir, odd, 'x.ts'), 'export const x = 1;\n');
+    git('add', '-A');
+    git('commit', '-qm', 'odd folder');
+    writeFileSync(join(dir, 'core/a.ts'), 'export const a = 2;\n');
+    git('commit', '-qam', 'core');
+    git('checkout', '-q', 'main');
+    git('merge', '-q', '--no-ff', '-m', 'merge pr', 'pr');
+    const head = git('rev-parse', 'HEAD').trim();
+    const log = await lineageLog(gitRunner(dir), head);
+    const sides = await mergeSides(gitRunner(dir), log, buildLineage(log, () => false), () => false);
+    expect(sides.get(1)).toEqual([new Set([odd]), new Set(['core'])]);
+    const s = await scanStructure({ dir, sha: {}, head });
+    expect(s.snapshot.dirs.find((x) => x.path === odd)!.partner).toBeNull();
+    expect(planetAt(s.layout, odd).partner).toBeNull();
   });
 });
 
