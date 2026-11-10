@@ -22,6 +22,14 @@ export interface ExecResult {
 /** Runs one command. The runner reaches gh, git, npm, claude, qodo and lockf only through this. */
 export type Exec = (cmd: string, args: readonly string[], opts: ExecOptions) => Promise<ExecResult>;
 
+/** Runs `fn` after `ms` and returns a cancel; tests pass their own to fire timers on cue. */
+export type Schedule = (fn: () => void, ms: number) => () => void;
+
+const realSchedule: Schedule = (fn, ms) => {
+  const t = setTimeout(fn, ms);
+  return () => clearTimeout(t);
+};
+
 const MAX_OUTPUT = 32 * 1024 * 1024;
 const live = new Set<number>();
 
@@ -43,23 +51,23 @@ export function killAllChildren(signal: NodeJS.Signals): void {
  * started (a `mwinit` prompt under the claude wrapper, a test runner's workers). SIGTERM first,
  * SIGKILL after `killGraceMs`.
  */
-export function realExec(killGraceMs = 5_000): Exec {
+export function realExec(killGraceMs = 5_000, schedule: Schedule = realSchedule): Exec {
   return (cmd, args, opts) => new Promise<ExecResult>((resolve) => {
     let stdout = '';
     let stderr = '';
     let timedOut = false;
-    let hardKill: NodeJS.Timeout | undefined;
+    let cancelHardKill: (() => void) | undefined;
     const child = spawn(cmd, args, {
       cwd: opts.cwd, env: opts.env ?? process.env, detached: true,
       stdio: opts.inherit ? 'inherit' : ['ignore', 'pipe', 'pipe'],
     });
     const pid = child.pid;
     if (pid !== undefined) live.add(pid);
-    const timer = setTimeout(() => {
+    const cancelTimer = schedule(() => {
       timedOut = true;
       if (pid === undefined) return;
       killGroup(pid, 'SIGTERM');
-      hardKill = setTimeout(() => killGroup(pid, 'SIGKILL'), killGraceMs);
+      cancelHardKill = schedule(() => killGroup(pid, 'SIGKILL'), killGraceMs);
     }, opts.timeoutMs);
     child.stdout?.setEncoding('utf8').on('data', (d: string) => { if (stdout.length < MAX_OUTPUT) stdout += d; });
     child.stderr?.setEncoding('utf8').on('data', (d: string) => { if (stderr.length < MAX_OUTPUT) stderr += d; });
@@ -67,8 +75,8 @@ export function realExec(killGraceMs = 5_000): Exec {
     const finish = (code: number | null, error?: string) => {
       if (done) return;
       done = true;
-      clearTimeout(timer);
-      if (hardKill) clearTimeout(hardKill);
+      cancelTimer();
+      cancelHardKill?.();
       if (pid !== undefined) {
         // Reap anything the command left behind in its group.
         killGroup(pid, 'SIGKILL');

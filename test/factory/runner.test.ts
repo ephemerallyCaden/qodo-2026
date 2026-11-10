@@ -242,7 +242,7 @@ describe('agent failures end in agent-needs-help (R7)', () => {
   const cases: [string, () => ReturnType<typeof claudeOut>, string][] = [
     ['an agent error', agentError, 'agent call failed: error_during_execution'],
     ['max turns', () => claudeOut({ subtype: 'error_max_turns', is_error: true, code: 1, turns: 121 }), 'agent hit max turns (121)'],
-    ['a timeout', () => ({ code: null, stdout: '', stderr: '', timedOut: true }), 'agent call timed out after 45 min'],
+    ['a timeout', () => ({ code: null, stdout: '', stderr: '', timedOut: true }), 'agent call timed out after 90 min awake (0 min wall clock)'],
     ['no JSON result', () => ({ code: 1, stdout: 'Error: boom', stderr: '', timedOut: false }), 'no JSON result'],
     ['a final message with no JSON block', () => claudeOut({ result: 'I did it.' }), 'no JSON block'],
     ['the agent reporting blocked', () => claudeOut({ result: '```json\n{"status":"blocked","blocked_reason":"the ticket contradicts AGENTS.md"}\n```' }), 'agent blocked: the ticket contradicts AGENTS.md'],
@@ -255,6 +255,21 @@ describe('agent failures end in agent-needs-help (R7)', () => {
     expect(labels(w, 24)).toEqual([LABELS.help]);
     expect(w.issues.get(24)!.comments.at(-1)).toContain('needs help');
     expect(w.gitCalls('push')).toHaveLength(0);
+  });
+
+  it('a timeout names both clocks in the run log and the ticket comment (run #24)', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.claude.push((x) => {
+      x.now += 143 * 60_000; // the laptop slept through most of the call
+      return { code: null, stdout: '', stderr: '', timedOut: true };
+    });
+    const reason = 'agent call timed out after 90 min awake (143 min wall clock)';
+    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason });
+    const log = runLog(w);
+    expect(log.find((e) => e['event'] === 'agent-end')).toMatchObject({ reason });
+    expect(log.find((e) => e['event'] === 'stop')).toMatchObject({ reason });
+    expect(w.issues.get(24)!.comments.at(-1)).toContain(reason);
   });
 
   it('names expired credentials when Midway ran out mid-run', async () => {

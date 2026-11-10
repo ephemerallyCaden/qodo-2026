@@ -354,8 +354,9 @@ class Tick {
     const resume = this.sessionId || undefined;
     this.log.event('agent-start', { call: k, resume: resume ?? null, maxTurns, budgetUsd: budget });
     const args = claudeArgs({ prompt, systemPrompt: systemPrompt(this.branch, cfg.base), maxTurns, maxBudgetUsd: budget, ...(resume ? { resume } : {}) });
+    const t0 = this.deps.clock.now();
     const res = await this.sh(cfg.claude, args, { cwd: this.worktree, timeoutMs, env: this.agentEnv });
-    const call = readClaude(res, Math.round(timeoutMs / 60_000));
+    const call = readClaude(res, { timeoutMs, wallMs: this.deps.clock.now() - t0 });
     if (call.out) {
       this.turns += call.out.num_turns ?? 0;
       this.costUsd += call.out.total_cost_usd ?? 0;

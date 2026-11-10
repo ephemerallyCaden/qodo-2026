@@ -77,7 +77,9 @@ export function systemPrompt(branch: string, base: string): string {
     '- Read AGENTS.md and CLAUDE.md before changing anything, and follow them.',
     '- The runner that started you owns publication: it pushes, opens the PR, labels and comments.',
     '  git push, gh, merges, rebases, resets, amends and network tools are denied. Do not try them.',
-    '- Dependencies are installed. Before you finish, run npm run build, npm run typecheck, npm run lint and npm test.',
+    '- Dependencies are installed. While iterating, run only the test files you touch: npx vitest run <file>.',
+    '- Run the full gate once, at the end: npm run build, npm run typecheck, npm run lint, npm test. The runner re-runs it anyway.',
+    '- Run tests in the foreground. Never start them in the background to wait or poll with sleep.',
     '- Commit with conventional commits: git add <explicit paths>, then git commit -m "<subject>" -m "<body>".',
     '  Heredocs and command substitution are denied. Never amend; add new commits.',
     '- Do not edit .github/, .claude/ or CONSTITUTION.md. Do not add dependencies.',
@@ -176,9 +178,15 @@ export function lastJsonBlock(text: string): unknown {
   }
 }
 
-/** Classifies one `claude -p --output-format json` call (R7: any failure stops the run). */
-export function readClaude(res: ExecResult, timeoutMin: number): AgentCall {
-  if (res.timedOut) return { ok: false, reason: `agent call timed out after ${timeoutMin} min` };
+/**
+ * Classifies one `claude -p --output-format json` call (R7: any failure stops the run). The kill
+ * timer counts awake time only (a sleeping Mac pauses it), so a timeout names both clocks.
+ */
+export function readClaude(res: ExecResult, time: { timeoutMs: number; wallMs: number }): AgentCall {
+  if (res.timedOut) {
+    const min = (ms: number) => Math.round(ms / 60_000);
+    return { ok: false, reason: `agent call timed out after ${min(time.timeoutMs)} min awake (${min(time.wallMs)} min wall clock)` };
+  }
   if (res.error) return { ok: false, reason: `agent call failed to start: ${res.error}` };
   const o = firstJson(res.stdout) as Partial<ClaudeOutput> | null;
   if (!o || typeof o.subtype !== 'string') return { ok: false, reason: `agent call failed (exit ${res.code}, no JSON result)` };

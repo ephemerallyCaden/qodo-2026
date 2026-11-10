@@ -1,7 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { main, type CliDeps } from '../../factory/cli.js';
+import { main, RUN_CAP_MS, type CliDeps } from '../../factory/cli.js';
+import { defaults } from '../../factory/config.js';
 import { realExec } from '../../factory/exec.js';
 import { JOB_LABEL, LABEL_DEFS, plistPath, renderPlist } from '../../factory/launchd.js';
 import { BASE, ok, SLUG, World } from './world.js';
@@ -167,19 +169,60 @@ describe('labels', () => {
   });
 });
 
+/** Polls `ok` until it holds: waits on a condition, not a fixed delay. */
+async function until(ok: () => boolean, what: string, ms = 30_000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!ok()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+describe('timers (R13)', () => {
+  it('gives the implement call 90 min and a fix round 30 min, all inside the outer cap', () => {
+    const c = defaults('/h', '/r', '/r/.git', 'o/r');
+    expect(c.timeouts.agent).toBe(90 * 60_000);
+    expect(c.timeouts.fix).toBe(30 * 60_000);
+    // The longest a run can take: npm ci, the implement call, a 4-check verify per agent call,
+    // every fix round and a review wait per push. The outer cap must sit above it.
+    const verifies = 1 + c.maxFixRounds;
+    const worst = c.timeouts.npmCi + c.timeouts.agent + verifies * 4 * c.timeouts.check + c.maxFixRounds * c.timeouts.fix + verifies * c.reviewTimeoutMs;
+    expect(worst).toBeLessThan(RUN_CAP_MS);
+  });
+});
+
 describe('kill timers (R13)', () => {
   it('kills a hung command and everything in its process group', async () => {
-    const exec = realExec(200);
-    const t0 = Date.now();
-    // Ignores SIGTERM like a stuck login prompt, and leaves a grandchild behind.
-    const res = await exec('/bin/sh', ['-c', 'trap "" TERM; sleep 30 & echo $!; wait'], { timeoutMs: 300 });
-    expect(res.timedOut).toBe(true);
-    expect(res.code).toBeNull();
-    expect(Date.now() - t0).toBeLessThan(5_000);
-    const grandchild = Number(res.stdout.trim());
-    expect(grandchild).toBeGreaterThan(0);
-    await new Promise((r) => setTimeout(r, 100));
-    expect(() => process.kill(grandchild, 0)).toThrow();
+    // The test fires the timers itself, once the grandchild exists, so nothing races the kill.
+    const timers: (() => void)[] = [];
+    const exec = realExec(5_000, (fn) => {
+      timers.push(fn);
+      return () => {};
+    });
+    const dir = mkdtempSync(join(tmpdir(), 'kill-'));
+    const pidFile = join(dir, 'pid');
+    // Ignores SIGTERM like a stuck login prompt (the ignore is inherited), and leaves a grandchild behind.
+    const run = exec('/bin/sh', ['-c', `trap "" TERM; sleep 30 & echo $! > "${pidFile}"; wait`], { timeoutMs: 60_000 });
+    await until(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8').endsWith('\n'), 'the grandchild pid');
+    const grandchild = Number(readFileSync(pidFile, 'utf8').trim());
+    expect(alive(grandchild)).toBe(true);
+    expect(timers).toHaveLength(1);
+    timers.shift()!(); // the kill timer: SIGTERM, then it schedules the SIGKILL grace timer
+    expect(timers).toHaveLength(1);
+    timers.shift()!(); // the grace timer: SIGKILL to the whole group
+    const res = await run;
+    expect(res).toMatchObject({ timedOut: true, code: null });
+    await until(() => !alive(grandchild), 'the grandchild to die', 10_000);
+    rmSync(dir, { recursive: true, force: true });
   });
 
   it('reports a command that cannot start', async () => {

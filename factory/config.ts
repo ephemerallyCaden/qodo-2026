@@ -50,7 +50,7 @@ export function defaults(home: string, repoDir: string, commonDir: string, slug:
     midwayCookie: join(home, '.midway/cookie'), minCredHours: 2,
     maxFixRounds: 2, pollMs: MIN, reviewTimeoutMs: 30 * MIN, settleMs: 3 * MIN,
     maxTurns: 120, fixMaxTurns: 80, maxBudgetUsd: 15, fixMaxBudgetUsd: 8,
-    timeouts: { gh: MIN, git: 2 * MIN, npmCi: 10 * MIN, check: 15 * MIN, agent: 45 * MIN, fix: 30 * MIN, qodo: 2 * MIN },
+    timeouts: { gh: MIN, git: 2 * MIN, npmCi: 10 * MIN, check: 15 * MIN, agent: 90 * MIN, fix: 30 * MIN, qodo: 2 * MIN },
     dryRun: false, previewIssue: null,
   };
 }

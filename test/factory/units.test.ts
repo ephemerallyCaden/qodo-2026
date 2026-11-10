@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fixResult, implementResult, lastJsonBlock, readClaude } from '../../factory/agent.js';
+import { fixResult, implementResult, lastJsonBlock, readClaude, systemPrompt } from '../../factory/agent.js';
 import { configError, defaults, slugFromRemote } from '../../factory/config.js';
 import { assertGhAllowed, assertGitAllowed, guarded, GuardError } from '../../factory/guard.js';
 import { redact } from '../../factory/log.js';
@@ -134,6 +134,16 @@ describe('CI state (R6)', () => {
   });
 });
 
+describe('agent instructions', () => {
+  it('iterate on single test files, run the full gate once in the foreground (run #24 spent most of its time on full suites)', () => {
+    const p = systemPrompt('agent/24-x', 'session/week1');
+    expect(p).toContain('While iterating, run only the test files you touch: npx vitest run <file>.');
+    expect(p).toContain('Run the full gate once, at the end: npm run build, npm run typecheck, npm run lint, npm test. The runner re-runs it anyway.');
+    expect(p).toContain('Run tests in the foreground. Never start them in the background to wait or poll with sleep.');
+    expect(p).not.toContain('Before you finish, run npm run build');
+  });
+});
+
 describe('agent output', () => {
   it('reads the last fenced json block', () => {
     expect(lastJsonBlock('```json\n{"a":1}\n```\ntext\n```json\n{"a":2}\n```')).toEqual({ a: 2 });
@@ -143,11 +153,15 @@ describe('agent output', () => {
 
   it('fails a success subtype with a non-zero exit or is_error', () => {
     const done = '```json\n{"status":"done"}\n```';
-    expect(readClaude(claudeOut({ result: done }), 45)).toMatchObject({ ok: true });
-    expect(readClaude(claudeOut({ result: done, code: 1 }), 45)).toMatchObject({ ok: false });
-    expect(readClaude(claudeOut({ result: done, is_error: true }), 45)).toMatchObject({ ok: false });
-    expect(readClaude(claudeOut({ result: '```json\n{"status":"maybe"}\n```' }), 45)).toMatchObject({ ok: false, reason: 'agent result status "maybe"' });
-    expect(readClaude({ code: null, stdout: '', stderr: '', timedOut: false, error: 'spawn ENOENT' }, 45)).toMatchObject({ ok: false, reason: expect.stringContaining('ENOENT') });
+    const t = { timeoutMs: 45 * 60_000, wallMs: 50 * 60_000 };
+    expect(readClaude(claudeOut({ result: done }), t)).toMatchObject({ ok: true });
+    expect(readClaude(claudeOut({ result: done, code: 1 }), t)).toMatchObject({ ok: false });
+    expect(readClaude(claudeOut({ result: done, is_error: true }), t)).toMatchObject({ ok: false });
+    expect(readClaude(claudeOut({ result: '```json\n{"status":"maybe"}\n```' }), t)).toMatchObject({ ok: false, reason: 'agent result status "maybe"' });
+    expect(readClaude({ code: null, stdout: '', stderr: '', timedOut: false, error: 'spawn ENOENT' }, t)).toMatchObject({ ok: false, reason: expect.stringContaining('ENOENT') });
+    // The kill timer counts awake time; the wall clock also counts sleep (run #24: 45 min awake, 143 min wall).
+    expect(readClaude({ code: null, stdout: '', stderr: '', timedOut: true }, { timeoutMs: 45 * 60_000, wallMs: 143.4 * 60_000 }))
+      .toEqual({ ok: false, reason: 'agent call timed out after 45 min awake (143 min wall clock)' });
   });
 
   it('keeps one evidence row per ticket criterion and rejects a badly formed PR title', () => {
