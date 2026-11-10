@@ -17,7 +17,7 @@ export interface Io {
 }
 
 const USAGE = 'usage: commet scan [--window <months>] [--no-ingest] [--with-qodo] [--out <file>]\n'
-  + '       commet open [--port <n>] [--no-open]\n'
+  + '       commet open [--port <n>] [--no-open (keeps the token out of process lists)]\n'
   + '  --with-qodo  opt in to reading this repo\'s Qodo review findings (read-only, over the network via gh and qodo)\n';
 
 interface ScanArgs { window: number; ingest: boolean; withQodo: boolean; out?: string }

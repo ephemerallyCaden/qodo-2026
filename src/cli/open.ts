@@ -9,7 +9,7 @@ import { newToken } from '../server/guard.js';
 import { startServer, type ServerOptions } from '../server/server.js';
 import type { Io } from './main.js';
 
-export const OPEN_USAGE = 'usage: commet open [--port <n>] [--no-open]\n';
+export const OPEN_USAGE = 'usage: commet open [--port <n>] [--no-open (keeps the token out of process lists)]\n';
 
 interface OpenArgs { port: number; open: boolean }
 

@@ -74,7 +74,7 @@ describe('commet open', () => {
     for (const args of [['--port'], ['--port', '0'], ['--port', '70000'], ['--port', 'abc'], ['--host', '0.0.0.0'], ['--bind', '0.0.0.0']]) {
       const r = await cli(['open', ...args], repo.dir, env);
       expect(r.code, args.join(' ')).toBe(EXIT.usage);
-      expect(r.err).toContain('usage: commet open');
+      expect(r.err).toContain('usage: commet open [--port <n>] [--no-open (keeps the token out of process lists)]');
     }
   });
 
