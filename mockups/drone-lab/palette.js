@@ -69,8 +69,10 @@ export const BRAND_PALETTES = {
   kiro: { name: 'Kiro', shell: ['#643499', '#8c51cc', '#b991f2', '#ffffff'], trim: ['#412866', '#643499', '#8c51cc', '#b991f2'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#412866', '#643499', '#8c51cc', '#b991f2'], smoke: ['#8c51cc', '#b991f2', '#ffffff'] },
   // OpenCode's block O: a light ring round a dark-over-grey core.
   opencode: { name: 'OpenCode', shell: ['#464b8c', '#909edd', '#c1d9f2', '#ffffff'], trim: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], screen: ['#000000', '#293268', '#ffffff'], glow: TEAL, accent: ['#12173d', '#293268', '#464b8c', '#6b74b2'], smoke: ['#6b74b2', '#909edd', '#c1d9f2'] },
-  // The hoodie purple (#7a68fa -> #8c51cc), a white snout, black sunglasses (the screen: #000000 with a #12173d sheen).
-  qodo: { name: 'Qodo', shell: ['#29174c', '#412866', '#643499', '#8c51cc'], trim: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#29174c', '#412866', '#643499', '#8c51cc'], smoke: ['#b991f2', '#c1d9f2', '#ffffff'] },
+  // The white anteater (human, 2026-11-10: "mostly white but have a bit of purple"): white shaded in cool
+  // greys, the hoodie purple (#7a68fa -> #8c51cc) only in the accent (the boosters and a hem band round
+  // the bottom of the hood) and the smoke, black sunglasses (the screen: #000000 with a #12173d sheen).
+  qodo: { name: 'Qodo', shell: ['#6b74b2', '#909edd', '#c1d9f2', '#ffffff'], trim: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#412866', '#643499', '#8c51cc', '#b991f2'], smoke: ['#8c51cc', '#b991f2', '#ffffff'] },
   // Every other detected tool: D-final's own base palette, with the tool's name as a label.
   generic: { ...PALETTES.base, name: 'generic (other tools)' },
   // No tool known: the generic drone exactly (human, 2026-11-10), labelled "unknown agent".

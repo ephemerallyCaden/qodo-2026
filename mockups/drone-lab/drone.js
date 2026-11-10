@@ -56,7 +56,7 @@ const FRAG = /* glsl */ `
   uniform int uGogBr, uGogSt; uniform vec3 uBrA, uBrM, uBrB, uStC, uStN; uniform vec2 uStR; uniform float uBrR, uStT; // goggle bridge and strap
   uniform vec3 uCrestC, uCrestB;
   uniform int uAntN; uniform vec3 uAntA[2], uAntB[2]; uniform float uAntR, uAntTip;
-  uniform int uThrN; uniform vec3 uThrA[4], uThrB[4]; uniform vec2 uThrR;
+  uniform int uThrN, uThrAcc; uniform vec3 uThrA[4], uThrB[4]; uniform vec2 uThrR;
   uniform int uAccent; uniform float uAccentY, uAccentW;
   uniform int uSmokeOn, uSmokeStyle, uPuffN; uniform vec3 uPuffC[${MAX_PUFFS}], uPuffV[${MAX_PUFFS}]; uniform float uPuffR[${MAX_PUFFS}], uPuffA[${MAX_PUFFS}];
   uniform int uSparkN; uniform vec3 uSparkC[${MAX_SPARKS}]; uniform float uSparkS[${MAX_SPARKS}];
@@ -383,7 +383,7 @@ const FRAG = /* glsl */ `
     }
     if (part == 7) { // nozzle: the centre of the mouth glows
       vec3 ax = normalize(uThrB[gi] - uThrA[gi]);
-      return dot(p - uThrB[gi], ax) > 0.45 * uThrR.y ? 4 : 1;
+      return dot(p - uThrB[gi], ax) > 0.45 * uThrR.y ? 4 : uThrAcc == 1 ? 2 : 1;
     }
     return part;
   }
@@ -843,7 +843,7 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     uGogBr: { value: 0 }, uBrA: { value: V() }, uBrM: { value: V() }, uBrB: { value: V() }, uBrR: { value: 0 }, uGogSt: { value: 0 }, uStC: { value: V() }, uStN: { value: V(0, 1, 0) }, uStR: { value: new THREE.Vector2(1, 1) }, uStT: { value: 0 },
     uCrestC: { value: V() }, uCrestB: { value: V(1, 1, 1) },
     uAntN: { value: 0 }, uAntA: { value: vecs(2) }, uAntB: { value: vecs(2) }, uAntR: { value: 0.0105 }, uAntTip: { value: 0 },
-    uThrN: { value: 0 }, uThrA: { value: vecs(4) }, uThrB: { value: vecs(4).map((v) => v.set(0, -1, 0)) }, uThrR: { value: new THREE.Vector2() },
+    uThrN: { value: 0 }, uThrA: { value: vecs(4) }, uThrB: { value: vecs(4).map((v) => v.set(0, -1, 0)) }, uThrR: { value: new THREE.Vector2() }, uThrAcc: { value: 0 },
     uAccent: { value: 0 }, uAccentY: { value: 0 }, uAccentW: { value: 0 },
     uSmokeOn: { value: 1 }, uSmokeStyle: { value: 0 }, uPuffN: { value: 0 }, uPuffC: { value: vecs(MAX_PUFFS) }, uPuffV: { value: vecs(MAX_PUFFS) },
     uPuffR: { value: new Array(MAX_PUFFS).fill(0) }, uPuffA: { value: new Array(MAX_PUFFS).fill(0) },
@@ -883,7 +883,7 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     U.uAntN.value = Lay.ant.length; U.uAntTip.value = P.antTip;
     Lay.ant.forEach((a, i) => { U.uAntA.value[i].copy(a.base); U.uAntB.value[i].copy(a.base).addScaledVector(a.dir, P.antL); });
     U.uThrN.value = Lay.thr.length; Lay.thr.forEach((n, i) => { U.uThrA.value[i].copy(n.a); U.uThrB.value[i].copy(n.b); });
-    U.uThrR.value.set(P.thrR, P.thrR * P.thrFlare);
+    U.uThrR.value.set(P.thrR, P.thrR * P.thrFlare); U.uThrAcc.value = P.thrAccent;
     U.uAccent.value = P.accent; U.uAccentY.value = P.accentY; U.uAccentW.value = P.accentW;
     U.uSmokeStyle.value = P.smoke;
     // Brand geometry

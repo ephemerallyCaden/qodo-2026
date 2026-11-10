@@ -1,6 +1,6 @@
 # Drone lab
 
-> **Exploration, 2026-11-06: five base drones (A–E) to the human's brief. The human picked D; D-final (D with the human's exact parameters) is the base drone.** Phase 2 (2026-11-10) adapts it into one drone per approved agent provider, plus a generic and an "unknown agent" drone, each a parameter set plus a palette: see [Phase 2](#phase-2-brand-drones). Later that day the human asked for four changes. Copilot and Claude Code keep D-final's exact shape and add one accessory each: flat goggles, and stubby legs. The unknown agent becomes the generic drone. Codex's cloud head becomes one smooth shape. Qodo gets sunglasses. See [Accessory drones](#accessory-drones), [Codex's cloud head](#codexs-cloud-head) and [Qodo's sunglasses](#qodos-sunglasses).
+> **Exploration, 2026-11-06: five base drones (A–E) to the human's brief. The human picked D; D-final (D with the human's exact parameters) is the base drone.** Phase 2 (2026-11-10) adapts it into one drone per approved agent provider, plus a generic and an "unknown agent" drone, each a parameter set plus a palette: see [Phase 2](#phase-2-brand-drones). Later that day the human asked for four changes. Copilot and Claude Code keep D-final's exact shape and add one accessory each: flat goggles, and stubby legs. The unknown agent becomes the generic drone. Codex's cloud head becomes one smooth shape. Qodo gets sunglasses and turns white, like the anteater. See [Accessory drones](#accessory-drones), [Codex's cloud head](#codexs-cloud-head) and [Qodo's sunglasses](#qodos-sunglasses).
 >
 > **The brand drones are original designs. They aren't affiliated with or endorsed by Anthropic, Anysphere (Cursor), GitHub, OpenAI, Google, Cognition (Devin), Amazon (Kiro), the OpenCode project or Qodo.** No logo is drawn, and names appear only as plain-text labels outside the pixel pass.
 
@@ -100,7 +100,7 @@ One drone per approved provider (human, 2026-11-10), plus **generic** (every oth
 | Devin | cloud, CLI, Devin Desktop (ex-Windsurf) | the three-hexagon logo | a near-black hexagonal head between two white hexagonal side pods (three hexagons in a row) | Three eyes |
 | Kiro | Kiro CLI/IDE/cloud, Amazon Q | the Kiro ghost | a white ghost dome shaded in Kiro purple, with a scalloped hem that wobbles; trails wisps and floats high | Dots |
 | OpenCode | CLI, GitHub agent | the pixel block "O" | a tall sharp white block whose square screen is a thick ring round a dark-over-grey split core | Cyclops (a ring, the "O") |
-| Qodo | the review bot and its fix commits | the hoodie anteater | a purple hooded head with a long white snout and black sunglasses for a screen, its eyes glowing through; **reviews**: it dips its head and reads diff marks (`+ · = ✕`) row by row | Slant, behind the sunglasses |
+| Qodo | the review bot and its fix commits | the hoodie anteater | a white hooded head with a long white snout and black sunglasses for a screen, its eyes glowing through; purple only in its boosters, a hem band and its smoke; **reviews**: it dips its head and reads diff marks (`+ · = ✕`) row by row | Slant, behind the sunglasses |
 | generic | every other detected tool | — | D-final exactly, named by a label | Binocular |
 | unknown agent | agent evidence with no known tool | — | the generic drone exactly (D-final), labelled "unknown agent" (human, 2026-11-10; it was a dusty-plum saucer with a question-mark antenna until then) | Binocular |
 
@@ -136,7 +136,12 @@ The human, 2026-11-10, with Qodo's mascot: "give the qodo one sunglasses". The r
 - **No bezel:** the shades sit straight on the purple hood.
 - **Eyes:** the Slant eyes (a little smaller, `eyeScale` 0.8) glow teal through the lenses, so Qodo keeps the family's face. Its working face (diff marks read row by row) shows through the lenses too.
 
-The rest of the Qodo drone is unchanged.
+**White, with a bit of purple.** The human, 2026-11-10: "Qodo should be mostly white but have a bit of purple somewhere, maybe in its boosters, cos the anteater is fully white not purple". So:
+- **Body:** the hood, head, snout and ears are white, shaded in the cool greys (`#6b74b2` `#909edd` `#c1d9f2` `#ffffff`).
+- **Purple:** the hoodie purple (`#8c51cc` family) is only in the accent and the smoke. The accent covers the boosters (`thrAccent`: nozzles in the accent, not the trim) and a hem band round the bottom of the hood (`accent` = band, `accentY` −0.65, `accentW` 0.12). The smoke is lilac.
+- **Unchanged:** the sunglasses, the teal eyes and the shape.
+
+**The hem band is there for A4.** With purple on the boosters alone, Qodo scored 0.99 against OpenCode at system distance: two white drones whose silhouettes overlap 75%. The band lifts that pair to 1.05. Removing it (`accent: 0`) is a one-line change if the human prefers the boosters alone.
 
 ### Colour (BLK 36 only)
 
@@ -166,15 +171,18 @@ A pair scores max((1 − IoU) / 0.25, ΔE / 0.06), and must score at least 1 in 
 
 | Scale | Drone height | Gated | Closest pair (score: IoU, ΔE) | Smallest ΔE | Largest IoU |
 |---|---|---|---|---|---|
-| crew close-up | 38 px | yes | **Cursor–Devin** (1.10: 0.73, 0.036) | Cursor–Devin 0.036 | Copilot–generic 0.99 |
-| system distance (5.98, the viewer's system view) | 18 px | yes | **Cursor–Devin** (1.10: 0.73, 0.055) | Cursor–Devin 0.055 | Copilot–generic 1.00 |
-| far (the mid depth step) | 6 px | no (info) | Copilot–generic (0.74: 1.00, 0.045) | Google–Qodo 0.013 | Copilot–generic 1.00 |
+| crew close-up | 38 px | yes | **OpenCode–Qodo** (1.05: 0.74, 0.057) | Cursor–Devin 0.036 | Copilot–generic 0.99 |
+| system distance (5.98, the viewer's system view) | 18 px | yes | **OpenCode–Qodo** (1.05: 0.75, 0.063) | Cursor–Devin 0.055 | Copilot–generic 1.00 |
+| far (the mid depth step) | 6 px | no (info) | Copilot–generic (0.74: 1.00, 0.045) | OpenCode–Qodo 0.035 | Copilot–generic 1.00 |
 
-- **The closest pair is Cursor–Devin.** Both are near-black with white details, so they separate by shape: a cube with a white top against a hexagon between white pods.
-- **Next closest:** Copilot–Codex, at 1.12 at the close-up and 1.14 at system distance. Both are blue with a dark screen, and they separate by colour (ΔE 0.067–0.068).
+- **The closest pair is OpenCode–Qodo**, two white drones. They separate by shape (IoU 0.74–0.75: a tall block against a hooded head with a snout) and by Qodo's purple hem band and boosters.
+- **Next closest:**
+  - Cursor–Devin (1.10). Both are near-black with white details, so they separate by shape: a cube with a white top against a hexagon between white pods.
+  - Copilot–Codex (1.12 / 1.14). Both are blue with a dark screen, and they separate by colour (ΔE 0.067–0.068).
+- **The other white pairs are well clear:** Kiro–Qodo 1.58 / 1.70, Qodo–generic 2.61 / 2.58.
 - **Copilot–generic** have the same silhouette (IoU 0.99–1.00): the flat goggles sit inside it. They separate by colour alone (ΔE 0.079–0.088; scores 1.46 at the close-up and 1.31 at system distance).
-- **Copilot–Qodo** was close before (1.10–1.14). With Qodo's sunglasses it's now 1.38 / 1.36. **Codex–generic**, the closest pair before that, is 2.53 / 2.44.
-- **At 6 px** Copilot and generic merge (0.74), and so nearly do Qodo and generic (1.03). That scale isn't gated, and it's where the name labels carry identity.
+- **Copilot–Qodo**, close in phase 2 (1.10–1.14), is now 4.10 / 3.86. **Codex–generic**, once the closest pair, is 2.53 / 2.44.
+- **At 6 px** Copilot and generic merge (0.74). That scale isn't gated, and it's where the name labels carry identity.
 
 ### A5: per-session variety
 
@@ -199,6 +207,7 @@ The silhouette, shell, screen, glow, accent and smoke never vary, so two Claude 
 | `snout` (`snoutL`, `snoutR`, `snoutY`, `snoutDrop`) | Qodo | a long tapered snout out of the lower face |
 | `antenna` = question hook | none (the old unknown agent) | a stalk curled into a "?" |
 | `accent` = top facet | Cursor | the top face in the accent colour |
+| `thrAccent` | Qodo | the nozzles in the accent colour, not the trim (a coloured thruster pack) |
 | `screenFlat` | Cursor, Devin, OpenCode | a planar screen with straight edges on a flat face |
 | `screenSplit`, `splitY` | OpenCode | the screen's lower part in its second tone |
 | `glyphSet` | Claude, Codex, Qodo | the working face's glyphs: an asterisk spinner, prompt characters, or diff marks read row by row |

@@ -160,14 +160,15 @@ const ENTRIES = [
   },
   {
     id: 'qodo', name: 'Qodo', covers: 'Qodo (the code-review bot and its fix commits)',
-    mascot: 'the anteater in a purple hoodie, with classic black sunglasses, on a skateboard',
-    signature: 'a purple hooded head with a long white snout and black sunglasses for a screen (two lenses under a straight brow bar), its slant eyes glowing through; reviews: reads diff marks row by row, head dipped',
+    mascot: 'the white anteater in a purple hoodie, with classic black sunglasses, on a skateboard',
+    signature: 'a white hooded head with a long white snout and black sunglasses for a screen (two lenses under a straight brow bar), its slant eyes glowing through; purple only in its boosters and a hem band; reviews: reads diff marks row by row, head dipped',
     params: {
       rim: 0, antenna: 0,
       headW: 0.112, headH: 0.098, headD: 0.112, headRound: 0.9, headCorner: 0.6, headTaper: 1.05, headFlat: 0.2,
       snout: 1, snoutL: 0.09, snoutR: 0.024, snoutY: -0.28, snoutDrop: 0.35,
       ears: 1, earR: 0.026, earT: 0.012, earY: 0.55,
       screenW: 0.78, screenH: 0.5, screenY: 0.32, screenRound: 4, bezel: 0.14, eyes: 8, eyeScale: 0.8, screenShades: 1,
+      thrAccent: 1, accent: 1, accentY: -0.65, accentW: 0.12, // purple boosters and a hoodie hem band
       thrusters: 0, thrR: 0.024, thrL: 0.022, thrSpread: 0.6, thrFlare: 1.1,
       smoke: 0, puffSize: 0.95, puffRate: 0.4, sparkles: 1, glyphSet: 2, workNod: 0.2,
       bobAmp: 0.028, drift: 0.2, bank: 0.32, lookYaw: 0.3, size: 1.5,
@@ -263,6 +264,7 @@ export const BRAND_COLOURS = [
   { brand: 'opencode', part: 'ring light', hex: '#eeeeee', chosen: ['#ffffff'], why: '' },
   { brand: 'opencode', part: 'core dark', hex: '#0c0c0c', chosen: ['#000000'], why: 'The nearest, #12173d, is the screen\'s usual navy. True black makes the split core read as two tones.' },
   { brand: 'opencode', part: 'core grey', hex: '#4b4b4b', chosen: ['#293268'], why: 'The nearest, #0f4a4c, is a teal slate next to the [OIII] event teal. The gear navy keeps the eyes the only teal.' },
-  { brand: 'qodo', part: 'hoodie purple', hex: '#7a68fa', chosen: ['#8c51cc'], why: '' },
+  { brand: 'qodo', part: 'anteater white', hex: '#ffffff', chosen: ['#ffffff'], why: '' },
+  { brand: 'qodo', part: 'hoodie purple (boosters, hem band)', hex: '#7a68fa', chosen: ['#8c51cc'], why: '' },
   { brand: 'qodo', part: 'sunglasses black', hex: '#000000', chosen: ['#000000', '#12173d'], why: '' },
 ];

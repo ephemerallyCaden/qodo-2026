@@ -92,6 +92,7 @@ export const PARAMS = [
   { key: 'thrR', group: 'thrusters', min: 0.015, max: 0.07, step: 0.0025, def: 0.035, words: 'Nozzle radius' },
   { key: 'thrL', group: 'thrusters', min: 0.015, max: 0.09, step: 0.0025, def: 0.045, words: 'Nozzle length' },
   { key: 'thrFlare', group: 'thrusters', min: 0.6, max: 1.5, step: 0.01, def: 1.1, words: 'Mouth radius / root radius (above 1 = a bell, below 1 = a cone)' },
+  { key: 'thrAccent', group: 'thrusters', type: 'select', options: ['off', 'on'], def: 0, words: 'Nozzles in the accent colour, not the trim (a coloured thruster pack)' },
   { key: 'thrSpread', group: 'thrusters', min: 0.2, max: 0.9, step: 0.01, def: 0.5, words: 'How far apart the nozzles sit (share of the head half-width)' },
   { key: 'smoke', group: 'thrusters', type: 'select', options: SMOKE, def: 0, words: 'Smoke style: chunky round puffs, wispy trails, or small sputter dots' },
   { key: 'puffSize', group: 'thrusters', min: 0.5, max: 1.8, step: 0.01, def: 1, words: 'Smoke particle size' },
