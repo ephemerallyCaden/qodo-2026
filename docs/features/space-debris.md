@@ -1,7 +1,7 @@
 # Feature: Space debris (art)
 
 ## Status
-In Progress (direction picked; refining)
+In Progress (A3 approved; porting)
 
 ## Trigger
 The human, 2026-11-09: "let's start working on what a debris-filled planet would look like, should be modular to other planets."
@@ -38,8 +38,11 @@ Rings already take the "thin band of chunky planet-coloured clumps" look (art di
 
 **Decided (human, 2026-11-10), after A2:** "Make it more grey and less blue, it's ok to not use the palette exactly. Then, let's leave the red as an outline effect instead of part of the device, but you can do things like flashing lights on the debris that are red." Keep the bright red #d83843. Two **debris-only exceptions** to the art direction, approved by the human: (1) debris metal may use neutral greys outside BLK 36; (2) debris gets a red silhouette outline, although outlines are otherwise banned (§3). Red blinking lights are loop-locked. Being built as A3.
 
+**A3 approved (human, 2026-11-10; f7fca8a + f411959):** neutral grey metal (#3d3d3d #616161 #8e8c8a #b4b2b0), a 1 px #d83843 outline (an inverted-hull shell, depth-sorted, debris only), and two 2 px #ff6866 nav lights per piece blinking 8 times per 24 s loop with seeded phases. Age: intact = bright outline + both lights; weathered = dim outline #872a38, one light dead, 30% scorch; broken = fragments, lights dead, dim outline on the biggest fragment, 50% scorch. Measured: 0% of grey pixels within 0.05 of any planet ramp; every health band reads with 24 items (−0.7 points at most); disc cover 1.9% mean / 8.0% max; class from silhouette 73.6%; loop and sweep seamless. Bright outline pixels sit 0.048 from the lava rim (the human kept that red).
+
 ## Tasks
-- Exploration lab `mockups/debris-lab/` on `feature/debris-lab` (feature agent): 4–5 distinct debris directions, each shown on several bands and sizes, from tidy to cluttered, for the human to pick. Then the picked direction becomes a viewer factory and an asset-library entry.
+- Exploration lab `mockups/debris-lab/` on `feature/debris-lab` (feature agent): directions A–E, A2, A3. Done.
+- Port A3 into the asset viewer as a planet modifier (in progress), then a Debris group in the asset library.
 
 ## Completion
 - Merged: —

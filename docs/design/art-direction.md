@@ -169,8 +169,13 @@ Gas giant and barren moon are **asset-library extras**, never shown in the produ
 - **Meaning:** rings are a modifier on any biome, not a biome. **What they encode is open** (human, 2026-11-09): they no longer mean unmerged branches, because stale work is debris. Until rings get a meaning they stay in the asset library and out of the product view.
 - **Parameters:** ring **width** (thread → wide belt) and ring **distance** (hugging the surface → far out) are per-planet values with viewer sliders. Particle density scales with ring area.
 
-### Debris (in design)
-Stale work (R13) drifts near the planets it touches. Debris is a modifier on any planet, whatever its band, and must never be mistaken for a ring, a moon or an artefact. The design is in progress: see `docs/features/space-debris.md`.
+### Debris
+Stale work (R13) drifts near the planets it touches, as tumbling satellite parts on crooked orbits: a modifier on any planet, whatever its band (human, 2026-11-10; `docs/features/space-debris.md`).
+- **Kind by shape:** stale PR = a comms satellite (bus, solar wings, dish); abandoned branch = a snapped mast boom; merged but not deleted = a spent stage; orphaned agent branch = a loose solar array.
+- **Size** follows the diff on a log scale (8.5–16 px at hero range). Beyond a cap of 12, the rest is a "+N" count drawn outside the pixel pass.
+- **Colour (two debris-only exceptions, approved by the human):** neutral grey metal #3d3d3d #616161 #8e8c8a #b4b2b0, off BLK 36; and a **1 px red outline** #d83843, although outlines are banned everywhere else (§3). Two 2 px red nav lights #ff6866 blink 8 times per loop with staggered phases.
+- **Age:** intact (bright outline, lights on) → weathered (dim outline #872a38, one light out, scorch) → broken (fragments, lights dead).
+- **Sweep:** when the branch or PR is gone, the piece flashes teal and breaks apart in 1.2 s, leaving no trace.
 
 ### Moons
 Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on inclined elliptical orbits, passing in front at the bottom and fully behind the disc, depth-sorted. Their speed changes come only from circular projection, with no easing. Moons mean test files (#18, up to 24 per planet with the rest counted); how many moons read at a glance isn't designed yet.
@@ -245,7 +250,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 | Code layer | Filter-style glyphs; planet artefacts adopted as a toggle |
 | Labels and UI | Bitmap pixel font at native resolution, outside the pixel pass |
 
-**Not designed yet:** per-agent drones (the base drone D-final is picked on `feature/drone-lab`), fog of war (see §9 candidates), captain's log beacons, co-change constellations, the suspicious-silence flag, space debris (in design), many moons at a glance, warp transitions, and the label/UI layout.
+**Not designed yet:** per-agent drones (the base drone D-final is picked on `feature/drone-lab`), fog of war (see §9 candidates), captain's log beacons, co-change constellations, the suspicious-silence flag, many moons at a glance, warp transitions, and the label/UI layout.
 
 **In progress:** lava and ice open areas, orange lava with yellow accents, and bluer lava rock (§6); the pixel-smooth default switch (§5).
 
