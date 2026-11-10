@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/core/canonical-json.js';
 import type { FileFog, FogView } from '../src/core/contract/fog.js';
 import {
-  applyChartAction, emptyChart, fileIdOf, fogBase, fogView, homes, parseChartAction, parseChartState, reasonsOf, type ChartState,
+  applyChartAction, emptyChart, fileIdOf, fogBase, fogView, homes, parseChartAction, parseChartState, reasonsOf, unrowedChanges, type ChartState,
 } from '../src/core/fog/index.js';
 import { pathHistory, type PathHistory } from '../src/core/renames.js';
 import type { Commit, FileId } from '../src/core/snapshot/types.js';
@@ -61,6 +61,19 @@ describe('fogView', () => {
     const agentSha = m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
     m.commit(YOURS, [{ op: 'rename', from: 'src/a.ts', to: 'lib/e.ts', edit: true }]);
     expect(fileAt(fogOf(m, emptyChart()), 'lib/e.ts')).toMatchObject({ state: 'fogged', since: agentSha });
+  });
+
+  it('a change the snapshot has no row for (binary then, or a merge listed once per parent) still counts', () => {
+    const m = new Model();
+    m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }]);
+    const agentSha = m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
+    m.commit(YOURS, [{ op: 'rename', from: 'src/a.ts', to: 'src/b.ts', edit: true }]);
+    const snap = m.snapshot();
+    snap.commits = snap.commits.map((c) => (c.sha === agentSha ? { ...c, files: [] } : c));
+    const history = { ...m.history(), unrowed: unrowedChanges(snap, m.lineage(), 0) };
+    expect(history.unrowed).toEqual([{ seq: 1, path: 'src/a.ts' }]);
+    expect(fileAt(fogView(snap, emptyChart(), history), 'src/b.ts')).toEqual({ fileId: fileIdOf('src/b.ts'), state: 'fogged',
+      reasons: ['agent', 'self-committed-agent-written'], since: agentSha });
   });
 
   it('a pure rename or a mode change by anyone is not a change to the content', () => {

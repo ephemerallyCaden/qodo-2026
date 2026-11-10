@@ -17,6 +17,12 @@ export interface Rename { seq: number; from: string; to: string }
  */
 export interface Birth { seq: number; path: string; unsure: boolean }
 
+/**
+ * A first-parent change to `path` in commit `seq` that the snapshot has no row for: binary at the
+ * time (numstat `-`), or rows git listed for another parent of a merge. Fog counts it as a change.
+ */
+export interface Unrowed { seq: number; path: string }
+
 export interface PathHistory {
   /** First and last first-parent seq covered, inclusive. */
   from: number;
@@ -24,6 +30,8 @@ export interface PathHistory {
   /** Ordered by seq, then as git lists them. */
   renames: Rename[];
   births: Birth[];
+  /** Fog only (unrowedChanges in src/core/fog); absent means none were looked for. */
+  unrowed?: Unrowed[];
 }
 
 /**

@@ -7,7 +7,9 @@ import { canonicalJson } from '../core/canonical-json.js';
 import type { ChartResult } from '../core/contract/api.js';
 import type { ChartAction, FogView } from '../core/contract/fog.js';
 import { CommetError, EXIT } from '../core/errors.js';
-import { applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, type ChartState, type FogBase } from '../core/fog/index.js';
+import {
+  applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges, type ChartState, type FogBase,
+} from '../core/fog/index.js';
 import { pathHistory, type PathHistory } from '../core/renames.js';
 import type { SnapshotV02 } from '../core/snapshot/types.js';
 import { exclusionOf } from '../scan/exclusions.js';
@@ -27,11 +29,19 @@ export interface FogSource { dir: string; base: FogBase }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
+const all = (v: unknown, ok: (x: Record<string, unknown>) => boolean) => Array.isArray(v) && v.every((x) => isObject(x) && ok(x));
+const str = (v: unknown) => typeof v === 'string';
+
+/** The fields fog reads, checked so a damaged snapshot is a state error, never an internal one. */
 function isSnapshot(v: unknown): v is SnapshotV02 {
   if (!isObject(v) || v['schemaVersion'] !== '0.2' || !isObject(v['repo'])) return false;
   const repo = v['repo'];
-  return typeof repo['head'] === 'string' && Array.isArray(repo['selfPersonIds']) && Array.isArray(v['files'])
-    && Array.isArray(v['dirs']) && Array.isArray(v['commits']);
+  return str(repo['head']) && Array.isArray(repo['selfPersonIds']) && repo['selfPersonIds'].every(str)
+    && all(v['files'], (f) => str(f['id']) && str(f['path']) && typeof f['isTest'] === 'boolean' && (f['testOf'] === null || str(f['testOf'])))
+    && all(v['dirs'], (d) => str(d['id']) && str(d['path']) && Number.isInteger(d['depth']))
+    && all(v['commits'], (c) => Number.isInteger(c['seq']) && str(c['sha']) && str(c['author']) && isObject(c['attribution'])
+      && str(c['attribution']['class']) && typeof c['attribution']['selfCommittedAgentWritten'] === 'boolean'
+      && Array.isArray(c['files']) && c['files'].every((r) => Array.isArray(r) && str(r[0]) && Number.isInteger(r[1]) && Number.isInteger(r[2])));
 }
 
 /** The snapshot `commet scan` last wrote. */
@@ -70,7 +80,8 @@ async function readHistory(repoDir: string, s: SnapshotV02): Promise<PathHistory
   try {
     const log = await lineageLog(gitRunner(repoDir), first.seq > 0 ? `${first.sha}^..${s.repo.head}` : s.repo.head);
     if (log.at(-1)?.sha !== s.repo.head || !s.commits.every((c) => log[c.seq - first.seq]?.sha === c.sha)) return null;
-    return pathHistory(log, first.seq, (p) => exclusionOf(p) !== null);
+    const excluded = (p: string) => exclusionOf(p) !== null;
+    return { ...pathHistory(log, first.seq, excluded), unrowed: unrowedChanges(s, log, first.seq, excluded) };
   } catch {
     // Not dropped: null makes every changed file lineage-unknown, and the CLI says so.
     return null;
@@ -124,9 +135,12 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
   // Stat before read: the cached content is never older than its key.
   const entry = key === null ? null : { key, base };
   loaded = entry;
-  const ready = await base;
-  // A base built without history isn't kept, so the next request tries git again.
-  if (ready.degraded && snapshot.commits.length > 0 && loaded === entry) loaded = null;
+  // Not kept when it fails or was built without history, so the next request tries again.
+  const ready = await base.catch((e: unknown) => {
+    if (loaded === entry) loaded = null;
+    throw e;
+  });
+  if (loaded === entry && ready.degraded && snapshot.commits.length > 0) loaded = null;
   return { dir, base: ready };
 }
 

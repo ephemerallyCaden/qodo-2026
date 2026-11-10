@@ -147,6 +147,21 @@ describe('commet chart on a real repo', () => {
   });
 });
 
+describe('changes the snapshot has no row for', () => {
+  it('a binary-era change to a file that is text at HEAD still fogs it (Qodo local r1)', async () => {
+    const r = repo();
+    r.commit(TEAMMATE, () => r.write('src/data.ts', 'binary\0blob\0from a teammate\n'));
+    const convert = r.commit(SELF, () => r.write('src/data.ts', lines('data')));
+    r.commit(SELF, () => r.write('src/data.ts', lines('data') + lines('more')));
+    expect((await r.run('scan')).code).toBe(0);
+    const snap = JSON.parse(readFileSync(join(r.dir, '.git/commet/snapshot.json'), 'utf8')) as { commits: { sha: string; files: unknown[] }[] };
+    // The binary rows are excluded from the snapshot, so only the lineage log sees those changes.
+    expect(snap.commits.find((c) => c.sha === convert)!.files).toEqual([]);
+    const fog = await readFog(r.dir);
+    expect(fog.files.find((f) => f.fileId === fileIdOf('src/data.ts'))).toMatchObject({ state: 'fogged', reasons: ['unknown'] });
+  });
+});
+
 describe('chart state I/O refusals (exit 5)', () => {
   const scanned = async () => {
     const r = repo();
@@ -182,6 +197,21 @@ describe('chart state I/O refusals (exit 5)', () => {
     expect(res.err).toContain('chart.json is unreadable (bad chart entry)');
     expect(res.err).not.toContain('src/a.ts');
     expect(readFileSync(r.chartJson(), 'utf8')).toContain('src/a.ts');
+  });
+
+  it('a damaged snapshot is refused as a state error, every time', async () => {
+    const r = await scanned();
+    const file = join(r.dir, '.git/commet/snapshot.json');
+    const snap = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    for (const damaged of [{ ...snap, commits: [null] }, { ...snap, files: [{ id: 1 }] }, { ...snap, dirs: 'x' }]) {
+      writeFileSync(file, JSON.stringify(damaged));
+      for (let k = 0; k < 2; k++) {
+        expect(await r.run('chart', 'status')).toMatchObject({ code: 5,
+          err: 'commet: state error: .git/commet/snapshot.json is damaged or from another commet version; run `commet scan`\n' });
+      }
+    }
+    expect((await r.run('scan')).code).toBe(0);
+    expect((await r.run('chart', 'status')).code).toBe(0);
   });
 
   it('a held lock makes a write wait, then refuse', async () => {

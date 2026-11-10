@@ -6,9 +6,9 @@
 import { byCodepoint } from '../canonical-json.js';
 import type { ChartAction, FileFog, FogCounts, FogReason, FogView } from '../contract/fog.js';
 import { sha256Hex } from '../hash.js';
-import type { PathHistory } from '../renames.js';
+import type { PathHistory, Unrowed } from '../renames.js';
 import type { Commit, CommitFile, DirId, FileEntry, FileId, PersonId, Sha, SnapshotV02 } from '../snapshot/types.js';
-import { isSurfacePath } from '../structure.js';
+import { isSurfacePath, type LineageCommit } from '../structure.js';
 import { byEntry, type ChartEntry, type ChartState } from './chart-state.js';
 
 export { emptyChart, parseChartAction, parseChartState, type ChartEntry, type ChartState } from './chart-state.js';
@@ -52,6 +52,22 @@ export function homes(s: SnapshotV02): Map<FileId, DirId | null> {
     return dir ? planetAt(dir.path) : null;
   };
   return new Map(s.files.map((f) => [f.id, homeOf(f)]));
+}
+
+/**
+ * Changes in `commits` (the lineage log behind a PathHistory, first entry at `firstSeq`) that the
+ * snapshot's commit at that seq has no row for, on paths the scan doesn't exclude.
+ */
+export function unrowedChanges(s: SnapshotV02, commits: LineageCommit[], firstSeq: number, excluded: (path: string) => boolean = () => false): Unrowed[] {
+  const bySeq = new Map(s.commits.map((c) => [c.seq, new Set(c.files.map((r) => r[0]))]));
+  const out: Unrowed[] = [];
+  commits.forEach((c, i) => {
+    const rows = bySeq.get(firstSeq + i);
+    // A commit missing from the snapshot is a gap, which fogBase handles.
+    if (!rows) return;
+    for (const ch of c.changes) if (ch.status !== 'D' && !excluded(ch.path) && !rows.has(ch.path)) out.push({ seq: firstSeq + i, path: ch.path });
+  });
+  return out;
 }
 
 /** One commit that touched a file under one of its names. `content`: false for a pure rename or mode change (0 lines either way). */
@@ -107,6 +123,7 @@ export function fogBase(snapshot: SnapshotV02, history: PathHistory | null): Fog
   const usable = history !== null && bySeq.get(headSeq)?.sha === snapshot.repo.head && history.from <= minSeq && history.to === headSeq;
   const renamesAt = bySeqOf(usable ? history.renames : []);
   const birthsAt = bySeqOf(usable ? history.births : []);
+  const unrowedAt = bySeqOf(usable ? history.unrowed ?? [] : []);
 
   const shaAt = new Map<number, Sha>();
   const touches: Touch[][] = files.map(() => []);
@@ -137,6 +154,11 @@ export function fogBase(snapshot: SnapshotV02, history: PathHistory | null): Fog
         touches[i]!.push({ seq, reasons, content: isContent(row) });
         // Without history any touch may be a rename hiding older changes.
         if (!usable) unknownAt[i]!.push(seq);
+      }
+      // What a change without a row did isn't visible, so it counts as a content change.
+      for (const u of unrowedAt.get(seq) ?? []) {
+        const i = byPath.get(u.path);
+        if (i !== undefined) touches[i]!.push({ seq, reasons, content: true });
       }
     }
     // Undo the commit: a birth ends a file's history, a rename moves it back to its old name.
