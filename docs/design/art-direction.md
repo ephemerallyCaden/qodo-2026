@@ -130,9 +130,9 @@ Every visual property of a planet either carries data or is seeded variety that 
 Gas giant and barren moon are **asset-library extras**, never shown in the product view.
 
 **Legibility rules.** Health must inform, not decorate:
-1. **Ordered at a glance.** The bands read as one scale, from molten through smouldering and dry to living, so you can rank two planets without a legend. Worse is hotter and darker; healthy is cool blues and greens under clouds.
+1. **Ordered at a glance.** The bands read as one scale, from molten through smouldering and dry to living, so you can rank two planets without a legend. Each step is carried by at least one cue, and no cue runs backwards: lava → toxic by glow, toxic → ash by lightness (both are warm; ash is the lighter ground), ash → healthy by temperature (cool blues and greens under clouds). "Darker" means the ground: lava's glow stays bright with distance by design (§5).
 2. **Variety never crosses a band.** Seeded variation (continent shapes, cloud masses, crater layout, the lush/ocean/ice choice) stays recognisably inside its band. A healthy look must never read as a worse band; the known risk is ice reading as "frozen, stale".
-3. **Survives distance and size.** The band stays identifiable on the smallest and farthest planets (about 10 px discs at full depth fade), with clouds, debris and artefacts on top.
+3. **Survives distance and size.** The band stays identifiable on the smallest and farthest planets (about 10 px discs at full depth fade), with clouds, debris and artefacts on top. *Measured 2026-11-10 (`mockups/health-looks/`): this fails as shipped. At the 0.88 fade, toxic, ash and the healthy looks collapse together and only lava reads. A fix is awaiting the human's decision.*
 4. **Not by hue alone.** Bands also differ in value structure and texture (glowing fissures, slag seas, dunes and craters, clouds and water), so they stay distinct under common colour-vision deficiencies.
 5. **Explained on demand.** Selecting a planet shows its band in words and its inputs, e.g. "toxic: 14 debt markers per 1k LOC, Qodo findings unknown". Unknown inputs are labelled unknown (AGENTS.md Rule 1), never shown as healthy.
 6. **No look without a meaning.** A biome, modifier or effect enters the product view only with a row in the table above.
