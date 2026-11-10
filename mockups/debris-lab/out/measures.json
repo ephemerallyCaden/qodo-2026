@@ -5,6 +5,11 @@
    "maxStep": 2401,
    "oneLoopLater": 0
   },
+  "A2": {
+   "wrap": 2184,
+   "maxStep": 2377,
+   "oneLoopLater": 0
+  },
   "B": {
    "wrap": 1922,
    "maxStep": 2066,
@@ -31,6 +36,14 @@
    "piece": "sw-2",
    "start": 1,
    "tealDuring": 96,
+   "tealAfter": 0,
+   "diffVsNextScan": 0,
+   "othersStay": true
+  },
+  "A2": {
+   "piece": "sw-2",
+   "start": 1,
+   "tealDuring": 80,
    "tealAfter": 0,
    "diffVsNextScan": 0,
    "othersStay": true
@@ -77,7 +90,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
    },
    "toxic": {
     "debrisPx": 574,
@@ -86,7 +113,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
    },
    "desert": {
     "debrisPx": 574,
@@ -95,7 +136,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
    },
    "lush": {
     "debrisPx": 574,
@@ -104,7 +159,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
    },
    "ocean": {
     "debrisPx": 574,
@@ -113,7 +182,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
    },
    "ice": {
     "debrisPx": 574,
@@ -122,7 +205,161 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
+   }
+  },
+  "A2": {
+   "lava": {
+    "debrisPx": 465,
+    "nearOwn03": 0,
+    "nearOwn05": 0.13978494623655913,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.13978494623655913,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04516129032258064,
+     "ocean": 0.16129032258064516,
+     "land": 0,
+     "ice": 0.5698924731182796,
+     "cloud": 0.02795698924731183,
+     "sand": 0,
+     "lava": 0.13978494623655913,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04516129032258064
+   },
+   "toxic": {
+    "debrisPx": 465,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.13978494623655913,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04516129032258064,
+     "ocean": 0.16129032258064516,
+     "land": 0,
+     "ice": 0.5698924731182796,
+     "cloud": 0.02795698924731183,
+     "sand": 0,
+     "lava": 0.13978494623655913,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04516129032258064
+   },
+   "desert": {
+    "debrisPx": 465,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.13978494623655913,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04516129032258064,
+     "ocean": 0.16129032258064516,
+     "land": 0,
+     "ice": 0.5698924731182796,
+     "cloud": 0.02795698924731183,
+     "sand": 0,
+     "lava": 0.13978494623655913,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04516129032258064
+   },
+   "lush": {
+    "debrisPx": 465,
+    "nearOwn03": 0.04516129032258064,
+    "nearOwn05": 0.07311827956989247,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.13978494623655913,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04516129032258064,
+     "ocean": 0.16129032258064516,
+     "land": 0,
+     "ice": 0.5698924731182796,
+     "cloud": 0.02795698924731183,
+     "sand": 0,
+     "lava": 0.13978494623655913,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04516129032258064
+   },
+   "ocean": {
+    "debrisPx": 465,
+    "nearOwn03": 0.04516129032258064,
+    "nearOwn05": 0.23440860215053763,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.13978494623655913,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04516129032258064,
+     "ocean": 0.16129032258064516,
+     "land": 0,
+     "ice": 0.5698924731182796,
+     "cloud": 0.02795698924731183,
+     "sand": 0,
+     "lava": 0.13978494623655913,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04516129032258064
+   },
+   "ice": {
+    "debrisPx": 465,
+    "nearOwn03": 0,
+    "nearOwn05": 0.16129032258064516,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0.13978494623655913,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04516129032258064,
+     "ocean": 0.16129032258064516,
+     "land": 0,
+     "ice": 0.5698924731182796,
+     "cloud": 0.02795698924731183,
+     "sand": 0,
+     "lava": 0.13978494623655913,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04516129032258064
    }
   },
   "B": {
@@ -133,7 +370,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04439746300211417,
+     "ocean": 0.042283298097251586,
+     "land": 0,
+     "ice": 0.3699788583509514,
+     "cloud": 0.040169133192389,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04439746300211417
    },
    "toxic": {
     "debrisPx": 469,
@@ -142,7 +393,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04477611940298507,
+     "ocean": 0.042643923240938165,
+     "land": 0,
+     "ice": 0.373134328358209,
+     "cloud": 0.04051172707889126,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04477611940298507
    },
    "desert": {
     "debrisPx": 473,
@@ -151,7 +416,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04439746300211417,
+     "ocean": 0.042283298097251586,
+     "land": 0,
+     "ice": 0.3699788583509514,
+     "cloud": 0.040169133192389,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04439746300211417
    },
    "lush": {
     "debrisPx": 473,
@@ -160,7 +439,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04439746300211417,
+     "ocean": 0.042283298097251586,
+     "land": 0,
+     "ice": 0.3699788583509514,
+     "cloud": 0.040169133192389,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04439746300211417
    },
    "ocean": {
     "debrisPx": 459,
@@ -169,7 +462,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.0457516339869281,
+     "ocean": 0.04357298474945534,
+     "land": 0,
+     "ice": 0.3681917211328976,
+     "cloud": 0.04139433551198257,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.0457516339869281
    },
    "ice": {
     "debrisPx": 472,
@@ -178,7 +485,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.04449152542372881,
+     "ocean": 0.0423728813559322,
+     "land": 0,
+     "ice": 0.3707627118644068,
+     "cloud": 0.04025423728813559,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.04449152542372881
    }
   },
   "C": {
@@ -189,7 +510,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.183206106870229,
+     "ocean": 0.026717557251908396,
+     "land": 0,
+     "ice": 0.1450381679389313,
+     "cloud": 0.026717557251908396,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.183206106870229
    },
    "toxic": {
     "debrisPx": 262,
@@ -198,7 +533,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.183206106870229,
+     "ocean": 0.026717557251908396,
+     "land": 0,
+     "ice": 0.1450381679389313,
+     "cloud": 0.026717557251908396,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.183206106870229
    },
    "desert": {
     "debrisPx": 262,
@@ -207,7 +556,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.183206106870229,
+     "ocean": 0.026717557251908396,
+     "land": 0,
+     "ice": 0.1450381679389313,
+     "cloud": 0.026717557251908396,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.183206106870229
    },
    "lush": {
     "debrisPx": 262,
@@ -216,7 +579,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.183206106870229,
+     "ocean": 0.026717557251908396,
+     "land": 0,
+     "ice": 0.1450381679389313,
+     "cloud": 0.026717557251908396,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.183206106870229
    },
    "ocean": {
     "debrisPx": 262,
@@ -225,7 +602,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.183206106870229,
+     "ocean": 0.026717557251908396,
+     "land": 0,
+     "ice": 0.1450381679389313,
+     "cloud": 0.026717557251908396,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.183206106870229
    },
    "ice": {
     "debrisPx": 262,
@@ -234,7 +625,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.183206106870229,
+     "ocean": 0.026717557251908396,
+     "land": 0,
+     "ice": 0.1450381679389313,
+     "cloud": 0.026717557251908396,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.183206106870229
    }
   },
   "D": {
@@ -245,7 +650,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.10537190082644628,
+     "ocean": 0.0640495867768595,
+     "land": 0,
+     "ice": 0.23760330578512398,
+     "cloud": 0.03925619834710744,
+     "sand": 0.06818181818181818,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.10537190082644628
    },
    "toxic": {
     "debrisPx": 484,
@@ -254,7 +673,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.10537190082644628,
+     "ocean": 0.0640495867768595,
+     "land": 0,
+     "ice": 0.23760330578512398,
+     "cloud": 0.03925619834710744,
+     "sand": 0.06818181818181818,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.10537190082644628
    },
    "desert": {
     "debrisPx": 484,
@@ -263,7 +696,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.10537190082644628,
+     "ocean": 0.0640495867768595,
+     "land": 0,
+     "ice": 0.23760330578512398,
+     "cloud": 0.03925619834710744,
+     "sand": 0.06818181818181818,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.10537190082644628
    },
    "lush": {
     "debrisPx": 484,
@@ -272,7 +719,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.10537190082644628,
+     "ocean": 0.0640495867768595,
+     "land": 0,
+     "ice": 0.23760330578512398,
+     "cloud": 0.03925619834710744,
+     "sand": 0.06818181818181818,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.10537190082644628
    },
    "ocean": {
     "debrisPx": 484,
@@ -281,7 +742,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.10537190082644628,
+     "ocean": 0.0640495867768595,
+     "land": 0,
+     "ice": 0.23760330578512398,
+     "cloud": 0.03925619834710744,
+     "sand": 0.06818181818181818,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.10537190082644628
    },
    "ice": {
     "debrisPx": 484,
@@ -290,7 +765,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.10537190082644628,
+     "ocean": 0.0640495867768595,
+     "land": 0,
+     "ice": 0.23760330578512398,
+     "cloud": 0.03925619834710744,
+     "sand": 0.06818181818181818,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.10537190082644628
    }
   },
   "E": {
@@ -301,7 +790,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.18333333333333332,
+     "ocean": 0.024074074074074074,
+     "land": 0,
+     "ice": 0.22037037037037038,
+     "cloud": 0.018518518518518517,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.18333333333333332
    },
    "toxic": {
     "debrisPx": 540,
@@ -310,7 +813,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.18333333333333332,
+     "ocean": 0.024074074074074074,
+     "land": 0,
+     "ice": 0.22037037037037038,
+     "cloud": 0.018518518518518517,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.18333333333333332
    },
    "desert": {
     "debrisPx": 540,
@@ -319,7 +836,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.18333333333333332,
+     "ocean": 0.024074074074074074,
+     "land": 0,
+     "ice": 0.22037037037037038,
+     "cloud": 0.018518518518518517,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.18333333333333332
    },
    "lush": {
     "debrisPx": 540,
@@ -328,7 +859,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.18333333333333332,
+     "ocean": 0.024074074074074074,
+     "land": 0,
+     "ice": 0.22037037037037038,
+     "cloud": 0.018518518518518517,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.18333333333333332
    },
    "ocean": {
     "debrisPx": 540,
@@ -337,7 +882,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.18333333333333332,
+     "ocean": 0.024074074074074074,
+     "land": 0,
+     "ice": 0.22037037037037038,
+     "cloud": 0.018518518518518517,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.18333333333333332
    },
    "ice": {
     "debrisPx": 540,
@@ -346,7 +905,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.18333333333333332,
+     "ocean": 0.024074074074074074,
+     "land": 0,
+     "ice": 0.22037037037037038,
+     "cloud": 0.018518518518518517,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.18333333333333332
    }
   }
  },
@@ -359,7 +932,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
    },
    "toxic": {
     "debrisPx": 574,
@@ -368,7 +955,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
    },
    "desert": {
     "debrisPx": 574,
@@ -377,7 +978,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
    },
    "lush": {
     "debrisPx": 574,
@@ -386,7 +1001,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
    },
    "ocean": {
     "debrisPx": 574,
@@ -395,7 +1024,21 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
    },
    "ice": {
     "debrisPx": 574,
@@ -404,7 +1047,161 @@
     "nearRing05": 0,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.2735191637630662,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.14111498257839722,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.2735191637630662
+   }
+  },
+  "gear-light": {
+   "lava": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.013937282229965157,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0.3797909407665505,
+     "cloud": 0.03484320557491289,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.013937282229965157
+   },
+   "toxic": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.013937282229965157,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0.3797909407665505,
+     "cloud": 0.03484320557491289,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.013937282229965157
+   },
+   "desert": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.013937282229965157,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0.3797909407665505,
+     "cloud": 0.03484320557491289,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.013937282229965157
+   },
+   "lush": {
+    "debrisPx": 574,
+    "nearOwn03": 0.013937282229965157,
+    "nearOwn05": 0.04878048780487805,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.013937282229965157,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0.3797909407665505,
+     "cloud": 0.03484320557491289,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.013937282229965157
+   },
+   "ocean": {
+    "debrisPx": 574,
+    "nearOwn03": 0.013937282229965157,
+    "nearOwn05": 0.04878048780487805,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.013937282229965157,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0.3797909407665505,
+     "cloud": 0.03484320557491289,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.013937282229965157
+   },
+   "ice": {
+    "debrisPx": 574,
+    "nearOwn03": 0,
+    "nearOwn05": 0,
+    "nearRing05": 0,
+    "nearMoon05": 0,
+    "nearWorse05": 0,
+    "droneTells": 0,
+    "family05": {
+     "ring": 0,
+     "moons": 0,
+     "cap": 0.013937282229965157,
+     "ocean": 0,
+     "land": 0,
+     "ice": 0.3797909407665505,
+     "cloud": 0.03484320557491289,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0.013937282229965157
    }
   },
   "violet": {
@@ -415,7 +1212,21 @@
     "nearRing05": 0.03484320557491289,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.03484320557491289,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.03484320557491289,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    },
    "toxic": {
     "debrisPx": 574,
@@ -424,7 +1235,21 @@
     "nearRing05": 0.03484320557491289,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.03484320557491289,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.03484320557491289,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    },
    "desert": {
     "debrisPx": 574,
@@ -433,7 +1258,21 @@
     "nearRing05": 0.03484320557491289,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.03484320557491289,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.03484320557491289,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    },
    "lush": {
     "debrisPx": 574,
@@ -442,7 +1281,21 @@
     "nearRing05": 0.03484320557491289,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.03484320557491289,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.03484320557491289,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    },
    "ocean": {
     "debrisPx": 574,
@@ -451,7 +1304,21 @@
     "nearRing05": 0.03484320557491289,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.03484320557491289,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.03484320557491289,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    },
    "ice": {
     "debrisPx": 574,
@@ -460,7 +1327,21 @@
     "nearRing05": 0.03484320557491289,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.03484320557491289,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.03484320557491289,
+     "land": 0,
+     "ice": 0.03484320557491289,
+     "cloud": 0.013937282229965157,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    }
   },
   "violet-dark": {
@@ -471,7 +1352,21 @@
     "nearRing05": 0.04878048780487805,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.04878048780487805,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.04878048780487805,
+     "land": 0,
+     "ice": 0.04878048780487805,
+     "cloud": 0.2735191637630662,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    },
    "toxic": {
     "debrisPx": 574,
@@ -480,7 +1375,21 @@
     "nearRing05": 0.04878048780487805,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.04878048780487805,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.04878048780487805,
+     "land": 0,
+     "ice": 0.04878048780487805,
+     "cloud": 0.2735191637630662,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    },
    "desert": {
     "debrisPx": 574,
@@ -489,7 +1398,21 @@
     "nearRing05": 0.04878048780487805,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.04878048780487805,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.04878048780487805,
+     "land": 0,
+     "ice": 0.04878048780487805,
+     "cloud": 0.2735191637630662,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    },
    "lush": {
     "debrisPx": 574,
@@ -498,7 +1421,21 @@
     "nearRing05": 0.04878048780487805,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.04878048780487805,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.04878048780487805,
+     "land": 0,
+     "ice": 0.04878048780487805,
+     "cloud": 0.2735191637630662,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    },
    "ocean": {
     "debrisPx": 574,
@@ -507,7 +1444,21 @@
     "nearRing05": 0.04878048780487805,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.04878048780487805,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.04878048780487805,
+     "land": 0,
+     "ice": 0.04878048780487805,
+     "cloud": 0.2735191637630662,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    },
    "ice": {
     "debrisPx": 574,
@@ -516,7 +1467,21 @@
     "nearRing05": 0.04878048780487805,
     "nearMoon05": 0,
     "nearWorse05": 0,
-    "droneTells": 0
+    "droneTells": 0,
+    "family05": {
+     "ring": 0.04878048780487805,
+     "moons": 0,
+     "cap": 0,
+     "ocean": 0.04878048780487805,
+     "land": 0,
+     "ice": 0.04878048780487805,
+     "cloud": 0.2735191637630662,
+     "sand": 0,
+     "lava": 0,
+     "toxic": 0,
+     "drone": 0
+    },
+    "cap03": 0
    }
   }
  },
@@ -563,6 +1528,50 @@
     "trueShareOff": 0.5653846153846154,
     "trueShareOn": 0.570054945054945,
     "cover": 0.007692307692307693
+   }
+  },
+  "A2": {
+   "lava": {
+    "winOff": "lava",
+    "winOn": "lava",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9961538461538462,
+    "cover": 0.0038461538461538464
+   },
+   "toxic": {
+    "winOff": "toxic",
+    "winOn": "toxic",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9991758241758242,
+    "cover": 0.0038461538461538464
+   },
+   "desert": {
+    "winOff": "desert",
+    "winOn": "desert",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9961538461538462,
+    "cover": 0.0038461538461538464
+   },
+   "lush": {
+    "winOff": "lush",
+    "winOn": "lush",
+    "trueShareOff": 1,
+    "trueShareOn": 0.9961538461538462,
+    "cover": 0.0038461538461538464
+   },
+   "ocean": {
+    "winOff": "ocean",
+    "winOn": "ocean",
+    "trueShareOff": 0.546978021978022,
+    "trueShareOn": 0.546978021978022,
+    "cover": 0.0038461538461538464
+   },
+   "ice": {
+    "winOff": "ice",
+    "winOn": "ice",
+    "trueShareOff": 0.5653846153846154,
+    "trueShareOn": 0.5662087912087912,
+    "cover": 0.0038461538461538464
    }
   },
   "B": {
@@ -747,6 +1756,10 @@
    "mean": 0.013358516483516483,
    "max": 0.05549450549450549
   },
+  "A2": {
+   "mean": 0.011126373626373625,
+   "max": 0.05
+  },
   "B": {
    "mean": 0,
    "max": 0
@@ -777,6 +1790,19 @@
    "retrograde": 0.25,
    "arrangement": "orbits",
    "tumbleAreaCV": 0.315368206277291
+  },
+  "A2": {
+   "ringComps": 17,
+   "ringMedianArea": 22,
+   "ringMultiTone": 0.6470588235294118,
+   "debrisComps": 12,
+   "debrisMedianArea": 36,
+   "debrisMultiTone": 1,
+   "planeAngleMedian": 47.55929360352427,
+   "planeAngleMin": 16.44659663443805,
+   "retrograde": 0.25,
+   "arrangement": "orbits",
+   "tumbleAreaCV": 0.4175161408750043
   },
   "B": {
    "ringComps": 17,
@@ -837,6 +1863,11 @@
    "moonTones": 4,
    "debrisRound": 0.6012761549054125
   },
+  "A2": {
+   "moonRound": 0.8091974444718721,
+   "moonTones": 4,
+   "debrisRound": 0.3349329297256143
+  },
   "B": {
    "moonRound": 0.8091974444718721,
    "moonTones": 4,
@@ -863,7 +1894,8 @@
  "classes": {
   "hardware": {
    "samples": 144,
-   "silhouetteAccuracy": 0.8333333333333334,
+   "silhouetteAccuracy": 0.8125,
+   "withColourAccuracy": 0.8125,
    "aspect": {
     "pr": 2.663982256884532,
     "branch": 4.507127850080288,
@@ -871,9 +1903,21 @@
     "agent": 1.2157811699452252
    }
   },
+  "satellite": {
+   "samples": 144,
+   "silhouetteAccuracy": 0.8055555555555556,
+   "withColourAccuracy": 0.7708333333333334,
+   "aspect": {
+    "pr": 2.7960285401788676,
+    "branch": 4.616158018390671,
+    "merged": 1.8647320197515789,
+    "agent": 2.0636467520229735
+   }
+  },
   "blocks": {
    "samples": 144,
-   "silhouetteAccuracy": 0.6111111111111112,
+   "silhouetteAccuracy": 0.7013888888888888,
+   "withColourAccuracy": 0.6805555555555556,
    "aspect": {
     "pr": 1.5908172836979406,
     "branch": 3.099570203988994,
@@ -883,7 +1927,8 @@
   },
   "canister": {
    "samples": 144,
-   "silhouetteAccuracy": 0.18055555555555555,
+   "silhouetteAccuracy": 0.2847222222222222,
+   "withColourAccuracy": 0.9722222222222222,
    "aspect": {
     "pr": 1.9880263710390953,
     "branch": 1.993738648804925,
@@ -897,33 +1942,77 @@
    {
     "step": "intact",
     "rust": 0,
+    "paint": 0,
+    "dull": 0,
+    "navy": 0.0125,
     "components": 1
    },
    {
     "step": "rusted",
     "rust": 0.49053814161087445,
+    "paint": 0.3870029417731792,
+    "dull": 0.10353519983769527,
+    "navy": 0.0125,
     "components": 1
    },
    {
     "step": "broken",
     "rust": 0.8309348349993647,
+    "paint": 0.5521039564210513,
+    "dull": 0.2788308785783133,
+    "navy": 0.0024271844660194173,
     "components": 2
+   }
+  ],
+  "satellite": [
+   {
+    "step": "intact",
+    "rust": 0.19456663408276312,
+    "paint": 0.3977313457152166,
+    "dull": 0,
+    "navy": 0,
+    "components": 1
+   },
+   {
+    "step": "weathered",
+    "rust": 0.2954239980449658,
+    "paint": 0.2057816063864451,
+    "dull": 0.1919497393287716,
+    "navy": 0.16676034538937762,
+    "components": 1
+   },
+   {
+    "step": "broken",
+    "rust": 0.34725309738505694,
+    "paint": 0.10895652120497322,
+    "dull": 0.3026044045745995,
+    "navy": 0.2488632028882879,
+    "components": 3
    }
   ],
   "blocks": [
    {
     "step": "intact",
     "rust": 0,
+    "paint": 0,
+    "dull": 0,
+    "navy": 0,
     "components": 1
    },
    {
     "step": "rusted",
     "rust": 0.5335800036656891,
+    "paint": 0.3938874633431085,
+    "dull": 0.13969254032258066,
+    "navy": 0,
     "components": 1
    },
    {
     "step": "broken",
     "rust": 0.774620686026936,
+    "paint": 0.3946769781144781,
+    "dull": 0.37994370791245796,
+    "navy": 0.01171875,
     "components": 2
    }
   ],
@@ -931,16 +2020,25 @@
    {
     "step": "intact",
     "rust": 0,
+    "paint": 0,
+    "dull": 0,
+    "navy": 0.07575757575757576,
     "components": 1
    },
    {
     "step": "rusted",
     "rust": 0.4204545454545454,
+    "paint": 0.18181818181818182,
+    "dull": 0.23863636363636365,
+    "navy": 0.03787878787878788,
     "components": 1
    },
    {
     "step": "broken",
     "rust": 0.6402131285940992,
+    "paint": 0.4029640912798737,
+    "dull": 0.23724903731422553,
+    "navy": 0.0030120481927710845,
     "components": 2
    }
   ]
@@ -961,6 +2059,24 @@
     "discHKMedian": 60.55328007107343,
     "aboveDiscP75": 0,
     "debrisChroma": 0.1145430671084511,
+    "discChroma": 0.09287074833387662
+   }
+  },
+  "gear-light": {
+   "lush": {
+    "brightShare": 0,
+    "debrisHKMedian": 59.41824041558126,
+    "discHKMedian": 65.62543090673228,
+    "aboveDiscP75": 0,
+    "debrisChroma": 0.12227185299185593,
+    "discChroma": 0.10549985451530274
+   },
+   "ocean": {
+    "brightShare": 0,
+    "debrisHKMedian": 59.41824041558126,
+    "discHKMedian": 60.55328007107343,
+    "aboveDiscP75": 0,
+    "debrisChroma": 0.11683162706777049,
     "discChroma": 0.09287074833387662
    }
   },

@@ -1,6 +1,6 @@
 # Debris lab
 
-> **Exploration, 2026-11-09/10: five space-debris directions (A–E) for the human to pick from.** Debris is stale work (R13): stale PRs, abandoned branches, merged-but-not-deleted branches and orphaned agent branches, drifting near the planets they touch. The feature doc is `docs/features/space-debris.md` on `docs/art-meaning` (requirements D1–D8). The picked direction gets ported into the asset viewer and the asset library later, as its own task.
+> **Exploration, 2026-11-09/10: five space-debris directions (A–E). The human picked A and asked for it in grey and red, with real satellite parts; A2 is that refinement, waiting for their approval.** Debris is stale work (R13): stale PRs, abandoned branches, merged-but-not-deleted branches and orphaned agent branches, drifting near the planets they touch. The feature doc is `docs/features/space-debris.md` on `docs/art-meaning` (requirements D1–D8). The picked direction gets ported into the asset viewer and the asset library later, as its own task.
 
 There's one debris factory (`debris.js`), and it's a modifier any viewer planet can carry. A direction is just a parameter set (`variants.js`): a **kit** (what a piece is), an **arrangement** (where the pieces sit and how they move) and a **cap** (how many are drawn before the rest is counted). A, B and E differ only in arrangement; A, C and D differ only in kit. So any mix, such as "C's blocks in E's wake", is a one-line edit.
 
@@ -11,13 +11,13 @@ The lab imports the asset viewer read-only, in library mode, the way the asset l
 ```sh
 npm install
 npm test      # pure checks + browser checks (headless Chromium + SwiftShader, no socket, no network)
-npm run lab   # regenerates everything in out/ (about 25 min; needs ffmpeg); node lab.mjs <names> for some
+npm run lab   # regenerates everything in out/ (about 35 min; needs ffmpeg); node lab.mjs <names> for some
 npm run dev   # live page at http://127.0.0.1:5193/debris-lab/ (loopback only; PORT=... to change)
 ```
 
-`node lab.mjs lineup clutter closeups loops sweep hulls crew measures` names the outputs (no names = all). `measures` re-renders the lineups and close-ups it reads.
+`node lab.mjs lineup clutter closeups loops sweep hulls crew a-vs-a2 measures` names the outputs (no names = all). `measures` re-renders the lineups and close-ups it reads; `node lab.mjs report` rewrites `measures.md` from `measures.json` without rendering.
 
-## The five directions
+## The directions (A–E, and A2)
 
 | | Direction | Kit (class cue) | Arrangement | Cap |
 |---|---|---|---|---|
@@ -26,6 +26,7 @@ npm run dev   # live page at http://127.0.0.1:5193/debris-lab/ (loopback only; P
 | C | **scrap blocks** | blocks: the block pattern is the class, the block count is the diff | own orbits, as A | 12 |
 | D | **tagged canisters** | canisters: one shape, the class is a painted colour band | near-polar orbits, all one way | 12 |
 | E | **wake** | hardware | a comet-like tail off one side, youngest item nearest the planet | 10 |
+| A2 | **satellites** (A refined) | satellite: grey metal, red paint, solar panels | own orbits, as A | 12 |
 
 - **A · derelicts.** Dead spacecraft, each on its own loose orbit and tumbling: a satellite (stale PR), a girder (abandoned branch), a spent stage (merged, not deleted) and a cargo crate (orphaned agent branch). It reads as "a planet with junk around it" from any camera angle.
 - **B · junkyard.** A's hardware, parked in two slow heaps beside the disc, never in front of it. The heap size is the count. It's tidy, but pieces in a heap overlap, so classes are harder to tell apart.
@@ -33,7 +34,60 @@ npm run dev   # live page at http://127.0.0.1:5193/debris-lab/ (loopback only; P
 - **D · tagged canisters.** Every piece is the same canister; its class is a painted BLK 36 band (yellow PR, orange branch, lilac merged, pink agent). Polar orbits stand across any ring plane. The class reads instantly as long as the band faces the light, and the band stretches D8 (debris is meant to be metal and rust).
 - **E · wake.** A's hardware trailing off one side like a comet's tail, ordered by age, so a tidy repo has a short tail and old junk sits at the end. The disc stays clear, but the tail's direction is fixed in the world, so it's tuned for the default camera.
 
-## Recommendation
+## The pick: A, refined as A2
+
+The human picked **A · derelicts** (2026-11-10) with changes: "A but make them Grey and red, to really be noticeable and look more like satellite pieces. You can add in solar panel pieces and actual satellite looking pieces." For the hull they chose the gear blue-grey. **A2 · satellites** is that refinement, kept beside A for before and after (`a-vs-a2.png`). It's waiting for their approval before the port.
+
+**Pieces** (the `satellite` kit, one shape family per class). Red paint is about a third of every piece, so debris shows at a glance:
+- **Stale PR:** a comms satellite, with a red bus and dish between two solar wings. A request sent, with no reply.
+- **Abandoned branch:** a snapped radio-mast boom in red and grey bands. A limb that never connected.
+- **Merged, not deleted:** a spent stage with a red band and nose. The job was done, but the stage was never jettisoned.
+- **Orphaned agent:** a detached 2×2 solar array on a red boom, with a torn mount. Power for work that went nowhere: an agent's part, left behind. I tried a red cross spar first, but it read as a first-aid sign.
+
+**Solar panels:** a cell grid of 2 px lines around cells of at least 2 px at hero range. The cells are the darkest navy, `#12173d`, never an ocean blue. A panel with no room for a cell is a grey metal plate, so the grid is a detail that drops out on small pieces rather than a dark hole in space.
+
+**Colour:**
+- **Metal** (`gear-light`, `#293268 #464b8c #6b74b2`) is the human's gear blue-grey lifted one step, so it reads as grey beside the red. It stops below the drone shell's lit `#909edd`.
+- **Paint** is BLK 36's reds, `#872a38 #cc5250 #d83843 #ff6866`.
+
+**Age without leaning on red** uses value and structure:
+- **Intact:** clean metal and bright paint.
+- **Weathered:** 45% of the paint cells chipped to dark mauve (`DULL`, about 0.19 L darker on the lit band), and 30% of the metal scorched to navy.
+- **Broken:** 75% of the paint dull, 50% of the metal scorched, and the piece in 2–4 fragments.
+
+Even broken junk keeps some red, so old debris stays noticeable.
+
+**A2 measured** (`measures.md`; A for comparison):
+
+| | A2 | A |
+|---|---|---|
+| Class from the silhouette alone, tumbling (chance 25%) | 80.6% | 81.3% |
+| … with colour (red share, solar-cell navy) | 77.1% | 81.3% |
+| Age steps (close-ups): bright paint share | 39.8% → 20.6% → 10.9% | (rust 0% → 49% → 83%) |
+| Age steps: navy (scorch) share | 0% → 16.7% → 24.9% | — |
+| Age steps: separate pieces | 1 → 1 → 3 | 1 → 1 → 2 |
+| Health band, 24 items: every band reads as itself | yes; vote share drops at most 0.4 points | yes; at most 0.8 |
+| Disc cover over the loop (lush, 24 items), mean / max | 1.1% / 5.0% | 1.3% / 5.5% |
+| Debris pixels within 0.05 of the ring / moons / toxic / drone tells | 0% / 0% / 0% / 0% | 0% / 0% / 0% / 0% |
+| … of the lava ramp | **14.0%** (all `#d83843`) | 0% |
+| … of the polar cap, within 0.03 | **4.5%** | 27.4% |
+| … of the ocean ramps (worst band) | 16.1% (navy scorch and cells against the deepest water `#0f1a4e`, 0.033) | 3.5% |
+| … of the ice ramps (worst band) | 57.0% (lit metal `#6b74b2` against ice `#5a78ac`, 0.027) | 14.1% |
+| Not a ring: groups, median px, multi-tone (ring 17, 22 px, 65%) | 12, 36 px, 100% | 10, 54 px, 100% |
+| Not a moon: roundness (moons 0.81); tumble area CV (moon 0.08) | 0.33; 0.42 | 0.60; 0.32 |
+| Loop: a loop later vs frame 0; wrap vs largest step | 0 px; 2,184 ≤ 2,377 px | 0 px; 2,265 ≤ 2,401 px |
+| Sweep: teal px during / after; px vs the next scan | 80 / 0; 0 | 96 / 0; 0 |
+
+**`#d83843` against the lava rim:**
+- `#d83843` is 0.048 (OKLab) from the lava rim `#c9361a`. It's 14.0% of A2's debris pixels, the paint's lit band, and the only A2 colour within 0.05 of any lava or toxic colour.
+- No band reading changes. With 24 items, a lush disc still votes 99.6% lush and a lava disc 99.6% lava.
+- Swapping it for `#cc5250` (0.060) would make that 0%, at the cost of a duller red. One line in `palette.js`.
+
+**Proximity, compared with A:** the polar-cap overlap drops from 27.4% to 4.5%, because A2's metal moves `#464b8c` to the terminator band. The ice overlap rises, because the lit metal `#6b74b2` is 0.027 from the ice ramp's `#5a78ac`. On the ice planet itself none of it is within 0.03 (0.0%), and the band reading is unchanged.
+
+**Recommendation:** approve A2 as it stands, in the gear-light metal with `#d83843` paint. If the human finds the red too close to lava on a lava world, `#cc5250` is the safe swap.
+
+## Recommendation (before the pick)
 
 **A · derelicts, in the gear hull (D8 as written).** It's the only direction that reads as "a debris-filled planet" from any camera angle, which matters while the camera mode is still open. Its silhouettes carry the class best of the shape kits (83% from the silhouette alone while tumbling, against 61% for blocks), and it leaves the health band readable on every band (the classifier's vote shifts at most 0.8 points at 24 items). Its one cost is that orbiting junk sometimes crosses the disc: 1.3% of it on average and 5.5% at most over the loop, at 24 items.
 
@@ -54,6 +108,7 @@ npm run dev   # live page at http://127.0.0.1:5193/debris-lab/ (loopback only; P
 - **Hull:** `gear` is D8 as written: the crew's gear ramp one step darker (`#12173d #293268 #464b8c #6b74b2`), so dead hardware never shows the drone shell's lit grey (`#909edd`) or its whites.
 - **Rust:** D8's four warm reds and mauves (`#66334b #872a38 #8c4b63 #cc5250`), at least 0.060 (OKLab) from every product-planet colour.
 - **Teal** (`ACCENTS.reveal`, the viewer's own) appears only on an event: the sweep, or a selected piece (its lit band).
+- **A2** uses `gear-light` metal, BLK 36 red paint and dark-navy solar cells (above). Red there is paint, not rust, so A2 ages by chipping, scorch and breaking.
 - **Hull options** (`hulls.png`): `violet` (`#29174c #412866 #643499 #8c51cc`) is BLK 36's furthest colour family from the planet ramps. `violet-dark` (`#29174c #29174c #412866 #8c4b63`) keeps the violets to their dark steps with a mauve highlight, after the team lead's §4 caveat (saturated violet against land green reads brighter and nearer than the planet).
 
 **Measured** (`measures.md`, depth fade off so every pixel is an exact palette colour; OKLab distances, 0.02 ≈ one just-noticeable difference). The shares are of debris pixels, for 8 items at planet size 1:
@@ -123,13 +178,14 @@ Measured (`measures.md`): teal shows during the flash (69–126 px, under 0.3% o
 
 | File | Shows |
 |---|---|
-| `lineup-A.png` … `lineup-E.png` | 8 stale items on every health band (lava, toxic, ash, lush, ocean, ice), at planet size 1 and 0.55, same items and seed throughout |
-| `clutter-A.png` … `clutter-E.png` | 0, 1, 3, 8 and 24 items on lush and lava, with the "+N" overflow |
-| `closeups-hardware.png`, `closeups-blocks.png`, `closeups-canister.png` | Each kit: four classes × three ages at hero range (×5), three diff sizes, and the ages again 3× closer |
-| `loop-A.gif` … `loop-E.gif` | One seamless 24 s loop per direction on the lush hero with 8 items, 15 fps, ×2 |
-| `sweep.gif` | The sweep in the recommended direction, 3.5 s, ×2 |
+| `lineup-A.png` … `lineup-E.png`, `lineup-A2.png` | 8 stale items on every health band (lava, toxic, ash, lush, ocean, ice), at planet size 1 and 0.55, same items and seed throughout |
+| `clutter-A.png` … `clutter-E.png`, `clutter-A2.png` | 0, 1, 3, 8 and 24 items on lush and lava, with the "+N" overflow |
+| `closeups-hardware.png`, `closeups-satellite.png`, `closeups-blocks.png`, `closeups-canister.png` | Each kit: four classes × three ages at hero range (×5), three diff sizes, and the ages again 3× closer |
+| `loop-A.gif` … `loop-E.gif`, `loop-A2.gif` | One seamless 24 s loop per direction on the lush hero with 8 items, 15 fps, ×2 |
+| `a-vs-a2.png` | Before and after: A and A2 on lush, ocean, ice, toxic and lava with 8 items, and lush with 24 |
+| `sweep.gif` | The sweep in A2, 3.5 s, ×2 |
 | `sweep-strip.png` | The sweep in every direction, frame by frame (64 px crops ×3 that follow the piece) |
-| `hulls.png` | Direction A on every band in the gear, violet and violet-dark hulls |
+| `hulls.png` | Direction A on every band in the gear, gear-light, violet and violet-dark hulls |
 | `crew-scale.png` | Each direction behind the viewer's crew close-up (the depth view), for scale |
 | `measures.md`, `measures.json` | Every number in this README |
 
@@ -149,9 +205,9 @@ Every tile `npm run lab` renders goes through `checks.mjs`, and the run fails on
 
 | File | What |
 |---|---|
-| `kits.js` | The three kits as part tables per class (pure data): sizes from diffs, the 2 px detail rule, fragments, rust cells |
+| `kits.js` | The four kits (hardware, satellite, blocks, canister) as part tables per class (pure data): sizes from diffs, the 2 px detail rule, solar-panel grids, fragments, rust cells |
 | `layout.js` | Items → pieces (`plan`), the arrangements (`place`, plus `prepare` for the two that pack), loop-locked poses (`fragPoses`) and the sweep's timeline (`sweepAt`). Pure, tested in Node |
-| `variants.js` | The five directions, sample stale items, the bands and sizes |
+| `variants.js` | The directions (A–E and A2), sample stale items, the bands and sizes |
 | `palette.js`, `colour.js` | Debris colours (checked against `mapPalette('blk-36')`), OKLab, CIELAB and Helmholtz–Kohlrausch lightness |
 | `debris.js` | The factory: `makeDebris()` → `{ group, rebuild(items, variant, { seed, radius, hull }), update(phase, { centre, radius, sweeps, selected }), setDebug, layout }` |
 | `lab.js`, `index.html` | The page: scenes from the viewer's factories, off-screen tiles, per-tile stats, sheets, frames, the live view |
@@ -174,5 +230,7 @@ The debris shader is the viewer's toon recipe: four light bands from `dot(normal
 - **Satellite panels** are 1–2 px thick for a moment when seen edge-on. The 2 px rule holds for every designed feature, but not for a flat panel's edge.
 - **D's paint is dark on the night side,** so the class is unreadable while a canister is in shadow. Its paint colours are also outside D8's metal and rust.
 - **Retrograde is random per item** (about 30% expected). The 8-item lineup sample happens to have none; the 24-item plan has 25%.
-- **Repo weight:** each loop GIF is about 2.3–2.5 MB (12 MB for the five), ×2 at 15 fps, like the drone lab's.
+- **A2's red sits near the lava rim** (`#d83843`, 0.048), and its lit metal near ice (`#6b74b2`, 0.027). Neither moves a band reading; the swap is `#cc5250`.
+- **Flat solar parts** are 1–2 px thick for a moment when seen edge-on, as A's panels are.
+- **Repo weight:** each loop GIF is about 2.3–2.5 MB (about 15 MB for the six), ×2 at 15 fps, like the drone lab's.
 - **Not built:** clicking a piece (the R13 tooltip and copyable cleanup command, outside the pixel pass) and a debris count or mass figure in the UI. `layout.mass` is computed, though.
