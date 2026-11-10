@@ -179,13 +179,14 @@ export function lastJsonBlock(text: string): unknown {
 }
 
 /**
- * Classifies one `claude -p --output-format json` call (R7: any failure stops the run). The kill
- * timer counts awake time only (a sleeping Mac pauses it), so a timeout names both clocks.
+ * Classifies one `claude -p --output-format json` call (R7: any failure stops the run). A timeout
+ * names the timer and the measured wall clock: they can differ a lot (on #24 a 45 min timer fired
+ * after 143 min, the Mac asleep for most of it), and the runner measures only the wall clock.
  */
 export function readClaude(res: ExecResult, time: { timeoutMs: number; wallMs: number }): AgentCall {
   if (res.timedOut) {
     const min = (ms: number) => Math.round(ms / 60_000);
-    return { ok: false, reason: `agent call timed out after ${min(time.timeoutMs)} min awake (${min(time.wallMs)} min wall clock)` };
+    return { ok: false, reason: `agent call timed out after its ${min(time.timeoutMs)} min timer (${min(time.wallMs)} min wall clock)` };
   }
   if (res.error) return { ok: false, reason: `agent call failed to start: ${res.error}` };
   const o = firstJson(res.stdout) as Partial<ClaudeOutput> | null;

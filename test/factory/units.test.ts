@@ -159,9 +159,9 @@ describe('agent output', () => {
     expect(readClaude(claudeOut({ result: done, is_error: true }), t)).toMatchObject({ ok: false });
     expect(readClaude(claudeOut({ result: '```json\n{"status":"maybe"}\n```' }), t)).toMatchObject({ ok: false, reason: 'agent result status "maybe"' });
     expect(readClaude({ code: null, stdout: '', stderr: '', timedOut: false, error: 'spawn ENOENT' }, t)).toMatchObject({ ok: false, reason: expect.stringContaining('ENOENT') });
-    // The kill timer counts awake time; the wall clock also counts sleep (run #24: 45 min awake, 143 min wall).
+    // Run #24: a 45 min timer fired after 143 min of wall clock. The reason states only what the runner knows.
     expect(readClaude({ code: null, stdout: '', stderr: '', timedOut: true }, { timeoutMs: 45 * 60_000, wallMs: 143.4 * 60_000 }))
-      .toEqual({ ok: false, reason: 'agent call timed out after 45 min awake (143 min wall clock)' });
+      .toEqual({ ok: false, reason: 'agent call timed out after its 45 min timer (143 min wall clock)' });
   });
 
   it('keeps one evidence row per ticket criterion and rejects a badly formed PR title', () => {

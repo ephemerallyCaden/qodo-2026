@@ -242,7 +242,7 @@ describe('agent failures end in agent-needs-help (R7)', () => {
   const cases: [string, () => ReturnType<typeof claudeOut>, string][] = [
     ['an agent error', agentError, 'agent call failed: error_during_execution'],
     ['max turns', () => claudeOut({ subtype: 'error_max_turns', is_error: true, code: 1, turns: 121 }), 'agent hit max turns (121)'],
-    ['a timeout', () => ({ code: null, stdout: '', stderr: '', timedOut: true }), 'agent call timed out after 90 min awake (0 min wall clock)'],
+    ['a timeout', () => ({ code: null, stdout: '', stderr: '', timedOut: true }), 'agent call timed out after its 90 min timer (0 min wall clock)'],
     ['no JSON result', () => ({ code: 1, stdout: 'Error: boom', stderr: '', timedOut: false }), 'no JSON result'],
     ['a final message with no JSON block', () => claudeOut({ result: 'I did it.' }), 'no JSON block'],
     ['the agent reporting blocked', () => claudeOut({ result: '```json\n{"status":"blocked","blocked_reason":"the ticket contradicts AGENTS.md"}\n```' }), 'agent blocked: the ticket contradicts AGENTS.md'],
@@ -264,7 +264,7 @@ describe('agent failures end in agent-needs-help (R7)', () => {
       x.now += 143 * 60_000; // the laptop slept through most of the call
       return { code: null, stdout: '', stderr: '', timedOut: true };
     });
-    const reason = 'agent call timed out after 90 min awake (143 min wall clock)';
+    const reason = 'agent call timed out after its 90 min timer (143 min wall clock)';
     expect(await w.tick()).toMatchObject({ state: 'needs-help', reason });
     const log = runLog(w);
     expect(log.find((e) => e['event'] === 'agent-end')).toMatchObject({ reason });
