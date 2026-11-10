@@ -6,6 +6,7 @@
 //
 // The enums mirror the asset viewer's exports (BIOMES, LAVA_MODES, DEPTH_MODES, DEPTH_BANDS,
 // RING_PRESETS, EYE_DESIGNS); test/fidelity.test.mjs checks they still match.
+import { FAMILY_IDS, family as historyFamily } from './history.js';
 
 export const VERSION = 1;
 export const BIOME_KEYS = ['lush', 'ocean', 'ice', 'desert', 'lava', 'gas', 'moon', 'toxic'];
@@ -22,6 +23,7 @@ export const FOCI = ['planet', 'moon', 'ring', 'clouds', 'fx'];
 // Camera framings. Planet ones are the viewer's VIEWS; astronaut ones are offsets around the figure.
 export const FRAMINGS = { planet: ['planet', 'clouds-zoom', 'top'], astronaut: ['body', 'crew', 'face'], lab: ['lab'], scene: ['depth', 'crew', 'system'] };
 export const MAX_ITEMS = 16;
+export const MODES = ['asset', 'scene', 'history'];
 
 // The viewer's moon orbits (MOON_ORBITS in viewer.js), the default for every planet item.
 export const MOON_DEFAULTS = [
@@ -50,7 +52,7 @@ export const RENDER_DEFAULTS = {
 };
 
 // ---------------------------------------------------------------- validation helpers
-const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+export const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const num = (v, lo, hi, def) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
 const int = (v, lo, hi, def) => { const n = num(v, lo, hi, null); return n === null ? def : Math.round(n); };
 const bool = (v, def) => (typeof v === 'boolean' ? v : def);
@@ -144,6 +146,18 @@ export function normalisePalette(raw) {
   return out;
 }
 
+// The iteration view (R10): which family and step is on the stage, which of its options, which
+// step sits beside it for comparison (-1: none), and the orbit camera (null: the step's own).
+export function normaliseHistory(raw) {
+  const r = isObj(raw) ? raw : {};
+  const id = oneOf(r.family, FAMILY_IDS, FAMILY_IDS[0]);
+  const steps = historyFamily(id).steps;
+  const step = int(r.step, 0, steps.length - 1, steps.length - 1);
+  const options = steps[step].live?.options?.list.length ?? 1;
+  const compare = int(r.compare, -1, steps.length - 1, -1);
+  return { family: id, step, option: int(r.option, 0, options - 1, 0), compare: compare === step ? -1 : compare, camera: camera(r.camera) };
+}
+
 const framingFor = (kind) => FRAMINGS[kind] ?? FRAMINGS.planet;
 export function normalise(raw) {
   const r = isObj(raw) ? raw : {};
@@ -152,7 +166,7 @@ export function normalise(raw) {
   const items = (Array.isArray(s.items) ? s.items : []).slice(0, MAX_ITEMS).map((it) => normaliseItem(it, ['planet', 'astronaut']));
   return {
     v: VERSION,
-    mode: oneOf(r.mode, ['asset', 'scene'], 'asset'),
+    mode: oneOf(r.mode, MODES, 'asset'),
     focus: asset.kind === 'planet' ? oneOf(r.focus, FOCI, 'planet') : asset.kind,
     framing: oneOf(r.framing, framingFor(asset.kind), framingFor(asset.kind)[0]),
     camera: camera(r.camera),
@@ -160,6 +174,7 @@ export function normalise(raw) {
     scene: { items, selected: int(s.selected, -1, items.length - 1, -1), framing: oneOf(s.framing, FRAMINGS.scene, 'depth'), camera: camera(s.camera) },
     render: normaliseRender(r.render),
     palette: normalisePalette(r.palette),
+    history: normaliseHistory(r.history),
   };
 }
 
