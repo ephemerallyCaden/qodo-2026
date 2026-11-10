@@ -1,7 +1,7 @@
 // Regenerates every lab output in out/ with headless Chromium (SwiftShader). The page is served
 // through Playwright request interception (harness.mjs), so no socket is opened and nothing
 // touches the network. Usage:
-//   node lab.mjs [lineup] [clutter] [closeups] [loops] [sweep] [hulls] [crew] [a-vs-a2] [measures]   (no names = all)
+//   node lab.mjs [lineup] [clutter] [closeups] [loops] [sweep] [hulls] [crew] [compare] [measures]   (no names = all)
 //   node lab.mjs report   rewrites measures.md from measures.json without rendering
 // Every rendered tile is checked (checks.mjs); any failure exits non-zero. measures.md holds the
 // numbers the README quotes (colour separation, ring and moon separation, band reading, violet).
@@ -14,7 +14,7 @@ import { tileProblems, seamProblems, decode, diffCount, findSweepable } from './
 import { VARIANTS, BANDS, SIZES, CLUTTER, AGES, PICK, sampleItems, variant as variantOf } from './variants.js';
 import { CLASSES, CLASS_LABEL, KITS } from './kits.js';
 import { AGE_LABEL, PAINT_AGE_LABEL, LOOP, plan, orbitNormal, repacks } from './layout.js';
-import { HULLS, HULL_KEYS, RUST, PAINT, DULL, NAVY, DRONE_TELLS } from './palette.js';
+import { HULLS, HULL_KEYS, RUST, PAINT, DULL, NAVY, GREY_DARK, OUTLINE, LIGHT, DRONE_TELLS } from './palette.js';
 import { V2_PLANET_RAMPS } from '../asset-viewer/planet-ramps.js';
 import { oklabInt, okDist, hexToInt, hkLightness, okChroma, nearest } from './colour.js';
 
@@ -35,10 +35,11 @@ const framesOf = (cell, ts) => lab(([c, t]) => window.lab.frames(c, t), [cell, t
 const areasOf = (cell, ts) => lab(([c, t]) => window.lab.areas(c, t), [cell, ts]);
 const compareOf = (cell) => lab((c) => window.lab.compare(c), cell);
 // The close-up sheets: one per kit, rendered through the first direction that uses it.
-const KIT_SHEETS = ['hardware', 'satellite', 'blocks', 'canister'].map((kit) => {
+const KIT_SHEETS = ['hardware', 'satellite', 'outlined', 'blocks', 'canister'].map((kit) => {
   const users = VARIANTS.filter((v) => v.kit === kit).map((v) => v.id);
-  const ages = KITS[kit].build('pr', 600).age === 'paint' ? PAINT_AGE_LABEL : AGE_LABEL;
-  return { kit, v: users[0], used: users.join(', '), ages };
+  const age = KITS[kit].build('pr', 600).age;
+  const ages = age ? PAINT_AGE_LABEL : AGE_LABEL;
+  return { kit, v: users[0], used: users.join(', '), ages, age, file: kit === 'outlined' ? 'closeups-satellite-A3.png' : `closeups-${kit}.png` };
 });
 
 if (wanted.length === 1 && wanted[0] === 'report') { // rewrite measures.md from measures.json, no renders
@@ -97,7 +98,7 @@ try {
   // ------------------------------------------------------------ close-ups (D1, D2)
   const closeStats = {};
   if (want('closeups') || want('measures')) {
-    for (const { kit, v, used, ages } of KIT_SHEETS) {
+    for (const { kit, v, used, ages, file } of KIT_SHEETS) {
       const one = (cls, diff, age, k, zoom) => ({
         planet: false, moons: false, v, arrangement: 'display', items: [{ id: `${cls}-${k}`, cls, diff, age }],
         cam: zoom ? 'piece-zoom' : 'piece', crop: zoom ? [112, 42, 96, 96] : [136, 66, 48, 48], scale: zoom ? 3 : 5,
@@ -111,7 +112,7 @@ try {
           ...AGES.map((age, k) => ({ ...one(cls, 600, age, k, true), caption: `${ages[k]}, 3x closer` })),
         ],
       }));
-      closeStats[kit] = await sheet(`closeups-${kit}.png`, {
+      closeStats[kit] = await sheet(file, {
         title: `${kit} kit (directions ${used}): four classes x three ages at hero range (x5), sizes by diff, and 3x closer`,
         note: `Ages: ${ages[0]} < 60 days, ${ages[1]} < 180, ${ages[2]} after. 600 changed lines unless marked.`,
         colLabels: [...ages, 'small diff', 'mid', 'big diff', ...ages], rows, scale: 5, labelW: 130,
@@ -201,14 +202,16 @@ try {
     await sheet('crew-scale.png', { title: "Scale: each direction behind the viewer's crew close-up (the depth view)", colLabels: [], rows, scale: 2, labelW: 110 });
   }
 
-  // ------------------------------------------------------------ A vs A2 (the human's pick, refined)
-  if (want('a-vs-a2')) {
+  // ------------------------------------------------------------ before and after (the human's pick, refined twice)
+  if (want('compare')) {
     const cols = [['lush', 7, 8], ['ocean', 42, 8], ['ice', 21, 8], ['toxic', 13, 8], ['lava', 11, 8], ['lush', 7, 24]];
-    const rows = ['A', 'A2'].map((id) => ({
-      label: `${id} · ${variantOf(id).name}`,
-      cells: cols.map(([biome, seed, n]) => ({ biome, seed, debrisSeed: 7, v: id, n, cam: 'lineup', t: 3, expect: { pieces: Math.min(n, variantOf(id).cap) } })),
-    }));
-    await sheet('a-vs-a2.png', { title: 'Before and after: A (derelicts) and A2 (grey and red satellites, the human\'s pick refined)', note: 'Same items, seed and time in both rows.', colLabels: cols.map(([b, , n]) => `${b}, ${n} items`), rows, scale: 2, labelW: 150 });
+    for (const [a, b, title] of [['A', 'A2', 'A (derelicts) and A2 (grey and red satellites)'], ['A2', 'A3', 'A2 (red paint) and A3 (grey, red outline and nav lights)']]) {
+      const rows = [a, b].map((id) => ({
+        label: `${id} · ${variantOf(id).name}`,
+        cells: cols.map(([biome, seed, n]) => ({ biome, seed, debrisSeed: 7, v: id, n, cam: 'lineup', t: 3, expect: { pieces: Math.min(n, variantOf(id).cap) } })),
+      }));
+      await sheet(`${a.toLowerCase()}-vs-${b.toLowerCase()}.png`, { title: `Before and after: ${title}`, note: 'Same items, seed and time in both rows.', colLabels: cols.map(([bi, , n]) => `${bi}, ${n} items`), rows, scale: 2, labelW: 170 });
+    }
   }
 
   // ------------------------------------------------------------ measures
@@ -222,6 +225,7 @@ async function measures({ lineupStats, closeStats, hullStats }) {
   const R = V2_PLANET_RAMPS;
   const DRONE = new Set(DRONE_TELLS.map(hexToInt));
   const VIOLET_BRIGHT = new Set(HULLS.violet.slice(2).map(hexToInt));
+  const RED = new Set([...Object.values(OUTLINE), LIGHT].map(hexToInt));
   const cv = (xs) => { const m = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length) / m; };
   const RING = labsOf(R.ring), MOON = labsOf(R.moonBody);
   const WORSE = labsOf([...R.crust, ...R.glow, ...R.ash, ...R.sludge, ...R.toxic, ...R.fungus, ...R.spore, R.haze.toxic]);
@@ -243,6 +247,7 @@ async function measures({ lineupStats, closeStats, hullStats }) {
       nearRing05: share(s.hist.debris, near(RING, 0.05)), nearMoon05: share(s.hist.debris, near(MOON, 0.05)),
       nearWorse05: share(s.hist.debris, near(WORSE, 0.05)), droneTells: share(s.hist.debris, (c) => DRONE.has(c)),
       family05: Object.fromEntries(Object.entries(FAMILY).map(([k, labs]) => [k, share(s.hist.debris, near(labs, 0.05))])),
+      redShare: share(s.hist.debris, (c) => RED.has(c)), // A3: the outline and lights' share of debris pixels
       cap03: share(s.hist.debris, near(FAMILY.cap, 0.03)),
     };
   };
@@ -352,11 +357,15 @@ async function measures({ lineupStats, closeStats, hullStats }) {
   M.ages = {};
   const rustSet = new Set(RUST.map(hexToInt));
   const paintSet = new Set(PAINT.map(hexToInt)), dullSet = new Set(DULL.map(hexToInt)), navySet = new Set(NAVY.map(hexToInt));
+  const brightSet = new Set([hexToInt(OUTLINE.bright)]), dimSet = new Set([hexToInt(OUTLINE.dim)]), lightSet = new Set([hexToInt(LIGHT)]), greySet = new Set(GREY_DARK.map(hexToInt));
   for (const [kit, stats] of Object.entries(closeStats)) {
     M.ages[kit] = [0, 1, 2].map((k) => {
       const tiles = stats.filter((s) => s.col === k);
       const mean = (set) => tiles.reduce((a, s) => a + share(s.hist.debris, (c) => set.has(c)), 0) / tiles.length;
-      return { step: KIT_SHEETS.find((x) => x.kit === kit).ages[k], rust: mean(rustSet), paint: mean(paintSet), dull: mean(dullSet), navy: mean(navySet), components: med(tiles.map((s) => s.pieces[0]?.components ?? 0)) };
+      return {
+        step: KIT_SHEETS.find((x) => x.kit === kit).ages[k], rust: mean(rustSet), paint: mean(paintSet), dull: mean(dullSet), navy: mean(navySet),
+        outlineBright: mean(brightSet), outlineDim: mean(dimSet), light: mean(lightSet), dark: mean(greySet), components: med(tiles.map((s) => s.pieces[0]?.components ?? 0)),
+      };
     });
   }
 
@@ -393,10 +402,10 @@ function report(M) {
   for (const [v, rows] of Object.entries(M.colour ?? {})) for (const [b, r] of Object.entries(rows)) L.push(`| ${v} | ${b} | ${r.debrisPx} | ${pct(r.nearOwn03)} | ${pct(r.nearOwn05)} | ${pct(r.nearRing05)} | ${pct(r.nearMoon05)} | ${pct(r.nearWorse05)} | ${pct(r.droneTells)} |`);
   L.push('', '## Every planet ramp (8 items, the worst band per family)', '', 'Share of debris pixels within 0.05 of each planet ramp family (and the drone tells), taking the band where it is highest; the polar cap also at 0.03.', '');
   const fams = Object.keys(Object.values(Object.values(M.colour ?? {})[0] ?? {})[0]?.family05 ?? {});
-  L.push(`| direction | ${fams.join(' | ')} | cap < .03 |`, `|---|${fams.map(() => '---').join('|')}|---|`);
+  L.push(`| direction | ${fams.join(' | ')} | cap < .03 | red outline + lights |`, `|---|${fams.map(() => '---').join('|')}|---|---|`);
   for (const [v, rows] of Object.entries(M.colour ?? {})) {
-    const worst = (f) => Math.max(...Object.values(rows).map((r) => f(r)));
-    L.push(`| ${v} | ${fams.map((k) => pct(worst((r) => r.family05[k]))).join(' | ')} | ${pct(worst((r) => r.cap03))} |`);
+    const worst = (f) => Math.max(...Object.values(rows).map((r) => f(r) ?? 0));
+    L.push(`| ${v} | ${fams.map((k) => pct(worst((r) => r.family05[k]))).join(' | ')} | ${pct(worst((r) => r.cap03))} | ${pct(worst((r) => r.redShare))} |`);
   }
   L.push('', '## Hull options (direction A, 8 items)', '', `| hull | band | own < .03 | own < .05 | ring < .05 | lava/toxic < .05 |`, '|---|---|---|---|---|---|');
   for (const [h, rows] of Object.entries(M.hulls ?? {})) for (const [b, r] of Object.entries(rows)) L.push(`| ${h} | ${b} | ${pct(r.nearOwn03)} | ${pct(r.nearOwn05)} | ${pct(r.nearRing05)} | ${pct(r.nearWorse05)} |`);
@@ -417,11 +426,13 @@ function report(M) {
   L.push('"With colour" adds each piece\'s share of red paint, of the darkest navy (solar cells) and of each class paint (D) to the same classifier.', '');
   L.push('| kit | samples | silhouette alone | with colour | median aspect: PR / branch / merged / agent |', '|---|---|---|---|---|');
   for (const [k, r] of Object.entries(M.classes ?? {})) L.push(`| ${k} (${KIT_SHEETS.find((x) => x.kit === k).used}) | ${r.samples} | ${pct(r.silhouetteAccuracy)} | ${pct(r.withColourAccuracy)} | ${CLASSES.map((c) => f2(r.aspect[c])).join(' / ')} |`);
-  L.push('', '## Age steps (D2, close-ups)', '', 'Per step (columns): for the rust kits the share of debris pixels in rust; for A2 the shares in bright paint, dull paint and navy (scorch plus solar cells). Then the median number of separate pieces. (The rust and paint ramps share colours, so each kit shows only its own cue.)', '');
+  L.push('', '## Age steps (D2, close-ups)', '', 'Per step (columns): for the rust kits the share of debris pixels in rust; for A2 the shares in bright paint, dull paint and navy (scorch plus solar cells); for A3 the shares in bright outline, dim outline, lit nav lights (close-ups hold the lights steady) and dark grey (scorch plus cells). Then the median number of separate pieces. (Some ramps share colours, so each kit shows only its own cue.)', '');
   L.push('| kit | step 1 | step 2 | step 3 |', '|---|---|---|---|');
   for (const [k, rows] of Object.entries(M.ages ?? {})) {
-    const paintAged = KITS[k].build('pr', 600).age === 'paint';
-    L.push(`| ${k} | ${rows.map((r) => `${r.step}: ${paintAged ? `bright paint ${pct(r.paint)}, dull ${pct(r.dull)}, navy ${pct(r.navy)}` : `rust ${pct(r.rust)}`}; ${r.components} piece${r.components > 1 ? 's' : ''}`).join(' | ')} |`);
+    const age = KITS[k].build('pr', 600).age;
+    const cue = (r) => (age === 'paint' ? `bright paint ${pct(r.paint)}, dull ${pct(r.dull)}, navy ${pct(r.navy)}`
+      : age === 'outline' ? `bright outline ${pct(r.outlineBright)}, dim outline ${pct(r.outlineDim)}, lights ${pct(r.light)}, dark grey ${pct(r.dark)}` : `rust ${pct(r.rust)}`);
+    L.push(`| ${k} | ${rows.map((r) => `${r.step}: ${cue(r)}; ${r.components} piece${r.components > 1 ? 's' : ''}`).join(' | ')} |`);
   }
   if (M.loops) {
     L.push('', '## Loops (24 s, 15 fps)', '', '| direction | one loop later vs frame 0 | wrap diff | largest step |', '|---|---|---|---|');

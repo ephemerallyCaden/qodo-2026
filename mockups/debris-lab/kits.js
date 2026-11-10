@@ -87,10 +87,13 @@ export const sizeNorm = (diff) => Math.min(1, Math.max(0, Math.log10(Math.max(1,
 /** The block count for a diff (kit C). */
 export const blockCount = (diff) => Math.round(lerp(BLOCKS[0], BLOCKS[1], sizeNorm(diff)));
 
-/** Extent [min, max] per axis of a part list, in kit units. */
+/** A part with a body (box or cyl); a `light` part is a point: a blinking nav light (A3). */
+export const isSolid = (p) => p.shape !== 'light';
+
+/** Extent [min, max] per axis of a part list's solid parts, in kit units. */
 export function extent(parts) {
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-  for (const p of parts) {
+  for (const p of parts.filter(isSolid)) {
     const rr = Math.max(p.r ?? 0, p.r2 ?? p.r ?? 0);
     const half = p.shape === 'box' ? p.size.map((s) => s / 2) : p.axis === 'y' ? [rr, p.len / 2, rr] : [p.len / 2, rr, rr];
     for (let i = 0; i < 3; i++) {
@@ -103,7 +106,7 @@ export function extent(parts) {
 
 /** The thinnest part dimension of a part list, in kit units. */
 export function thinnest(parts) {
-  return Math.min(...parts.map((p) => (p.shape === 'box' ? Math.min(...p.size) : Math.min(p.len, 2 * Math.min(p.r, p.r2 ?? p.r)))));
+  return Math.min(...parts.filter(isSolid).map((p) => (p.shape === 'box' ? Math.min(...p.size) : Math.min(p.len, 2 * Math.min(p.r, p.r2 ?? p.r)))));
 }
 
 /** Drops detail parts thinner than 2 internal px at hero range for this scale. */
@@ -158,6 +161,46 @@ const SATELLITE = {
     { shape: 'box', size: [0.42, 0.42, 0.06], pos: [0.33, -0.33, 0], frag: 3, panel: true },
   ],
 };
+// A3: A2's satellite shapes in neutral grey with no paint; red is a 1 px outline and two blinking
+// nav lights per piece (a `light` part: a point at pos, on a fragment). The parts are A2's without
+// the paint segments, joined so the outline hull shows no seams: same-section parts overlap or meet
+// inside a collar, and a cone's wide end stays narrower than the body it sits on.
+const OUTLINED = {
+  pr: [ // a bus taller than its wings, so the satellite keeps its central bump inside the outline
+    { shape: 'box', size: [0.36, 0.44, 0.34], pos: [0, 0, 0], frag: 0 },
+    { shape: 'box', size: [0.6, 0.3, 0.05], pos: [-0.46, 0, 0], frag: 1, panel: true },
+    { shape: 'box', size: [0.6, 0.3, 0.05], pos: [0.46, 0, 0], frag: 2, panel: true },
+    { shape: 'cyl', axis: 'y', r: 0.07, r2: 0.26, len: 0.12, pos: [0, 0.26, 0], frag: 0 },
+    { shape: 'light', pos: [-0.77, 0.13, 0.03], frag: 1 },
+    { shape: 'light', pos: [0.77, 0.13, 0.03], frag: 2 },
+  ],
+  branch: [
+    { shape: 'box', size: [0.14, 0.3, 0.3], pos: [-0.74, 0, 0], frag: 0 },
+    { shape: 'box', size: [0.84, 0.23, 0.23], pos: [-0.27, 0, 0], frag: 0 },
+    { shape: 'box', size: [0.1, 0.31, 0.31], pos: [0.15, 0, 0], frag: 0 },
+    { shape: 'box', size: [0.56, 0.23, 0.23], pos: [0.45, 0, 0], frag: 1 },
+    { shape: 'light', pos: [-0.83, 0, 0], frag: 0 },
+    { shape: 'light', pos: [0.75, 0.05, 0], frag: 1 },
+  ],
+  merged: [
+    { shape: 'cyl', r: 0.21, len: 0.46, pos: [-0.04, 0, 0], frag: 0 },
+    { shape: 'cyl', r: 0.11, r2: 0.25, len: 0.2, pos: [0.29, 0, 0], frag: 1 },
+    { shape: 'cyl', r: 0.08, r2: 0.18, len: 0.12, pos: [-0.33, 0, 0], frag: 2 },
+    { shape: 'light', pos: [-0.41, 0, 0], frag: 2 },
+    { shape: 'light', pos: [0.4, 0.22, 0], frag: 1 },
+  ],
+  agent: [ // the gap between the panel columns is wide enough to stay open around the outline
+    { shape: 'box', size: [1.36, 0.24, 0.12], pos: [-0.02, 0, 0], frag: 0 },
+    { shape: 'box', size: [0.18, 0.34, 0.26], pos: [-0.75, 0, 0], frag: 0 },
+    { shape: 'box', size: [0.4, 0.42, 0.06], pos: [-0.44, 0.33, 0], frag: 0, panel: true },
+    { shape: 'box', size: [0.4, 0.42, 0.06], pos: [0.44, 0.33, 0], frag: 1, panel: true },
+    { shape: 'box', size: [0.4, 0.42, 0.06], pos: [-0.44, -0.33, 0], frag: 2, panel: true },
+    { shape: 'box', size: [0.4, 0.42, 0.06], pos: [0.44, -0.33, 0], frag: 3, panel: true },
+    { shape: 'light', pos: [-0.86, 0.12, 0], frag: 0 },
+    { shape: 'light', pos: [0.66, -0.56, 0.03], frag: 3 },
+  ],
+};
+const outlinedParts = (cls) => OUTLINED[cls];
 const SATELLITE_SCALE = [0.22, 0.36]; // 11.5-19 px across at hero range: a step bigger than A, so the grids and paint read
 const GRID = { line: 2, cell: 2 }; // px at hero range: grid lines and the smallest cell
 
@@ -197,13 +240,20 @@ export const KITS = {
       return { ...b, parts: b.parts.map((p) => (p.panel ? { ...p, grid: panelGrid(p, b.scale) } : p)), age: 'paint' };
     },
   },
+  // A3: grey satellites outlined in red, with blinking nav lights; age dims the outline and kills lights
+  outlined: {
+    build(cls, diff) {
+      const b = scaledKit(outlinedParts, SATELLITE_SCALE).build(cls, diff);
+      return { ...b, parts: b.parts.map((p) => (p.panel ? { ...p, grid: panelGrid(p, b.scale) } : p)), age: 'outline' };
+    },
+  },
 };
 
 /** Fragment ids of a built piece, in order. */
 export const fragIds = (parts) => [...new Set(parts.map((p) => p.frag))].sort((a, b) => a - b);
 
-/** Centroid of one fragment's parts (kit units). */
+/** Centroid of one fragment's solid parts (kit units). */
 export function fragCentre(parts, frag) {
-  const own = parts.filter((p) => p.frag === frag);
+  const own = parts.filter((p) => p.frag === frag && isSolid(p));
   return [0, 1, 2].map((i) => own.reduce((s, p) => s + p.pos[i], 0) / own.length);
 }

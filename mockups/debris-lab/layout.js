@@ -5,7 +5,7 @@
 //   { id, cls: 'pr' | 'branch' | 'merged' | 'agent', diff: changed lines, age: days since activity }
 // A piece's placement comes from a PRNG seeded by (planet seed, item id), so adding or removing an
 // item never moves the others in the orbit arrangements (heaps and the wake re-pack by count).
-import { KITS, extent, fragIds, fragCentre } from './kits.js';
+import { KITS, extent, fragIds, fragCentre, isSolid } from './kits.js';
 
 export const LOOP = 24; // s: the scene loop (art direction §7); every motion makes whole cycles per loop
 
@@ -17,6 +17,10 @@ const RUST_SHARE = [0, 0.62, 0.86]; // share of rust cells per step
 // Paint-aged kits (A2): share of paint cells chipped to the dull mauves, and of metal cells scorched.
 const DULL_SHARE = [0, 0.45, 0.75]; // even broken junk keeps some red, so old debris stays noticeable
 const SCORCH_SHARE = [0, 0.3, 0.5]; // scorch darkens toward navy; kept moderate so old pieces don't vanish into space
+// Outline-aged kits (A3): red is a 1 px outline and blinking nav lights. Intact: bright outline, every
+// light blinking. Weathered: the outline dims, one light is dead, 30% scorch. Broken: fragments, the
+// lights dead, a dim outline on the biggest fragment only, 50% scorch.
+export const BLINK = { perLoop: 8, duty: 0.22 }; // whole blinks per 24 s loop (one every 3 s), share of each blink lit
 export const ageStep = (days) => (days < AGE_STEPS[0] ? 0 : days < AGE_STEPS[1] ? 1 : 2);
 
 // The sweep (D6): a one-shot on its own clock (seconds since the scan that found the item gone),
@@ -155,11 +159,12 @@ export function plan(items, variant, { seed = 1, radius = 1 } = {}) {
     const rnd = mulberry32(hashStr(`${seed}:${it.id}`));
     const step = ageStep(it.age);
     const motion = arrangement.place(rnd, { radius, size: b.size, slot: slots[i] });
+    const solid = b.parts.filter(isSolid);
     const tumble = motion.tumble ?? { axis: randomAxis(rnd), turns: signed(rnd, 2), off: rnd() };
     const { lo, hi } = extent(b.parts);
     const mid = lo.map((l, k) => (l + hi[k]) / 2);
-    const frags = fragIds(b.parts).map((f) => {
-      const c = fragCentre(b.parts, f);
+    const frags = fragIds(solid).map((f) => {
+      const c = fragCentre(solid, f);
       const rel = c.map((x, k) => x - mid[k]); // from the piece's middle (blocks are centred to whole blocks)
       const out = Math.hypot(...rel) > 1e-3 ? norm(rel) : randomAxis(rnd);
       const dir = norm(out.map((x) => x + (rnd() - 0.5) * 0.6));
@@ -170,14 +175,33 @@ export function plan(items, variant, { seed = 1, radius = 1 } = {}) {
         burst: { speed: (0.9 + 0.6 * rnd()) * b.spread, spin: signed(rnd, 2) }, // the sweep's fling
       };
     });
-    return {
-      id: it.id, cls: it.cls, step, parts: b.parts, scale: b.scale, cell: b.cell, size: b.size,
-      rust: b.age === 'paint' ? 0 : RUST_SHARE[step], dull: b.age === 'paint' ? DULL_SHARE[step] : 0, scorch: b.age === 'paint' ? SCORCH_SHARE[step] : 0,
+    const aged = b.age === 'paint' || b.age === 'outline';
+    const piece = {
+      id: it.id, cls: it.cls, step, parts: solid, scale: b.scale, cell: b.cell, size: b.size,
+      rust: aged ? 0 : RUST_SHARE[step], dull: b.age === 'paint' ? DULL_SHARE[step] : 0, scorch: aged ? SCORCH_SHARE[step] : 0,
       hashOff: Math.floor(rnd() * 997), motion, tumble, frags,
     };
+    if (b.age === 'outline') {
+      const lights = b.parts.filter((p) => !isSolid(p));
+      piece.outline = step === 0 ? 'bright' : 'dim';
+      piece.outlineFrags = step === 2 ? [biggestFrag(solid)] : frags.map((f) => f.id);
+      piece.lights = lights.map((l, k) => ({ pos: l.pos, frag: l.frag, alive: step === 0 || (step === 1 && k < lights.length - 1), off: rnd() }));
+    }
+    return piece;
   });
   return { kit: variant.kit, pieces, overflow: order.length - shown.length, mass: items.reduce((s, it) => s + it.diff, 0) };
 }
+
+const volume = (p) => (p.shape === 'box' ? p.size[0] * p.size[1] * p.size[2] : Math.PI * Math.max(p.r, p.r2 ?? p.r) ** 2 * p.len);
+/** The fragment with the most volume (the one that keeps its outline when a piece breaks). */
+function biggestFrag(parts) {
+  const v = new Map();
+  for (const p of parts) v.set(p.frag, (v.get(p.frag) ?? 0) + volume(p));
+  return [...v.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+}
+
+/** Whether nav light `l` is lit at loop phase [0, 1): BLINK.perLoop whole blinks per loop, staggered by its seed. */
+export const lightOn = (l, phase) => l.alive && ((phase * BLINK.perLoop + l.off) % 1 + 1) % 1 < BLINK.duty;
 
 /** The loop phase [0, 1) of time t (s). */
 export const phaseAt = (t) => (((t / LOOP) % 1) + 1) % 1;

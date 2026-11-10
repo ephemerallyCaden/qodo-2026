@@ -5,9 +5,9 @@ import assert from 'node:assert/strict';
 import { mapPalette } from '../../asset-viewer/palette-map.js';
 import { LOSPEC } from '../../asset-viewer/palettes.js';
 import { V2_PLANET_RAMPS } from '../../asset-viewer/planet-ramps.js';
-import { HULLS, RUST, TAGS, PAINT, DULL, NAVY, DRONE_TELLS, restColours } from '../palette.js';
-import { KITS, CLASSES, HERO_PX, MIN_FEATURE_PX, extent, thinnest, sizeNorm, blockCount } from '../kits.js';
-import { plan, fragPoses, centreAt, sweepAt, ageStep, AGE_STEPS, SWEEP, ranked, repacks } from '../layout.js';
+import { HULLS, RUST, TAGS, PAINT, DULL, NAVY, GREY_DARK, OUTLINE, LIGHT, DRONE_TELLS, restColours } from '../palette.js';
+import { KITS, CLASSES, HERO_PX, MIN_FEATURE_PX, extent, thinnest, sizeNorm, blockCount, isSolid } from '../kits.js';
+import { plan, fragPoses, centreAt, sweepAt, ageStep, AGE_STEPS, SWEEP, ranked, repacks, lightOn, BLINK } from '../layout.js';
 import { VARIANTS, sampleItems, variant } from '../variants.js';
 import { resolveFile } from '../routes.mjs';
 import { oklab, okDist } from '../colour.js';
@@ -15,8 +15,13 @@ import { oklab, okDist } from '../colour.js';
 const BLK = new Set(LOSPEC['blk-36'].colors.map((c) => `#${c}`));
 const blk = mapPalette('blk-36');
 
-test('every debris colour is BLK 36 (D8)', () => {
-  for (const hex of [...Object.values(HULLS).flat(), ...RUST, ...Object.values(TAGS), ...PAINT, ...DULL, ...NAVY]) assert.ok(BLK.has(hex), `${hex} is not in BLK 36`);
+test('every debris colour is BLK 36 (D8), except A3\'s approved greys', () => {
+  const exception = new Set([...HULLS.grey, ...GREY_DARK]); // the human's exception, debris only (2026-11-10)
+  for (const hex of [...Object.values(HULLS).flat(), ...RUST, ...Object.values(TAGS), ...PAINT, ...DULL, ...NAVY, ...GREY_DARK, ...Object.values(OUTLINE), LIGHT]) {
+    if (!exception.has(hex)) assert.ok(BLK.has(hex), `${hex} is not in BLK 36`);
+  }
+  assert.ok([...exception].every((h) => !BLK.has(h)), 'the exception list holds only the off-palette greys');
+  assert.equal(OUTLINE.bright, '#d83843'); // the human kept the bright red
   // gear is the crew's gear ramp one step darker, starting from the visor's near-black
   assert.deepEqual(HULLS.gear, [blk.visor[0], ...blk.gear.slice(0, 3)]);
   assert.deepEqual(RUST, ['#66334b', '#872a38', '#8c4b63', '#cc5250']); // D8's warm reds and mauves
@@ -40,7 +45,7 @@ test('every kept part is at least 2 px across at hero range (D7); details drop r
   for (const [name, kit] of Object.entries(KITS)) for (const cls of CLASSES) for (const diff of DIFFS) {
     const { parts, scale } = kit.build(cls, diff);
     assert.ok(parts.length > 0);
-    for (const p of parts) {
+    for (const p of parts.filter(isSolid)) {
       const dims = p.shape === 'box' ? [...p.size] : [p.len, 2 * Math.max(p.r, p.r2 ?? p.r), 2 * Math.max(p.r, p.r2 ?? p.r)];
       dims.sort((a, b) => a - b);
       assert.ok((dims[1] * scale) / HERO_PX >= MIN_FEATURE_PX, `${name} ${cls} ${diff}: a part is ${((dims[1] * scale) / HERO_PX).toFixed(2)} px across`);
@@ -99,6 +104,21 @@ test('A2 ages by paint and scorch, not rust: three readable steps', () => {
   // the other kits keep rust and no paint ageing
   const h = plan([{ id: 'x', cls: 'pr', diff: 500, age: 100 }], variant('A')).pieces[0];
   assert.ok(h.rust > 0 && h.dull === 0 && h.scorch === 0);
+});
+
+test('A3 ages by outline and lights: three readable steps; lights loop-locked and staggered', () => {
+  const step = (age, id = 'x') => plan([{ id, cls: 'pr', diff: 500, age }], variant('A3')).pieces[0];
+  const [a, b, c] = [10, 100, 400].map((age) => step(age));
+  for (const p of [a, b, c]) assert.ok(p.rust === 0 && p.dull === 0 && !p.parts.some((q) => q.paint), 'no paint, no rust');
+  assert.ok(a.outline === 'bright' && a.lights.length === 2 && a.lights.every((l) => l.alive) && a.scorch === 0);
+  assert.ok(b.outline === 'dim' && b.lights.filter((l) => l.alive).length === 1 && b.scorch > 0);
+  assert.ok(c.outline === 'dim' && c.lights.every((l) => !l.alive) && c.outlineFrags.length === 1 && c.frags.length > 1 && c.scorch > b.scorch);
+  assert.ok(Number.isInteger(BLINK.perLoop));
+  for (const l of a.lights) for (let k = 0; k < 24; k++) assert.equal(lightOn(l, k / 24), lightOn(l, k / 24 + 1), 'a light repeats every loop');
+  const offs = ['p0', 'p1', 'p2', 'p3'].flatMap((id) => step(10, id).lights.map((l) => l.off));
+  assert.ok(new Set(offs.map((o) => o.toFixed(3))).size === offs.length, 'phases are staggered per piece');
+  // A3 at rest: grey, the outline reds and the light only; no drone tells
+  for (const t of DRONE_TELLS) assert.ok(!restColours('grey', 'outlined').includes(t));
 });
 
 test('age steps (D2): intact < 60 days <= rusted < 180 <= broken', () => {

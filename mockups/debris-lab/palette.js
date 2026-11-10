@@ -15,9 +15,14 @@ import { ACCENTS } from '../asset-viewer/planet-ramps.js';
 // `gear-light` (A2) is the same gear family lifted one step, so the metal reads as grey beside the
 // red paint and the darkest navy is left to the solar cells and scorch; it stops below the drone
 // shell's lit #909edd.
+// `grey` (A3) is off BLK 36, a human-approved exception for debris only (2026-11-10: "more grey and
+// less blue, it's ok to not use the palette exactly"): neutral, a touch warm in the light, each step
+// picked for distance from every planet colour (OKLab to the nearest: .053 .052 .052 .046; the
+// barren-moon and lava-ash greys are the near ones).
 export const HULLS = {
   gear: ['#12173d', '#293268', '#464b8c', '#6b74b2'],
   'gear-light': ['#293268', '#464b8c', '#6b74b2', '#6b74b2'],
+  grey: ['#3d3d3d', '#616161', '#8e8c8a', '#b4b2b0'],
   violet: ['#29174c', '#412866', '#643499', '#8c51cc'],
   'violet-dark': ['#29174c', '#29174c', '#412866', '#8c4b63'],
 };
@@ -50,13 +55,19 @@ export const DRONE_TELLS = ['#909edd', '#c1d9f2', '#ffffff', ...TEAL];
 export const PAINT = ['#872a38', '#cc5250', '#d83843', '#ff6866'];
 export const DULL = ['#66334b', '#66334b', '#66334b', '#8c4b63'];
 export const NAVY = ['#12173d', '#12173d', '#12173d', '#12173d']; // flat: solar cells and scorch stay the darkest navy in any light
+// A3: solar cells and scorch in the grey ramp's darkest step (grey-led; the navy vanished against space).
+export const GREY_DARK = ['#3d3d3d', '#3d3d3d', '#3d3d3d', '#3d3d3d'];
+// A3: red is only an outline and lights. The outline is #d83843 (the human kept it), dimming to
+// #872a38 with age; the blinking nav lights are BLK 36's lightest red.
+export const OUTLINE = { bright: '#d83843', dim: '#872a38' };
+export const LIGHT = '#ff6866';
 
 // Which colour roles each kit can put on screen at rest.
-const KIT_ROLES = { hardware: ['rust'], blocks: ['rust'], canister: ['rust', 'tag'], satellite: ['paint', 'dull', 'navy'] };
-const ROLE = { rust: RUST, tag: Object.values(TAGS), paint: PAINT, dull: DULL, navy: NAVY };
+const KIT_ROLES = { hardware: ['rust'], blocks: ['rust'], canister: ['rust', 'tag'], satellite: ['paint', 'dull', 'navy'], outlined: ['greyDark', 'outline', 'light'] };
+const ROLE = { rust: RUST, tag: Object.values(TAGS), paint: PAINT, dull: DULL, navy: NAVY, greyDark: GREY_DARK, outline: Object.values(OUTLINE), light: [LIGHT] };
 
 /** Every colour a kit's debris can put on screen at rest: its hull and its roles. */
 export const restColours = (hull = 'gear', kit = 'hardware') => [...new Set([...HULLS[hull], ...KIT_ROLES[kit].flatMap((r) => ROLE[r])])];
 
 /** The ramps as a viewer palette role, so resolve('debris.hull.gear') etc. work for depth tints. */
-export const paletteRole = () => ({ hull: { ...HULLS }, rust: RUST, teal: TEAL, tag: { ...TAGS }, paint: PAINT, dull: DULL, navy: NAVY });
+export const paletteRole = () => ({ hull: { ...HULLS }, rust: RUST, teal: TEAL, tag: { ...TAGS }, paint: PAINT, dull: DULL, navy: NAVY, greyDark: GREY_DARK, outline: { ...OUTLINE }, light: LIGHT });

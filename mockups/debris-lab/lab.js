@@ -9,7 +9,7 @@ import {
   LOOP as VIEWER_LOOP,
 } from '../asset-viewer/viewer.js';
 import { eyesFor } from '../asset-viewer/faces.js';
-import { makeDebris } from './debris.js';
+import { makeDebris, setViewport } from './debris.js';
 import { variant as variantOf, sampleItems, VARIANTS, BANDS, CLUTTER } from './variants.js';
 import { LOOP, centreAt, phaseAt, ranked } from './layout.js';
 import { restColours, TEAL, HULL_KEYS, PAINT, DULL, TAGS } from './palette.js';
@@ -134,6 +134,7 @@ function capture(w, h) {
     px = new Uint8Array(w * h * 4);
   }
   setViewSize(w, h, [sky]);
+  setViewport(w, h);
   renderer.setRenderTarget(rt);
   renderer.setClearColor(resolve('space'));
   renderer.clear();
@@ -438,6 +439,7 @@ function bindLive() {
     const c = configure(cellOf());
     const w = frameWidth(180), h = 180;
     setPixelSize(w, h, [sky]);
+    setViewport(w, h);
     const scale = Math.max(1, Math.floor(Math.min((innerWidth - 300) / w, innerHeight / h)));
     canvas.style.width = `${w * scale}px`;
     canvas.style.height = `${h * scale}px`;
