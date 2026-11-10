@@ -24,7 +24,7 @@ Node ≥ 20.19, npm. From the repo (or worktree) root:
 - `node dist/cli.js open [--port <n>] [--no-open]`: serves the view on 127.0.0.1 only (R14, `docs/contracts/phase2.md`). It prints `http://127.0.0.1:<port>/#t=<token>` once and needs a snapshot first (exit 5 otherwise). `--no-open` keeps the token out of process lists. Exit 6: server bind failure.
 - `npm run factory -- labels|install|uninstall|tick [--once|--dry-run [--issue N]]`: the agent runner (`factory/`, built separately, not in the published package; see AGENTS.md "Agent runner"). `labels` and `install` are the human's to run. Runner state (lock, `ticks.jsonl`, `runs/`, the installed copy) lives in `<git-common-dir>/factory/`, never in the work tree.
 
-The design mockups live on `feature/hype-gif` under `mockups/asset-viewer/` (`npm install && npm test` there). They are throwaway prototypes, not product code.
+The design mockups live on `feature/asset-library` (the art line) under `mockups/`: the asset viewer (the reference implementation), the asset library (the playground), and the drone, debris and health-looks labs. Each folder is its own npm project (`npm ci && npm test` there; that branch's CLAUDE.md has the details). They are throwaway prototypes, not product code.
 
 ## Layout (planned)
 - `snapshot.v1.json` produced by `commet scan`; local state in `.git/commet/` (snapshot, chart state, beacons, events).
