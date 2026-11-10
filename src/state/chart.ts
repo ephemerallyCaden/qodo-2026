@@ -114,7 +114,8 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
   if (common === undefined) {
     const out = await tryGit(gitRunner(repoDir), ['rev-parse', '--path-format=absolute', '--git-common-dir']);
     if (out === null) throw new CommetError('not inside a git repository', EXIT.noRepo);
-    common = realpathSync.native(out.trim());
+    // Only git's own trailing newline is dropped: a path is never trimmed (AGENTS.md Rule 7).
+    common = realpathSync.native(out.replace(/\n$/, ''));
     commonDirs.set(repoDir, common);
   }
   // A read never creates .git/commet: no state dir means no snapshot yet.
