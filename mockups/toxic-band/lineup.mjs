@@ -1,16 +1,18 @@
 // The health-band lineup for #19: lava -> toxic -> ash desert -> lush, worst to best. Row 1 is
-// toxic as it was at a git revision (planet-ramps.js there, applied as palette edits, so the
-// other three planets stay the shipped colours); row 2 is the shipped toxic. Each planet is at
-// the internal resolution (pixel h 180), cropped square and upscaled x4 nearest-neighbour,
-// rendered by the asset library in headless Chromium + SwiftShader through its test harness
-// (no socket, no network).
-// Usage: node lineup.mjs [before-rev]  ->  out/lineup.png  (default rev: a5d8bf6, before #19;
-// needs npm ci in ../asset-library: playwright, three).
+// toxic before #19 (applied as palette edits, so the other three planets stay the shipped
+// colours); row 2 is the shipped toxic. Each planet is at the internal resolution (pixel h 180),
+// cropped square and upscaled x4 nearest-neighbour, rendered by the asset library in headless
+// Chromium + SwiftShader through its test harness (no socket, no network).
+// Usage: node lineup.mjs [before-rev]  ->  out/lineup.png. With no rev, "before" is the acid-lime
+// look the asset library keeps in its history (history.js VENDORED.acid, copied from a5d8bf6, so
+// it needs no git); a rev reads planet-ramps.js there instead. Needs npm ci in ../asset-library
+// (playwright, three).
 import { execFileSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, openLibrary } from '../asset-library/test/harness.mjs';
+import { VENDORED } from '../asset-library/history.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'out');
@@ -28,17 +30,23 @@ const planetState = (biome, seed, palette = {}) => ({
 });
 
 const TOXIC_ROLES = ['sludge', 'toxic', 'fungus', 'spore'];
-/** Palette edits that restore toxic's ramps and haze as planet-ramps.js had them at `rev`. */
+/** Palette edits that set toxic's ramps and haze to those of `ramps` (planet-ramps.js roles). */
+function toEdits(ramps) {
+  const edits = { 'haze.toxic': ramps.haze.toxic };
+  for (const role of TOXIC_ROLES) ramps[role].forEach((hex, i) => (edits[`${role}.${i}`] = hex));
+  return edits;
+}
+/** Toxic as planet-ramps.js had it at `rev`. */
 async function toxicAt(rev) {
   const src = execFileSync('git', ['show', `${rev}:mockups/asset-viewer/planet-ramps.js`], { cwd: HERE, encoding: 'utf8' });
   const { V2_PLANET_RAMPS: old } = await import(`data:text/javascript,${encodeURIComponent(src)}`);
-  const edits = { 'haze.toxic': old.haze.toxic };
-  for (const role of TOXIC_ROLES) old[role].forEach((hex, i) => (edits[`${role}.${i}`] = hex));
-  return edits;
+  return toEdits(old);
 }
-const before = process.argv[2] ?? 'a5d8bf6';
+const before = process.argv[2];
 const rows = [
-  { look: `before (${before})`, title: `before: ${before}`, edits: await toxicAt(before) },
+  before
+    ? { look: `before (${before})`, title: `before: ${before}`, edits: await toxicAt(before) }
+    : { look: `before (acid lime, ${VENDORED.acid.rev})`, title: `before: acid lime`, edits: toEdits(VENDORED.acid.set) },
   { look: 'shipped', title: 'after: rust-ember', edits: {} },
 ];
 
