@@ -23,13 +23,13 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 - One test: `npx vitest run -t "<name>"`.
 - Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
 - Before a PR, run `qodo review --base "$(git merge-base HEAD "$BASE")" --json`, where `BASE` is the PR's base branch (e.g. `BASE=origin/session/week1`). Resolve `action_required` findings as in the review loop below for **at most 3 local rounds**, then open the PR anyway, listing any still-unresolved findings in its description. The loop continues in the PR review, and the merge gate (no unresolved `action_required`) applies there. (On #16, six local rounds took over 2 hours.)
-- `commet scan` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error.
+- `commet` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error, 6 server bind failure (`commet open`).
 
 ## Dev tips
 - `JOURNAL.md` and `.archive/` are gitignored and missing from worktrees. Use the main checkout: `$(git rev-parse --path-format=absolute --git-common-dir)/..`.
 - Reproduce bugs on the commit the human is running, not your branch.
 - Render tests must fail on a blank frame. One once passed after a shader compile error.
-- Local servers bind `127.0.0.1` and read their port from `PORT` (VS Code often holds 5181).
+- Local servers bind `127.0.0.1` and read their port from `PORT` (VS Code often holds 5181). Exception: `commet open` takes `--port` and otherwise picks a free port (#32).
 - `CLAUDE_CONFIG_DIR` points `commet scan` at fixture transcripts.
 
 ## Working with Qodo
