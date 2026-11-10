@@ -49,11 +49,12 @@ test('astronaut colours: presets, any hex, or the default', () => {
   assert.equal(S.normaliseAstronaut({ handle: 'x'.repeat(100) }).handle.length, 40);
 });
 
-test('scenes: items are planets or astronauts only, capped, selection in range', () => {
-  const items = Array.from({ length: 30 }, (_, i) => ({ kind: i % 3 === 2 ? 'lab' : i % 2 ? 'astronaut' : 'planet' }));
+test('scenes: items are planets, astronauts or drones only, capped, selection in range', () => {
+  const items = Array.from({ length: 30 }, (_, i) => ({ kind: ['lab', 'astronaut', 'planet', 'drone'][i % 4] }));
   const s = S.normalise({ mode: 'scene', scene: { items, selected: 99 } });
   assert.equal(s.scene.items.length, S.MAX_ITEMS);
-  assert.ok(s.scene.items.every((it) => it.kind === 'planet' || it.kind === 'astronaut'));
+  assert.ok(s.scene.items.every((it) => ['planet', 'astronaut', 'drone'].includes(it.kind)));
+  assert.ok(s.scene.items.some((it) => it.kind === 'drone'), 'drones join scenes beside the crew');
   assert.equal(s.scene.selected, S.MAX_ITEMS - 1);
 });
 

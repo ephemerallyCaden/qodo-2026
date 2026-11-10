@@ -16,6 +16,7 @@
 // Pure data, no DOM and no three.js, so state.js and the Node tests can use it.
 import { showcaseScene, GROUPS } from './catalogue.js';
 import { LOSPEC_ORDER } from '../asset-viewer/palettes.js';
+import { BRANDS } from './drones.js';
 
 // ---------------------------------------------------------------- vendored palettes
 // f4ceea0 viewer.js: the suit shared by v1 and v2 there (the cool white approved in revision 1)
@@ -367,8 +368,13 @@ export const FAMILIES = [
         changed: 'The shell takes the crew\'s gear greys, and the whites move to the trim and smoke.', why: 'A shell lit in the suit\'s whites melted into the K astronauts at 180p.' },
       { date: '2026-11-06 23:29', rev: 'a79516d', title: 'the working face', img: '10-drones/working-face.png',
         changed: 'While working, the eyes blink shut and the screen types hashed 5×7 ASCII glyphs in the teal glow ramp, then scrambles back to the eyes.', why: 'A face for "busy" in the code layer\'s glyph vocabulary.' },
-      { date: '2026-11-06 23:29', rev: 'a79516d', title: 'D-final', final: true, img: '10-drones/final-with-crew.png',
+      { date: '2026-11-06 23:29', rev: 'a79516d', title: 'D-final', img: '10-drones/final-with-crew.png',
         changed: 'The base drone is D (the saucer scout) with the human\'s exact parameters; A–E stay as explorations.', why: 'The human picked D.' },
+      { date: '2026-11-10 15:47', rev: '4b60da3', title: 'a drone per provider', final: true,
+        live: { items: [{ kind: 'drone', provider: 'generic', yaw: -0.5 }], framing: 'drone',
+          options: { label: 'provider', list: BRANDS.map((b) => ({ id: b.id, label: b.name, item: { provider: b.id } })) } },
+        changed: 'D-final, adapted into a drone for each approved provider, plus generic (D-final itself) and the unknown agent (the generic drone, its own label). Each is a parameter set and a BLK 36 palette, with seeded details per session. Copilot and Claude Code keep D-final\'s shape and add goggles and legs, Codex\'s head is one smooth cloud, and Qodo wears sunglasses.',
+        why: 'The human (2026-11-10): one drone per agent provider (a5ff3e9), then four changes the same afternoon. Every pair stays distinct at the crew close-up and system distance (A4).' },
     ],
   },
 ];

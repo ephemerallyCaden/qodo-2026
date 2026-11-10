@@ -3,10 +3,19 @@
 // system shot), so each tile is a look the viewer already shows. `final: false` marks the
 // exploration archive (R6). `t` (optional) is the loop time it opens at. `tag` (optional)
 // replaces the final badge: a library extra, or a look whose meaning is open (R9). Pure data, no DOM.
+import { BRANDS, DRONE_VARIANTS, variantOf } from './drones.js';
 
 const astro = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'astronaut', framing: 'body', asset: { kind: 'astronaut', ...asset } }, ...extra });
 const planet = (title, sub, asset, { camera = null, ...extra } = {}) => ({ title, sub, final: true, state: { focus: 'planet', framing: 'planet', camera, asset: { kind: 'planet', ...asset } }, ...extra });
 const focus = (f, framing = 'planet') => (e) => ({ ...e, state: { ...e.state, focus: f, framing } });
+// Each provider drone's tile: its title and what it covers (brands.js covers, shortened to a tile)
+const DRONE_TILES = {
+  claude: ['Claude Code', 'CLI, web, Action'], cursor: ['Cursor', 'IDE, CLI, cloud agent'], copilot: ['GitHub Copilot', 'cloud agent, CLI, app, VS Code'],
+  codex: ['OpenAI Codex', 'CLI, cloud'], google: ['Google', 'Jules, Gemini CLI, Antigravity'], devin: ['Devin', 'cloud, CLI, Devin Desktop'],
+  kiro: ['Kiro / Amazon Q', 'Kiro CLI, IDE, cloud; Amazon Q'], opencode: ['OpenCode', 'CLI, GitHub agent'], qodo: ['Qodo', 'the review bot, its fix commits'],
+  generic: ['generic', 'any other detected tool'], unknown: ['unknown agent', 'the generic drone, its own label'],
+};
+const drone = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'drone', framing: 'drone-close', asset: { kind: 'drone', yaw: -0.5, ...asset } }, ...extra });
 const HOST_HIDDEN = { surface: false, haze: false, clouds: false, ring: false };
 
 // What each planet look means (art direction §6, "What a planet tells you"): its code-health band,
@@ -42,6 +51,14 @@ export const GROUPS = [
       astro('K · any colour', 'free colour, binocular', { color: '#e0a020', handle: '@you', eyes: 3, yaw: -0.5 }),
       astro('K · face', 'face close-up', { color: 'mint', handle: '@mira', eyes: 5 }, { state: { focus: 'astronaut', framing: 'face', asset: { kind: 'astronaut', color: 'mint', handle: '@mira', eyes: 5 } } }),
       astro('K · side', 'three-quarter back', { color: 'lilac', handle: '@juno', eyes: 'auto', yaw: -2.2 }),
+    ],
+  },
+  {
+    // agent sessions: the drone lab's drones (read-only), one per provider, then its explorations
+    id: 'drones', title: 'Drones', note: 'agent sessions: one drone per provider (final), any session seed; A–E: the drone lab\'s explorations',
+    items: [
+      ...BRANDS.map((b) => drone(DRONE_TILES[b.id]?.[0] ?? b.name, DRONE_TILES[b.id]?.[1] ?? b.covers, { provider: b.id })),
+      ...DRONE_VARIANTS.map((v) => drone(`drone ${v}`, variantOf(v).name, { variant: v }, { final: false })),
     ],
   },
   {

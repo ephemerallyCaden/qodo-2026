@@ -12,12 +12,14 @@ import { route, MOCKUPS, LIBRARY_ROOT } from '../routes.mjs';
 export const ORIGIN = 'http://library.local';
 const BOOT_MS = 240000; // SwiftShader on a busy machine: boot and page actions
 const VIEWER_THREE = /^\/asset-viewer\/node_modules\/three\/(.+)$/;
+const DRONE_LAB_THREE = /^\/drone-lab\/node_modules\/three\/(.+)$/;
 
-/** The server's route(), plus the viewer page: its index.html, and three mapped to ours. */
+/** The server's route(), plus the two comparison pages (the viewer's index.html, the drone lab's capture.html), with three mapped to ours. */
 async function resolve(method, pathname, archive) {
-  const m = VIEWER_THREE.exec(pathname);
+  const m = VIEWER_THREE.exec(pathname) ?? DRONE_LAB_THREE.exec(pathname);
   if (m) return route(method, `/asset-library/node_modules/three/${m[1]}`);
   if (pathname === '/asset-viewer/index.html') return { status: 200, file: path.join(MOCKUPS, 'asset-viewer', 'index.html'), type: 'text/html' };
+  if (pathname === '/drone-lab/capture.html') return { status: 200, file: path.join(MOCKUPS, 'drone-lab', 'capture.html'), type: 'text/html' };
   return route(method, pathname, { archive });
 }
 
@@ -59,6 +61,14 @@ export async function openLibrary(browser, { hash = '', viewport, archive = null
   const page = await newPage(browser, viewport, archive);
   await page.goto(`${ORIGIN}/asset-library/index.html${hash}`, { timeout: BOOT_MS });
   await waitFor(page, () => window.library?.ready);
+  return page;
+}
+
+/** The drone lab's capture page (its own renderer, read-only); resolves when it has booted. */
+export async function openDroneLab(browser) {
+  const page = await newPage(browser);
+  await page.goto(`${ORIGIN}/drone-lab/capture.html`, { timeout: BOOT_MS });
+  await waitFor(page, () => window.lab?.ready);
   return page;
 }
 

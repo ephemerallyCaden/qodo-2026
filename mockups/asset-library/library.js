@@ -4,12 +4,13 @@
 // renders and writes the URL. Labels and UI are HTML outside the pixel pass.
 import { EYE_DESIGNS, eyesFor } from '../asset-viewer/faces.js';
 import { BIOMES, WEATHER } from '../asset-viewer/viewer.js';
-import { renderer, camera, controls, frameWidth, Stage, applyRender, retintStage, placeCamera, renderToCanvas, renderToImage, FRAMING_CAMERAS, labVariant } from './engine.js';
+import { renderer, camera, controls, frameWidth, Stage, applyRender, retintStage, placeCamera, renderToCanvas, renderToImage, FRAMING_CAMERAS, frameCamera, labVariant } from './engine.js';
 import * as S from './state.js';
 import { GROUPS as CATALOGUE, ITEMS, showcaseScene, crewScene, BIOME_MEANING, EXTRA, RING_TAG } from './catalogue.js';
 import * as P from './palette.js';
 import * as H from './history.js';
 import { TRIALS, trialOf, trialFor } from './trials.js';
+import { BRANDS, PARAMS as DRONE_PARAMS, DRONE_VARIANTS, DRONE_VIEWS, ZOOM, brandName, variantOf, droneLook } from './drones.js';
 
 const $ = (id) => document.getElementById(id);
 const clone = structuredClone;
@@ -46,7 +47,7 @@ function cameraFor() {
     const key = { depth: 'depth', crew: 'scene-crew', system: 'system' }[state.scene.framing];
     return state.scene.camera ?? FRAMING_CAMERAS[key];
   }
-  return state.camera ?? FRAMING_CAMERAS[state.framing];
+  return state.camera ?? frameCamera(state.framing, state.asset);
 }
 function minDistance() {
   const solo = state.mode === 'asset' ? state.asset : state.mode === 'history' && hv?.items.length === 1 ? hv.items[0] : null;
@@ -104,6 +105,8 @@ function apply(next, { panel = true } = {}) {
   const look = stageLook();
   useLook(stage(), look);
   if (!hv || hv.live) stage().sync(items(), lookPal(look));
+  // a drone's sparkles keep the lab's pixel size at its framing's zoom
+  stage().droneZoom = state.mode === 'asset' ? ZOOM[state.framing] ?? 1 : state.mode === 'history' ? ZOOM[hv?.framing] ?? 1 : 1;
   const cam = cameraFor();
   const camKey = JSON.stringify([state.mode, cam]);
   if (cam && camKey !== lastCamera) {
@@ -201,7 +204,8 @@ function renderThumbs(n) {
     const ts = thumbStage(st.asset.kind);
     useLook(ts, look);
     ts.sync([st.asset], lookPal(look));
-    const img = renderToImage(ts, it.t ?? 3, S.RENDER_DEFAULTS, THUMB_W, THUMB_H, st.camera ?? FRAMING_CAMERAS[`thumb-${st.framing}`] ?? FRAMING_CAMERAS[st.framing]);
+    ts.droneZoom = ZOOM[`thumb-${st.framing}`] ?? 1;
+    const img = renderToImage(ts, it.t ?? 3, S.RENDER_DEFAULTS, THUMB_W, THUMB_H, st.camera ?? frameCamera(`thumb-${st.framing}`, st.asset) ?? frameCamera(st.framing, st.asset));
     thumbCanvases.get(it.id)?.getContext('2d').putImageData(img, 0, 0);
   }
   if (!thumbQueue.length && !thumbTimer) window.library.thumbsDone = true;
@@ -323,6 +327,7 @@ function describe(it) {
   if (!it) return '';
   if (it.kind === 'planet') return `planet · ${trialOf(it)?.title ?? BIOMES[it.biome].label.replace(' (extra)', '')} ${it.seed}${trialOf(it) ? ' (trial)' : ''}`;
   if (it.kind === 'astronaut') return `astronaut · ${it.handle || 'anon'}`;
+  if (it.kind === 'drone') return it.variant ? `drone ${it.variant} (exploration)` : `drone · ${brandName(it.provider)}${it.session === null ? '' : ` #${it.session}`}`;
   return `exploration ${it.variant}`;
 }
 
@@ -431,6 +436,43 @@ function astronautControls(it, patch) {
   ];
 }
 
+/** A drone: its provider (or exploration variant), session seed, view, face and framing; the lab's parameters below. */
+function droneControls(it, patch) {
+  const look = droneLook(it).params;
+  const param = (p) => {
+    const v = look[p.key], edited = it.params[p.key] !== undefined;
+    const set = (x) => patch({ params: { ...it.params, [p.key]: x } }, live);
+    const row = p.type === 'select'
+      ? select(p.key, v, p.options.map((o, i) => [i, `${i} · ${o}`]), (x) => patch({ params: { ...it.params, [p.key]: +x } }))
+      : slider(p.key, v, { min: p.min, max: p.max, step: p.step ?? 0.01, fmt: (x) => (+x).toFixed(3), title: p.words }, set);
+    if (edited) row.classList.add('edited');
+    return row;
+  };
+  const groups = [...new Set(DRONE_PARAMS.map((p) => p.group))];
+  return [
+    it.variant ? note('exploration, not final: the drone lab\'s base direction (D was picked, and D-final is the generic drone)', 'warn') : null,
+    section('drone', true,
+      select('provider', it.variant ? `variant:${it.variant}` : it.provider,
+        [...BRANDS.map((b) => [b.id, b.name]), ...DRONE_VARIANTS.map((v) => [`variant:${v}`, `${v} · ${variantOf(v).name} (exploration)`])],
+        (v) => patch(v.startsWith('variant:') ? { variant: v.slice(8) } : { variant: null, provider: v })),
+      it.variant ? null : slider('session', it.session ?? 0, { min: 0, max: 99, step: 1, fmt: (x) => (it.session === null ? 'none' : String(x)), title: 'the session seed: its seeded details (trim, one shape detail, personality, sparkles)' }, (v) => patch({ session: v }, live)),
+      it.variant ? null : buttons(btn('provider\'s own look', () => patch({ session: null }), { on: it.session === null, title: 'no session: the drone as the lab draws it' }), btn('session +1', () => patch({ session: (it.session ?? -1) + 1 }))),
+      note('names are labels outside the pixel pass; the drone lab\'s own BLK 36 palettes (palette edits don\'t apply)')),
+    section('face and view', true,
+      buttons(...[['idle', 'idle'], ['working', 'working (glyphs)'], ['motion', 'motion loop (12 s)']].map(([f, label]) => btn(label, () => patch({ face: f }), { on: it.face === f }))),
+      check('blink', it.blink, (v) => patch({ blink: v })),
+      check('smoke', it.smoke, (v) => patch({ smoke: v }), { title: 'thruster puffs and sparkles' }),
+      slider('view angle', it.yaw, { min: -3.14, max: 3.14, title: 'the drone\'s yaw, as the lab\'s views' }, (v) => patch({ yaw: v }, live)),
+      buttons(...DRONE_VIEWS.map(([n, y]) => btn(n, () => patch({ yaw: y }), { on: Math.abs(it.yaw - y) < 0.01 }))),
+      slider('phase', it.phase, { min: 0, max: 12, step: 0.05, title: 'a time offset, so drones in a scene bob out of step' }, (v) => patch({ phase: v }, live)),
+      state.mode === 'asset' ? select('framing', state.framing, [['drone', 'full'], ['drone-close', 'close-up']], (v) => update((n) => { n.framing = v; n.camera = null; })) : null),
+    section(`drone-lab parameters${Object.keys(it.params).length ? ` (${Object.keys(it.params).length} changed)` : ''}`, false,
+      note('advanced: the lab\'s parameters over this drone\'s look; marked ones are changed'),
+      buttons(btn('reset parameters', () => patch({ params: {} }), { disabled: !Object.keys(it.params).length })),
+      ...groups.flatMap((g) => [h('p', { class: 'note' }, g), ...DRONE_PARAMS.filter((p) => p.group === g).map(param)])),
+  ];
+}
+
 function labControls(it, patch) {
   const v = labVariant(it.variant);
   return [
@@ -480,7 +522,8 @@ function renderControls() {
 function cameraControls() {
   if (isLab()) return null;
   const sceneMode = state.mode === 'scene';
-  const opts = sceneMode ? [['depth', 'depth view'], ['crew', 'crew close-up'], ['system', 'system view']] : state.asset.kind === 'planet' ? [['planet', 'hero close-up'], ['clouds-zoom', 'cloud close-up'], ['top', 'top-down']] : null;
+  const opts = sceneMode ? [['depth', 'depth view'], ['crew', 'crew close-up'], ['system', 'system view']]
+    : { planet: [['planet', 'hero close-up'], ['clouds-zoom', 'cloud close-up'], ['top', 'top-down']], drone: [['drone', 'full (the lab\'s tile)'], ['drone-close', 'close-up (×2)']] }[state.asset.kind] ?? null;
   return section('camera', sceneMode,
     opts ? select('framing', sceneMode ? state.scene.framing : state.framing, opts, (v) => update((n) => { if (sceneMode) { n.scene.framing = v; n.scene.camera = null; } else { n.framing = v; n.camera = null; } })) : null,
     buttons(btn('reset camera', () => update((n) => { if (sceneMode) n.scene.camera = null; else n.camera = null; }), { disabled: !(sceneMode ? state.scene.camera : state.camera) })),
@@ -510,13 +553,14 @@ function sceneControls() {
       buttons(
         btn('+ planet', () => add({ kind: 'planet', biome: 'lush', seed: 7, pos: [0, 0, -2] })),
         btn('+ astronaut', () => add({ kind: 'astronaut', color: 'mint', handle: '@mira', pos: [0, -0.4, 4] })),
-        btn('+ inspected asset', () => add({ ...clone(state.asset), pos: state.asset.kind === 'planet' ? [0, 0, -2] : [0, -0.4, 4] }), { disabled: state.asset.kind === 'lab', title: 'the asset open in the inspector' })),
+        btn('+ drone', () => add({ kind: 'drone', provider: 'generic', pos: [0.6, 0.12, 4] })), // beside the crew, hovering at the lab's crew height
+        btn('+ inspected asset', () => add({ ...clone(state.asset), pos: state.asset.kind === 'planet' ? [0, 0, -2] : state.asset.kind === 'drone' ? [0.6, 0.12, 4] : [0, -0.4, 4] }), { disabled: state.asset.kind === 'lab', title: 'the asset open in the inspector' })),
       buttons(
         btn('preset: viewer depth scene', () => update((n) => { n.scene = showcaseScene(); })),
         btn('preset: planet + 3 crew', () => update((n) => { n.scene = crewScene(); })),
         btn('clear', () => update((n) => { n.scene = { items: [], selected: -1, framing: n.scene.framing, camera: n.scene.camera }; }), { disabled: !sc.items.length }))),
     pos,
-    ...(sel ? (sel.it.kind === 'planet' ? planetControls(sel.it, sel.patch) : astronautControls(sel.it, sel.patch)) : [note('select an item (click it on the stage or in the list) to configure it')]),
+    ...(sel ? ({ planet: planetControls, astronaut: astronautControls, drone: droneControls }[sel.it.kind])(sel.it, sel.patch) : [note('select an item (click it on the stage or in the list) to configure it')]),
   ];
 }
 
@@ -627,7 +671,7 @@ function historyView(hs, i = hs.step, { own = false } = {}) {
   const items = v.items.map((it) => S.normaliseItem(it));
   const r = state.render;
   const render = S.normaliseRender(own ? v.render : { ...v.render, t: r.t, play: r.play, pixelH: r.pixelH });
-  return { ...v, items, render, camera: v.camera ?? FRAMING_CAMERAS[v.framing ?? 'planet'], key: JSON.stringify(items) };
+  return { ...v, items, render, camera: v.camera ?? frameCamera(v.framing ?? 'planet', items[0]), key: JSON.stringify(items) };
 }
 /** The step's own start time: its render t, else the default. */
 const stepTime = (famId, i) => H.view({ family: famId, step: i }).render?.t ?? S.RENDER_DEFAULTS.t;
@@ -673,6 +717,7 @@ function openInInspector() {
 /** Renders a live step off-screen in its own look; returns ImageData. */
 function renderOff(v, slot, w, h, cam, t) {
   const st = offStage(slot);
+  st.droneZoom = ZOOM[slot === 'thumb' ? `thumb-${v.framing}` : v.framing] ?? 1;
   useLook(st, { own: true, spec: v.palette, render: v.render });
   if (st.key !== v.key) { // a new step
     st.sync(v.items, P.lookPalette(v.palette));
@@ -826,7 +871,7 @@ function renderHistoryThumbs() {
   const job = histQueue.shift();
   if (!job) return;
   const v = historyView({ family: job.famId, step: job.i, option: 0 }, job.i, { own: true });
-  const cam = FRAMING_CAMERAS[`thumb-${v.framing}`] ?? v.camera;
+  const cam = frameCamera(`thumb-${v.framing}`, v.items[0]) ?? v.camera;
   job.el.getContext('2d').putImageData(renderOff(v, 'thumb', HT_W, HT_H, cam, v.render.t), 0, 0);
 }
 
@@ -885,9 +930,9 @@ function buildPanel() {
     const it = state.asset;
     const cat = ITEMS.find((c) => c.id === current);
     title = cat?.title ?? describe(it);
-    sub = it.kind === 'lab' ? 'exploration, not final' : trialOf(it) ? `${state.focus} · trial look, not final` : `${state.focus === 'astronaut' ? 'astronaut' : state.focus} · final asset`;
+    sub = it.kind === 'lab' || (it.kind === 'drone' && it.variant) ? 'exploration, not final' : trialOf(it) ? `${state.focus} · trial look, not final` : `${state.focus} · final asset`;
     const patch = (p, opts) => update((n) => Object.assign(n.asset, p), opts);
-    body = [...(it.kind === 'planet' ? planetControls(it, patch) : it.kind === 'astronaut' ? astronautControls(it, patch) : labControls(it, patch)), cameraControls(), renderControls()];
+    body = [...({ planet: planetControls, astronaut: astronautControls, drone: droneControls, lab: labControls }[it.kind])(it, patch), cameraControls(), renderControls()];
   }
   panel.append(h('h3', {}, title, h('small', {}, sub)), ...body.flat().filter(Boolean));
   panel.scrollTop = top;
@@ -906,7 +951,7 @@ function syncChrome() {
   for (const t of document.querySelectorAll('.tile')) t.classList.toggle('sel', state.mode === 'asset' && t.dataset.id === current);
   $('frame').classList.toggle('scene', state.mode === 'scene');
   const badge = $('stage-badge');
-  const explore = isLab() || (state.mode === 'asset' && state.asset.kind === 'planet' && state.asset.lavaMode !== 'layered' && state.asset.biome === 'lava');
+  const explore = isLab() || (state.mode === 'asset' && ((state.asset.kind === 'planet' && state.asset.lavaMode !== 'layered' && state.asset.biome === 'lava') || (state.asset.kind === 'drone' && !!state.asset.variant)));
   const planet = state.mode === 'asset' && state.asset.kind === 'planet' ? state.asset : null;
   const tag = planet && (BIOMES[planet.biome].extra ? EXTRA : state.focus === 'ring' ? `ring ${RING_TAG}` : null);
   const trial = planet && trialOf(planet);

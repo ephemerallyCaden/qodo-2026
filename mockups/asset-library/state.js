@@ -8,6 +8,7 @@
 // RING_PRESETS, EYE_DESIGNS); test/fidelity.test.mjs checks they still match.
 import { FAMILY_IDS, family as historyFamily } from './history.js';
 import { TRIALS } from './trials.js';
+import { DRONE_PROVIDERS, DRONE_VARIANTS, DRONE_FACES, PARAMS as DRONE_PARAMS } from './drones.js';
 
 export const VERSION = 1;
 export const BIOME_KEYS = ['lush', 'ocean', 'ice', 'desert', 'lava', 'gas', 'moon', 'toxic'];
@@ -22,7 +23,7 @@ export const LAB_VARIANTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 // Inspector foci for a planet item: which control group leads and what the stage isolates.
 export const FOCI = ['planet', 'moon', 'ring', 'clouds', 'fx'];
 // Camera framings. Planet ones are the viewer's VIEWS; astronaut ones are offsets around the figure.
-export const FRAMINGS = { planet: ['planet', 'clouds-zoom', 'top'], astronaut: ['body', 'crew', 'face'], lab: ['lab'], scene: ['depth', 'crew', 'system'] };
+export const FRAMINGS = { planet: ['planet', 'clouds-zoom', 'top'], astronaut: ['body', 'crew', 'face'], lab: ['lab'], drone: ['drone', 'drone-close'], scene: ['depth', 'crew', 'system'] };
 export const MAX_ITEMS = 16;
 export const MODES = ['asset', 'scene', 'history'];
 
@@ -47,6 +48,10 @@ export const ASTRONAUT_DEFAULTS = {
   phase: 0, yaw: 0, blink: true, pos: [0, 0, 0],
 };
 export const LAB_DEFAULTS = { kind: 'lab', variant: 'A', color: 'mint', eyes: 0, yaw: -0.75, sway: true };
+// A drone (an agent session, the drone lab's): a provider's drone (session: its seeded details, null
+// for the provider's own look) or an exploration variant A-E; the face idle, working or the full
+// 12 s behaviour loop; params: drone-lab parameter overrides (the advanced sliders).
+export const DRONE_DEFAULTS = { kind: 'drone', provider: 'generic', variant: null, session: null, face: 'idle', yaw: -0.5, blink: true, smoke: true, phase: 0, params: {}, pos: [0, 0, 0] };
 export const RENDER_DEFAULTS = {
   pixelH: 180, t: 3, play: false, spin: true, lavaTime: null,
   depth: true, depthMode: 'pixel-smooth', depthBands: '3-band',
@@ -120,9 +125,33 @@ export function normaliseLab(raw) {
   };
 }
 
-export const normaliseItem = (raw, kinds = ['planet', 'astronaut', 'lab']) => {
+const DRONE_PARAM = Object.fromEntries(DRONE_PARAMS.map((p) => [p.key, p]));
+/** Drone-lab parameter overrides: known keys only, each clamped to its range (a select: a whole option index). */
+function droneParams(raw) {
+  if (!isObj(raw)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(raw).slice(0, 200)) {
+    const p = DRONE_PARAM[k];
+    if (!p) continue;
+    const x = p.type === 'select' ? int(v, 0, p.options.length - 1, null) : num(v, p.min, p.max, null);
+    if (x !== null) out[k] = x;
+  }
+  return out;
+}
+export function normaliseDrone(raw) {
+  const r = isObj(raw) ? raw : {};
+  const d = DRONE_DEFAULTS;
+  return {
+    kind: 'drone', provider: oneOf(r.provider, DRONE_PROVIDERS, d.provider), variant: oneOf(r.variant, DRONE_VARIANTS, null),
+    session: r.session === null || r.session === undefined ? null : int(r.session, 0, 999, null),
+    face: oneOf(r.face, DRONE_FACES, d.face), yaw: num(r.yaw, -3.2, 3.2, d.yaw), blink: bool(r.blink, d.blink), smoke: bool(r.smoke, d.smoke),
+    phase: num(r.phase, 0, 24, d.phase), params: droneParams(r.params), pos: vec3(r.pos, 60, d.pos),
+  };
+}
+
+export const normaliseItem = (raw, kinds = ['planet', 'astronaut', 'lab', 'drone']) => {
   const kind = oneOf(raw?.kind, kinds, null);
-  return kind === 'astronaut' ? normaliseAstronaut(raw) : kind === 'lab' ? normaliseLab(raw) : normalisePlanet(raw);
+  return kind === 'astronaut' ? normaliseAstronaut(raw) : kind === 'lab' ? normaliseLab(raw) : kind === 'drone' ? normaliseDrone(raw) : normalisePlanet(raw);
 };
 
 export function normaliseRender(raw) {
@@ -167,7 +196,7 @@ export function normalise(raw) {
   const asset = normaliseItem(r.asset);
   const s = isObj(r.scene) ? r.scene : {};
   // (a trial look renders alone, in the inspector: a scene has one palette for every item)
-  const items = (Array.isArray(s.items) ? s.items : []).slice(0, MAX_ITEMS).map((it) => normaliseItem(it, ['planet', 'astronaut'])).map((it) => (it.kind === 'planet' ? { ...it, trial: null } : it));
+  const items = (Array.isArray(s.items) ? s.items : []).slice(0, MAX_ITEMS).map((it) => normaliseItem(it, ['planet', 'astronaut', 'drone'])).map((it) => (it.kind === 'planet' ? { ...it, trial: null } : it));
   return {
     v: VERSION,
     mode: oneOf(r.mode, MODES, 'asset'),

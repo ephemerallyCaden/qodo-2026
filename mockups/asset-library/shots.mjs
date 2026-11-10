@@ -32,6 +32,21 @@ const SHOTS = {
   scene: { set: { mode: 'scene', scene: crewScene(), render: paused(2) }, act: async (page) => {
     await page.evaluate(() => window.library.set({ ...window.library.state(), scene: { ...window.library.state().scene, selected: 2 } }));
   } },
+  // drones (agent sessions, the drone lab's): a provider's drone, the catalogue group, drones with the crew
+  'inspector-drone': { open: 'drones-2', extra: { render: paused(2.5) } }, // GitHub Copilot, close-up
+  'drone-working': { open: 'drones-8', extra: { asset: { kind: 'drone', provider: 'qodo', yaw: 0, face: 'working' }, render: paused(2) } },
+  'drones-catalogue': { viewport: { width: 1920, height: 1300 }, open: 'drones-3', act: async (page) => {
+    await page.evaluate(() => document.querySelector('[data-id="drones-0"]').scrollIntoView({ block: 'start' }));
+  } },
+  // the drone lab's crew shot as a scene: astronaut, drone, astronaut 0.72 apart round the viewer's
+  // crew spot, the drone hovering 0.52 above their floor; a second drone further back, the hero planet behind
+  'drone-scene': { set: { mode: 'scene', render: paused(2), scene: { framing: 'crew', selected: 1, items: [
+    { kind: 'astronaut', color: 'coral', handle: '@caden', pos: [-2.07, -0.17, 4.6], yaw: 0.4 },
+    { kind: 'drone', provider: 'claude', session: 1, pos: [-1.35, 0.32, 4.6], yaw: 0.05 },
+    { kind: 'astronaut', color: 'lilac', handle: '@juno', pos: [-0.63, -0.17, 4.6], yaw: -0.4, phase: 3.4 },
+    { kind: 'drone', provider: 'copilot', session: 2, pos: [0.15, 0.55, 3.3], yaw: -0.5, phase: 2.1 },
+    { kind: 'planet', biome: 'lush', seed: 7, pos: [0, 0, 0] },
+  ] } } },
   // the dustier-ash trial (health-looks P2): the inspector's look switch, side by side, and the lineup group
   'trial-compare': { open: 'planets-3', extra: { trialCompare: true, render: paused() } },
   'trial-lineup': { viewport: { width: 1920, height: 1800 }, open: 'trials-6', act: async (page) => {
@@ -44,7 +59,7 @@ const SHOTS = {
   'history-depth': { set: history('depth', 2, 5), archive: true }, // the reverted colour budgets beside pixel-smooth
   'history-planets': { set: history('planets', 5), archive: true }, // the health bands, worst to best
   'history-lab': { set: history('crew', 7, -1, { option: 2 }), archive: true }, // lab variant C, live
-  'history-drones': { set: history('drones', 4, 2), archive: true },
+  'history-drones': { set: history('drones', 5, 4, { option: 2 }), archive: true }, // the live Copilot drone beside D-final (archived)
   'history-no-archive': { set: history('crew', 3) }, // the same view without the archive
 };
 

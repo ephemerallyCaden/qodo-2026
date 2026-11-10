@@ -2,7 +2,8 @@
 // (makePlanet, makeAstronaut, makeSky, makeStars from ../asset-viewer/viewer.js) and drawn by its
 // renderer and camera, posed and depth-tinted by its own helpers (poseWorld, depthLevelAt,
 // setDepthLevel, applyDepth), in the order the viewer's frame() uses. Nothing here writes a
-// shader. Exploration variants (A-J) come from the astronaut lab's own renderer, read-only.
+// shader. Exploration variants (A-J) come from the astronaut lab's own renderer, and drones from
+// the drone lab's own drone (makeDrone, posed as its renderTile does: drones.js), read-only.
 import * as THREE from 'three';
 import {
   makePlanet, makeAstronaut, makeSky, makeStars, setDepthLevel, depthLevelAt, poseWorld, setLoop, applyDepth,
@@ -13,7 +14,9 @@ import { makeAstronaut as makeLabAstronaut } from '../explorations/astronaut-lab
 import { VARIANTS as LAB_VARIANTS } from '../explorations/astronaut-lab/variants.js';
 import { DEFAULTS as LAB_PARAM_DEFAULTS } from '../explorations/astronaut-lab/params.js';
 import { SPACE as LAB_SPACE } from '../explorations/astronaut-lab/crew.js';
+import { makeDrone, layout as droneLayout, extents as droneExtents } from '../drone-lab/drone.js';
 import { contributorKey, eyeGlowKey } from './palette.js';
+import { droneLook, droneCell, droneCamera, pixK, ZOOM } from './drones.js';
 
 export { renderer, camera, controls, frameWidth };
 
@@ -37,6 +40,11 @@ export const FRAMING_CAMERAS = {
   system: { pos: VIEWS.system.pos, target: VIEWS.system.target },
 };
 export const labVariant = (id) => LAB_VARIANTS.find((v) => v.id === id);
+/** A framing's camera: the fixed ones above, or a drone framing (the drone lab's, from the drone's extents). */
+export function frameCamera(framing, item) {
+  if (item?.kind === 'drone' && ZOOM[framing]) return droneCamera(droneExtents(droneLayout(droneLook(item).params)), ZOOM[framing]);
+  return FRAMING_CAMERAS[framing];
+}
 
 const TMP = new THREE.Vector3(), TMP2 = new THREE.Vector3(), RIGHT = new THREE.Vector3();
 const artOpt = (it) => (!it.artefacts ? 0 : it.artAuto ? 'auto' : it.artCount);
@@ -64,16 +72,25 @@ export class Stage {
       s.item = it;
       if (it.kind === 'planet') this.syncPlanet(s.obj, it);
       else if (it.kind === 'astronaut') this.syncAstronaut(s.obj, it, pal);
+      else if (it.kind === 'drone') this.syncDrone(s.obj, it);
       else this.syncLab(s.obj, it);
     });
-    // The lab renders its variants on flat space, without the viewer's sky and stars.
-    const lab = items.some((it) => it.kind === 'lab');
-    this.sky.visible = this.stars.visible = !lab;
+    // The labs render on flat space, without the viewer's sky and stars: an astronaut variant, or
+    // drones on their own (drones in a scene with the crew or planets keep the sky).
+    this.labSpace = items.some((it) => it.kind === 'lab') || (items.length > 0 && items.every((it) => it.kind === 'drone'));
+    this.sky.visible = this.stars.visible = !this.labSpace;
   }
 
   make(kind) {
-    const obj = kind === 'planet' ? makePlanet() : kind === 'astronaut' ? makeAstronaut('coral') : makeLabAstronaut({ color: 'mint', eyes: 0 });
+    const obj = kind === 'planet' ? makePlanet() : kind === 'astronaut' ? makeAstronaut('coral') : kind === 'drone' ? makeDrone() : makeLabAstronaut({ color: 'mint', eyes: 0 });
     return { kind, obj, group: obj.group };
+  }
+
+  syncDrone(d, it) {
+    const { params, palette } = droneLook(it);
+    d.setParams(params);
+    d.setPalette(palette);
+    d.group.position.set(...it.pos);
   }
 
   syncPlanet(p, it) {
@@ -115,13 +132,18 @@ export class Stage {
     const by = (k) => this.slots.filter((s) => s.kind === k);
     poseWorld(t, { planets: by('planet').map((s) => s.obj), astronauts: by('astronaut').map((s) => s.obj), spin: render.spin, lavaTime: render.lavaTime });
     for (const s of by('lab')) s.obj.update(t, { yaw: s.item.yaw, sway: s.item.sway ? 1 : 0 });
+    // drones as the drone lab's renderTile poses them (their own shader: no viewer depth fade)
+    for (const s of by('drone')) {
+      const c = droneCell(s.item, t);
+      s.obj.update(c.t, { yaw: c.yaw, motion: c.motion, blink: c.blink, smoke: c.smoke, pixK: pixK(render.pixelH, this.droneZoom ?? 1) });
+    }
     setDepthLevel(this.stars, 0);
     setDepthLevel(this.sky, 0);
-    for (const s of this.slots) if (s.kind !== 'lab') setDepthLevel(s.group, depthLevelAt(camera.position.distanceTo(s.group.getWorldPosition(TMP)), render));
+    for (const s of this.slots) if (s.kind === 'planet' || s.kind === 'astronaut') setDepthLevel(s.group, depthLevelAt(camera.position.distanceTo(s.group.getWorldPosition(TMP)), render));
   }
 
   clearColor() {
-    return this.slots.some((s) => s.kind === 'lab') ? LAB_SPACE : resolve('space');
+    return this.labSpace ? LAB_SPACE : resolve('space');
   }
 
   /** Screen centre and radius (internal px) of slot i, for picking and the selection box. */
@@ -130,8 +152,8 @@ export class Stage {
     if (!s) return null;
     const it = s.item;
     const c = TMP.set(...it.pos);
-    const r = it.kind === 'planet' ? it.size : 0.55;
-    if (it.kind !== 'planet') c.y += 0.5;
+    const r = it.kind === 'planet' ? it.size : it.kind === 'drone' ? 0.3 : 0.55;
+    if (it.kind === 'astronaut') c.y += 0.5;
     RIGHT.setFromMatrixColumn(camera.matrixWorld, 0);
     const q = TMP2.copy(c).addScaledVector(RIGHT, r).project(camera);
     const p = c.project(camera);

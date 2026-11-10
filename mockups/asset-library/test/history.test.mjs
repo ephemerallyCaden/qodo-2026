@@ -10,6 +10,7 @@ import * as S from '../state.js';
 import { GROUPS, ITEMS, BIOME_MEANING, EXTRA, RING_TAG } from '../catalogue.js';
 import { V2_PLANET_RAMPS } from '../../asset-viewer/planet-ramps.js';
 import { LIBRARY_ROOT } from '../routes.mjs';
+import { DRONE_PROVIDERS } from '../drones.js';
 
 const git = (...args) => execFileSync('git', args, { cwd: LIBRARY_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 const hasRev = (rev) => { try { git('cat-file', '-e', `${rev}^{commit}`); return true; } catch { return false; } };
@@ -60,7 +61,8 @@ test('R10: every family is a dated timeline, oldest to final, each step saying w
   // the only step with neither: the drone lab's first round, whose renders were overwritten
   assert.deepEqual(H.FAMILIES.flatMap((f) => f.steps.filter((s) => !s.live && !s.img).map((s) => `${f.id}:${s.rev}`)), ['drones:90d28e5']);
   assert.deepEqual(H.badgesOf(H.family('toxic').steps.at(-1)), ['live', 'final']);
-  assert.deepEqual(H.badgesOf(H.family('drones').steps.at(-1)), ['archived image', 'final']);
+  assert.deepEqual(H.badgesOf(H.family('drones').steps.at(-1)), ['live', 'final'], 'the drones end on the live provider drones');
+  assert.deepEqual(H.family('drones').steps.at(-1).live.options.list.map((o) => o.id), DRONE_PROVIDERS, 'one option per provider drone');
   console.log(rows.join('\n'));
 });
 
