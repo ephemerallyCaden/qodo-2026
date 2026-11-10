@@ -89,6 +89,13 @@ export const grabCanvas = (page, selector = '#view') => page.evaluate((selector)
   return { w: s.width, h: s.height, data: Array.from(x.getImageData(0, 0, s.width, s.height).data) };
 }, selector);
 
+/** A catalogue tile's thumbnail: scrolled into view (tiles render as they come near it), once it's current. */
+export async function grabTile(page, id) {
+  await page.evaluate((id) => document.querySelector(`[data-id="${id}"]`).scrollIntoView({ block: 'center' }), id);
+  await page.waitForFunction((id) => window.library.tileReady(id), id, { timeout: BOOT_MS });
+  return grabCanvas(page, `[data-id="${id}"] canvas`);
+}
+
 /** The page's errors, less the 404s of archived images that a missing art archive causes. */
 export const pageErrors = (page) => page.errors.map(String).filter((e) => !/Failed to load resource/.test(e));
 

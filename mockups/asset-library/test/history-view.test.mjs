@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rm } from 'node:fs/promises';
-import { launch, openLibrary, grabCanvas, pageErrors, diff, stats, settle, hexInt } from './harness.mjs';
+import { launch, openLibrary, grabCanvas, grabTile, pageErrors, diff, stats, settle, hexInt } from './harness.mjs';
 import { makeArchive, png } from './fixture-archive.mjs';
 import * as H from '../history.js';
 import * as S from '../state.js';
@@ -30,8 +30,7 @@ const grabCompare = (page) => grabCanvas(page, '#cmp-view');
 for (const k of ['toxic', 'spore']) H.VENDORED.acid.set[k].slice(1).forEach((x) => { if (hue(hexInt(x)) !== null && !inRange(x, LIME)) throw new Error(`acid ${k} ${x} outside the lime window`); });
 for (const x of V2_PLANET_RAMPS.toxic.slice(1)) if (hue(hexInt(x)) !== null && !inRange(x, EMBER)) throw new Error(`ember ${x} outside its window`);
 
-// (the whole catalogue renders first, 70-odd tiles including 16 raymarched drones: minutes in SwiftShader)
-test('a live history step shows its old palette on the stage only; its final step is the inspector\'s asset', { timeout: 1200000 }, async () => {
+test('a live history step shows its old palette on the stage only; its final step is the inspector\'s asset', { timeout: 600000 }, async () => {
   const browser = await launch();
   try {
     // boot straight into the acid-lime step, so the catalogue thumbnails render while history colours are active
@@ -41,7 +40,7 @@ test('a live history step shows its old palette on the stage only; its final ste
     const lime = await grabCanvas(b);
     assert.ok(stats(lime).drawn > 3000, `empty render (${stats(lime).drawn} px)`);
     assert.ok(count(lime, LIME) > 1000, `the stage shows the acid-lime look (${count(lime, LIME)} px)`);
-    const tile = await grabCanvas(b, '[data-id="planets-1"] canvas');
+    const tile = await grabTile(b, 'planets-1');
     assert.equal(tile.data.length, 160 * 90 * 4);
     assert.ok(count(tile, EMBER) > 200, `the toxic tile is ember (${count(tile, EMBER)} px)`);
     assert.equal(count(tile, LIME), 0, 'no lime in the catalogue');

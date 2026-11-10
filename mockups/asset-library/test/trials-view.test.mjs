@@ -5,7 +5,7 @@
 // empty output.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, openLibrary, grabCanvas, diff, stats, settle, hexInt, rgbAt } from './harness.mjs';
+import { launch, openLibrary, grabCanvas, grabTile, diff, stats, settle, hexInt, rgbAt } from './harness.mjs';
 import { TRIALS } from '../trials.js';
 import { V2_PLANET_RAMPS } from '../../asset-viewer/planet-ramps.js';
 import * as S from '../state.js';
@@ -49,8 +49,7 @@ test('the trial differs from the shipped desert only in the ash ramp colours, ea
   }
 });
 
-// (two pages render the whole catalogue, 70-odd tiles including 16 raymarched drones: minutes in SwiftShader)
-test('the trial never leaks: the base palette, the edits and the catalogue keep the shipped look', { timeout: 1200000 }, async () => {
+test('the trial never leaks: the base palette, the edits and the catalogue keep the shipped look', { timeout: 600000 }, async () => {
   const browser = await launch();
   try {
     // boot straight into the trial comparison, so the catalogue thumbnails render while the stage shows the trial
@@ -60,13 +59,13 @@ test('the trial never leaks: the base palette, the edits and the catalogue keep 
     const a = await openLibrary(browser);
     await a.waitForFunction(() => window.library.thumbsDone);
     for (const id of ['planets-2', 'trials-4', 'trials-5', 'planets-0', 'planets-4']) { // desert (shipped) tiles, lava, lush
-      const [ta, tb] = [await grabCanvas(a, `[data-id="${id}"] canvas`), await grabCanvas(b, `[data-id="${id}"] canvas`)];
+      const [ta, tb] = [await grabTile(a, id), await grabTile(b, id)];
       assert.ok(stats(ta).drawn > 200, `${id}: empty tile`);
       assert.equal(diff(ta, tb).length, 0, `${id} differs when the catalogue renders beside the trial`);
     }
-    const [trialA, trialB] = [await grabCanvas(a, '[data-id="planets-3"] canvas'), await grabCanvas(b, '[data-id="planets-3"] canvas')];
+    const [trialA, trialB] = [await grabTile(a, 'planets-3'), await grabTile(b, 'planets-3')];
     assert.equal(diff(trialA, trialB).length, 0, 'the trial tile itself is the same either way');
-    assert.ok(diff(trialA, await grabCanvas(a, '[data-id="planets-2"] canvas')).length > 300, 'the trial tile shows the trial');
+    assert.ok(diff(trialA, await grabTile(a, 'planets-2')).length > 300, 'the trial tile shows the trial');
     for (const p of [a, b]) {
       const base = await p.evaluate(() => window.library.basePalette());
       assert.deepEqual([base.sand, base.rock], [V2_PLANET_RAMPS.sand, V2_PLANET_RAMPS.rock], 'the base palette is the shipped one');

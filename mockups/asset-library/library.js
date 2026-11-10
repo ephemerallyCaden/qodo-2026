@@ -178,21 +178,40 @@ renderer.setAnimationLoop(() => {
 addEventListener('resize', () => (dirty = true));
 
 // ---------------------------------------------------------------- catalogue (R1)
+// Thumbnails render when their tile scrolls near the catalogue's view (an IntersectionObserver),
+// not all at boot: a tile is "fresh" once it shows the current palette, and palette edits make
+// every tile stale again (the visible ones re-render, the rest when they scroll into view).
 const THUMB_W = 160, THUMB_H = 90;
 const thumbQueue = [];
 const thumbCanvases = new Map();
 const paletteCanvases = new Map();
+const ITEM_BY_ID = new Map(ITEMS.map((it) => [it.id, it]));
+const tileNear = new Set(); // tile ids near the catalogue's view
+const tileFresh = new Set(); // tile ids whose thumbnail is current
+let tilesSeen = false; // the observer has reported once
+function queueNear() {
+  for (const id of tileNear) {
+    const it = ITEM_BY_ID.get(id);
+    if (it?.state && !tileFresh.has(id) && !thumbQueue.includes(it)) thumbQueue.push(it);
+  }
+}
+const tileObserver = new IntersectionObserver((entries) => {
+  for (const e of entries) (e.isIntersecting ? tileNear.add(e.target.dataset.id) : tileNear.delete(e.target.dataset.id));
+  tilesSeen = true;
+  queueNear();
+}, { root: $('catalogue'), rootMargin: '400px 0px' });
+/** Every tile near the view is rendered and current (thumbnails further down render when they come into view). */
+const thumbsDone = () => tilesSeen && !thumbTimer && [...tileNear].every((id) => !ITEM_BY_ID.get(id)?.state || tileFresh.has(id));
 // Palette edits re-render the thumbnails once the edit settles, not on every colour-picker tick.
 let thumbTimer = 0;
 function thumbsSoon() {
-  window.library.thumbsDone = false;
   clearTimeout(thumbTimer);
   thumbTimer = setTimeout(() => { thumbTimer = 0; thumbsDirty(); }, 150);
 }
 function thumbsDirty() {
-  window.library.thumbsDone = false;
+  tileFresh.clear();
   thumbQueue.length = 0;
-  for (const it of ITEMS) if (it.state) thumbQueue.push(it);
+  queueNear();
   for (const [group, cv] of paletteCanvases) paletteThumb(cv, group);
 }
 function renderThumbs(n) {
@@ -207,8 +226,8 @@ function renderThumbs(n) {
     ts.droneZoom = ZOOM[`thumb-${st.framing}`] ?? 1;
     const img = renderToImage(ts, it.t ?? 3, S.RENDER_DEFAULTS, THUMB_W, THUMB_H, st.camera ?? frameCamera(`thumb-${st.framing}`, st.asset) ?? frameCamera(st.framing, st.asset));
     thumbCanvases.get(it.id)?.getContext('2d').putImageData(img, 0, 0);
+    tileFresh.add(it.id);
   }
-  if (!thumbQueue.length && !thumbTimer) window.library.thumbsDone = true;
 }
 function paletteThumb(cv, groupId) {
   const ctx = cv.getContext('2d');
@@ -248,6 +267,7 @@ function buildCatalogue() {
       b.title = it.variant ? `${labVariant(it.variant).name}: ${labVariant(it.variant).leaning}` : `${it.title} · ${it.sub ?? ''}${meaning}`;
       b.onclick = () => openItem(it);
       grid.append(b);
+      tileObserver.observe(b);
     }
     sec.append(grid);
     root.append(sec);
@@ -1031,7 +1051,10 @@ $('png4').onclick = () => png(4);
 // ---------------------------------------------------------------- boot + test hook
 window.library = {
   ready: false,
-  thumbsDone: false,
+  /** Every catalogue tile near the view has its current thumbnail (the rest render when scrolled to). */
+  get thumbsDone() { return thumbsDone(); },
+  /** Tile `id`'s thumbnail is current (scroll it into view first). */
+  tileReady: (id) => tileFresh.has(id),
   get histDone() { return !histQueue.length; }, // the iteration view's timeline thumbnails are rendered
   /** Applies a state (paused), renders it twice synchronously like viewer.set, returns its URL hash. */
   set(next) {
