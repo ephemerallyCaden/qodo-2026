@@ -1,4 +1,4 @@
-import { renameSync, rmSync } from 'node:fs';
+import { readFileSync, renameSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { CommetError, EXIT } from '../core/errors.js';
@@ -56,15 +56,37 @@ function saveQodoCache(commonDir: string, text: string): boolean {
 }
 
 /**
- * Writes one scan's layout and snapshot as a pair (Qodo local r1 #2): both are staged next to
- * their targets first, so a failed write (a full disk, a target that can't be replaced) leaves the
- * last pair as it was. The layout goes in first; its `source.head` names the snapshot it belongs to.
+ * Writes one scan's layout and snapshot as a pair (Qodo local r1 #2, r3 #1): both are staged next
+ * to their targets first, so a failed write (a full disk) changes nothing. If a target then can't
+ * be replaced, the targets already replaced get their last contents back (or go, if they were new),
+ * so the last pair stays published together. The layout's `source.head` names its snapshot.
  */
 function writePair(files: [file: string, text: string][]): void {
+  const last = files.map(([file]) => {
+    try {
+      return readFileSync(file);
+    } catch {
+      return null; // absent, or not a file we could restore
+    }
+  });
+  let replaced = 0;
   try {
     for (const [file, text] of files) writeAtomic(`${file}.next`, text);
-    for (const [file] of files) renameSync(`${file}.next`, file);
+    for (const [file] of files) {
+      renameSync(`${file}.next`, file);
+      replaced++;
+    }
   } catch (e) {
+    for (let i = 0; i < replaced; i++) {
+      const [file] = files[i]!;
+      const was = last[i]!;
+      try {
+        if (was === null) rmSync(file, { force: true });
+        else writeAtomic(file, was);
+      } catch {
+        // Keep the first error; the layout's source.head still tells the pair apart.
+      }
+    }
     for (const [file] of files) rmSync(`${file}.next`, { force: true });
     throw e;
   }

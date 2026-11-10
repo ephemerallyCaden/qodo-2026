@@ -136,6 +136,26 @@ describe('local Qodo review (#18 r1)', () => {
   });
 });
 
+describe('local Qodo review (#18 r3)', () => {
+  it('#1: a snapshot that can\'t be replaced after the layout was puts the last layout back', async () => {
+    const r = miniRepo([{ id: 'one', at: '2026-10-01T10:00:00Z', path: 'src/a.ts', lines: ['export const a = 1;'] }]);
+    const state = join(r.dir, '.git/commet');
+    expect((await cli(['scan', '--no-ingest'], r.dir, { CLAUDE_CONFIG_DIR: NO_LOGS })).code).toBe(0);
+    const before = readFileSync(join(state, 'layout.json'), 'utf8');
+    writeFileSync(join(r.dir, 'src/b.ts'), 'export const b = 2;\n');
+    execFileSync('git', ['add', '-A'], { cwd: r.dir });
+    execFileSync('git', ['commit', '-qm', 'two'], { cwd: r.dir, env: { ...process.env, GIT_AUTHOR_NAME: SELF.name, GIT_AUTHOR_EMAIL: SELF.email,
+      GIT_COMMITTER_NAME: SELF.name, GIT_COMMITTER_EMAIL: SELF.email, GIT_AUTHOR_DATE: '2026-10-02T10:00:00Z', GIT_COMMITTER_DATE: '2026-10-02T10:00:00Z' } });
+    // The layout goes in first; the snapshot then can't replace a folder holding a file.
+    rmSync(join(state, 'snapshot.json'));
+    mkdirSync(join(state, 'snapshot.json', 'x'), { recursive: true });
+    const failed = await cli(['scan', '--no-ingest'], r.dir, { CLAUDE_CONFIG_DIR: NO_LOGS });
+    expect(failed.code).toBe(1);
+    expect(readFileSync(join(state, 'layout.json'), 'utf8')).toBe(before);
+    expect(readdirSync(state).filter((f) => f.endsWith('.next'))).toEqual([]);
+  });
+});
+
 describe('#18 edge cases through the scan', () => {
   it('a repo whose HEAD holds no files has a star and nothing else', async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-layout-empty-')));
