@@ -1,0 +1,17 @@
+{
+  "name": "health-looks",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Verification lab for Commet's planet health looks: renders every band through the asset library and measures whether the looks inform (ordered, grouped, robust to distance, size, overlays and colour-vision deficiency).",
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "measure": "node measure.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}
