@@ -7,7 +7,7 @@
     html, body { margin: 0; height: 100%; background: #0d0b16; overflow: hidden; }
     body { display: grid; place-items: center; font: 12px/1.4 ui-monospace, Menlo, monospace; color: #e6e0ee; }
     #view { image-rendering: pixelated; display: block; }
-    #ui { position: fixed; top: 10px; left: 10px; width: 210px; padding: 10px 12px; background: #1a1626e6; border: 1px solid #3b3866; }
+    #ui { position: fixed; top: 10px; left: 10px; width: 210px; padding: 10px 12px; background: #1a1626e6; border: 1px solid #3b3866; max-height: calc(100vh - 42px); overflow-y: auto; } /* scrolls when the controls outgrow the window */
     #ui h1 { font-size: 12px; margin: 0 0 8px; color: #fff6e4; font-weight: 600; }
     #ui label { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 6px 0; }
     #ui input[type=range] { width: 110px; accent-color: #a993ec; }
@@ -49,6 +49,10 @@
     <label>&nbsp;auto (by size) <input id="art-auto" type="checkbox" checked></label>
     <label>&nbsp;sectors <span id="art-count-readout">3</span><input id="art-count" type="range" min="1" max="5" value="3"></label>
     <label>&nbsp;teal accent <input id="art-teal" type="checkbox"></label>
+    <label>debris <input id="debris" type="checkbox"></label>
+    <label>&nbsp;pieces <select id="debris-count"></select></label>
+    <label>&nbsp;age <select id="debris-age"></select></label>
+    <div class="row"><button id="debris-sweep">sweep one</button></div>
     <label>loop (s) <input id="period" type="number" min="1" max="60" step="0.5" value="24" style="width:54px"></label>
     <label>surface turns <input id="surface-turns" type="number" min="1" max="6" step="1" value="2" style="width:54px"></label>
     <label>cloud turns <input id="cloud-turns" type="number" min="0" max="8" step="1" value="3" style="width:54px"></label>

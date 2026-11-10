@@ -12,6 +12,9 @@ import { tangentFrame } from './cloud-frame.js';
 import { voronoiCells, poolField, crackMask, crackShare } from './snoise.js';
 import { ASTRO_SDF_GLSL, BMIN as ASTRO_BMIN, BMAX as ASTRO_BMAX, SCALE as ASTRO_SCALE, LIFT as ASTRO_LIFT, layout as astroLayout, pose as astroPose } from './astronaut.js';
 import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors, artefactCount } from './artefacts.js';
+import { debrisFactory, DEBRIS_STYLE } from './debris.js';
+import { bindPalettes } from './debris-palette.js';
+import { demoItems, ranked, AGE_MIXES } from './debris-layout.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -48,6 +51,7 @@ for (const pal of Object.values(PALETTES)) {
   pal.moonBody ??= pal.moon.slice(1, 5);
   pal.halo ??= pal.stars[0];
 }
+bindPalettes(PALETTES); // every palette carries the debris role (fixed colours: A3's grey, outline and lights)
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
 const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
 let paletteName = 'final';
@@ -881,7 +885,13 @@ export const MOON_ORBITS = [
   { size: 0.11, orbit: 1.75, incl: 0.34, yaw: 0.25, offset: 0.15 },
   { size: 0.062, orbit: 1.36, incl: 0.5, yaw: -0.4, offset: 0.62 },
 ];
-const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size, shared by every planet surface (artefact cells)
+const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size, shared by every planet surface (artefact cells) and the debris outline
+
+// Space debris (R13; debris.js): stale work near the planet it touches, a planet modifier like the
+// ring. The factory shares the viewer's depth fade, key light and drawing-buffer size.
+export const { makeDebris } = debrisFactory({ depthGlsl: DEPTH_GLSL, depthUniforms, light: LIGHT_DIR, viewSize: VIEW_SIZE });
+export { DEBRIS_STYLE, demoItems, AGE_MIXES };
+export const DEBRIS_COUNTS = [0, 1, 3, 8, 24];
 
 export function makePlanet() {
   const group = new THREE.Group();
@@ -959,6 +969,13 @@ export function makePlanet() {
     group.add(m.mesh);
   }
 
+  // Debris: a counter-scaled child group, so pieces keep their own size (the diff, not the planet's
+  // LOC) while riding with the planet. Off (null spec) it's hidden and empty, so it draws nothing.
+  const debris = makeDebris();
+  debris.group.visible = false;
+  group.add(debris.group);
+  let debrisSpec = null;
+
   const m4 = new THREE.Matrix4();
   const up = new THREE.Vector3(0, 1, 0);
   let built = '';
@@ -971,6 +988,8 @@ export function makePlanet() {
   function rebuild(seed, biomeKey = 'lush', ringMode = 'thin', cover = null, ringGeo = RING_PRESETS[ringMode], size = 1, floatOverride = null) {
     const lift = crackLift(size);
     group.scale.setScalar(size);
+    debris.group.scale.setScalar(1 / size);
+    syncDebris();
     surfaceMat.uniforms.uCrackLift.value = lift;
     const key = `${seed}|${biomeKey}|${ringMode}|${cover}|${ringGeo?.inner}|${ringGeo?.width}|${biomeKey === 'lava' ? lift : ''}|${floatOverride ?? ''}`; // size only moves lava ash (crack set)
     if (key === built) return;
@@ -1170,8 +1189,24 @@ export function makePlanet() {
     artefactSectors(mulberry32(seed * 104729 + 7), MAX_ART).forEach((sec, i) => surfaceMat.uniforms.uArtSec.value[i].set(...sec.dir, sec.size));
   }
 
-  /** phase in [0, 1): position in the shared loop; lavaPhase: the molten lava field's (default: the same). */
-  function update(phase, lavaPhase = phase) {
+  /**
+   * spec: null (no debris) or { items, seed, sweeps: { [item id]: start time (s) }, selected, style }:
+   * stale items ({ id, cls, diff, age }) as debris around this planet, in DEBRIS_STYLE (A3) unless
+   * style overrides it. Deterministic: the same items and seed place the same pieces.
+   */
+  function setDebris(spec) {
+    debrisSpec = spec;
+    syncDebris();
+  }
+  function syncDebris() {
+    debris.group.visible = !!debrisSpec;
+    if (!debrisSpec) return;
+    const style = { ...DEBRIS_STYLE, ...debrisSpec.style };
+    debris.rebuild(debrisSpec.items, style, { seed: debrisSpec.seed ?? 1, radius: group.scale.x, hull: style.hull });
+  }
+
+  /** phase in [0, 1): position in the shared loop; lavaPhase: the molten lava field's (default: the same); t: seconds, the sweep's own clock. */
+  function update(phase, lavaPhase = phase, t = 0) {
     const turn = phase * Math.PI * 2 * LOOP.surfaceTurns; // whole surface turns per loop
     spin.rotation.y = -turn; // right -> left
     sky.rotation.y = -phase * Math.PI * 2 * LOOP.cloudTurns; // clouds drift ahead of the ground
@@ -1193,6 +1228,11 @@ export function makePlanet() {
     shadowMat.uniforms.uCenter.value.copy(ringMat.uniforms.uCenter.value);
     ringMat.uniforms.uRadius.value = shadowMat.uniforms.uRadius.value = group.scale.x;
     shadowMat.uniforms.uToSurface.value.copy(surface.matrixWorld).invert();
+    if (debrisSpec) {
+      const sweeps = Object.fromEntries(Object.entries(debrisSpec.sweeps ?? {}).map(([id, start]) => [id, t - start])); // outside the loop lock (D6)
+      debris.update(phase, { centre: ringMat.uniforms.uCenter.value.toArray(), radius: group.scale.x, sweeps, selected: debrisSpec.selected, local: true });
+      debris.group.updateMatrixWorld(true);
+    }
   }
   // artefacts: 0 = off, 1..5 = that many sectors, 'auto' = by planet size (artefactCount).
   let artefactsOpt = 0;
@@ -1211,8 +1251,8 @@ export function makePlanet() {
   };
 
   // parts and moons: for the asset library, which shows layers on their own and edits moon orbits.
-  const parts = { surface, haze, halo, sky, ringTilt };
-  return { group, rebuild, update, ring, setExtras, parts, moons: MOONS };
+  const parts = { surface, haze, halo, sky, ringTilt, debris: debris.group };
+  return { group, rebuild, update, ring, setExtras, setDebris, parts, moons: MOONS, debris };
 }
 
 // ---------------------------------------------------------------- astronaut
@@ -1522,6 +1562,8 @@ const state = {
   lavaMode: 'layered', // LAVA_MODES: layered (default), static-painted (3b6a482 flow, A/B), full-warp
   lavaTime: null, // debug: pin the molten lava field to this loop time (s), even with spin off; null = follow the loop
   artDebug: false, // debug (measurement only): artefact cells as cell-index colours (artefacts.js uArtDebug)
+  debris: false, debrisCount: 8, debrisAge: 'mixed', // space debris on the hero planet (DEBRIS_COUNTS, AGE_MIXES)
+  debrisSwept: [], // [{ id, at }]: items swept at time `at` (s); the "sweep one" button takes the biggest left
 };
 
 // Keep the orbit camera out of the cloud layer in planet views (clouds reach ~1.1 R).
@@ -1606,8 +1648,13 @@ export function poseWorld(t, { planets: ps = [], astronauts = [], spin = true, l
   const wrap = (s) => (((s / LOOP.period) % 1) + 1) % 1;
   const phase = wrap(t);
   const lavaPhase = lavaTime == null ? (spin ? phase : 0) : wrap(lavaTime);
-  ps.forEach((p) => p.update(spin ? phase : 0, lavaPhase));
+  ps.forEach((p) => p.update(spin ? phase : 0, lavaPhase, t));
   astronauts.forEach((a) => a.update(t));
+}
+
+/** The hero planet's debris: demo stale items, seeded with the planet, and any sweeps. */
+function heroDebris() {
+  return { items: demoItems(state.debrisCount, { mix: state.debrisAge }), seed: state.seed, sweeps: Object.fromEntries(state.debrisSwept.map(({ id, at }) => [id, at])) };
 }
 
 function applyState() {
@@ -1618,6 +1665,7 @@ function applyState() {
   SYSTEM.forEach((p, i) => p.setExtras({ moons: i === 0 && state.moons, halo: state.halo, ...art }));
   controls.minDistance = minOrbit();
   planets.forEach((p) => p.rebuild(state.seed, state.biome, state.ringMode, state.cover, { inner: state.ringInner, width: state.ringWidth }, state.size));
+  planets.forEach((p, i) => p.setDebris(i === 0 && state.debris ? heroDebris() : null));
   // Which objects a view shows: showcase (hero + depth copies + crew), solo planet, or the system.
   const sceneMode = VIEWS[state.view]?.scene ?? 'showcase';
   planets.forEach((p, i) => (p.group.visible = sceneMode === 'showcase' || (sceneMode === 'solo' && i === 0)));
@@ -1641,6 +1689,7 @@ function applyState() {
     document.getElementById(`${id}-readout`).textContent = state[key].toFixed(2);
   }
   const weather = WEATHER[BIOMES[state.biome].weather];
+  for (const id of ['debris-count', 'debris-age', 'debris-sweep']) document.getElementById(id).disabled = !state.debris;
   const cov = document.getElementById('cover');
   cov.disabled = !weather;
   cov.value = Math.round((state.cover ?? weather?.cover ?? 0) * 100);
@@ -1713,6 +1762,18 @@ function bindUi() {
     $('palette').append(group);
   }
   $('eyes').addEventListener('change', (e) => { state.eyes = e.target.value; applyState(); });
+  fill($('debris-count'), DEBRIS_COUNTS, String);
+  $('debris-count').value = String(DEBRIS_COUNTS.indexOf(state.debrisCount));
+  fill($('debris-age'), AGE_MIXES, (m) => m);
+  $('debris').addEventListener('change', (e) => { state.debris = e.target.checked; state.debrisSwept = []; applyState(); });
+  $('debris-count').addEventListener('change', (e) => { state.debrisCount = DEBRIS_COUNTS[+e.target.value]; state.debrisSwept = []; applyState(); });
+  $('debris-age').addEventListener('change', (e) => { state.debrisAge = AGE_MIXES[+e.target.value]; state.debrisSwept = []; applyState(); });
+  $('debris-sweep').addEventListener('click', () => { // the biggest piece not yet swept breaks apart now
+    const gone = new Set(state.debrisSwept.map((s) => s.id));
+    const next = ranked(demoItems(state.debrisCount, { mix: state.debrisAge })).find((it) => !gone.has(it.id));
+    if (next) state.debrisSwept = [...state.debrisSwept, { id: next.id, at: state.time ?? clock.getElapsedTime() }];
+    applyState();
+  });
   addEventListener('resize', resize);
 }
 
