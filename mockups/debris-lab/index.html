@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>debris lab · commet</title>
+  <!-- UI chrome only: every pixel on the canvas comes from the viewer's and the debris palette modules. -->
+  <style>
+    html, body { margin: 0; height: 100%; background: #0d0b16; color: #e6e0ee; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+    body { display: grid; grid-template-columns: 280px 1fr; }
+    aside { padding: 10px 12px; background: #15121f; border-right: 1px solid #2f2a44; overflow-y: auto; }
+    h1 { font-size: 13px; margin: 0 0 10px; color: #fff6e4; font-weight: 600; }
+    label { display: grid; grid-template-columns: 70px 1fr 40px; align-items: center; gap: 6px; margin: 6px 0; color: #a99cbf; }
+    select, button, input { font: inherit; color: #e6e0ee; background: #2a2440; border: 1px solid #4a4266; }
+    button { padding: 3px 8px; cursor: pointer; margin-top: 8px; }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #a993ec; outline-offset: 1px; }
+    #status, .note { color: #8d83a6; margin-top: 10px; }
+    main { display: grid; place-items: center; overflow: hidden; }
+    #view { image-rendering: pixelated; display: block; }
+    html.capture body { display: block; }
+    html.capture aside { display: none; }
+  </style>
+  <script type="importmap">{ "imports": {
+    "three": "./node_modules/three/build/three.module.js",
+    "three/addons/": "./node_modules/three/examples/jsm/"
+  } }</script>
+  <!-- Library mode for ../asset-viewer/viewer.js: share its renderer, camera and factories; no viewer UI or loop. -->
+  <script>window.ASSET_VIEWER_LIBRARY = true; if (location.search.includes('capture')) document.documentElement.classList.add('capture');</script>
+</head>
+<body>
+  <aside aria-label="Controls">
+    <h1>debris lab <span style="color:#8d83a6">· commet</span></h1>
+    <label>direction <select id="v"></select><span></span></label>
+    <label>planet <select id="biome"></select><span></span></label>
+    <label>size <input id="size" type="range" min="40" max="160" value="100"><span id="size-out">1.00</span></label>
+    <label>pieces <select id="n"></select><span></span></label>
+    <label>hull <select id="hull"></select><span></span></label>
+    <label>seed <input id="seed" type="range" min="1" max="99" value="7"><span id="seed-out">7</span></label>
+    <label>play <input id="play" type="checkbox" checked><span></span><span></span></label>
+    <button id="sweep">sweep the biggest piece</button>
+    <div id="status"></div>
+    <p class="note">Drag to orbit, scroll to zoom. Pieces are sample stale items (variants.js sampleItems). The sweep is a one-shot on its own clock.</p>
+  </aside>
+  <main><canvas id="view"></canvas></main>
+  <script type="module" src="./lab.js"></script>
+</body>
+</html>
