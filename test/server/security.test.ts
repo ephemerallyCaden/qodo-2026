@@ -1,5 +1,5 @@
 // R14 server security suite (#32): every case is a real round trip on a 127.0.0.1 socket.
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API, TOKEN_HEADER, type ChartResult } from '../../src/core/contract/api.js';
 import type { ChartAction } from '../../src/core/contract/fog.js';
 import { hostAllowed, newToken, parseChartAction, sameOrigin, tokenMatches } from '../../src/server/guard.js';
-import { bundleKey, loadBundle } from '../../src/server/files.js';
+import { bundleKey, loadBundle, MAX_FILE_BYTES } from '../../src/server/files.js';
 import { startServer, type CommetServer } from '../../src/server/server.js';
 import { writeAtomic } from '../../src/state/io.js';
 import { miniFog } from '../fixtures/contract/mini.js';
@@ -345,6 +345,42 @@ describe('R14 server on a real socket', () => {
         expect(liveEvents(stream.text())).toEqual([{ type: 'snapshot', head: HEAD_B }, { type: 'layout', head: HEAD_B }, { type: 'layout', head: HEAD_A }]);
       } finally {
         stream.close();
+      }
+    });
+
+    it('never follows a directory swapped for a symlink after startup (Qodo #32 r2)', async () => {
+      const g = await fixture();
+      try {
+        const outside = join(g.root, 'outside');
+        mkdirSync(outside);
+        writeFileSync(join(outside, 'app.js'), SECRET);
+        writeFileSync(join(outside, 'snapshot.json'), JSON.stringify({ leaked: SECRET }));
+        rmSync(join(g.web, 'assets'), { recursive: true });
+        symlinkSync(outside, join(g.web, 'assets'));
+        const asset = await req(g.port, { path: '/assets/app.js' });
+        expect(asset.status).toBe(404);
+        expect(asset.body).not.toContain(SECRET);
+        rmSync(g.state, { recursive: true });
+        symlinkSync(outside, g.state);
+        const snap = await req(g.port, { path: API.snapshot, headers: { [TOKEN_HEADER]: g.token } });
+        expect(snap.status).toBe(500);
+        expect(snap.body).toContain('symlink');
+        expect(snap.body).not.toContain(SECRET);
+      } finally {
+        await teardown(g);
+      }
+    });
+
+    it('refuses a state file too large to hold in memory (Qodo #32 r2)', async () => {
+      const g = await fixture();
+      try {
+        // Sparse: no disk is used, but the size is past the cap.
+        truncateSync(join(g.state, 'snapshot.json'), MAX_FILE_BYTES + 1);
+        const r = await req(g.port, { path: API.snapshot, headers: { [TOKEN_HEADER]: g.token } });
+        expect(r.status).toBe(500);
+        expect(JSON.parse(r.body).error).toBe('state error: .git/commet/snapshot.json is larger than 256 MiB');
+      } finally {
+        await teardown(g);
       }
     });
 

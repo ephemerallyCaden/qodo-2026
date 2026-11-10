@@ -18,7 +18,7 @@ it('refuses symlinked state and bundle files without O_NOFOLLOW', async () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-nofollow-')));
   writeFileSync(join(dir, 'secret.txt'), 'SECRET-CANARY');
   symlinkSync(join(dir, 'secret.txt'), join(dir, 'snapshot.json'));
-  await expect(readStateFile(dir, 'snapshot.json')).rejects.toThrow('.git/commet/snapshot.json is a symlink');
+  await expect(readStateFile(dir, 'snapshot.json')).rejects.toThrow('.git/commet/snapshot.json is or sits behind a symlink');
   expect(await readBundleFile(join(dir, 'snapshot.json'))).toBeNull();
   // A plain file still reads.
   expect((await readStateFile(dir, 'secret.txt'))?.toString()).toBe('SECRET-CANARY');

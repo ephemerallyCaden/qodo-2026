@@ -1,7 +1,7 @@
 // File access for `commet open`: the built bundle (an allowlist: no listing, no traversal, no
 // symlinks) and the state files under `.git/commet/` (never read through a symlink, Rule 2).
 import { constants } from 'node:fs';
-import { lstat, open, readdir, realpath } from 'node:fs/promises';
+import { open, readdir, realpath } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WEB_DIST } from '../core/contract/api.js';
@@ -33,6 +33,9 @@ const TYPES: Record<string, string> = {
 export function contentType(file: string): string {
   return TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream';
 }
+
+/** Largest file the server reads into memory (a state file or a bundle file). */
+export const MAX_FILE_BYTES = 256 * 1024 * 1024;
 
 /** Most files a bundle may hold; a wrong root (a home directory, say) stops here instead of walking it all. */
 const MAX_BUNDLE_FILES = 10_000;
@@ -85,9 +88,9 @@ export const STATE_FILES = { snapshot: 'snapshot.json', layout: 'layout.json' } 
 export const NO_SNAPSHOT = 'no snapshot yet: run `commet scan` first';
 
 /**
- * A state file (`snapshot.json`, `layout.json`) from the already-checked state dir, or null when it
- * doesn't exist. A symlink or non-file there is a state error, never followed (Rule 2). Messages
- * name the file, never its absolute path.
+ * A state file (`snapshot.json`, `layout.json`) from the already-checked, canonical state dir, or
+ * null when it doesn't exist. A symlink on the way, a non-file or an oversized file is a state error,
+ * never followed or loaded (Rule 2). Messages name the file, never its absolute path.
  */
 export async function readStateFile(dir: string, name: string): Promise<Buffer | null> {
   try {
@@ -97,20 +100,26 @@ export async function readStateFile(dir: string, name: string): Promise<Buffer |
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') return null;
-    if (code === 'ELOOP') throw new CommetError(`state error: .git/commet/${name} is a symlink; refusing to read it`, EXIT.state);
+    if (code === 'ELOOP') throw new CommetError(`state error: .git/commet/${name} is or sits behind a symlink; refusing to read it`, EXIT.state);
+    if (code === 'EFBIG') throw new CommetError(`state error: .git/commet/${name} is larger than ${MAX_FILE_BYTES >> 20} MiB`, EXIT.state);
     throw e;
   }
 }
 
 /**
- * Refuses a symlink before opening it (Rule 2), and again atomically on open where O_NOFOLLOW
- * exists (both surface as ELOOP; Windows has only the lstat check). Reads only a regular file.
+ * Refuses a symlink anywhere on the path before opening (Rule 2): `file` is already canonical (the
+ * bundle walk and the state dir both start from a real path), so its real path must be itself, which
+ * also catches a directory swapped for a link after startup. O_NOFOLLOW closes the race on the final
+ * component where it exists (not on Windows). Both surface as ELOOP. Reads only a regular file of at
+ * most MAX_FILE_BYTES (EFBIG otherwise).
  */
 async function readRegularFile(file: string): Promise<Buffer | null> {
-  if ((await lstat(file)).isSymbolicLink()) throw Object.assign(new Error('refusing to read a symlink'), { code: 'ELOOP' });
+  if ((await realpath(file)) !== file) throw Object.assign(new Error('refusing to read through a symlink'), { code: 'ELOOP' });
   const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   try {
-    if (!(await handle.stat()).isFile()) return null;
+    const st = await handle.stat();
+    if (!st.isFile()) return null;
+    if (st.size > MAX_FILE_BYTES) throw Object.assign(new Error('file too large'), { code: 'EFBIG' });
     return await handle.readFile();
   } finally {
     await handle.close();
