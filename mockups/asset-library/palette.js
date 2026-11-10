@@ -81,28 +81,28 @@ export function activate(edits) {
   return r;
 }
 
-// History palettes (R10): an old step's colours (history.js: { base, world, set }), each built once
-// as its own viewer palette and active only while that step renders. They are never palette
-// edits, so old looks stay out of the catalogue, the inspector and the palette tab. No spec is the
-// base, exactly.
-export function buildHistoryPalette(spec = {}) {
+// Look palettes: a history step's colours (R10, history.js) or a trial look's (trials.js), as a spec
+// { base, world, set }, each built once as its own viewer palette and active only while that step or
+// trial renders. They are never palette edits, so old and trial looks stay out of the base, the
+// other tiles and the palette tab. No spec is the base, exactly.
+export function buildLookPalette(spec = {}) {
   const pal = structuredClone(spec.base ? { ...PALETTES[spec.base], accent: ACCENTS.reveal } : BASE);
   if (spec.world) Object.assign(pal, structuredClone(V2_PLANET_RAMPS));
   for (const [k, v] of Object.entries(spec.set ?? {})) pal[k] = isObj(v) && isObj(pal[k]) ? { ...pal[k], ...structuredClone(v) } : structuredClone(v);
   if (!spec.set?.spaceBands) pal.spaceBands = [pal.space, pal.space, pal.space];
   return pal;
 }
-const historyNames = new Map(); // spec (JSON) -> its viewer palette's name
-/** Activates the history palette for `spec`, building it on first use; returns it. */
-export function historyPalette(spec) {
+const lookNames = new Map(); // spec (JSON) -> its viewer palette's name
+/** Activates the look palette for `spec`, building it on first use; returns it. */
+export function lookPalette(spec) {
   const key = JSON.stringify(spec ?? {});
-  if (!historyNames.has(key)) {
-    const name = `history-${historyNames.size}`;
-    PALETTES[name] = { ...buildHistoryPalette(spec ?? {}), name };
-    historyNames.set(key, name);
+  if (!lookNames.has(key)) {
+    const name = `look-${lookNames.size}`;
+    PALETTES[name] = { ...buildLookPalette(spec ?? {}), name };
+    lookNames.set(key, name);
   }
-  usePalette(historyNames.get(key));
-  return PALETTES[historyNames.get(key)];
+  usePalette(lookNames.get(key));
+  return PALETTES[lookNames.get(key)];
 }
 
 /** The contributor ramp key for an astronaut colour (a preset key, or a hex registered on the palette). */

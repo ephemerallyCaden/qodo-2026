@@ -59,14 +59,14 @@
     #stage-badge { position: absolute; top: 10px; left: 12px; line-height: 1.3; padding: 2px 7px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; background: #0d0b16d9; }
     #stage-badge.final { color: var(--final); border: 1px solid #007c66; }
     #stage-badge.explore { color: var(--explore); border: 1px solid var(--explore); }
-    /* the iteration view (history tab): one pane, or two side by side, each captioned */
+    /* captioned panes (the history tab, a trial comparison): one, or two side by side or stacked */
     .pane { margin: 0; }
     .pane figcaption, .pane .miss { display: none; }
-    #well:not(.history) .pane img.arch { display: none !important; }
-    #well.history .pane { display: grid; justify-items: center; align-content: center; gap: 6px; min-width: 0; }
-    #well.history .pane figcaption { display: block; line-height: 1.5; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-    #well.history .pane figcaption b { color: var(--head); font-weight: 600; }
-    #well.history .pane .miss:not([hidden]) { display: grid; place-items: center; width: 640px; max-width: 90vw; aspect-ratio: 16 / 9; margin: 0; padding: 16px; color: var(--faint); text-align: center; border: 1px dashed var(--line2); }
+    #well:not(.panes) .pane img.arch { display: none !important; }
+    #well.panes .pane { display: grid; justify-items: center; align-content: center; gap: 6px; min-width: 0; }
+    #well.panes .pane figcaption { display: block; line-height: 1.5; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    #well.panes .pane figcaption b { color: var(--head); font-weight: 600; }
+    #well.panes .pane .miss:not([hidden]) { display: grid; place-items: center; width: 640px; max-width: 90vw; aspect-ratio: 16 / 9; margin: 0; padding: 16px; color: var(--faint); text-align: center; border: 1px dashed var(--line2); }
     #well.cmp { grid-template-columns: 1fr 1fr; gap: 0 12px; padding: 0 8px; }
     #well.cmp.stack { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; gap: 12px 0; padding: 4px 8px; }
     .pane .pic { line-height: 0; }

@@ -24,7 +24,7 @@ test('a composed scene (1 planet + 3 astronauts) renders deterministically', { t
     const flat = stats(await grabCanvas(a));
     for (const [who, hexes] of Object.entries(OWN)) assert.ok(hexes.some((h) => (flat.colours.get(hexInt(h)) ?? 0) >= 5), `${who} is missing from the frame`);
     // other work in between: a different asset, palette edits, another scene, playing
-    await a.evaluate(() => window.library.open('planets-5', { palette: { 'ice.2': '#ffccd0' } }));
+    await a.evaluate(() => window.library.open('planets-6', { palette: { 'ice.2': '#ffccd0' } }));
     await a.evaluate(() => window.library.set({ mode: 'scene', scene: { items: [{ kind: 'planet', biome: 'gas', seed: 5 }] }, render: { play: true } }));
     await a.evaluate(() => new Promise((r) => setTimeout(r, 500)));
     await a.evaluate((s) => window.library.set(s), SCENE);

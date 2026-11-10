@@ -5,7 +5,7 @@
 // replaces the final badge: a library extra, or a look whose meaning is open (R9). Pure data, no DOM.
 
 const astro = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'astronaut', framing: 'body', asset: { kind: 'astronaut', ...asset } }, ...extra });
-const planet = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'planet', framing: 'planet', asset: { kind: 'planet', ...asset } }, ...extra });
+const planet = (title, sub, asset, { camera = null, ...extra } = {}) => ({ title, sub, final: true, state: { focus: 'planet', framing: 'planet', camera, asset: { kind: 'planet', ...asset } }, ...extra });
 const focus = (f, framing = 'planet') => (e) => ({ ...e, state: { ...e.state, focus: f, framing } });
 const HOST_HIDDEN = { surface: false, haze: false, clouds: false, ring: false };
 
@@ -24,6 +24,13 @@ export const BIOME_MEANING = {
 };
 export const EXTRA = 'library extra';
 export const RING_TAG = 'meaning open';
+export const TRIAL_TAG = 'trial';
+
+// Cameras for the trial lineup: the viewer's hero planet view (VIEWS.planet), and the same line at
+// mid distance (12, as the health-looks lab's 'mid' condition).
+const HERO_POS = [1.92, 1.12, 6.69];
+const MID_POS = HERO_POS.map((x) => Math.round(((x * 12) / Math.hypot(...HERO_POS)) * 1e4) / 1e4);
+const trialTile = (title, sub, asset, camera = null) => planet(title, sub, { ...asset, trial: 'dusty-ash' }, { final: false, tag: TRIAL_TAG, camera });
 
 export const GROUPS = [
   {
@@ -44,12 +51,26 @@ export const GROUPS = [
       planet('lava', 'worst health band · 11', { biome: 'lava', seed: 11, ring: 'off' }),
       planet('toxic', 'second-worst band · 13', { biome: 'toxic', seed: 13, ring: 'off' }),
       planet('desert', 'ash band · 3', { biome: 'desert', seed: 3, ring: 'off' }),
+      trialTile('dustier ash · trial', 'P2 ash look · 3', { biome: 'desert', seed: 3, ring: 'off' }),
       planet('lush', 'healthy look 1/3 · 7', { biome: 'lush', seed: 7, ring: 'off' }),
       planet('ocean', 'healthy look 2/3 · 42', { biome: 'ocean', seed: 42, ring: 'off' }),
       planet('ice', 'healthy look 3/3 · 21', { biome: 'ice', seed: 21, ring: 'off' }),
       planet('gas giant', 'very large · 5', { biome: 'gas', seed: 5, ring: 'off' }, { tag: EXTRA }),
       planet('barren moon', 'tiny, cratered · 9', { biome: 'moon', seed: 9, ring: 'off', moons: false }, { tag: EXTRA }),
     ],
+  },
+  {
+    // planet-health-looks P2, beside the shipped looks it sits between, at the hero and mid distances
+    // rows worst to best, columns hero | mid (the grid's two columns)
+    id: 'trials', title: 'Trial: dustier ash', note: 'P2, not adopted: judge by eye. Worst to best down, hero | mid distance across',
+    items: [
+      ['lava', 'worst band', { biome: 'lava', seed: 11 }],
+      ['toxic', 'second-worst band', { biome: 'toxic', seed: 13 }],
+      ['ash', 'ash band, shipped', { biome: 'desert', seed: 3 }],
+      ['ash (trial)', 'ash band, P2', { biome: 'desert', seed: 3 }, true],
+      ['lush', 'healthy band', { biome: 'lush', seed: 7 }],
+    ].flatMap(([title, sub, asset, trial]) => [['hero', null], ['mid', { pos: MID_POS, target: [0, 0, 0] }]].map(([d, camera]) => (
+      trial ? trialTile(`${title} · ${d}`, sub, { ...asset, ring: 'off' }, camera) : planet(`${title} · ${d}`, sub, { ...asset, ring: 'off' }, { camera })))),
   },
   {
     id: 'moons', title: 'Moons', note: 'moons are test files; the two warm moons every planet can carry',

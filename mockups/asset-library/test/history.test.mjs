@@ -16,7 +16,8 @@ const hasRev = (rev) => { try { git('cat-file', '-e', `${rev}^{commit}`); return
 const hexes = (o) => (typeof o === 'string' ? (/^#[0-9a-f]{6}$/.test(o) ? [o] : []) : o && typeof o === 'object' ? Object.values(o).flatMap(hexes) : []);
 
 test('R9: planet tiles say what their look means, worst to best, with extras and rings tagged', () => {
-  const planets = GROUPS.find((g) => g.id === 'planets').items;
+  const all = GROUPS.find((g) => g.id === 'planets').items;
+  const planets = all.filter((it) => !it.state.asset.trial); // (the dustier-ash trial sits beside desert: trials.test.mjs)
   assert.deepEqual(planets.map((it) => it.state.asset.biome), ['lava', 'toxic', 'desert', 'lush', 'ocean', 'ice', 'gas', 'moon']);
   const subs = Object.fromEntries(planets.map((it) => [it.state.asset.biome, it.sub]));
   assert.match(subs.lava, /worst health band/);

@@ -9,7 +9,7 @@
 // lab's variants, the 25 Lospec palettes), each a patch over its live view.
 //
 // History palettes are plain data, applied in their own viewer palette (palette.js
-// historyPalette), never as palette edits, so the old looks stay in this view. `base` names a
+// lookPalette), never as palette edits, so the old looks stay in this view. `base` names a
 // viewer palette ('lospec:<slug>'; default: the library base), `world` lays today's v2 planet
 // ramps over it, and `set` replaces whole roles (plain objects merge one level). The vendored
 // tables were copied from git at `rev`; test/history.test.mjs checks them against it.
@@ -134,7 +134,7 @@ const solo = (asset, framing = 'planet', more = {}) => ({ items: [asset], framin
 const showcase = (framing, more = {}) => ({ items: showcaseScene().items, framing, ...more });
 const LUSH = planet({ biome: 'lush', seed: 7 }); // the viewer's hero planet
 // The catalogue's planet tiles, by biome, worst band to best then the extras
-const TILES = Object.fromEntries(GROUPS.find((g) => g.id === 'planets').items.map((it) => [it.state.asset.biome, it.state.asset]));
+const TILES = Object.fromEntries(GROUPS.find((g) => g.id === 'planets').items.filter((it) => !it.state.asset.trial).map((it) => [it.state.asset.biome, it.state.asset]));
 const TOXIC = TILES.toxic, LAVA = TILES.lava;
 // The health bands worst to best (art direction §6), one row, no rings or moons, depth fade off
 const BANDS = Object.keys(TILES).slice(0, 6);

@@ -23,7 +23,7 @@ const SHOTS = {
   'inspector-clouds': { open: 'clouds-4' },
   'inspector-fx': { open: 'fx-2' }, // opens at its peak glitch time (catalogue t)
   'inspector-exploration': { open: 'explorations-2' },
-  'palette-editor': { open: 'planets-3', act: async (page) => {
+  'palette-editor': { open: 'planets-4', act: async (page) => {
     await page.evaluate(() => window.library.set({ ...window.library.state(), palette: { 'land.2': '#c16a7d', 'land.3': '#e5959f', 'ocean.2': '#22896e' }, render: { ...window.library.state().render, t: 3, play: false } }));
     await page.evaluate(() => window.library.editColour('land.2'));
   } },
@@ -31,6 +31,11 @@ const SHOTS = {
   'narrow-1280': { viewport: { width: 1280, height: 800 }, open: 'astronauts-1', extra: { render: paused(1.2) } },
   scene: { set: { mode: 'scene', scene: crewScene(), render: paused(2) }, act: async (page) => {
     await page.evaluate(() => window.library.set({ ...window.library.state(), scene: { ...window.library.state().scene, selected: 2 } }));
+  } },
+  // the dustier-ash trial (health-looks P2): the inspector's look switch, side by side, and the lineup group
+  'trial-compare': { open: 'planets-3', extra: { trialCompare: true, render: paused() } },
+  'trial-lineup': { viewport: { width: 1920, height: 1800 }, open: 'trials-6', act: async (page) => {
+    await page.evaluate(() => document.querySelector('[data-id="trials-0"]').scrollIntoView({ block: 'start' }));
   } },
   // the iteration view (R10): live steps, archived renders from the local archive, comparisons
   'history-toxic': { set: history('toxic', 0, 2), archive: true }, // acid lime (live, history colours) beside rust-ember

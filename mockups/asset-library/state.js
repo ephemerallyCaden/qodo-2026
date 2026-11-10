@@ -7,6 +7,7 @@
 // The enums mirror the asset viewer's exports (BIOMES, LAVA_MODES, DEPTH_MODES, DEPTH_BANDS,
 // RING_PRESETS, EYE_DESIGNS); test/fidelity.test.mjs checks they still match.
 import { FAMILY_IDS, family as historyFamily } from './history.js';
+import { TRIALS } from './trials.js';
 
 export const VERSION = 1;
 export const BIOME_KEYS = ['lush', 'ocean', 'ice', 'desert', 'lava', 'gas', 'moon', 'toxic'];
@@ -37,6 +38,7 @@ export const PLANET_DEFAULTS = {
   cover: null, float: null, cloudShadow: true, // cover/float null = the biome's WEATHER values
   moons: true, moonOrbits: MOON_DEFAULTS, halo: false,
   artefacts: false, artAuto: true, artCount: 3, artTeal: false, lavaMode: 'layered',
+  trial: null, // a trial look (trials.js) for this biome, or null: the shipped look
   layers: { surface: true, haze: true, clouds: true, ring: true }, // the library's isolation toggles
   pos: [0, 0, 0],
 };
@@ -90,6 +92,7 @@ export function normalisePlanet(raw) {
     artCount: int(r.artCount, 1, 5, d.artCount),
     artTeal: bool(r.artTeal, d.artTeal),
     lavaMode: oneOf(r.lavaMode, LAVA_MODES, d.lavaMode),
+    trial: TRIALS[r.trial]?.biome === oneOf(r.biome, BIOME_KEYS, d.biome) ? r.trial : null,
     layers: Object.fromEntries(Object.entries(d.layers).map(([k, v]) => [k, bool(layers[k], v)])),
     pos: vec3(r.pos, 60, d.pos),
   };
@@ -163,7 +166,8 @@ export function normalise(raw) {
   const r = isObj(raw) ? raw : {};
   const asset = normaliseItem(r.asset);
   const s = isObj(r.scene) ? r.scene : {};
-  const items = (Array.isArray(s.items) ? s.items : []).slice(0, MAX_ITEMS).map((it) => normaliseItem(it, ['planet', 'astronaut']));
+  // (a trial look renders alone, in the inspector: a scene has one palette for every item)
+  const items = (Array.isArray(s.items) ? s.items : []).slice(0, MAX_ITEMS).map((it) => normaliseItem(it, ['planet', 'astronaut'])).map((it) => (it.kind === 'planet' ? { ...it, trial: null } : it));
   return {
     v: VERSION,
     mode: oneOf(r.mode, MODES, 'asset'),
@@ -175,6 +179,8 @@ export function normalise(raw) {
     render: normaliseRender(r.render),
     palette: normalisePalette(r.palette),
     history: normaliseHistory(r.history),
+    // the inspector's current | trial comparison, for a planet whose biome has a trial look
+    trialCompare: bool(r.trialCompare, false) && asset.kind === 'planet' && Object.values(TRIALS).some((t) => t.biome === asset.biome),
   };
 }
 
