@@ -49,7 +49,8 @@ test('the trial differs from the shipped desert only in the ash ramp colours, ea
   }
 });
 
-test('the trial never leaks: the base palette, the edits and the catalogue keep the shipped look', { timeout: 600000 }, async () => {
+// (two pages render the whole catalogue, 70-odd tiles including 16 raymarched drones: minutes in SwiftShader)
+test('the trial never leaks: the base palette, the edits and the catalogue keep the shipped look', { timeout: 1200000 }, async () => {
   const browser = await launch();
   try {
     // boot straight into the trial comparison, so the catalogue thumbnails render while the stage shows the trial

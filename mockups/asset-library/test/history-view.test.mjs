@@ -30,7 +30,8 @@ const grabCompare = (page) => grabCanvas(page, '#cmp-view');
 for (const k of ['toxic', 'spore']) H.VENDORED.acid.set[k].slice(1).forEach((x) => { if (hue(hexInt(x)) !== null && !inRange(x, LIME)) throw new Error(`acid ${k} ${x} outside the lime window`); });
 for (const x of V2_PLANET_RAMPS.toxic.slice(1)) if (hue(hexInt(x)) !== null && !inRange(x, EMBER)) throw new Error(`ember ${x} outside its window`);
 
-test('a live history step shows its old palette on the stage only; its final step is the inspector\'s asset', { timeout: 600000 }, async () => {
+// (the whole catalogue renders first, 70-odd tiles including 16 raymarched drones: minutes in SwiftShader)
+test('a live history step shows its old palette on the stage only; its final step is the inspector\'s asset', { timeout: 1200000 }, async () => {
   const browser = await launch();
   try {
     // boot straight into the acid-lime step, so the catalogue thumbnails render while history colours are active
