@@ -99,6 +99,18 @@ describe('install and uninstall (R11)', () => {
     expect(w.callsTo('launchctl').at(-1)!.args).toEqual(['bootout', `gui/501/${JOB_LABEL}`]);
   });
 
+  it('a failed update keeps the installed runner (Qodo PR37 91496081)', async () => {
+    const w = new World();
+    const bin = join(w.commonDir, 'factory/bin');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'bin.js'), '// old runner');
+    const { d, err } = deps(w, { script: join(w.root, 'missing-dist/bin.js') });
+    expect(await main(['install'], d)).toBe(1);
+    expect(readFileSync(join(bin, 'bin.js'), 'utf8')).toBe('// old runner');
+    expect(err.join('')).toContain('npm run factory:build');
+    expect(w.callsTo('launchctl')).toHaveLength(0);
+  });
+
   it('install --dry-run only prints', async () => {
     const w = new World();
     const { d, out } = deps(w);

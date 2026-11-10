@@ -1,6 +1,6 @@
 // Loading and removing the scheduled job (R11), and the ticket labels. The human runs these;
 // nothing in a tick calls them.
-import { copyFileSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { LABELS, type Config } from './config.js';
 import type { Exec } from './exec.js';
@@ -10,6 +10,7 @@ export const JOB_LABEL = 'dev.commet.agent-runner';
 export interface InstallDeps {
   exec: Exec;
   print: (line: string) => void;
+  printErr: (line: string) => void;
   uid: number;
   user: string;
   /** Node binary the job runs. */
@@ -62,7 +63,8 @@ export function renderPlist(o: { cfg: Config; node: string; user: string; interv
 
 /**
  * Copies the compiled runner to `<git-common-dir>/factory/bin` (so a branch switch in the main
- * checkout can't change the code that runs), writes the LaunchAgent and loads it.
+ * checkout can't change the code that runs), writes the LaunchAgent and loads it. The copy is
+ * staged in `bin.new` and swapped in whole, so a failed update keeps the runner that was there.
  */
 export async function install(cfg: Config, d: InstallDeps, intervalSec: number): Promise<number> {
   const bin = installDir(cfg);
@@ -72,17 +74,30 @@ export async function install(cfg: Config, d: InstallDeps, intervalSec: number):
     d.print(`would copy the compiled runner to ${bin}\nwould write ${plist}:\n${text}would run launchctl bootstrap gui/${d.uid} ${plist}\n`);
     return 0;
   }
+  let files: string[];
+  try {
+    files = readdirSync(d.distDir).filter((x) => x.endsWith('.js'));
+  } catch {
+    files = [];
+  }
+  if (!files.includes('bin.js')) {
+    d.printErr('no compiled runner to install; run npm run factory:build first. Nothing changed.\n');
+    return 1;
+  }
+  const staged = `${bin}.new`;
+  rmSync(staged, { recursive: true, force: true });
+  mkdirSync(staged, { recursive: true });
+  for (const f of files) copyFileSync(join(d.distDir, f), join(staged, f));
+  writeFileSync(join(staged, 'package.json'), '{ "type": "module" }\n');
   rmSync(bin, { recursive: true, force: true });
-  mkdirSync(bin, { recursive: true });
-  for (const f of readdirSync(d.distDir).filter((x) => x.endsWith('.js'))) copyFileSync(join(d.distDir, f), join(bin, f));
-  writeFileSync(join(bin, 'package.json'), '{ "type": "module" }\n');
+  renameSync(staged, bin);
   mkdirSync(join(cfg.home, 'Library/LaunchAgents'), { recursive: true });
   writeFileSync(plist, text);
   // Reloading replaces an older copy of the job; "not loaded" is fine.
   await bootout(d);
   const res = await d.exec('launchctl', ['bootstrap', `gui/${d.uid}`, plist], { timeoutMs: 30_000 });
   if (res.code !== 0) {
-    d.print(`launchctl bootstrap failed (exit ${res.code}): ${res.stderr.trim()}\n`);
+    d.printErr(`launchctl bootstrap failed (exit ${res.code}): ${res.stderr.trim()}\nThe job is not loaded; fix that and re-run install.\n`);
     return 1;
   }
   d.print(`installed ${JOB_LABEL}: a tick every ${intervalSec} s; logs in ${cfg.stateDir}\n`);

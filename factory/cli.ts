@@ -137,7 +137,7 @@ export async function main(argv: readonly string[], raw: CliDeps): Promise<numbe
     return 2;
   }
   paths = machinePaths(cfg);
-  const inst = { exec, print: d.print, uid: d.uid, user: d.user, node: d.node, distDir: dirname(d.script) };
+  const inst = { exec, print: d.print, printErr: d.printErr, uid: d.uid, user: d.user, node: d.node, distDir: dirname(d.script) };
   if (a.command === 'install') return install(cfg, inst, a.interval);
   if (a.command === 'uninstall') return uninstall(cfg, inst);
   if (a.command === 'labels') return setupLabels(cfg, inst);
