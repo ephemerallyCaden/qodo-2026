@@ -19,11 +19,11 @@ const URL_LINE = /^Commet is open at http:\/\/127\.0\.0\.1:(\d+)\/#t=([A-Za-z0-9
 const oneCommitRepo = () => miniRepo([{ id: 'c1', at: '2026-10-01T09:00:00Z', path: 'src/a.ts', lines: ['export const a = 1;'] }]);
 
 /** Starts `commet open` in-process and resolves once it has printed its URL. */
-async function launch(cwd: string, args: string[], webRoot: string) {
+async function launch(cwd: string, args: string[], webRoot: string, launchEnv: NodeJS.ProcessEnv = env) {
   let out = '';
   let err = '';
   const ac = new AbortController();
-  const done = runOpen(args, { stdout: (t) => (out += t), stderr: (t) => (err += t), cwd, env }, { signal: ac.signal, webRoot, pollMs: 100 });
+  const done = runOpen(args, { stdout: (t) => (out += t), stderr: (t) => (err += t), cwd, env: launchEnv }, { signal: ac.signal, webRoot, pollMs: 100 });
   let code: number | undefined;
   void done.then((c) => (code = c));
   await waitFor(() => URL_LINE.test(out) || code !== undefined, 20_000, 'the URL');
@@ -67,6 +67,31 @@ describe('commet open', () => {
     rmSync(state);
     writeFileSync(state, 'not a dir');
     expect((await cli(['open', '--no-open'], repo.dir, env)).err).toContain('.git/commet is not a directory');
+  });
+
+  it('shows a failed request on stderr only with COMMET_DEBUG (Qodo PR #47 r1)', async () => {
+    const repo = oneCommitRepo();
+    expect((await cli(['scan', '--no-ingest'], repo.dir, env)).code).toBe(0);
+    const snap = join(repo.dir, '.git', 'commet', 'snapshot.json');
+    const web = realpathSync(mkdtempSync(join(tmpdir(), 'commet-web-')));
+    writeFileSync(join(web, 'index.html'), '<!doctype html>');
+    for (const debug of [false, true]) {
+      const s = await launch(repo.dir, ['--no-open'], web, debug ? { ...env, COMMET_DEBUG: '1' } : env);
+      renameSync(snap, `${snap}.real`);
+      symlinkSync(`${snap}.real`, snap);
+      // The token rides in the header and, for good measure, the query string: neither may reach stderr.
+      expect((await req(s.port, { path: `${API.snapshot}?t=${s.token}`, headers: { [TOKEN_HEADER]: s.token } })).status).toBe(500);
+      expect(await s.stop()).toBe(0);
+      rmSync(snap);
+      renameSync(`${snap}.real`, snap);
+      if (!debug) expect(s.err()).toBe('');
+      else {
+        expect(s.err()).toContain('commet: a request to /api/snapshot failed\n');
+        expect(s.err()).toContain('is or sits behind a symlink');
+        expect(s.err()).not.toContain(s.token);
+        expect(s.err()).not.toContain('?t=');
+      }
+    }
   });
 
   it('rejects bad options with exit 2', async () => {
@@ -133,9 +158,9 @@ describe('commet open', () => {
     expect(a.port).toBe(port);
     expect(a.err()).toContain('dist/web is missing');
     expect((await req(port, { path: '/' })).status).toBe(503);
-    // The port is now taken: a second launch on it fails clearly with a usage code.
+    // The port is now taken: a second launch on it fails clearly with exit 6 (server bind failure).
     const clash = await cli(['open', '--no-open', '--port', String(port)], repo.dir, env);
-    expect(clash.code).toBe(EXIT.usage);
+    expect(clash.code).toBe(EXIT.bind);
     expect(clash.err).toContain(`port ${port} is already in use`);
     expect(await a.stop()).toBe(0);
     const b = await launch(repo.dir, ['--no-open', '--port', String(port)], join(repo.dir, 'no-web'));

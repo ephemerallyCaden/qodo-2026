@@ -45,11 +45,11 @@ export async function runOpen(argv: string[], io: Io, ctl: OpenControl = {}): Pr
     const dir = await scannedStateDir(io.cwd);
     const opts: ServerOptions = { stateDir: dir, webRoot: ctl.webRoot ?? packageWebRoot(), port: args.port, token: newToken() };
     if (ctl.pollMs !== undefined) opts.pollMs = ctl.pollMs;
+    // Like startup errors, a failed request's details (which can hold absolute paths) only show on
+    // request: the route, the error's message, code and stack. Nothing from the request itself.
+    if (io.env['COMMET_DEBUG']) opts.onError = (e, route) => io.stderr(`commet: a request to ${route} failed\n${debugText(e)}\n`);
     const server = await startServer(opts).catch((e: unknown) => {
-      if ((e as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-        throw new CommetError(`port ${args.port} is already in use: pick another --port, or leave it out for a free one`, EXIT.usage);
-      }
-      throw e;
+      throw bindError(e as NodeJS.ErrnoException, args.port);
     });
     // The only place the token is ever written: the one URL the user opens.
     io.stdout(`Commet is open at ${server.url}\n`);
@@ -70,6 +70,21 @@ export async function runOpen(argv: string[], io: Io, ctl: OpenControl = {}): Pr
     io.stderr(`commet: internal error${io.env['COMMET_DEBUG'] ? `\n${(e as Error).stack}` : ' (set COMMET_DEBUG=1 for details)'}\n`);
     return EXIT.internal;
   }
+}
+
+/** Message, code and stack of an error; nothing at all of a thrown non-Error, which could be anything. */
+function debugText(e: unknown): string {
+  if (!(e instanceof Error)) return 'a non-Error value was thrown';
+  const code = (e as NodeJS.ErrnoException).code;
+  return `${code ? `[${code}] ` : ''}${e.stack ?? e.message}`;
+}
+
+/** Any failure to listen is exit 6, "server bind failure" (system design §8); anything else passes through. */
+function bindError(e: NodeJS.ErrnoException, port: number): unknown {
+  if (e?.syscall !== 'listen') return e;
+  if (e.code === 'EADDRINUSE') return new CommetError(`port ${port} is already in use: pick another --port, or leave it out for a free one`, EXIT.bind);
+  if (e.code === 'EACCES') return new CommetError(`not allowed to listen on port ${port}: pick a port above 1023, or leave --port out`, EXIT.bind);
+  return new CommetError(`couldn't listen on 127.0.0.1:${port} (${e.code ?? 'unknown error'})`, EXIT.bind);
 }
 
 /**

@@ -22,6 +22,11 @@ export interface ServerOptions {
   chart?: (action: ChartAction) => Promise<ChartResult>;
   /** Fallback poll for state changes, in ms (fs.watch is the fast path). */
   pollMs?: number;
+  /**
+   * Sees every request that failed with a 500, with the route it hit: a contract path such as
+   * `/api/snapshot`, or `api` / `static`. Never the URL, headers or body, so never the token.
+   */
+  onError?: (e: unknown, route: string) => void;
 }
 
 export interface CommetServer {
@@ -152,6 +157,8 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
 
   const server = createServer((req, res) => {
     handle(req, res).catch((e: unknown) => {
+      const pathname = (req.url ?? '').split(/[?#]/, 1)[0]!;
+      o.onError?.(e, routes.has(pathname) ? pathname : pathname.startsWith('/api') ? 'api' : 'static');
       if (res.headersSent) return void res.destroy();
       // CommetError messages are written for users and carry no paths; anything else stays generic.
       sendJson(res, 500, { error: e instanceof CommetError ? e.message : 'internal error' });

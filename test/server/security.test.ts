@@ -447,6 +447,30 @@ describe('R14 server: missing bundle, missing snapshot, and the R5 seams', () =>
     }
   });
 
+  it('gives onError only the error and the route, never the request or its token (Qodo PR #47 r1)', async () => {
+    const seen: unknown[][] = [];
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'commet-server-')));
+    const token = newToken();
+    const server = await startServer({ stateDir: root, webRoot: join(root, 'web'), port: 0, token, onError: (...a) => seen.push(a),
+      fog: async () => Promise.reject(new Error('fog failed')),
+      chart: async () => Promise.reject(Object.assign(new Error('chart failed'), { code: 'EIO' })) });
+    try {
+      const auth = { [TOKEN_HEADER]: token, 'content-type': 'application/json' };
+      const fog = await req(server.port, { path: `${API.fog}?t=${token}`, headers: auth });
+      const chart = await req(server.port, { method: 'POST', path: API.chart, headers: auth, body: '{"kind":"baseline"}' });
+      for (const r of [fog, chart]) {
+        expect(r.status).toBe(500);
+        expect(JSON.parse(r.body)).toEqual({ error: 'internal error' });
+      }
+      expect(seen.map(([e, route]) => [(e as Error).message, route])).toEqual([['fog failed', API.fog], ['chart failed', API.chart]]);
+      expect(seen.every((a) => a.length === 2)).toBe(true);
+      expect(JSON.stringify(seen.map(([e, route]) => [(e as Error).stack, route]))).not.toContain(token);
+    } finally {
+      await server.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('refuses more than a bounded number of event streams', async () => {
     const f = await fixture();
     const streams = Array.from({ length: 32 }, () => openStream(f.port, API.events, { [TOKEN_HEADER]: f.token }));
