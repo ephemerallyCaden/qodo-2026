@@ -1,6 +1,6 @@
 // `commet chart` (#33, R5): fog status, the first-run baseline and charting one file. Charting a
 // file here stands in for opening its diff until the view (#30) exists.
-import { realpathSync } from 'node:fs';
+import { lstatSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, posix, relative, sep } from 'node:path';
 import { byCodepoint } from '../core/canonical-json.js';
 import type { FogView } from '../core/contract/fog.js';
@@ -81,28 +81,49 @@ function status(src: FogSource, io: Io): number {
   return 0;
 }
 
+/**
+ * A relative file argument as a repo path: `prefix` is the cwd's path from the top (`rev-parse
+ * --show-prefix`). Windows separators become `/` only on Windows, since a backslash is an ordinary
+ * filename byte elsewhere. Null when it leads outside the repository.
+ */
+export function relativeRepoPath(prefix: string, arg: string, separator = sep): string | null {
+  const path = posix.normalize(prefix + (separator === '\\' ? arg.replaceAll('\\', '/') : arg)).replace(/\/+$/, '');
+  return path === '..' || path.startsWith('../') ? null : path;
+}
+
+/**
+ * The real path of `p`. A path that doesn't exist (a file deleted from the working tree) resolves
+ * through its folder; anything else that can't be resolved, such as a dangling symlink, gives null.
+ */
+function realOrMissing(p: string): string | null {
+  try {
+    return realpathSync.native(p);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return null;
+  }
+  try {
+    lstatSync(p);
+    return null; // it exists, so it's a link that leads nowhere
+  } catch {
+    // Absent: resolve its folder instead.
+  }
+  const parent = dirname(p);
+  const up = parent === p ? null : realOrMissing(parent);
+  return up === null ? null : join(up, basename(p));
+}
+
 /** The repo-relative path for a file argument, or null when it's outside the repository. */
 async function repoPath(cwd: string, arg: string): Promise<string | null> {
   const git = gitRunner(cwd);
   if (isAbsolute(arg)) {
     const top = await tryGit(git, ['rev-parse', '--show-toplevel']);
-    if (top === null) return null;
-    // A file deleted from the working tree can still be charted: its folder resolves instead.
-    const real = (p: string): string => {
-      try {
-        return realpathSync.native(p);
-      } catch {
-        const parent = dirname(p);
-        return parent === p ? p : join(real(parent), basename(p));
-      }
-    };
-    const rel = relative(real(top.replace(/\n$/, '')), real(arg));
+    const [root, file] = [top === null ? null : realOrMissing(top.replace(/\n$/, '')), realOrMissing(arg)];
+    if (root === null || file === null) return null;
+    const rel = relative(root, file);
     return rel === '' || rel.startsWith('..') || isAbsolute(rel) ? null : rel.split(sep).join('/');
   }
   const prefix = await tryGit(git, ['rev-parse', '--show-prefix']);
-  if (prefix === null) return null;
-  const path = posix.normalize(prefix.replace(/\n$/, '') + arg).replace(/\/+$/, '');
-  return path === '..' || path.startsWith('../') ? null : path;
+  return prefix === null ? null : relativeRepoPath(prefix.replace(/\n$/, ''), arg);
 }
 
 async function chartFile(src: FogSource, io: Io, arg: string): Promise<number> {

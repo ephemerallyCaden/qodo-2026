@@ -1,11 +1,12 @@
 // `commet chart` and chart state on disk (#33, R5), end to end on a real git repo: charting, refog,
 // a rename, baseline and undo, re-scans, and the state I/O guarantees (AC 4–6).
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fileIdOf } from '../src/core/fog/index.js';
+import { relativeRepoPath } from '../src/cli/chart.js';
 import { applyChart, readFog } from '../src/state/chart.js';
 import { SELF, TEAMMATE } from './fixtures/build/basic.js';
 import { cli } from './fixtures/cli.js';
@@ -143,6 +144,19 @@ describe('commet chart on a real repo', () => {
     expect(res.out).toMatch(/^Charted README\.md at/);
   });
 
+  it('refuses an absolute path through a dangling symlink (Qodo PR50 r2)', async () => {
+    const outside = join(tempDir('commet-chart-outside-'), 'gone');
+    renameSync(join(r.dir, 'src'), join(r.dir, 'src.moved'));
+    symlinkSync(outside, join(r.dir, 'src'));
+    try {
+      const res = await r.run('chart', join(r.dir, 'src/b.ts'));
+      expect([res.code, res.err]).toEqual([2, 'commet: that path is not a file in this repository\n']);
+    } finally {
+      rmSync(join(r.dir, 'src'));
+      renameSync(join(r.dir, 'src.moved'), join(r.dir, 'src'));
+    }
+  });
+
   it('resolves paths from a subfolder and refuses folders, unknown files, outside paths and bad usage', async () => {
     const sub = await cli(['chart', 'b.ts'], join(r.dir, 'src'), { CLAUDE_CONFIG_DIR: '/nonexistent' });
     expect(sub.code).toBe(0);
@@ -178,6 +192,22 @@ describe('changes the snapshot has no row for', () => {
     expect(snap.commits.find((c) => c.sha === convert)!.files).toEqual([]);
     const fog = await readFog(r.dir);
     expect(fog.files.find((f) => f.fileId === fileIdOf('src/data.ts'))).toMatchObject({ state: 'fogged', reasons: ['unknown'] });
+  });
+
+  it('a charted file someone else turns binary and back refogs from that change (Qodo PR50 r2)', async () => {
+    const r = repo();
+    r.commit(SELF, () => r.write('src/data.ts', lines('data')));
+    expect((await r.run('scan')).code).toBe(0);
+    expect((await r.run('chart', 'src/data.ts')).code).toBe(0);
+    const binary = r.commit(TEAMMATE, () => r.write('src/data.ts', 'binary\0blob\0from a teammate\n'));
+    r.commit(SELF, () => r.write('src/data.ts', lines('data') + lines('back')));
+    // git's own numstat row for the binary change is `-\t-`, which the scan excludes rather than keeping as 0/0.
+    expect(r.git(['show', '--numstat', '--format=', binary])).toBe('-\t-\tsrc/data.ts');
+    expect((await r.run('scan')).code).toBe(0);
+    const snap = JSON.parse(readFileSync(join(r.dir, '.git/commet/snapshot.json'), 'utf8')) as { commits: { sha: string; files: unknown[] }[] };
+    expect(snap.commits.find((c) => c.sha === binary)!.files).toEqual([]);
+    const fog = await readFog(r.dir);
+    expect(fog.files.find((f) => f.fileId === fileIdOf('src/data.ts'))).toMatchObject({ state: 'fogged', since: binary });
   });
 });
 
@@ -249,5 +279,17 @@ describe('chart state I/O refusals (exit 5)', () => {
     expect(res.err).toContain('another commet is writing chart state');
     rmSync(lock);
     expect((await r.run('chart', 'baseline')).code).toBe(0);
+  });
+});
+
+describe('relativeRepoPath', () => {
+  it('joins the prefix, normalises, and converts Windows separators only on Windows (Qodo PR50 r2)', () => {
+    expect(relativeRepoPath('src/', 'b.ts', '/')).toBe('src/b.ts');
+    expect(relativeRepoPath('', './src/x/../b.ts/', '/')).toBe('src/b.ts');
+    expect(relativeRepoPath('src/', '../../x.ts', '/')).toBeNull();
+    expect(relativeRepoPath('', 'src\\b.ts', '\\')).toBe('src/b.ts');
+    expect(relativeRepoPath('src/', '..\\README.md', '\\')).toBe('README.md');
+    // A backslash is an ordinary filename byte elsewhere.
+    expect(relativeRepoPath('', 'odd\\name.ts', '/')).toBe('odd\\name.ts');
   });
 });
