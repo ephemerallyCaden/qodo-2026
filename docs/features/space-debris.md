@@ -34,6 +34,10 @@ Rings already take the "thin band of chunky planet-coloured clumps" look (art di
 
 **Decided (human, 2026-11-10):** direction **A**, refined: "make them Grey and red, to really be noticeable and look more like satellite pieces. You can add in solar panel pieces and actual satellite looking pieces." Hull: the gear blue-grey. Red becomes deliberate paint, so age needs a cue that doesn't rely on red.
 
+**A2 (2026-11-10, 50195cc + e0a4fc1):** grey and red satellite parts (comms satellite, mast boom, spent stage, solar array); class from silhouette 80.6%; polar-cap proximity 4.5% (A: 27%); every health band still reads with 24 items.
+
+**Decided (human, 2026-11-10), after A2:** "Make it more grey and less blue, it's ok to not use the palette exactly. Then, let's leave the red as an outline effect instead of part of the device, but you can do things like flashing lights on the debris that are red." Keep the bright red #d83843. Two **debris-only exceptions** to the art direction, approved by the human: (1) debris metal may use neutral greys outside BLK 36; (2) debris gets a red silhouette outline, although outlines are otherwise banned (§3). Red blinking lights are loop-locked. Being built as A3.
+
 ## Tasks
 - Exploration lab `mockups/debris-lab/` on `feature/debris-lab` (feature agent): 4–5 distinct debris directions, each shown on several bands and sizes, from tidy to cluttered, for the human to pick. Then the picked direction becomes a viewer factory and an asset-library entry.
 
