@@ -1,7 +1,7 @@
 # AGENTS.md: Commet house rules
 
 For every coding agent, reviewer and Qodo. Everyone follows Setup, Testing and PRs, then the rules for their work:
-- **Coding rules (1–3):** changes to `src/**`, `test/**` or CI.
+- **Coding rules (1–3, 7):** changes to `src/**`, `test/**` or CI.
 - **Art rules (4–5):** anything that renders: renderer, shaders, mockups.
 - **Design rules (6):** anything that shapes what the user sees or how Commet motivates them.
 
@@ -15,29 +15,26 @@ npm ci && npm run build      # CLI entry: dist/cli.js
 ```
 
 ## Testing
-CI runs `npm ci` → build → typecheck → lint → test on Node 20 and 22, plus a `render` job (Playwright + SwiftShader in a digest-pinned container) and, on PRs, a `goldens` job. Run the same before committing:
+CI runs `npm ci` → build → typecheck → lint → test on Node 20 and 22. Run the same before committing:
 ```sh
 npm run build && npm run typecheck && npm run lint && npm test
 node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 ```
 - One test: `npx vitest run -t "<name>"`.
-- Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line. CI's `goldens` job enforces the line on every PR commit that touches `test/golden/`.
-- Render tests: `npm run test:render`. Render goldens are authoritative only in CI's pinned container. A local run enforces determinism, budgets, non-blank output and the palette, and treats the golden compare as informational. To update them, take the `render-goldens` artifact of a failing CI run and name the run and image digest in the `Golden-Update:` line (`test/render/README.md`).
-- On a shared machine, run full suites one at a time: `lockf -k /tmp/commet-fullsuite.lock npm test` (and the same for `npm run test:render`). Kill only processes you started, never by name pattern.
+- Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
 - Before a PR, run `qodo review --base "$(git merge-base HEAD "$BASE")" --json`, where `BASE` is the PR's base branch (e.g. `BASE=origin/session/week1`). Resolve `action_required` findings as in the review loop below for **at most 3 local rounds**, then open the PR anyway, listing any still-unresolved findings in its description. The loop continues in the PR review, and the merge gate (no unresolved `action_required`) applies there. (On #16, six local rounds took over 2 hours.)
-  - `--context-file` is optional. A known-valid shape is `{"notes": "<one string>", "recent_work": ["<string>", …]}`: `notes` is a string, `recent_work` an array of strings. Leave out fields you don't need. A schema rejection means the review never ran, so it isn't a round. When unsure, use `--ticket <issue URL>` instead.
-- `commet` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error, 6 server bind failure (`commet open`).
+- `commet scan` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error.
 
 ## Dev tips
 - `JOURNAL.md` and `.archive/` are gitignored and missing from worktrees. Use the main checkout: `$(git rev-parse --path-format=absolute --git-common-dir)/..`.
 - Reproduce bugs on the commit the human is running, not your branch.
 - Render tests must fail on a blank frame. One once passed after a shader compile error.
-- Local servers bind `127.0.0.1` and read their port from `PORT` (VS Code often holds 5181). Exception: `commet open` takes `--port` and otherwise picks a free port (#32).
+- Local servers bind `127.0.0.1` and read their port from `PORT` (VS Code often holds 5181).
 - `CLAUDE_CONFIG_DIR` points `commet scan` at fixture transcripts.
 
 ## Working with Qodo
 - Qodo can't see images. Report visual results in PRs as text: test output, pixel and colour counts.
-- A skipped review looks like a clean one. Confirm a review completed on the head commit before merging.
+- A skipped review looks like a clean one. Before merging, confirm the head commit was reviewed: `qodo read pr-review-session findings --pr-url <url> --extended` must list a `review_runs[]` entry with `commit_sha` equal to the head, `status: completed` and `review_effort` other than `skip`. `review_complete` is not a signal. PR #9 and PR #27 were merged on `skip` runs.
 - Keep `ignore_bot_pr = false`, or agent PRs go unreviewed.
 - **Run the review loop after every push to a PR.** Start a background watcher for Qodo's review of the exact head SHA (`gh pr view <N>`, or `get-pr-review-findings` via `qodo read`). Give it a 30-minute timeout. On a timeout or a failed command, report "review incomplete", never "clean". An empty findings list counts only once the review is confirmed complete on that SHA. Then, for each finding:
   1. **Validate it first.** Qodo is sometimes wrong. Confirm it with a failing test or a concrete trace through the code (the `qodo-review-resolver` workflow does this with citations).
@@ -101,32 +98,59 @@ Where it differs from the review loop above:
 - **Why:** the factory verifies the product with goldens, and a planet that moves between runs breaks the user's mental map.
 - **Checked by:** ESLint bans in `src/core`, `src/scan` and `src/attrib` (render and layout code is review-only until lint covers it), golden byte compares, a scan-twice SHA-256 test.
 
+### Rule 7: NUL-framed git output
+*A repository path can hold any byte except NUL, so git output that lists paths is read with `-z` and parsed by position on `\0`, never framed by another byte; patch text, which can hold NUL too, is parsed by its hunk counts.*
+- **Applies to:** the scanner and attribution code (`src/scan/**`, `src/attrib/**`): every git call whose output lists repository paths (`--name-only`, `--name-status`, `--numstat`, `--raw`, `ls-tree`, `ls-files`, `grep`) or carries patch text (`-p`).
+- **Rule:**
+  - A path-listing git call passes `-z` and separates `--format` fields with `%x00`; no `%x01`, `%n` or other byte frames a record or a field that can hold a path.
+  - The NUL tokens are parsed in order, a commit header recognised by its position (such as an empty token where a status or path would be) and each status taking its one or two paths, never by first splitting the output into commit chunks on a marker byte.
+  - A path token is never trimmed, stripped or rewritten; the only byte dropped is the one newline git writes after a format line's closing NUL, before its first path or status.
+  - Only a final header field may lack its closing NUL (an empty last commit has no paths after it), and only when it is complete and well-formed (e.g. a full 40-hex SHA); a malformed final header or any other unterminated token is a cut-off record, refused or counted under Rule 1, never half-read.
+  - Patch text (`-p`) can't be NUL-framed, because a text diff can itself hold NUL (past git's 8,000-byte binary check, or under a `diff` attribute) and U+0001: it is read line by line, the `@@` hunk counts tell content from headers, and paths come from the C-quoted `+++ b/…` header via `headerPath`, or from the `--- a/…` header when `+++` is `/dev/null` (a deleted file).
+  - Each new parser of path-bearing output gets a failing-first test whose filename contains U+0001, a newline and a tab.
+- **Why:** git-output framing broke parsing 5 times in 3 days, all caught by Qodo: three U+0001 splits (PR #3, #16 local r2 and r4), a stripped leading newline (#16 local r1) and a dropped final record (PR #20 r2). The first fix missed its sibling in the same file (#24, still open), and two new parsers copied the `%x01` pattern two days later.
+- **Checked by:** the U+0001 fixtures in the scan tests; in review, any path-listing git call without `-z`, or `%x01` / `'\x01'` framing. Not yet in lint: once #24 lands, `npm run lint` will also ban `\x01` and `%x01` in `src/scan` and `src/attrib`.
+
 ## Art rules
-For the main 3D view; the 2D map, terminal mode and status card have their own specs. Source of truth: `docs/design/art-direction.md`. Don't revive anything in its §11 (rejected directions) without new evidence and the human's sign-off. `art-direction-history.md` is a record, not a menu.
+These cover the main 3D view; the 2D map, terminal mode and status card have their own specs.
+Source of truth: `docs/design/art-direction.md`. These rules summarise it and change only after it does. Don't revive anything in its §11 (rejected directions) without new evidence and the human's sign-off; `art-direction-history.md` is a record, not a menu.
 
 ### Rule 4: Pixel honesty
 *Render at low resolution, upscale nearest-neighbour, light in our own banded shaders, and skip the usual "make it pretty" defaults.*
-- **Applies to:** `web/**`, all GLSL (`**/*.glsl` and inline), `mockups/**`.
+- **Applies to:** three.js and GLSL rendering code for the main 3D view: everything under `web/` and `mockups/`, and GLSL anywhere, in `.glsl` files or inline shader strings (`web/**`, `mockups/**`, `**/*.glsl`).
 - **Rule:**
-  - Render into a 320×180 target (default) and upscale by a whole number, nearest-neighbour only.
-  - No anti-aliasing (`antialias: false`, `setPixelRatio(1)`), linear filtering or mipmaps, outlines, dithering, or sprite sheets.
-  - No stock lit materials (`MeshStandard`, `MeshPhysical`, `MeshPhong`, `MeshLambert`), shadow maps or extra lights. Light in our shaders from the one key-light direction.
-  - No easing, tweens or springs on planetary motion (spin, orbits, moons, rings, clouds); constant rates only. Stars never twinkle.
-  - No post-processing (bloom, blur, FXAA/SMAA, SSAO, vignette, chromatic aberration, grain) unless art direction changes first.
-  - Quantised colour bands; lines ≥ 2 internal px (stars and ring dots exactly 1 px); every animated layer completes whole cycles per loop (24 s).
-  - **Exceptions:** the per-pixel depth fade is the one gradient. Labels and UI render outside the pixel pass, in the bitmap font.
+  - The scene renders into a low-resolution target (320×180 by default) that is upscaled by a whole-number factor with nearest-neighbour only, such as CSS `image-rendering: pixelated` or a `NearestFilter` blit.
+  - The `WebGLRenderer` is created with `antialias: false` and `setPixelRatio(1)`.
+  - Every texture and render target samples with `NearestFilter` and `generateMipmaps = false`, never `LinearFilter` or a mipmap filter (three.js's texture defaults).
+  - No outlines and no dithering: no `OutlinePass` or edge-detection outline, no `dithering: true` on a material, and no ordered or noise dither in a shader.
+  - No sprite sheets: scene objects are drawn live by meshes and shaders.
+  - No stock lit material: `MeshStandardMaterial`, `MeshPhysicalMaterial`, `MeshPhongMaterial`, `MeshLambertMaterial` or `MeshToonMaterial`.
+  - No shadow maps: `renderer.shadowMap.enabled`, `castShadow` and `receiveShadow` stay off.
+  - Our shaders light surfaces from the one key-light direction, with no extra lights (`AmbientLight`, `HemisphereLight`, `PointLight`, `SpotLight`, `RectAreaLight` or a second `DirectionalLight`).
+  - Planetary motion (spin, orbits, moons, rings, clouds) runs at constant rates, its phase a fixed rate times time, never through an easing curve, a tween (tween.js, GSAP) or a spring or damping (`MathUtils.damp`); camera motion isn't covered by this rule.
+  - Stars never twinkle: a star's brightness and size never vary with time.
+  - No post-processing beyond the nearest-neighbour upscale: no `EffectComposer` pass or full-screen shader for bloom (`UnrealBloomPass`), blur, FXAA or SMAA, SSAO, vignette, chromatic aberration or film grain.
+  - Surface colour comes in quantised bands: a shader picks one band of its ramp per pixel and never blends smoothly between ramp colours.
+  - Drawn lines, such as cracks, fissures and crevasses, are at least 2 internal px wide; stars and ring dots are exactly 1 internal px.
+  - Every animated layer completes a whole number of cycles per loop (24 s), so the loop has no seam.
+  - **Exception:** the per-pixel depth fade toward the depth tint is the one gradient.
+  - **Exception:** labels and UI render outside the pixel pass, in the bitmap font, never into the low-resolution target (no `TextGeometry` or font-rendered canvas text in the scene).
 - **Why:** three.js defaults and polish passes give smooth gradients and soft edges, which is a blurry 3D render, not pixel art.
 - **Checked by:** asset-viewer render tests (line width, depth, loop seam); in review, any AA, filtering, stock material, planetary easing, post-pass or in-pass text.
 
 ### Rule 5: Palette consistency
 *Every rendered colour comes from a named palette, never an inline literal, and nothing is pure black.*
-- **Applies to:** `web/**`, all GLSL, `mockups/**`, except the palette modules.
+- **Applies to:** the same rendering code as Rule 4 (everything under `web/` and `mockups/`, and GLSL anywhere), except palette modules: files whose only job is to define the named colours (e.g. `src/core/palette.ts` and the asset viewer's `planet-ramps.js` and `palette-map.js`).
 - **Rule:**
-  - No hex, `rgb()` or colour `vec3` written inline. World = v2 ramps (`V2_PLANET_RAMPS`); crew = BLK 36, never retuned; accent = [OIII] teal, code-layer events only, under 10% of the frame.
-  - Rings and clouds use only their planet family's colours: never pink, violet or yellow.
-  - No `#000000`, including the clear colour and page background. Space is `#0d0b16`.
-  - Glitches reuse the colour they cover; only teal may be added.
-  - **Exceptions:** lava glow is unlit but still from the v2 lava ramp. The depth fade is the only off-palette output.
+  - Render code and shaders hold no colour literal (a `'#rrggbb'` string, a `0xRRGGBB` number, `rgb()`, or a literal `vec3`, `vec4` or `new Color(…)` used as a colour); colours are read from a palette module by role.
+  - World colours (planets, clouds, rings, space, stars) come from the v2 ramps (`V2_PLANET_RAMPS`).
+  - Crew colours come from BLK 36 (`mapPalette('blk-36')`), used exactly and never retuned.
+  - The only accent is [OIII] teal (`#004538` `#007c66` `#00bc9c` `#00ffd5`), used for code-layer events only and on under 10% of the frame's pixels.
+  - Rings and clouds use only their planet family's colours, never pink, violet or yellow.
+  - Nothing is pure black: no `#000000`, `0x000000`, `rgb(0, 0, 0)` or `black`, including `setClearColor`, `scene.background` and the page background; space is `#0d0b16`.
+  - Code-layer glitch cells only reuse the colour they cover (a darker or lighter step, inverted lightness, a channel slip, a posterise), and the only colour they may add is teal.
+  - **Exception:** lava glow is unlit, but its colours still come from the v2 lava ramp.
+  - **Exception:** the depth fade is the only off-palette output.
 - **Why:** Qodo can't see renders, but it can see a colour literal in a diff. One stray magenta reads as pasted on.
 - **Checked by:** in review, any colour literal outside palette modules, a new palette, or `#000000` / `0x000000`.
 
@@ -136,11 +160,11 @@ For the main 3D view; the 2D map, terminal mode and status card have their own s
 *Commet rewards understanding code, never producing it.*
 - **Applies to:** every feature, UI surface and piece of copy, including fog, status messages, debris, teammates and recaps.
 - **Rule:**
-  - No XP, points, levels, badges or streaks for commits, PRs, lines or sessions.
-  - No leaderboards or per-person scores, counts or rankings. Repo totals are fine.
-  - Fog clears only through review (opening a diff, answering a question), never through time, more commits or a button.
-  - No guilt mechanics: nothing decays, nags or punishes a break.
-  - Not a task tracker: read intent from existing sources; never store, assign or edit tasks.
+  - Nothing awards XP, points, levels, badges or streaks for commits, PRs, lines or sessions.
+  - No leaderboard, ranking, or per-person score or count (such as commits or lines per person) appears anywhere; repo totals are fine.
+  - Fog clears only on review, when a file's diff is opened or its question answered; no timer, elapsed time, new commit or button (such as "chart all") clears it.
+  - No guilt mechanics: nothing decays, nags or punishes a break (no state that worsens with time away, no repeated reminders, no penalties).
+  - Commet is not a task tracker: it reads intent from sources that already exist and never stores, assigns or edits tasks.
 - **Why:** rewarding output is what makes agent-written code pile up unread. Output rewards get gamed, and scoring people turns a tool into surveillance.
 - **Checked by:** in review, any score, streak, ranking, per-person count or non-review way to clear fog.
 
