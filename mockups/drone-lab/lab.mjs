@@ -30,6 +30,12 @@ const VIEWS4 = [[0, 'front'], [-0.75, '3/4'], [-Math.PI / 2, 'side'], [Math.PI *
 // The options that differ from their brand drone (option a of each is the brand drone itself).
 const NEW_OPTIONS = BRAND_OPTIONS.filter((o) => o.accessory !== BRAND_BY_ID[o.brand].accessory || o.palette !== o.brand);
 const optionPalette = (o) => OPTION_PALETTES[o.palette] ?? BRAND_PALETTES[o.palette];
+// Codex as it was at 887a095 (phase 2: seven small separate puffs, sky blue), for the before/after
+// strip (human, 2026-11-10: "codex mascot isn't that bumpy, and it's blended all into one shape").
+const CODEX_BEFORE = {
+  params: { headW: 0.122, headH: 0.098, headD: 0.11, headRound: 0.9, headCorner: 0.6, headTaper: 1, headFlat: 0.2, rim: 0, antenna: 0, crown: 1, crownN: 7, crownR: 0.039, crownArc: 2.05, crownZ: -0.2, screenW: 0.76, screenH: 0.55, screenY: 0.02, screenRound: 4.5, bezel: 0.08, eyes: 11, glyphSet: 3, thrusters: 0, thrR: 0.026, thrL: 0.022, thrFlare: 1.1, thrSpread: 0.55, puffSize: 1.15, puffRate: 0.45, sparkles: 1, bobAmp: 0.03, drift: 0.16, bank: 0.26, lookYaw: 0.4 },
+  palette: { name: 'OpenAI Codex (before)', shell: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], trim: ['#4185d8', '#5ab9e5', '#a5e6ff', '#ffffff'], screen: ['#12173d', '#293268', '#ffffff'], glow: ['#004538', '#007c66', '#00bc9c', '#00ffd5'], accent: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
+};
 const FPS = 15;
 const wanted = process.argv.slice(2).filter((a) => !a.startsWith('brand='));
 // brand=copilot,codex limits brand-closeups and brand-gifs to those drones.
@@ -359,6 +365,19 @@ try {
       w: 320, h: 180, scale: 3,
       rows: [{ cells: [frame('copilot')] }, { cells: [frame('claude')] }],
     }, path.join(OUT, 'brand-options-crew.png'));
+  }
+
+  if (want('codex-before-after')) {
+    // The Codex head before (separate small puffs) and after (one smooth blended cloud), close up and at 180p.
+    const row = (label, cell) => ({ label, cells: VIEWS4.map(([yaw, caption]) => ({ ...cell, yaw, t: STILL_T, zoom: 2, caption })) });
+    await render('codex before/after', {
+      title: `OpenAI Codex · before (887a095) and after (one blended cloud head, mid blue) · 2x close-up, x3 · idle t = ${STILL_T} s`,
+      w: 160, h: 160, scale: 3, rowLabelW: 120,
+      rows: [
+        row('before: seven small puffs, sky blue', { params: { ...DEFAULTS, ...FINAL.params, ...CODEX_BEFORE.params }, palette: CODEX_BEFORE.palette }),
+        row('after: five low lobes blended into one shape, mid blue', { brand: 'codex' }),
+      ],
+    }, path.join(OUT, 'brand-codex-before-after.png'));
   }
 
   if (want('option-gifs')) {

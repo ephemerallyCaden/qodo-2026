@@ -55,6 +55,8 @@ export const PARAMS = [
   { key: 'crownN', group: 'head', min: 3, max: 9, step: 1, def: 5, words: 'Number of crown puffs' },
   { key: 'crownR', group: 'head', min: 0.015, max: 0.06, step: 0.0025, def: 0.03, words: 'Crown puff radius' },
   { key: 'crownArc', group: 'head', min: 0.4, max: 2.4, step: 0.01, def: 1.6, words: 'How far round the head the puffs reach (radians each side of the top)' },
+  { key: 'crownOut', group: 'head', min: -0.8, max: 0.6, step: 0.01, def: 0.3, words: 'How far each crown puff sits out from the head surface (share of its radius; below 0 = low lobes)' },
+  { key: 'crownK', group: 'head', min: 0.004, max: 0.06, step: 0.001, def: 0.012, words: 'Crown blend radius: small = separate puffs, large = one smooth cloud' },
   { key: 'crownZ', group: 'head', min: -0.7, max: 0.5, step: 0.01, def: -0.15, words: 'Crown puffs front (+) or back (-) (share of the head half-depth)' },
   { key: 'skirt', group: 'head', type: 'select', options: ['none', 'stub legs', 'tentacles', 'ghost hem'], def: 0, words: 'Under the head: stubby legs, curled tentacles, or a scalloped ghost hem' },
   { key: 'skirtN', group: 'head', min: 2, max: 8, step: 1, def: 4, words: 'Number of legs, tentacles or hem scallops' },

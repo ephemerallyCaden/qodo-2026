@@ -62,7 +62,7 @@ const FRAG = /* glsl */ `
   uniform int uSparkN; uniform vec3 uSparkC[${MAX_SPARKS}]; uniform float uSparkS[${MAX_SPARKS}];
   // Brand geometry (phase 2); all off by default.
   uniform float uHeadHex;
-  uniform int uCrownN; uniform vec3 uCrownC[${MAX_CROWN}]; uniform float uCrownR;
+  uniform int uCrownN; uniform vec3 uCrownC[${MAX_CROWN}]; uniform float uCrownR, uCrownK;
   uniform int uSkirt, uSkirtN; uniform vec3 uSkA[${MAX_SKIRT}], uSkB[${MAX_SKIRT}], uSkC[${MAX_SKIRT}]; uniform float uSkR;
   uniform int uSnout; uniform vec3 uSnA, uSnB; uniform vec2 uSnR;
   uniform int uHookN; uniform vec3 uHook[4];
@@ -127,7 +127,7 @@ const FRAG = /* glsl */ `
     float d = sdShape(p, uHeadB, uHeadK);
     if (uHeadHex > 0.001) d = mix(d, dHexHead(p), uHeadHex);
     if (uChin == 1) d = smin(d, length(p - uChinC) - uChinR, 0.03);
-    for (int i = 0; i < ${MAX_CROWN}; i++) { if (i >= uCrownN) break; d = smin(d, length(p - uCrownC[i]) - uCrownR, 0.012); }
+    for (int i = 0; i < ${MAX_CROWN}; i++) { if (i >= uCrownN) break; d = smin(d, length(p - uCrownC[i]) - uCrownR, uCrownK); }
     return d;
   }
   // An elliptical ring hugging the head (scaled torus; under-stepped by the march).
@@ -562,8 +562,10 @@ export function layout(P) {
   if (P.topper === 1 && P.gogBridge === 1) {
     const r = 0.5 * P.gogFrame;
     const [a, b] = gog.map((g, i) => g.c.clone().addScaledVector(g.x, (i === 0 ? 1 : -1) * (P.gogW - 0.5 * P.gogFrame)));
-    const y = (a.y + b.y) / 2, front = V(0, y, exitAlong(headF, V(0, y, 0), V(0, 0, 1)));
-    bridge = { a, m: front.addScaledVector(gradient(headF, front), 0.003 + 0.5 * r), b, r };
+    // Straight across, bowed forward only where the head bulges out in front of it.
+    const m = a.clone().add(b).multiplyScalar(0.5);
+    if (headF(V(0, m.y, 0)) < 0) m.z = Math.max(m.z, exitAlong(headF, V(0, m.y, 0), V(0, 0, 1)) + 0.003 + r);
+    bridge = { a, m, b, r };
   }
   if (P.topper === 1 && P.gogStrap === 1) {
     // A ring hugging the head in a plane tilted about x: through the front at the lenses' roots,
@@ -597,7 +599,7 @@ export function layout(P) {
     for (let i = 0; i < P.crownN; i++) {
       const th = P.crownN === 1 ? 0 : -P.crownArc + (2 * P.crownArc * i) / (P.crownN - 1);
       const from = V(0, 0, P.crownZ * P.headD), dir = V(Math.sin(th) * P.headW, Math.cos(th) * P.headH, 0).normalize();
-      crown.push(from.addScaledVector(dir, exitAlong(headF, from, dir) + 0.3 * P.crownR));
+      crown.push(from.addScaledVector(dir, exitAlong(headF, from, dir) + P.crownOut * P.crownR));
     }
   }
 
@@ -795,14 +797,14 @@ export function extents(Lay) {
   let top = Lay.top;
   for (const a of Lay.ant) top = Math.max(top, a.base.y + a.dir.y * P.antL + P.antTip);
   for (const h of Lay.hook) top = Math.max(top, h.y + P.antTip);
-  for (const c of Lay.crown) top = Math.max(top, c.y + P.crownR);
+  for (const c of Lay.crown) top = Math.max(top, c.y + P.crownR + 0.25 * P.crownK); // a smooth union bulges by up to k / 4
   if (P.topper === 2) top = Math.max(top, Lay.crest.c.y + Lay.crest.b.y);
   if (P.topper === 1) for (const g of Lay.gog) top = Math.max(top, g.c.y + P.gogH * Math.abs(g.y.y) + P.gogT * Math.abs(g.z.y));
   // Half-width at rest (for the brand size-class check): head, rim, ears, crown puffs, skirt.
   let half = P.headW * Math.max(1, P.headTaper);
   if (P.rim) half = Math.max(half, Lay.rim.r[0] + P.rimT);
   if (P.ears) half = Math.max(half, Lay.ears[1].x + (P.ears === 3 ? P.earR : P.earT));
-  for (const c of Lay.crown) half = Math.max(half, Math.abs(c.x) + P.crownR);
+  for (const c of Lay.crown) half = Math.max(half, Math.abs(c.x) + P.crownR + 0.25 * P.crownK);
   if (P.topper === 1) for (const g of Lay.gog) half = Math.max(half, Math.abs(g.c.x) + P.gogW * Math.abs(g.x.x) + P.gogT * Math.abs(g.z.x));
   for (const k of Lay.skirt) half = Math.max(half, Math.abs(k.a.x) + P.skirtR, k.c ? Math.abs(k.c.x) + P.skirtR : 0);
   return { top: top * P.size, bottom: Lay.bottom * P.size, half: half * P.size };
@@ -834,7 +836,7 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     uPuffR: { value: new Array(MAX_PUFFS).fill(0) }, uPuffA: { value: new Array(MAX_PUFFS).fill(0) },
     uSparkN: { value: 0 }, uSparkC: { value: vecs(MAX_SPARKS) }, uSparkS: { value: new Array(MAX_SPARKS).fill(0) },
     uEyes: { value: 0 }, uBlink: { value: 1 },
-    uHeadHex: { value: 0 }, uCrownN: { value: 0 }, uCrownC: { value: vecs(MAX_CROWN) }, uCrownR: { value: 0 },
+    uHeadHex: { value: 0 }, uCrownN: { value: 0 }, uCrownC: { value: vecs(MAX_CROWN) }, uCrownR: { value: 0 }, uCrownK: { value: 0.012 },
     uSkirt: { value: 0 }, uSkirtN: { value: 0 }, uSkA: { value: vecs(MAX_SKIRT) }, uSkB: { value: vecs(MAX_SKIRT) }, uSkC: { value: vecs(MAX_SKIRT) }, uSkR: { value: 0 },
     uSnout: { value: 0 }, uSnA: { value: V() }, uSnB: { value: V(0, 0, 1) }, uSnR: { value: new THREE.Vector2() },
     uHookN: { value: 0 }, uHook: { value: vecs(4) }, uSplit: { value: 0 }, uSplitY: { value: 0 }, uGlyphSet: { value: 0 }, uScrFlat: { value: 0 },
@@ -873,7 +875,7 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     U.uSmokeStyle.value = P.smoke;
     // Brand geometry
     U.uHeadHex.value = P.headHex;
-    U.uCrownN.value = Lay.crown.length; Lay.crown.forEach((c, i) => U.uCrownC.value[i].copy(c)); U.uCrownR.value = P.crownR;
+    U.uCrownN.value = Lay.crown.length; Lay.crown.forEach((c, i) => U.uCrownC.value[i].copy(c)); U.uCrownR.value = P.crownR; U.uCrownK.value = P.crownK;
     U.uSkirt.value = P.skirt; U.uSkirtN.value = Lay.skirt.length; U.uSkR.value = P.skirtR;
     placeSkirt(0);
     U.uSnout.value = P.snout;

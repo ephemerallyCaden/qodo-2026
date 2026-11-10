@@ -144,9 +144,11 @@ test('brand parts attach to the head (one connected piece)', () => {
       // runs from lens to lens over the head, and the strap hugs the head all the way round.
       L.gog.forEach((g) => { on(g.at, 0.001, 'a goggle root'); assert.ok(g.at.distanceTo(g.c) < P.gogH, `${b.id}: a lens floats off its root`); });
       if (P.gogBridge) {
+        // Its ends are inside the two lenses, and its middle stands clear of the head (not buried).
         const { a, m, b: e, r } = L.bridge;
-        on(m, r, 'the goggle bridge');
         [a, e].forEach((p, i) => assert.ok(p.distanceTo(L.gog[i].c) < P.gogW, `${b.id}: the bridge misses lens ${i}`));
+        assert.ok(L.headF(m) > 0 && m.z >= Math.min(a.z, e.z) - 1e-9, `${b.id}: the bridge sinks into the head (${L.headF(m).toFixed(4)})`);
+        assert.ok(Math.abs(m.x) < 1e-9 && r >= 0.5 * P.gogFrame - 1e-9, `${b.id}: the bridge is centred and as thick as the frames`);
       }
       if (P.gogStrap) {
         const { c, n, r, t } = L.strap;

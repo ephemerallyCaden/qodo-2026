@@ -56,9 +56,9 @@ export const BRAND_PALETTES = {
   cursor: { name: 'Cursor', shell: ['#000000', '#12173d', '#293268', '#464b8c'], trim: ['#464b8c', '#909edd', '#c1d9f2', '#ffffff'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], smoke: ['#464b8c', '#909edd', '#c1d9f2'] },
   // The goggled head's blue-to-violet, with light cyan trim and goggles (the accent: frames, bridge, strap).
   copilot: { name: 'GitHub Copilot', shell: ['#29174c', '#36277f', '#354ab2', '#8c51cc'], trim: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], screen: VISOR, glow: TEAL, accent: COPILOT_GOGGLES, smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
-  // Codey's cornflower blue (#6e9bfa -> #909edd is nearest, but that is the generic drone's grey;
-  // a lighter, cyan-leaning sky ramp keeps it apart from generic and Copilot), its navy screen (#232d66 -> #293268).
-  codex: { name: 'OpenAI Codex', shell: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], trim: ['#4185d8', '#5ab9e5', '#a5e6ff', '#ffffff'], screen: ['#12173d', '#293268', '#ffffff'], glow: TEAL, accent: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
+  // Codey's mid blue (#4a6cf0 lit -> #4185d8, in the light band only), its darker shaded rim (-> #354ab2,
+  // which also takes the mid band: A4 measured Codex too close to Copilot without it), its navy screen (#232d66 -> #293268).
+  codex: { name: 'OpenAI Codex', shell: ['#293268', '#354ab2', '#354ab2', '#4185d8'], trim: ['#293268', '#354ab2', '#4185d8', '#5ab9e5'], screen: ['#12173d', '#293268', '#ffffff'], glow: TEAL, accent: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
   // Jules's pixel octopus purple (#642cc2 -> #643499), lighter purple tentacles (accent), white trim.
   google: { name: 'Google (Jules, Gemini CLI, Antigravity)', shell: ['#12173d', '#29174c', '#412866', '#643499'], trim: ['#8c51cc', '#b991f2', '#ffffff', '#ffffff'], screen: VISOR, glow: TEAL, accent: ['#412866', '#643499', '#8c51cc', '#b991f2'], smoke: ['#8c51cc', '#b991f2', '#ffffff'] },
   // Devin's near-black (#0e1015 -> #12173d) for the head, its white hexagons for the side pods.
