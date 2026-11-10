@@ -34,6 +34,7 @@ Scan → session attributed to a tool (R2) → drone seeded from tool + session 
   - A4: every pair scores at least 1 in front and 3/4 views at the crew close-up (~37 px) and system distance (~18 px). The closest pair is Cursor–Devin (1.10, separated by shape). At the 6 px depth step the purples merge (Qodo–generic 0.84, not gated), so name labels carry identity there.
   - Colour: BLK 36 only. Claude's #d77757 has no good match, so it uses #ff965f lit and #cc5250 turned. #0f4a4c is avoided because it sits near the [OIII] event teal.
   - Decided (human, 2026-11-10): the Pills (Copilot) and `>_` (Codex) eye glyphs are approved as drone-only eyes, and OpenCode's and Kiro's whites stay as designed. Follow-up: make the approved glyphs the defaults.
+  - Refinements (human, 2026-11-10, after viewing the lab): unknown agent = the generic drone, labelled. Copilot = the generic drone's shape in Copilot's own colours with flat, connected goggles across the screen. Claude = the generic shape in orange with four stubby legs. Codex = one blended cloud head (a few broad lobes, mid blue). Qodo gains the mascot's black sunglasses. Still open: should the other brands also move to "generic shape + one accessory + colour"?
 
 ## Completion
 - Merged: —
