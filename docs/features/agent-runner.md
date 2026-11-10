@@ -23,6 +23,10 @@ Human decisions (2026-11-09): a launchd schedule on the Mac plus the `ready-for-
 - [ ] **R12 Trust boundary.** The repo is public, so anyone can open an issue. The runner acts only on an issue the repo owner both opened and labelled; anything else is refused without starting an agent. The ticket text is snapshotted at claim time and the agent works from the snapshot. An edit to the issue during the run stops it.
 - [ ] **R13 Pre-flight and timers.** Before claiming, the runner checks that Claude credentials (Midway), `gh` and `qodo` all work. If they don't, it logs the reason and leaves the ticket unclaimed. Every agent call and every wait has a wall-clock kill timer, so a hung login prompt can't stall the job.
 
+### Added in PR #37 (Qodo r1)
+- **Skipped.** A ticket that is closed, unlabelled or edited between the pick and the claim is left untouched (outcome `skipped`). The next tick reads it again.
+- **Orphan sweep.** Ticks hold the lock, so no live run can own an open `agent-working` ticket. The tick's one list call (`label:ready-for-agent,agent-working`) finds such tickets, and each gets `agent-needs-help` and a comment. This covers a killed run, a reboot and the 8 h outer cap.
+
 ### Day 4 demo (not runner code)
 - [ ] **D1 Happy path.** Label #24 → the scheduled tick runs it end to end → PR with Qodo review → the human decides on the merge.
 - [ ] **D2 Stop path shown live.** A deliberately bad ticket (no acceptance criteria) is refused with `agent-needs-help`, with no agent started.
@@ -60,5 +64,5 @@ runner-scout, 2026-11-09 (tags as reported):
 - **Side finding (Rule 1):** the scout's own headless `cd "$R" && git commit` in a temp repo was classed **human**. Possibly a false-human edge next to #11 → Bug Resolution Workflow.
 
 ## Tasks
-- Runner (R1–R13) → feature agent `runner`, `.sandboxes/runner`, `feature/agent-runner` — In progress
+- Runner (R1–R13) → feature agent `runner`, `.sandboxes/runner`, `feature/agent-runner` — PR #37, Qodo r1 resolved
 - Demo D1–D3 → lead + human, after the runner merges

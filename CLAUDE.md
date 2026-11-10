@@ -15,10 +15,11 @@
 Node ≥ 20.19, npm. From the repo (or worktree) root:
 - `npm ci`: install (lockfile-exact).
 - `npm run build`: `tsc` to `dist/` (the bin is `dist/cli.js`).
-- `npm run typecheck`: strict `tsc --noEmit` over `src/` and `test/`.
+- `npm run typecheck`: strict `tsc --noEmit` over `src/`, `test/` and `factory/`.
 - `npm run lint`: ESLint. Bans `Math.random`, `Date.now`, `performance.now`, `crypto.randomUUID`, `new Date()` and `localeCompare` in `src/{core,scan,attrib}`, and Node built-ins in `src/core`.
 - `npm test`: Vitest (unit, golden, privacy canaries, lint rules). Golden snapshots live in `test/golden/`; regenerate only deliberately with `UPDATE_GOLDEN=1 npm test` and a `Golden-Update: <reason>` line in the commit.
 - `node dist/cli.js scan [--window <months>] [--no-ingest] [--out <file>]`: run inside a clone. Writes `<git-common-dir>/commet/snapshot.json`. Exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error. `CLAUDE_CONFIG_DIR` overrides `~/.claude`.
+- `npm run factory -- labels|install|uninstall|tick [--once|--dry-run [--issue N]]`: the agent runner (`factory/`, built separately, not in the published package; see AGENTS.md "Agent runner"). `labels` and `install` are the human's to run. Runner state (lock, `ticks.jsonl`, `runs/`, the installed copy) lives in `<git-common-dir>/factory/`, never in the work tree.
 
 The design mockups live on `feature/hype-gif` under `mockups/asset-viewer/` (`npm install && npm test` there). They are throwaway prototypes, not product code.
 

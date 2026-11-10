@@ -44,6 +44,20 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 - Export findings to `.archive/docs/hackathon/evidence/pr<N>-qodo-review-r<round>-comments.json`.
 - A finding seen twice becomes a proposed rule here or a Qodo review standard.
 
+## Agent runner (`factory/`)
+Dev tooling, not Commet: Rule 2's "no GitHub posts" covers the product, not this. The runner's only GitHub writes, all made with the human's own gh login:
+- labels on issues the owner opened and labelled (`ready-for-agent` → `agent-working` → `agent-done` / `agent-needs-help`);
+- comments on that issue and on the PR the run opened;
+- pushes to `agent/<N>-<slug>` and one PR per run against the session branch.
+
+It never merges, pushes `main` or a session branch, force-pushes, or edits repo settings or secrets (runtime guard: `factory/guard.ts`). It keeps Rule 2's local-data rules: no absolute paths in output or posts, an agent's Bash commands kept only as regex categories, logs only under `.git/factory/`.
+
+Where it differs from the review loop above:
+- Fix rounds add new commits and never force-push.
+- No local `qodo review` before the PR: the PR review is the gate.
+- Findings and dispositions live in the run log and one PR comment per fix round.
+- An `action_required` finding the agent rejects stops the run with `agent-needs-help` for the human's decision.
+
 ## Daily Discussion posts
 - Draft each day's post at `.archive/docs/hackathon/day<N>-discussion-post.md`, following that day's template. Create it if missing.
 - After each change, add to its `## Notes`: the biggest Qodo lesson, a telling number, anything on the day's theme.
@@ -65,7 +79,7 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 
 ### Rule 2: Private by construction
 *Read agent logs only through the field allowlist, output no prompts, code or absolute paths, and send nothing off the machine.*
-- **Applies to:** `src/attrib/parsers/**` and any new log reader, all output (snapshot, stdout, stderr, status messages), and the future `src/server/**`.
+- **Applies to:** `src/attrib/parsers/**` and any new log reader, all output (snapshot, stdout, stderr, status messages), and the future `src/server/**`. Not `factory/**`: dev tooling, not Commet. See 'Agent runner' below.
 - **Rule:**
   - Read only named fields. Never read, store, hash or output prompt or message text, `originalFile`, `last-prompt`, `history.jsonl`, `file-history/`, `attachment` or `api-request*`. Bash commands may only be regex-tested, then discarded.
   - Refuse symlinks before reading; re-check the realpath against the deny list.
