@@ -3,7 +3,7 @@
 //   trim   [4]  bezel, nozzles, rim, ears, goggle frames, antenna stalk; lit in four bands
 //   screen [3]  the face screen's two near-blacks, then the glint
 //   glow   [4]  emissive (unlit), dark -> bright: code lines [2], eyes and tips [3], nozzle mouths [2]
-//   accent [4]  band / panel / stripe / crest; lit in four bands
+//   accent [4]  band / panel / stripe / crest, and accessories (legs, tentacles, goggles); lit in four bands
 //   smoke  [3]  thruster puffs, lit in three bands, darkening as they fade; sparkles use [2]
 // Every colour a drone can put on screen comes from its palette (lab.mjs checks it).
 import { CREW } from '../explorations/astronaut-lab/crew.js';
@@ -55,7 +55,9 @@ export const BRAND_PALETTES = {
   // A graphite cube with a white top facet (the logo's light facet), on Cursor's near-black.
   cursor: { name: 'Cursor', shell: ['#000000', '#12173d', '#293268', '#464b8c'], trim: ['#464b8c', '#909edd', '#c1d9f2', '#ffffff'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], smoke: ['#464b8c', '#909edd', '#c1d9f2'] },
   // The goggled head's blue-to-violet, with light cyan trim and goggles (the accent: frames, bridge, strap).
-  copilot: { name: 'GitHub Copilot', shell: ['#29174c', '#36277f', '#354ab2', '#8c51cc'], trim: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], screen: VISOR, glow: TEAL, accent: COPILOT_GOGGLES, smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
+  // Its visor is the darkest pair (#000000, #12173d): on the generic shape with flat goggles, the crew's
+  // visor left its mean colour too close to the generic drone's (A4 0.77 at system distance).
+  copilot: { name: 'GitHub Copilot', shell: ['#29174c', '#36277f', '#354ab2', '#8c51cc'], trim: COPILOT_GOGGLES, screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: COPILOT_GOGGLES, smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
   // Codey's mid blue (#4a6cf0 lit -> #4185d8, in the light band only), its darker shaded rim (-> #354ab2,
   // which also takes the mid band: A4 measured Codex too close to Copilot without it), its navy screen (#232d66 -> #293268).
   codex: { name: 'OpenAI Codex', shell: ['#293268', '#354ab2', '#354ab2', '#4185d8'], trim: ['#293268', '#354ab2', '#4185d8', '#5ab9e5'], screen: ['#12173d', '#293268', '#ffffff'], glow: TEAL, accent: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
@@ -67,18 +69,12 @@ export const BRAND_PALETTES = {
   kiro: { name: 'Kiro', shell: ['#643499', '#8c51cc', '#b991f2', '#ffffff'], trim: ['#412866', '#643499', '#8c51cc', '#b991f2'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#412866', '#643499', '#8c51cc', '#b991f2'], smoke: ['#8c51cc', '#b991f2', '#ffffff'] },
   // OpenCode's block O: a light ring round a dark-over-grey core.
   opencode: { name: 'OpenCode', shell: ['#464b8c', '#909edd', '#c1d9f2', '#ffffff'], trim: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], screen: ['#000000', '#293268', '#ffffff'], glow: TEAL, accent: ['#12173d', '#293268', '#464b8c', '#6b74b2'], smoke: ['#6b74b2', '#909edd', '#c1d9f2'] },
-  // The hoodie purple (#7a68fa -> #8c51cc), a white snout.
-  qodo: { name: 'Qodo', shell: ['#29174c', '#412866', '#643499', '#8c51cc'], trim: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], screen: VISOR, glow: TEAL, accent: ['#29174c', '#412866', '#643499', '#8c51cc'], smoke: ['#b991f2', '#c1d9f2', '#ffffff'] },
+  // The hoodie purple (#7a68fa -> #8c51cc), a white snout, black sunglasses (the screen: #000000 with a #12173d sheen).
+  qodo: { name: 'Qodo', shell: ['#29174c', '#412866', '#643499', '#8c51cc'], trim: ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#29174c', '#412866', '#643499', '#8c51cc'], smoke: ['#b991f2', '#c1d9f2', '#ffffff'] },
   // Every other detected tool: D-final's own base palette, with the tool's name as a label.
   generic: { ...PALETTES.base, name: 'generic (other tools)' },
   // No tool known: the generic drone exactly (human, 2026-11-10), labelled "unknown agent".
   unknown: { ...PALETTES.base, name: 'unknown agent (the generic drone)' },
-};
-
-// Option palettes (brands.js BRAND_OPTIONS): Copilot b is the generic drone's palette with only the
-// accent, which colours the goggles, in Copilot's cyan.
-export const OPTION_PALETTES = {
-  'copilot-b': { ...PALETTES.base, name: "Copilot b: the generic's palette, Copilot goggles", accent: COPILOT_GOGGLES },
 };
 
 /** Every colour a palette can produce. */

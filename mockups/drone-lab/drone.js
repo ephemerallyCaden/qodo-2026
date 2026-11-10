@@ -67,7 +67,7 @@ const FRAG = /* glsl */ `
   uniform int uSnout; uniform vec3 uSnA, uSnB; uniform vec2 uSnR;
   uniform int uHookN; uniform vec3 uHook[4];
   uniform int uSplit; uniform float uSplitY;
-  uniform int uGlyphSet, uScrFlat;
+  uniform int uGlyphSet, uScrFlat, uShades;
   ${EYES_GLSL}
   in vec3 vPosW;
 
@@ -144,7 +144,8 @@ const FRAG = /* glsl */ `
   float dGog(vec3 p, int i) { return sdRoundBox(gogLocal(p, i), uGogB, uGogR); }
   // The goggles' bridge (two capsules over the front of the head) and strap (a ring hugging the head).
   float dBridge(vec3 p) { return min(sdCapsule(p, uBrA, uBrM, uBrR), sdCapsule(p, uBrM, uBrB, uBrR)); }
-  // The strap's plane is tilted about x (normal uStN), so it runs from the goggles down the back of the head.
+  // The strap: dRim's elliptical ring, in a plane tilted about x (normal uStN), so it runs from the
+  // goggles down the back of the head. (dRim stays separate: D-final's pixels depend on it.)
   float dStrap(vec3 p) {
     vec3 q = p - uStC; vec2 uv = vec2(q.x, dot(q, vec3(0.0, -uStN.z, uStN.y)));
     float m = min(uStR.x, uStR.y);
@@ -270,6 +271,18 @@ const FRAG = /* glsl */ `
     if (uEyes >= ${DRONE_EYE.pills}) return droneEyeLit(E / vec2(32.0, 24.0));
     return eyeLit(E / vec2(32.0, 24.0)); // uBlink (set to uEyeXf.w) squashes them
   }
+  // Sunglasses (screenShades): in eye-box px, two rounded-trapezoid lenses (wider at the top) round
+  // the eyes, under one straight brow bar that runs across both and a little past them.
+  bool shadesAt(vec2 P) {
+    if (abs(P.x - 16.0) < 15.5 && P.y > 4.0 && P.y < 7.5) return true; // the brow bar
+    for (int k = -1; k <= 1; k += 2) {
+      float hw = mix(7.0, 5.0, clamp((P.y - 5.0) / 14.0, 0.0, 1.0)); // half-width: 7 at the top, 5 at the bottom
+      vec2 q = vec2((P.x - 16.0 - float(k) * 7.5) * 7.0 / hw, P.y - 12.0);
+      if (sdRRect(q, vec2(0.0), vec2(7.0, 7.0), 3.5) < 0.0) return true;
+    }
+    return false;
+  }
+  bool shadesGlint(vec2 P) { vec2 G = P - vec2(4.0, 7.5); return G.x >= 0.0 && G.x < 2.0 && G.y >= 0.0 && G.y < 2.0; } // on the left lens
   float hash1(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
   float hash2(vec2 v) { return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453); }
   // Working face: the eyes go and the whole screen flashes with typed ASCII glyphs, a 5 x 7
@@ -358,6 +371,7 @@ const FRAG = /* glsl */ `
     if (part == 0) {
       vec3 s = screenQ(p);
       sq = s.xy;
+      if (uShades == 1) return shadesAt(boxP(sq)) ? 3 : accentAt(p) ? 2 : 0; // no bezel: sunglasses have no frame colour
       if (s.z < 1.0) return 3;
       if (uBezel > 0.0 && s.z < pow(1.0 + uBezel, uScreen.w)) return 1;
       return accentAt(p) ? 2 : 0;
@@ -418,7 +432,7 @@ const FRAG = /* glsl */ `
               int tone;
               if (glyphLit(sq, tone)) c = uFaceDebug == 1 ? vec3(0.0, 1.0, 0.0) : uGlow[tone];
               else if (uEyesOn == 1 && eyesLit(boxP(sq))) c = uFaceDebug == 1 ? vec3(1.0, 0.0, 0.0) : uGlow[3];
-              if (glint(sq)) c = uScr[2];
+              if (uShades == 1 ? shadesGlint(boxP(sq)) : glint(sq)) c = uScr[2];
             } else if (sq.x < -0.35 && sq.y > 0.2 && sq.y < 0.62 && sq.x > -0.7) c = uScr[2];
           } else if (r == 2) c = uAcc[b];
           else if (r == 1) c = uTrim[b];
@@ -550,11 +564,10 @@ export function layout(P) {
 
   const gog = [-1, 1].map((s) => {
     const at = surfacePoint(headF, V(s * P.gogX * P.headW, P.gogY * P.headH, 0.62 * P.headD));
-    const n = gradient(headF, at);
-    const z = P.gogTilt > 0 ? n.clone().setY(n.y * (1 - P.gogTilt)).normalize() : n; // gogTilt stands the lens up
+    const z = gradient(headF, at);
     const x = V(0, 1, 0).cross(z).normalize();
     const y = z.clone().cross(x).normalize();
-    return { at: at.clone(), c: at.addScaledVector(z, 0.003).addScaledVector(y, P.gogLift * P.gogH), x, y, z };
+    return { c: at.addScaledVector(z, 0.003), x, y, z };
   });
   // Connected goggles: a bridge from lens to lens over the front of the head, and a strap round
   // the head at the lenses' height, both as thick as the frames.
@@ -568,9 +581,9 @@ export function layout(P) {
     bridge = { a, m, b, r };
   }
   if (P.topper === 1 && P.gogStrap === 1) {
-    // A ring hugging the head in a plane tilted about x: through the front at the lenses' roots,
+    // A ring hugging the head in a plane tilted about x: through the front at the lenses' height,
     // and through the back at gogStrapY. The section of the near-ellipsoid head is near-elliptical.
-    const t = 0.5 * P.gogFrame, yf = (gog[0].at.y + gog[1].at.y) / 2, yb = P.gogStrapY * P.headH;
+    const t = 0.5 * P.gogFrame, yf = (gog[0].c.y + gog[1].c.y) / 2, yb = P.gogStrapY * P.headH;
     const F = V(0, yf, exitAlong(headF, V(0, yf, 0), V(0, 0, 1))), B = V(0, yb, -exitAlong(headF, V(0, yb, 0), V(0, 0, -1)));
     const c = F.clone().add(B).multiplyScalar(0.5), along = F.clone().sub(B);
     const n = V(0, along.z, -along.y).normalize(); // in the yz plane, perpendicular to the strap's front-back line
@@ -826,7 +839,7 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     uScreen: { value: new THREE.Vector4() }, uBezel: { value: 0 }, uEyePhys: { value: new THREE.Vector2() },
     uEyeXf: { value: new THREE.Vector4(0, 0, 1, 1) }, uGlyph: { value: new THREE.Vector4() }, uEyesOn: { value: 1 }, uFaceDebug: { value: 0 },
     uEars: { value: 0 }, uEarC: { value: vecs(2) }, uEarR: { value: 0 }, uEarT: { value: 0 }, uEarSweep: { value: 0 },
-    uTopper: { value: 0 }, uGogC: { value: vecs(2) }, uGogX: { value: vecs(2) }, uGogY: { value: vecs(2) }, uGogZ: { value: vecs(2) }, uGogB: { value: V() }, uGogR: { value: 0 }, uGogF: { value: 0.014 },
+    uTopper: { value: 0 }, uGogC: { value: vecs(2) }, uGogX: { value: vecs(2) }, uGogY: { value: vecs(2) }, uGogZ: { value: vecs(2) }, uGogB: { value: V() }, uGogR: { value: 0 }, uGogF: { value: 0 },
     uGogBr: { value: 0 }, uBrA: { value: V() }, uBrM: { value: V() }, uBrB: { value: V() }, uBrR: { value: 0 }, uGogSt: { value: 0 }, uStC: { value: V() }, uStN: { value: V(0, 1, 0) }, uStR: { value: new THREE.Vector2(1, 1) }, uStT: { value: 0 },
     uCrestC: { value: V() }, uCrestB: { value: V(1, 1, 1) },
     uAntN: { value: 0 }, uAntA: { value: vecs(2) }, uAntB: { value: vecs(2) }, uAntR: { value: 0.0105 }, uAntTip: { value: 0 },
@@ -836,10 +849,10 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     uPuffR: { value: new Array(MAX_PUFFS).fill(0) }, uPuffA: { value: new Array(MAX_PUFFS).fill(0) },
     uSparkN: { value: 0 }, uSparkC: { value: vecs(MAX_SPARKS) }, uSparkS: { value: new Array(MAX_SPARKS).fill(0) },
     uEyes: { value: 0 }, uBlink: { value: 1 },
-    uHeadHex: { value: 0 }, uCrownN: { value: 0 }, uCrownC: { value: vecs(MAX_CROWN) }, uCrownR: { value: 0 }, uCrownK: { value: 0.012 },
+    uHeadHex: { value: 0 }, uCrownN: { value: 0 }, uCrownC: { value: vecs(MAX_CROWN) }, uCrownR: { value: 0 }, uCrownK: { value: 0 },
     uSkirt: { value: 0 }, uSkirtN: { value: 0 }, uSkA: { value: vecs(MAX_SKIRT) }, uSkB: { value: vecs(MAX_SKIRT) }, uSkC: { value: vecs(MAX_SKIRT) }, uSkR: { value: 0 },
     uSnout: { value: 0 }, uSnA: { value: V() }, uSnB: { value: V(0, 0, 1) }, uSnR: { value: new THREE.Vector2() },
-    uHookN: { value: 0 }, uHook: { value: vecs(4) }, uSplit: { value: 0 }, uSplitY: { value: 0 }, uGlyphSet: { value: 0 }, uScrFlat: { value: 0 },
+    uHookN: { value: 0 }, uHook: { value: vecs(4) }, uSplit: { value: 0 }, uSplitY: { value: 0 }, uGlyphSet: { value: 0 }, uScrFlat: { value: 0 }, uShades: { value: 0 },
   };
   const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: U, side: THREE.BackSide });
   const proxy = new THREE.Mesh(PROXY_GEO, mat);
@@ -881,7 +894,7 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     U.uSnout.value = P.snout;
     if (Lay.snout) { U.uSnA.value.copy(Lay.snout.a); U.uSnB.value.copy(Lay.snout.b); U.uSnR.value.set(...Lay.snout.r); }
     U.uHookN.value = Lay.hook.length; Lay.hook.forEach((h, i) => U.uHook.value[i].copy(h));
-    U.uSplit.value = P.screenSplit; U.uSplitY.value = P.splitY; U.uGlyphSet.value = P.glyphSet; U.uScrFlat.value = P.screenFlat;
+    U.uSplit.value = P.screenSplit; U.uSplitY.value = P.splitY; U.uGlyphSet.value = P.glyphSet; U.uScrFlat.value = P.screenFlat; U.uShades.value = P.screenShades;
   }
   function placeSkirt(t) {
     skirtAt(Lay, t).forEach((k, i) => { U.uSkA.value[i].copy(k.a); if (k.b) U.uSkB.value[i].copy(k.b); if (k.c) U.uSkC.value[i].copy(k.c); });
