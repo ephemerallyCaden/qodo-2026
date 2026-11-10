@@ -8,10 +8,10 @@ import { DEFAULTS as ASTRO_DEFAULTS } from '../explorations/astronaut-lab/params
 import { VARIANTS as ASTRO_VARIANTS } from '../explorations/astronaut-lab/variants.js';
 import { CREW, SPACE } from '../explorations/astronaut-lab/crew.js';
 import { makeDrone, extents, intendedPieces } from './drone.js';
-import { PALETTES, BRAND_PALETTES, paletteHexes } from './palette.js';
+import { PALETTES, BRAND_PALETTES, OPTION_PALETTES, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS } from './params.js';
 import { VARIANTS, FINAL } from './variants.js';
-import { BRANDS, BRAND_BY_ID, sessionLook } from './brands.js';
+import { BRANDS, BRAND_BY_ID, BRAND_OPTIONS, OPTION_BY_ID, sessionLook } from './brands.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -41,8 +41,8 @@ const crew = CREW_COLORS.map((color, i) => {
   return a;
 });
 
-// A palette by key (base, ember or a brand id), or a palette object (a session's seeded trim).
-const paletteOf = (key) => (key && typeof key === 'object' ? key : PALETTES[key] ?? BRAND_PALETTES[key] ?? PALETTES.base);
+// A palette by key (base, ember, a brand id or an option palette), or a palette object (a session's seeded trim).
+const paletteOf = (key) => (key && typeof key === 'object' ? key : PALETTES[key] ?? BRAND_PALETTES[key] ?? OPTION_PALETTES[key] ?? PALETTES.base);
 
 // More drones for squad scenes (several drones with the crew), made on first use.
 const pool = [drone];
@@ -271,12 +271,18 @@ function snapLabels(ctx, W, H, rows, { w, h, rowLabelW, gap, top, capH }) {
   ctx.putImageData(img, 0, 0);
 }
 
-/** Direction params by id (variants, D-final and the brand drones). */
-const ALL = [...VARIANTS, FINAL, ...BRANDS];
+/** Direction params by id (variants, D-final, the brand drones and the options that differ from them). */
+const OPTIONS = BRAND_OPTIONS.filter((o) => o.accessory !== BRAND_BY_ID[o.brand].accessory || o.palette !== o.brand);
+const ALL = [...VARIANTS, FINAL, ...BRANDS, ...OPTIONS];
 const paramsOf = (id) => ({ ...DEFAULTS, ...ALL.find((v) => v.id === id).params });
 // A cell may name a brand (and a session seed): its params, palette and phase come from the brand.
+// Or an option (brands.js BRAND_OPTIONS): its brand with the option's params and palette.
 function resolveCell(c) {
   if (c.squad) return { ...c, squad: c.squad.map(resolveCell) };
+  if (c.option) {
+    const o = OPTION_BY_ID[c.option];
+    return resolveCell({ ...c, option: null, brand: o.brand, params: { ...o.params, ...(c.params ?? {}) }, palette: c.palette ?? o.palette });
+  }
   if (c.brand) {
     const look = sessionLook(c.brand, c.seed);
     return { ...c, params: { ...DEFAULTS, ...look.params, ...(c.params ?? {}) }, palette: c.palette ?? look.palette, t: (c.t ?? 0) + (c.phased ? look.phase : 0) };
@@ -335,7 +341,8 @@ if (ui) {
     b.title = `${v.name}: ${v.leaning}`;
     b.onclick = () => {
       state.params = paramsOf(v.id); state.variant = v.id;
-      if (BRAND_BY_ID[v.id] || state.palette in BRAND_PALETTES) palSel.value = state.palette = BRAND_BY_ID[v.id] ? v.id : 'base';
+      const own = OPTION_BY_ID[v.id]?.palette ?? (BRAND_BY_ID[v.id] ? v.id : null); // brands and options bring their palette
+      if (own || !(state.palette in PALETTES)) palSel.value = state.palette = own ?? 'base';
       sync();
     };
     picker.append(b);
@@ -369,7 +376,7 @@ if (ui) {
     controls[p.key] = { input, readout };
   }
   const palSel = document.getElementById('palette');
-  Object.entries({ ...PALETTES, ...BRAND_PALETTES }).forEach(([k, p]) => palSel.append(new Option(p.name, k)));
+  Object.entries({ ...PALETTES, ...BRAND_PALETTES, ...OPTION_PALETTES }).forEach(([k, p]) => palSel.append(new Option(p.name, k)));
   palSel.onchange = () => (state.palette = palSel.value);
   document.getElementById('mode').onchange = (e) => (state.mode = e.target.value);
   document.getElementById('animate').onchange = (e) => (state.animate = e.target.checked);

@@ -52,7 +52,8 @@ const FRAG = /* glsl */ `
   uniform vec4 uGlyph; // working face: glyph coverage 0..1, time into the work (s), flashes per second, glyph pixel size (eye-box px)
   uniform int uEyesOn, uFaceDebug;
   uniform int uEars; uniform vec3 uEarC[2]; uniform float uEarR, uEarT, uEarSweep;
-  uniform int uTopper; uniform vec3 uGogC[2], uGogX[2], uGogY[2], uGogZ[2], uGogB; uniform float uGogR;
+  uniform int uTopper; uniform vec3 uGogC[2], uGogX[2], uGogY[2], uGogZ[2], uGogB; uniform float uGogR, uGogF;
+  uniform int uGogBr, uGogSt; uniform vec3 uBrA, uBrM, uBrB, uStC, uStN; uniform vec2 uStR; uniform float uBrR, uStT; // goggle bridge and strap
   uniform vec3 uCrestC, uCrestB;
   uniform int uAntN; uniform vec3 uAntA[2], uAntB[2]; uniform float uAntR, uAntTip;
   uniform int uThrN; uniform vec3 uThrA[4], uThrB[4]; uniform vec2 uThrR;
@@ -141,6 +142,14 @@ const FRAG = /* glsl */ `
   }
   vec3 gogLocal(vec3 p, int i) { vec3 q = p - uGogC[i]; return vec3(dot(q, uGogX[i]), dot(q, uGogY[i]), dot(q, uGogZ[i])); }
   float dGog(vec3 p, int i) { return sdRoundBox(gogLocal(p, i), uGogB, uGogR); }
+  // The goggles' bridge (two capsules over the front of the head) and strap (a ring hugging the head).
+  float dBridge(vec3 p) { return min(sdCapsule(p, uBrA, uBrM, uBrR), sdCapsule(p, uBrM, uBrB, uBrR)); }
+  // The strap's plane is tilted about x (normal uStN), so it runs from the goggles down the back of the head.
+  float dStrap(vec3 p) {
+    vec3 q = p - uStC; vec2 uv = vec2(q.x, dot(q, vec3(0.0, -uStN.z, uStN.y)));
+    float m = min(uStR.x, uStR.y);
+    return length(vec2((length(uv / uStR) - 1.0) * m, dot(q, uStN))) - uStT;
+  }
   float dCrest(vec3 p) { return sdEllipsoid(p - uCrestC, uCrestB); }
   float dStalk(vec3 p, int i) { return sdCapsule(p, uAntA[i], uAntB[i], uAntR); }
   float dTip(vec3 p, int i) { return length(p - (uHookN > 0 ? uHook[uHookN - 1] : uAntB[i])) - uAntTip; }
@@ -164,6 +173,8 @@ const FRAG = /* glsl */ `
       if (s < uAntN) d = smin(smin(d, dStalk(p, s), K), dTip(p, s), K);
     }
     if (uTopper == 2) d = smin(d, dCrest(p), 0.01);
+    if (uGogBr == 1) d = smin(d, dBridge(p), K);
+    if (uGogSt == 1) d = smin(d, dStrap(p), K);
     for (int i = 0; i < 4; i++) { if (i >= uThrN) break; d = smin(d, dThr(p, i), K); }
     for (int i = 0; i < ${MAX_SKIRT}; i++) { if (i >= uSkirtN) break; d = smin(d, dSkirt(p, i), uSkirt == 3 ? uSkR * 0.7 : K); }
     if (uSnout == 1) d = smin(d, dSnout(p), 0.008);
@@ -321,7 +332,7 @@ const FRAG = /* glsl */ `
     return false;
   }
 
-  // Colour region of a body point: 0 shell, 1 trim, 2 accent, 3 screen, 4 glow, 6 goggle lens, 8 shell (hem).
+  // Colour region of a body point: 0 shell, 1 trim, 2 accent (accessories), 3 screen, 4 glow, 6 goggle lens, 8 shell (hem).
   int region(vec3 p, out vec2 sq) {
     sq = vec2(0.0);
     float best = dHead(p), d;
@@ -337,6 +348,8 @@ const FRAG = /* glsl */ `
       }
     }
     if (uTopper == 2) { d = dCrest(p); if (d < best) { best = d; part = 2; } }
+    if (uGogBr == 1) { d = dBridge(p); if (d < best) { best = d; part = 2; } }
+    if (uGogSt == 1) { d = dStrap(p); if (d < best) { best = d; part = 2; } }
     for (int i = 0; i < 4; i++) { if (i >= uThrN) break; d = dThr(p, i); if (d < best) { best = d; part = 7; gi = i; } }
     // Legs and tentacles take the accent slot; hem scallops are the head's own shell.
     for (int i = 0; i < ${MAX_SKIRT}; i++) { if (i >= uSkirtN) break; d = dSkirt(p, i); if (d < best) { best = d; part = uSkirt == 3 ? 8 : 2; } }
@@ -351,8 +364,8 @@ const FRAG = /* glsl */ `
     }
     if (part == 6) {
       vec3 g = gogLocal(p, gi);
-      if (g.z > 0.0 && sdRoundBox(vec3(g.xy, 0.0), vec3(uGogB.xy - 0.014, 1.0), max(uGogR - 0.014, 0.004)) < 0.0) { sq = g.xy / uGogB.xy; return 6; }
-      return 1;
+      if (g.z > 0.0 && sdRoundBox(vec3(g.xy, 0.0), vec3(uGogB.xy - uGogF, 1.0), max(uGogR - uGogF, 0.004)) < 0.0) { sq = g.xy / uGogB.xy; return 6; }
+      return 2; // the frame: goggles are an accessory, in the accent colour
     }
     if (part == 7) { // nozzle: the centre of the mouth glows
       vec3 ax = normalize(uThrB[gi] - uThrA[gi]);
@@ -537,11 +550,30 @@ export function layout(P) {
 
   const gog = [-1, 1].map((s) => {
     const at = surfacePoint(headF, V(s * P.gogX * P.headW, P.gogY * P.headH, 0.62 * P.headD));
-    const z = gradient(headF, at);
+    const n = gradient(headF, at);
+    const z = P.gogTilt > 0 ? n.clone().setY(n.y * (1 - P.gogTilt)).normalize() : n; // gogTilt stands the lens up
     const x = V(0, 1, 0).cross(z).normalize();
     const y = z.clone().cross(x).normalize();
-    return { c: at.addScaledVector(z, 0.003), x, y, z };
+    return { at: at.clone(), c: at.addScaledVector(z, 0.003).addScaledVector(y, P.gogLift * P.gogH), x, y, z };
   });
+  // Connected goggles: a bridge from lens to lens over the front of the head, and a strap round
+  // the head at the lenses' height, both as thick as the frames.
+  let bridge = null, strap = null;
+  if (P.topper === 1 && P.gogBridge === 1) {
+    const r = 0.5 * P.gogFrame;
+    const [a, b] = gog.map((g, i) => g.c.clone().addScaledVector(g.x, (i === 0 ? 1 : -1) * (P.gogW - 0.5 * P.gogFrame)));
+    const y = (a.y + b.y) / 2, front = V(0, y, exitAlong(headF, V(0, y, 0), V(0, 0, 1)));
+    bridge = { a, m: front.addScaledVector(gradient(headF, front), 0.003 + 0.5 * r), b, r };
+  }
+  if (P.topper === 1 && P.gogStrap === 1) {
+    // A ring hugging the head in a plane tilted about x: through the front at the lenses' roots,
+    // and through the back at gogStrapY. The section of the near-ellipsoid head is near-elliptical.
+    const t = 0.5 * P.gogFrame, yf = (gog[0].at.y + gog[1].at.y) / 2, yb = P.gogStrapY * P.headH;
+    const F = V(0, yf, exitAlong(headF, V(0, yf, 0), V(0, 0, 1))), B = V(0, yb, -exitAlong(headF, V(0, yb, 0), V(0, 0, -1)));
+    const c = F.clone().add(B).multiplyScalar(0.5), along = F.clone().sub(B);
+    const n = V(0, along.z, -along.y).normalize(); // in the yz plane, perpendicular to the strap's front-back line
+    strap = { c, n, r: [exitAlong(headF, c, V(1, 0, 0)) + 0.35 * t, along.length() / 2 + 0.35 * t], t };
+  }
   const crest = { c: V(0, top - 0.012, -0.12 * P.headD), b: V(0.014, P.crestH, 0.6 * P.headD) };
 
   const ant = [];
@@ -622,7 +654,7 @@ export function layout(P) {
     snout = { a, b: a.clone().addScaledVector(dir, P.snoutL), r: [P.snoutR, 0.5 * P.snoutR] };
   }
 
-  return { P, head, headF, core, chin, top, bottom: Math.min(bottom, nozzleBottom, skirtBottom, snout ? snout.b.y - snout.r[1] : 1), rim, ears, gog, crest, ant, hook, crown, skirt, snout, thr };
+  return { P, head, headF, core, chin, top, bottom: Math.min(bottom, nozzleBottom, skirtBottom, snout ? snout.b.y - snout.r[1] : 1), rim, ears, gog, bridge, strap, crest, ant, hook, crown, skirt, snout, thr };
 }
 
 // ---------------------------------------------------------------- motion
@@ -765,11 +797,13 @@ export function extents(Lay) {
   for (const h of Lay.hook) top = Math.max(top, h.y + P.antTip);
   for (const c of Lay.crown) top = Math.max(top, c.y + P.crownR);
   if (P.topper === 2) top = Math.max(top, Lay.crest.c.y + Lay.crest.b.y);
+  if (P.topper === 1) for (const g of Lay.gog) top = Math.max(top, g.c.y + P.gogH * Math.abs(g.y.y) + P.gogT * Math.abs(g.z.y));
   // Half-width at rest (for the brand size-class check): head, rim, ears, crown puffs, skirt.
   let half = P.headW * Math.max(1, P.headTaper);
   if (P.rim) half = Math.max(half, Lay.rim.r[0] + P.rimT);
   if (P.ears) half = Math.max(half, Lay.ears[1].x + (P.ears === 3 ? P.earR : P.earT));
   for (const c of Lay.crown) half = Math.max(half, Math.abs(c.x) + P.crownR);
+  if (P.topper === 1) for (const g of Lay.gog) half = Math.max(half, Math.abs(g.c.x) + P.gogW * Math.abs(g.x.x) + P.gogT * Math.abs(g.z.x));
   for (const k of Lay.skirt) half = Math.max(half, Math.abs(k.a.x) + P.skirtR, k.c ? Math.abs(k.c.x) + P.skirtR : 0);
   return { top: top * P.size, bottom: Lay.bottom * P.size, half: half * P.size };
 }
@@ -790,7 +824,8 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     uScreen: { value: new THREE.Vector4() }, uBezel: { value: 0 }, uEyePhys: { value: new THREE.Vector2() },
     uEyeXf: { value: new THREE.Vector4(0, 0, 1, 1) }, uGlyph: { value: new THREE.Vector4() }, uEyesOn: { value: 1 }, uFaceDebug: { value: 0 },
     uEars: { value: 0 }, uEarC: { value: vecs(2) }, uEarR: { value: 0 }, uEarT: { value: 0 }, uEarSweep: { value: 0 },
-    uTopper: { value: 0 }, uGogC: { value: vecs(2) }, uGogX: { value: vecs(2) }, uGogY: { value: vecs(2) }, uGogZ: { value: vecs(2) }, uGogB: { value: V() }, uGogR: { value: 0 },
+    uTopper: { value: 0 }, uGogC: { value: vecs(2) }, uGogX: { value: vecs(2) }, uGogY: { value: vecs(2) }, uGogZ: { value: vecs(2) }, uGogB: { value: V() }, uGogR: { value: 0 }, uGogF: { value: 0.014 },
+    uGogBr: { value: 0 }, uBrA: { value: V() }, uBrM: { value: V() }, uBrB: { value: V() }, uBrR: { value: 0 }, uGogSt: { value: 0 }, uStC: { value: V() }, uStN: { value: V(0, 1, 0) }, uStR: { value: new THREE.Vector2(1, 1) }, uStT: { value: 0 },
     uCrestC: { value: V() }, uCrestB: { value: V(1, 1, 1) },
     uAntN: { value: 0 }, uAntA: { value: vecs(2) }, uAntB: { value: vecs(2) }, uAntR: { value: 0.0105 }, uAntTip: { value: 0 },
     uThrN: { value: 0 }, uThrA: { value: vecs(4) }, uThrB: { value: vecs(4).map((v) => v.set(0, -1, 0)) }, uThrR: { value: new THREE.Vector2() },
@@ -824,7 +859,11 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     U.uEars.value = P.ears; Lay.ears.forEach((e, i) => U.uEarC.value[i].copy(e)); U.uEarR.value = P.earR; U.uEarT.value = P.earT; U.uEarSweep.value = P.earSweep;
     U.uTopper.value = P.topper;
     Lay.gog.forEach((g, i) => { U.uGogC.value[i].copy(g.c); U.uGogX.value[i].copy(g.x); U.uGogY.value[i].copy(g.y); U.uGogZ.value[i].copy(g.z); });
-    U.uGogB.value.set(P.gogW, P.gogH, 0.012); U.uGogR.value = 0.6 * Math.min(P.gogW, P.gogH);
+    U.uGogB.value.set(P.gogW, P.gogH, P.gogT); U.uGogR.value = 0.6 * Math.min(P.gogW, P.gogH); U.uGogF.value = P.gogFrame;
+    U.uGogBr.value = Lay.bridge ? 1 : 0;
+    if (Lay.bridge) { U.uBrA.value.copy(Lay.bridge.a); U.uBrM.value.copy(Lay.bridge.m); U.uBrB.value.copy(Lay.bridge.b); U.uBrR.value = Lay.bridge.r; }
+    U.uGogSt.value = Lay.strap ? 1 : 0;
+    if (Lay.strap) { U.uStC.value.copy(Lay.strap.c); U.uStN.value.copy(Lay.strap.n); U.uStR.value.set(...Lay.strap.r); U.uStT.value = Lay.strap.t; }
     U.uCrestC.value.copy(Lay.crest.c); U.uCrestB.value.copy(Lay.crest.b);
     U.uAntN.value = Lay.ant.length; U.uAntTip.value = P.antTip;
     Lay.ant.forEach((a, i) => { U.uAntA.value[i].copy(a.base); U.uAntB.value[i].copy(a.base).addScaledVector(a.dir, P.antL); });

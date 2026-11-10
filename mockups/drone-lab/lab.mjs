@@ -1,6 +1,7 @@
 // Regenerates every lab output in out/ with headless Chromium (SwiftShader). The page is served
 // through Playwright request interception, so no socket is opened and nothing touches the network.
-// Usage: node lab.mjs [lineup] [crew] [closeups] [turntable] [motion] [final] [working] [params]   (no names = all)
+// Usage: node lab.mjs [lineup] [crew] [closeups] [turntable] [motion] [final] [working] [params] [brands] [brand-closeups]
+//   [seeds] [squads] [brand-gifs] [options] [option-gifs] [a4] [identity]   (no names = all)
 // Every rendered tile is checked: only the drone's palette + space (+ BLK 36 crew in the crew
 // shot), so no antialiasing or dithering; the intended number of silhouette pieces (1, plus any
 // free-floating halos); not empty; not clipped by the tile edge. Each turntable's frame one loop
@@ -14,17 +15,21 @@ import { fileURLToPath } from 'node:url';
 import { resolveFile } from './serve.mjs';
 import { mapPalette } from '../asset-viewer/palette-map.js';
 import { CREW, SPACE } from '../explorations/astronaut-lab/crew.js';
-import { PALETTES, SLOTS, BRAND_PALETTES, paletteHexes } from './palette.js';
+import { PALETTES, SLOTS, BRAND_PALETTES, OPTION_PALETTES, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS, showValue } from './params.js';
 import { VARIANTS, PICKED, FINAL, FINAL_PARAMS } from './variants.js';
 import { LOOP, MOTION_LOOP, CYCLES } from './drone.js';
-import { BRANDS, BRAND_COLOURS, sessionLook } from './brands.js';
+import { BRANDS, BRAND_BY_ID, BRAND_COLOURS, BRAND_OPTIONS, SAME_DRONE, sessionLook } from './brands.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
 const ORIGIN = 'http://lab.local';
 const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
 const VIEWS = [['front', 0], ['3/4', -0.75], ['side', -Math.PI / 2]];
+const VIEWS4 = [[0, 'front'], [-0.75, '3/4'], [-Math.PI / 2, 'side'], [Math.PI * 0.8, 'back 3/4']];
+// The options that differ from their brand drone (option a of each is the brand drone itself).
+const NEW_OPTIONS = BRAND_OPTIONS.filter((o) => o.accessory !== BRAND_BY_ID[o.brand].accessory || o.palette !== o.brand);
+const optionPalette = (o) => OPTION_PALETTES[o.palette] ?? BRAND_PALETTES[o.palette];
 const FPS = 15;
 const wanted = process.argv.slice(2).filter((a) => !a.startsWith('brand='));
 // brand=copilot,codex limits brand-closeups and brand-gifs to those drones.
@@ -267,7 +272,7 @@ try {
   if (want('brand-closeups')) {
     // Each brand at the 2x close-up: front, 3/4, side, back 3/4.
     for (const b of only(BRANDS)) {
-      const cells = [[0, 'front'], [-0.75, '3/4'], [-Math.PI / 2, 'side'], [Math.PI * 0.8, 'back 3/4']].map(([yaw, caption]) => ({ brand: b.id, yaw, t: STILL_T, zoom: 2, caption }));
+      const cells = VIEWS4.map(([yaw, caption]) => ({ brand: b.id, yaw, t: STILL_T, zoom: 2, caption }));
       await render(`closeup ${b.id}`, {
         title: `${b.name} · 2x close-up (camera at half distance), x3 · ${b.signature}`,
         w: 160, h: 160, scale: 3,
@@ -331,6 +336,45 @@ try {
     }
   }
 
+  if (want('options')) {
+    // The human's choices (2026-11-10): Copilot's colouring and Claude's accessory, a and b side by
+    // side at the 2x close-up, then at the crew close-up beside the generic drone (game scale).
+    for (const brand of ['copilot', 'claude']) {
+      const opts = BRAND_OPTIONS.filter((o) => o.brand === brand);
+      await render(`options ${brand}`, {
+        title: `${BRAND_BY_ID[brand].name} · options for the human · 2x close-up, x3 · idle t = ${STILL_T} s · option a is the drone in the lineup`,
+        w: 160, h: 160, scale: 3, rowLabelW: 170,
+        rows: opts.map((o) => ({ label: `${o.name}: ${o.look}`, cells: VIEWS4.map(([yaw, caption]) => ({ option: o.id, yaw, t: STILL_T, zoom: 2, caption })) })),
+      }, path.join(OUT, `brand-${brand}-options.png`));
+    }
+    const frame = (brand) => {
+      const ids = ['generic', ...BRAND_OPTIONS.filter((o) => o.brand === brand).map((o) => o.id)];
+      return {
+        t: STILL_T, view: 'crew', caption: `left to right: generic · ${ids.slice(1).map((id) => BRAND_OPTIONS.find((o) => o.id === id).name).join(' · ')}`,
+        squad: ids.map((id, i) => ({ ...(id === 'generic' ? { brand: id } : { option: id }), x: -0.42 + 0.42 * i, y: 0.54, z: 0, yaw: 0.2 - 0.2 * i })),
+      };
+    };
+    await render('options crew', {
+      title: "the options at the viewer's crew close-up (320x180, x3), beside the generic drone and two K astronauts",
+      w: 320, h: 180, scale: 3,
+      rows: [{ cells: [frame('copilot')] }, { cells: [frame('claude')] }],
+    }, path.join(OUT, 'brand-options-crew.png'));
+  }
+
+  if (want('option-gifs')) {
+    // The b options' 6 s turntable and 12 s motion loop, as for the brand drones.
+    for (const o of NEW_OPTIONS) {
+      await loopGif(`brand-${o.id}-turntable`, LOOP, (f) => ({
+        w: 220, h: 220, scale: 3, crispLabels: true,
+        rows: [{ cells: [{ option: o.id, yaw: -0.75 - (Math.PI * 2 * f) / (LOOP * FPS), t: f / FPS, zoom: 2, caption: `${o.name} · turntable, 6 s` }] }],
+      }), optionPalette(o));
+      await loopGif(`brand-${o.id}-motion`, MOTION_LOOP, (f) => ({
+        w: 280, h: 220, scale: 2, crispLabels: true,
+        rows: [{ cells: [{ option: o.id, yaw: -0.5, t: f / FPS, zoom: 2, motion: true, caption: `${o.name} · motion loop, 12 s` }] }],
+      }), optionPalette(o));
+    }
+  }
+
   if (want('a4')) {
     // A4: every pair of the 11 drones must be told apart at the crew close-up and at system
     // distance, by silhouette or by colour. Per drone, view and scale: the smoke-off mask and its
@@ -340,7 +384,9 @@ try {
     await writeFile(path.join(OUT, 'brands-a4.json'), `${JSON.stringify(a4, null, 1)}\n`);
     for (const s of a4.scales) {
       console.log(`  A4 ${s.name} (drone ~${s.heightPx}px tall): closest pair ${s.closest.a}–${s.closest.b} (score ${s.closest.score.toFixed(2)}: IoU ${s.closest.iou.toFixed(2)}, ΔE ${s.closest.dE.toFixed(3)}); min ΔE ${s.minDE.a}–${s.minDE.b} ${s.minDE.dE.toFixed(3)}; max IoU ${s.maxIoU.a}–${s.maxIoU.b} ${s.maxIoU.iou.toFixed(2)}`);
-      if (s.gate) for (const p of s.pairs) if (p.score < 1) problems.push(`A4 ${s.name}: ${p.a} and ${p.b} too alike (IoU ${p.iou.toFixed(2)}, ΔE ${p.dE.toFixed(3)}, score ${p.score.toFixed(2)} < 1)`);
+      if (s.gate) for (const p of s.pairs) if (!p.same && p.score < 1) problems.push(`A4 ${s.name}: ${p.a} and ${p.b} too alike (IoU ${p.iou.toFixed(2)}, ΔE ${p.dE.toFixed(3)}, score ${p.score.toFixed(2)} < 1)`);
+      // The options are measured against every other drone; they're reported, not gated (the human picks).
+      for (const o of s.options) console.log(`    option ${o.id}: closest ${o.closest.b} (score ${o.closest.score.toFixed(2)}: IoU ${o.closest.iou.toFixed(2)}, ΔE ${o.closest.dE.toFixed(3)})${o.pass ? '' : ` · ${o.pairs.filter((p) => p.score < 1).length} pair(s) below 1`}`);
     }
   }
 
@@ -384,13 +430,14 @@ try {
 async function brandDistinctness(page) {
   const { rgbOklab, dist } = await import('./oklab.js');
   const space = parseInt(SPACE.slice(1), 16);
+  const same = (a, b) => SAME_DRONE.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
   const scales = [];
   for (const sc of SCALES) {
-    const looks = {};
-    for (const b of BRANDS) {
-      looks[b.id] = [];
+    // Per view: the smoke-off mask, its centroid, mean OKLab colour and height. `who` is a cell base.
+    const lookOf = async (who, label) => {
+      const views = [];
       for (const [, yaw] of A4_VIEWS) {
-        const rgb = await page.evaluate(([id, y, z, w, h]) => window.lab.pixels({ brand: id, yaw: y, t: 0.9, zoom: z }, w, h), [b.id, yaw, sc.zoom, sc.w, sc.h]);
+        const rgb = await page.evaluate(([c, y, z, w, h]) => window.lab.pixels({ ...c, yaw: y, t: 0.9, zoom: z }, w, h), [who, yaw, sc.zoom, sc.w, sc.h]);
         const mask = rgb.map((c) => c !== space);
         let n = 0, cx = 0, cy = 0, L = 0, A = 0, B = 0, top = sc.h, bot = -1;
         mask.forEach((m, i) => {
@@ -399,10 +446,14 @@ async function brandDistinctness(page) {
           const [l, a, bb] = rgbOklab(c >> 16, (c >> 8) & 255, c & 255);
           n++; cx += x; cy += y; L += l; A += a; B += bb; top = Math.min(top, y); bot = Math.max(bot, y);
         });
-        if (!n) throw new Error(`A4: ${b.id} rendered empty at ${sc.name}`);
-        looks[b.id].push({ mask, n, cx: cx / n, cy: cy / n, mean: [L / n, A / n, B / n], height: bot - top + 1 });
+        if (!n) throw new Error(`A4: ${label} rendered empty at ${sc.name}`);
+        views.push({ mask, n, cx: cx / n, cy: cy / n, mean: [L / n, A / n, B / n], height: bot - top + 1 });
       }
-    }
+      return views;
+    };
+    const looks = {}, optLooks = {};
+    for (const b of BRANDS) looks[b.id] = await lookOf({ brand: b.id }, b.id);
+    for (const o of BRAND_OPTIONS) optLooks[o.id] = await lookOf({ option: o.id }, o.id);
     const iouOf = (p, q) => {
       let best = 0;
       const dx0 = Math.round(p.cx - q.cx), dy0 = Math.round(p.cy - q.cy);
@@ -417,27 +468,36 @@ async function brandDistinctness(page) {
       }
       return best;
     };
+    // A pair's worst view.
+    const pairOf = (p, q) => {
+      const views = A4_VIEWS.map((_, v) => {
+        const iou = iouOf(p[v], q[v]), dE = dist(p[v].mean, q[v].mean);
+        return { iou, dE, score: Math.max((1 - iou) / A4_SHAPE, dE / A4_COLOUR) };
+      });
+      return { ...views.reduce((m, v) => (v.score < m.score ? v : m)), views };
+    };
     const pairs = [];
     for (let i = 0; i < BRANDS.length; i++) for (let j = i + 1; j < BRANDS.length; j++) {
       const a = BRANDS[i].id, b = BRANDS[j].id;
-      const views = A4_VIEWS.map((_, v) => {
-        const iou = iouOf(looks[a][v], looks[b][v]), dE = dist(looks[a][v].mean, looks[b][v].mean);
-        return { iou, dE, score: Math.max((1 - iou) / A4_SHAPE, dE / A4_COLOUR) };
-      });
-      const worst = views.reduce((m, v) => (v.score < m.score ? v : m));
-      pairs.push({ a, b, ...worst, views });
+      pairs.push({ a, b, ...pairOf(looks[a], looks[b]), ...(same(a, b) ? { same: true } : {}) });
     }
     pairs.sort((p, q) => p.score - q.score);
+    const gated = pairs.filter((p) => !p.same); // the same drone by design is not gated
+    // Each option against every drone but its own brand's.
+    const options = BRAND_OPTIONS.map((o) => {
+      const ps = BRANDS.filter((b) => b.id !== o.brand).map((b) => ({ b: b.id, ...pairOf(optLooks[o.id], looks[b.id]) })).sort((p, q) => p.score - q.score);
+      return { id: o.id, closest: ps[0], pass: ps.every((p) => p.score >= 1), pairs: ps };
+    });
     const heights = Object.values(looks).map((l) => l[0].height);
     scales.push({
       name: sc.name, gate: sc.gate, zoom: sc.zoom, heightPx: Math.round(heights.reduce((s, h) => s + h, 0) / heights.length),
-      closest: pairs[0],
-      minDE: pairs.reduce((m, p) => (p.dE < m.dE ? p : m)), maxIoU: pairs.reduce((m, p) => (p.iou > m.iou ? p : m)),
+      closest: gated[0],
+      minDE: gated.reduce((m, p) => (p.dE < m.dE ? p : m)), maxIoU: gated.reduce((m, p) => (p.iou > m.iou ? p : m)),
       means: Object.fromEntries(Object.entries(looks).map(([id, l]) => [id, l.map((v) => v.mean.map((x) => Math.round(x * 1000) / 1000))])),
-      pairs,
+      pairs, options,
     });
   }
-  return { thresholds: { shape: A4_SHAPE, colour: A4_COLOUR }, views: A4_VIEWS.map(([n]) => n), scales };
+  return { thresholds: { shape: A4_SHAPE, colour: A4_COLOUR }, views: A4_VIEWS.map(([n]) => n), same: SAME_DRONE, scales };
 }
 
 async function paramsDoc() {
@@ -486,7 +546,7 @@ async function paramsDoc() {
 async function brandsDoc() {
   const { dist } = await import('./oklab.js');
   const { BLK36 } = await import('./palette.js');
-  const { SESSION_VARY, SESSION_SPARKLES } = await import('./brands.js');
+  const { SESSION_VARY, SESSION_SPARKLES, ACCESSORIES, FACE_KEYS } = await import('./brands.js');
   const D = { ...DEFAULTS, ...FINAL.params };
   const keys = PARAMS.map((p) => p.key).filter((k) => BRANDS.some((b) => b.params[k] !== D[k]));
   const code = (h) => `\`${h}\``;
@@ -498,6 +558,22 @@ async function brandsDoc() {
     '| Drone | Covers | Inspired by | Signature |',
     '|---|---|---|---|',
     ...BRANDS.map((b) => `| **${b.name}** | ${b.covers} | ${b.mascot} | ${b.signature} |`),
+    '',
+    '### Accessory drones',
+    '',
+    `Copilot and Claude Code are the generic drone's exact shape plus one signature accessory and their palette (human, 2026-11-10). Only the accessory's own parameters and the face (${FACE_KEYS.map(code).join(', ')}) differ from D-final. Accessories take the accent slot (goggle lenses take the screen tones), and each brings its own seeded detail. The unknown agent is the generic drone exactly, with its own label.`,
+    '',
+    '| Accessory | What | Parameters | Seeded detail | Used by |',
+    '|---|---|---|---|---|',
+    ...Object.entries(ACCESSORIES).map(([k, a]) => `| ${k} | ${a.words} | ${Object.entries(a.params).map(([p, v]) => `${code(p)} ${showValue(p, v)}`).join(', ')} | ${code(a.detail.key)} ${a.detail.min}–${a.detail.max} | ${[...BRANDS.filter((b) => b.accessory === k).map((b) => b.id), ...BRAND_OPTIONS.filter((o) => o.accessory === k).map((o) => `option ${o.id}`)].join(', ')} |`),
+    '',
+    '### Options for the human (2026-11-10)',
+    '',
+    "Option a of each is the drone in the lineup. `out/brand-copilot-options.png` and `out/brand-claude-options.png` show them side by side at the 2x close-up; `out/brand-options-crew.png` at the crew close-up beside the generic drone.",
+    '',
+    '| Option | Accessory | Palette | Look |',
+    '|---|---|---|---|',
+    ...BRAND_OPTIONS.map((o) => `| ${o.id} | ${o.accessory} | ${code(o.palette)} | ${o.look} |`),
     '',
     '### Brand parameters',
     '',
@@ -512,8 +588,9 @@ async function brandsDoc() {
     `| Drone | ${Object.keys(SLOTS).join(' | ')} |`,
     `|---|${Object.keys(SLOTS).map(() => '---').join('|')}|`,
     ...BRANDS.map((b) => `| ${b.id} | ${Object.keys(SLOTS).map((sl) => b.palette[sl].map(code).join(' ')).join(' | ')} |`),
+    ...Object.entries(OPTION_PALETTES).map(([k, pal]) => `| option ${k} | ${Object.keys(SLOTS).map((sl) => pal[sl].map(code).join(' ')).join(' | ')} |`),
     '',
-    'Legs and tentacles take the accent slot; ghost-hem scallops and crown puffs are the shell; snouts, hex pods and the question hook are trim.',
+    'Legs, tentacles and goggles (frames, bridge, strap) take the accent slot; goggle lenses take the screen tones; ghost-hem scallops and crown puffs are the shell; snouts and hex pods are trim.',
     '',
     '### Brand colour → BLK 36',
     '',
@@ -536,13 +613,17 @@ async function brandsDoc() {
   ];
   try {
     const a4 = JSON.parse(await readFile(path.join(OUT, 'brands-a4.json'), 'utf8'));
+    const f2 = (p) => `${p.score.toFixed(2)}: ${p.iou.toFixed(2)}, ${p.dE.toFixed(3)}`;
     out.push('', '### A4 distinctness (from `out/brands-a4.json`)', '',
-      `Per pair, in the front and 3/4 views (smoke off): the silhouette IoU at the best alignment, and the OKLab distance of the mean colours. Score = max((1 − IoU) / ${a4.thresholds.shape}, ΔE / ${a4.thresholds.colour}); every pair must score at least 1 at the gated scales, in both views (the table shows the worse view).`, '',
+      `Per pair, in the front and 3/4 views (smoke off): the silhouette IoU at the best alignment, and the OKLab distance of the mean colours. Score = max((1 − IoU) / ${a4.thresholds.shape}, ΔE / ${a4.thresholds.colour}); every pair must score at least 1 at the gated scales, in both views (the table shows the worse view). ${a4.same.map(([a, b]) => `${a}–${b}`).join(', ')} is the same drone by design (only the label differs), so it's measured but not gated, and left out of the columns below.`, '',
       '| Scale | Drone height | Gated | Closest pair (score: IoU, ΔE) | Smallest ΔE | Largest IoU |', '|---|---|---|---|---|---|',
-      ...a4.scales.map((s) => `| ${s.name} | ${s.heightPx} px | ${s.gate ? 'yes' : 'no'} | ${s.closest.a}–${s.closest.b} (${s.closest.score.toFixed(2)}: ${s.closest.iou.toFixed(2)}, ${s.closest.dE.toFixed(3)}) | ${s.minDE.a}–${s.minDE.b} ${s.minDE.dE.toFixed(3)} | ${s.maxIoU.a}–${s.maxIoU.b} ${s.maxIoU.iou.toFixed(2)} |`),
+      ...a4.scales.map((s) => `| ${s.name} | ${s.heightPx} px | ${s.gate ? 'yes' : 'no'} | ${s.closest.a}–${s.closest.b} (${f2(s.closest)}) | ${s.minDE.a}–${s.minDE.b} ${s.minDE.dE.toFixed(3)} | ${s.maxIoU.a}–${s.maxIoU.b} ${s.maxIoU.iou.toFixed(2)} |`),
       '', 'The five closest pairs at each gated scale:', '',
       '| Scale | Pair | IoU | ΔE | Score |', '|---|---|---|---|---|',
-      ...a4.scales.filter((s) => s.gate).flatMap((s) => s.pairs.slice(0, 5).map((p) => `| ${s.name} | ${p.a}–${p.b} | ${p.iou.toFixed(2)} | ${p.dE.toFixed(3)} | ${p.score.toFixed(2)} |`)));
+      ...a4.scales.filter((s) => s.gate).flatMap((s) => s.pairs.filter((p) => !p.same).slice(0, 5).map((p) => `| ${s.name} | ${p.a}–${p.b} | ${p.iou.toFixed(2)} | ${p.dE.toFixed(3)} | ${p.score.toFixed(2)} |`)),
+      '', "The options, each against every drone but its own brand's (reported, not gated: the human picks). Closest pair (score: IoU, ΔE), and whether every pair scores at least 1:", '',
+      `| Option | ${a4.scales.map((s) => s.name).join(' | ')} |`, `|---|${a4.scales.map(() => '---').join('|')}|`,
+      ...BRAND_OPTIONS.map((o) => `| ${o.id} | ${a4.scales.map((s) => { const r = s.options.find((x) => x.id === o.id); return `${r.closest.b} (${f2(r.closest)})${r.pass ? ', all pass' : `, ${r.pairs.filter((p) => p.score < 1).length} below 1`}`; }).join(' | ')} |`));
   } catch { /* no A4 run yet */ }
   return out;
 }

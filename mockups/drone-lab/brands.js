@@ -6,6 +6,8 @@
 // no logo is drawn and no brand is named inside the pixel pass (names are labels outside it).
 // Per-session variety (R2b / A5): sessionLook(brand, session) hashes a session id into seeded
 // details only (a trim swap, one small shape detail, personality), never the silhouette.
+// Accessory drones (human, 2026-11-10): Copilot and Claude are D-final's exact shape plus one
+// signature accessory and the brand palette (ACCESSORIES); the unknown agent is the generic drone.
 import { FINAL } from './variants.js';
 import { DEFAULTS, PARAM_BY_KEY, DRONE_EYE } from './params.js';
 import { BRAND_PALETTES } from './palette.js';
@@ -15,22 +17,41 @@ import { hashStr } from '../asset-viewer/faces.js';
 // then the drone-only 10 pills (Copilot) and 11 prompt >_ (Codex), approved by the human (2026-11-10).
 // Every other brand uses its closest V2 eye. `v2Eyes` is the V2 fallback a drone-only eye replaced,
 // kept as a parameter option (`eyes`) but not rendered in the outputs.
+
+// Accessories (human, 2026-11-10: "don't change the shape of the drone from generic ... just add
+// cute goggles"; "same with claude ... just add the tentacles and orange"). An accessory drone is
+// D-final's exact shape (head, saucer rim, antenna, under-jet, size, screen) and motion, plus one
+// signature accessory and the brand's palette: only the accessory's own parameters and the face
+// (FACE_KEYS) differ from D-final. Accessories take the accent slot (goggle lenses take the screen
+// tones). Each brings its own seeded detail for per-session variety. Other brands could switch to
+// the same pattern later.
+export const ACCESSORIES = {
+  goggles: {
+    words: 'pilot goggles pushed up onto the crown: two lenses joined by a bridge, strapped round the head',
+    params: { topper: 1, gogW: 0.046, gogH: 0.04, gogX: 0.46, gogY: 1.3, gogTilt: 0.85, gogLift: 0.6, gogT: 0.014, gogFrame: 0.015, gogBridge: 1, gogStrap: 1, gogStrapY: 0.35 },
+    detail: { key: 'gogY', min: 1.22, max: 1.38 },
+  },
+  legs: {
+    words: 'four stubby legs in two pairs, hanging below the saucer',
+    params: { skirt: 1, skirtN: 4, skirtL: 0.05, skirtR: 0.019, skirtSpread: 0.7, skirtZ: 0.55 },
+    detail: { key: 'skirtL', min: 0.044, max: 0.056 },
+  },
+  tentacles: {
+    words: 'six curling tentacles under the saucer, swaying with the bob',
+    params: { skirt: 2, skirtN: 6, skirtL: 0.06, skirtR: 0.015, skirtSpread: 0.86, skirtCurl: 0.8, skirtWave: 0.006 },
+    detail: { key: 'skirtL', min: 0.054, max: 0.066 },
+  },
+};
+/** The face keys an accessory drone may set besides its accessory: its eye and its working glyphs. */
+export const FACE_KEYS = ['eyes', 'glyphSet'];
+const accessoryParams = (acc, face) => ({ ...DEFAULTS, ...FINAL.params, ...ACCESSORIES[acc].params, ...face });
+
 export const BRANDS = [
   {
     id: 'claude', name: 'Claude Code', covers: 'Claude Code (CLI, web, Action)',
-    mascot: 'Clawd, the CLI block-pixel critter: a wide flat body, two eye notches, a stub each side, four stubby legs',
-    signature: 'a wide flat block body on four stubby legs (two pairs), side stubs, terracotta orange; works with an asterisk spinner',
-    params: {
-      rim: 0, antenna: 0,
-      headW: 0.15, headH: 0.074, headD: 0.105, headRound: 0.08, headCorner: 0.45, headTaper: 1, headFlat: 0,
-      ears: 2, earR: 0.025, earT: 0.02, earY: -0.2, earSweep: 0,
-      skirt: 1, skirtN: 4, skirtL: 0.036, skirtR: 0.017, skirtSpread: 0.82, skirtZ: 0.55,
-      screenW: 0.62, screenH: 0.42, screenY: 0.22, screenRound: 7, bezel: 0.08, eyes: 0, screenFlat: 1,
-      thrusters: 1, thrR: 0.032, thrL: 0.02, thrFlare: 0.9,
-      smoke: 0, puffSize: 0.9, puffRate: 0.4, sparkles: 2, glyphSet: 1,
-      bobAmp: 0.022, drift: 0.2, bank: 0.22, lookYaw: 0.35,
-    },
-    detail: { key: 'skirtL', min: 0.03, max: 0.042 },
+    mascot: 'Clawd, the CLI block-pixel critter: terracotta, two eye notches, four stubby legs',
+    signature: "the generic drone's exact shape in terracotta orange, with Clawd's four stubby legs under the saucer; works with an asterisk spinner",
+    accessory: 'legs', face: { eyes: 0, glyphSet: 1 },
     trims: [['#3f233c', '#872a38', '#cc5250', '#ff6866'], ['#3f233c', '#872a38', '#cc5250', '#ff965f'], ['#872a38', '#cc5250', '#ff965f', '#ffe091']],
   },
   {
@@ -51,20 +72,10 @@ export const BRANDS = [
   },
   {
     id: 'copilot', name: 'GitHub Copilot', covers: 'GitHub Copilot (cloud agent, CLI, app, VS Code)',
-    mascot: 'the goggled helmet head (kept with GitHub\'s permission, human 2026-11-10): goggles over a lower face plate, round ear pads',
-    signature: 'a wide helmet with big pilot goggles across the top, low ear pads and a lower face plate with upright pill eyes; blue to violet with cyan frames',
-    params: {
-      rim: 0, antenna: 0,
-      headW: 0.15, headH: 0.104, headD: 0.12, headRound: 0.55, headCorner: 0.85, headTaper: 1.12, headFlat: 0.15,
-      topper: 1, gogW: 0.056, gogH: 0.038, gogX: 0.4, gogY: 0.45,
-      ears: 1, earR: 0.045, earT: 0.018, earY: -0.35,
-      screenW: 0.66, screenH: 0.4, screenY: -0.42, screenRound: 3.5, bezel: 0.12, eyes: DRONE_EYE.pills,
-      thrusters: 0, thrR: 0.025, thrL: 0.025, thrSpread: 0.5, thrFlare: 1.1,
-      smoke: 0, puffSize: 1, puffRate: 0.45, sparkles: 2,
-      bobAmp: 0.03, drift: 0.17, bank: 0.3, lookYaw: 0.4,
-    },
+    mascot: 'the goggled head (its goggles kept with GitHub\'s permission, human 2026-11-10): goggles above upright pill eyes',
+    signature: "the generic drone's exact shape in blue to violet, with cute pilot goggles pushed up on its crown (two lenses joined by a bridge, strapped round the head) above upright pill eyes",
+    accessory: 'goggles', face: { eyes: DRONE_EYE.pills },
     v2Eyes: 0, // Dots
-    detail: { key: 'earR', min: 0.04, max: 0.05 },
     trims: [['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], ['#36277f', '#4185d8', '#5ab9e5', '#ffffff'], ['#643499', '#8c51cc', '#b991f2', '#a5e6ff']],
   },
   {
@@ -173,18 +184,37 @@ export const BRANDS = [
     trims: [['#6b74b2', '#909edd', '#c1d9f2', '#ffffff'], ['#464b8c', '#6b74b2', '#c1d9f2', '#ffffff']],
   },
   {
-    id: 'unknown', name: 'unknown agent', covers: 'agent evidence with no known tool',
+    // The generic drone exactly (human, 2026-11-10: "unknown should use generic"), labelled "unknown agent".
+    id: 'unknown', name: 'unknown agent', covers: 'agent evidence with no known tool, labelled "unknown agent"',
     mascot: '-',
-    signature: "D-final's saucer in a dusty plum no provider uses, no white trim, dim eyes in a narrow faceless visor, a question-mark antenna",
-    params: { antenna: 3, antL: 0.04, antTilt: 0, eyes: 2, screenH: 0.42, screenY: 0.22, sparkles: 0, puffRate: 0.3 },
-    detail: { key: 'antL', min: 0.036, max: 0.044 },
-    trims: [['#3f233c', '#66334b', '#8c4b63', '#8c4b63'], ['#29174c', '#3f233c', '#66334b', '#8c4b63']],
+    signature: 'the generic drone exactly (D-final), with "unknown agent" as its label',
+    params: {},
+    detail: { key: 'antL', min: 0.04, max: 0.05 },
+    trims: [['#6b74b2', '#909edd', '#c1d9f2', '#ffffff'], ['#464b8c', '#6b74b2', '#c1d9f2', '#ffffff']],
   },
-].map((b) => ({ ...b, params: { ...DEFAULTS, ...FINAL.params, ...b.params }, palette: BRAND_PALETTES[b.id] }));
+].map((b) => ({
+  ...b,
+  params: b.accessory ? accessoryParams(b.accessory, b.face) : { ...DEFAULTS, ...FINAL.params, ...b.params },
+  detail: b.detail ?? ACCESSORIES[b.accessory].detail,
+  palette: BRAND_PALETTES[b.id],
+}));
 
 export const BRAND_BY_ID = Object.fromEntries(BRANDS.map((b) => [b.id, b]));
 /** The nine providers with a custom drone (not generic or unknown). */
 export const PROVIDERS = BRANDS.filter((b) => b.id !== 'generic' && b.id !== 'unknown');
+/** Pairs that are the same drone by design (only their labels differ), so A4 doesn't gate them. */
+export const SAME_DRONE = [['generic', 'unknown']];
+
+// Options for the human to choose from (2026-11-10): Copilot's colouring and Claude's accessory.
+// Option a of each is the brand drone above. Palettes are keys into palette.js (BRAND_PALETTES or
+// OPTION_PALETTES).
+export const BRAND_OPTIONS = [
+  { id: 'copilot-a', brand: 'copilot', accessory: 'goggles', palette: 'copilot', name: 'Copilot a', look: "Copilot's blue-to-violet palette on the generic shape, cyan goggles" },
+  { id: 'copilot-b', brand: 'copilot', accessory: 'goggles', palette: 'copilot-b', name: 'Copilot b', look: "the generic drone's palette, with only the goggles in Copilot's cyan" },
+  { id: 'claude-a', brand: 'claude', accessory: 'legs', palette: 'claude', name: 'Claude a', look: "Clawd's four stubby legs (two pairs) hanging below the saucer" },
+  { id: 'claude-b', brand: 'claude', accessory: 'tentacles', palette: 'claude', name: 'Claude b', look: "six curling tentacles under the saucer, like the Google drone's" },
+].map((o) => ({ ...o, params: accessoryParams(o.accessory, BRAND_BY_ID[o.brand].face), leaning: o.look }));
+export const OPTION_BY_ID = Object.fromEntries(BRAND_OPTIONS.map((o) => [o.id, o]));
 
 // Per-session seeded details: personality ranges every brand shares (applied round the brand's
 // own value, clamped to the parameter's range), plus each brand's one shape detail and trims.
@@ -224,8 +254,8 @@ export const BRAND_COLOURS = [
   { brand: 'cursor', part: 'near-black', hex: '#14120b', chosen: ['#12173d'], why: '' },
   { brand: 'cursor', part: 'cream (light facet)', hex: '#f0efea', chosen: ['#ffffff'], why: '' },
   { brand: 'cursor', part: 'cube grey', hex: '#43413c', chosen: ['#293268', '#464b8c'], why: 'The nearest, #0f4a4c, is a teal slate 0.037 from the [OIII] event teal #004538, so it would read as an event. The gear greys read as graphite.' },
-  { brand: 'copilot', part: 'helmet blue', hex: '#2f5bff', chosen: ['#354ab2'], why: 'Tied with #4185d8 (0.125). #354ab2 keeps it off the suit ramp and apart from Codex.' },
-  { brand: 'copilot', part: 'helmet lilac', hex: '#b18cff', chosen: ['#8c51cc'], why: 'The nearest, #b991f2, washes the lit helmet out to Kiro\'s lilac. One step darker keeps the blue-to-violet read.' },
+  { brand: 'copilot', part: 'head blue', hex: '#2f5bff', chosen: ['#354ab2'], why: 'Tied with #4185d8 (0.125). #354ab2 keeps it off the suit ramp and apart from Codex.' },
+  { brand: 'copilot', part: 'head lilac', hex: '#b18cff', chosen: ['#8c51cc'], why: 'The nearest, #b991f2, washes the lit shell out to Kiro\'s lilac. One step darker keeps the blue-to-violet read.' },
   { brand: 'copilot', part: 'goggle frames', hex: '#5cc8ff', chosen: ['#5ab9e5'], why: '' },
   { brand: 'codex', part: 'Codey blue', hex: '#6e9bfa', chosen: ['#4185d8', '#5ab9e5'], why: 'The nearest, #909edd, is the generic drone\'s shell (A4 measured them too alike). The saturated azure keeps Codex apart from generic and from Copilot.' },
   { brand: 'codex', part: 'Codey screen', hex: '#232d66', chosen: ['#293268'], why: '' },

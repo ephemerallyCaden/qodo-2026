@@ -5,10 +5,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PARAM_BY_KEY, DEFAULTS, EYES, DRONE_EYE } from '../params.js';
+import { PARAMS, PARAM_BY_KEY, DEFAULTS, EYES, DRONE_EYE } from '../params.js';
 import { FINAL } from '../variants.js';
-import { BLK36, BRAND_PALETTES, PALETTES, SLOTS, TEAL } from '../palette.js';
-import { BRANDS, PROVIDERS, BRAND_BY_ID, BRAND_COLOURS, SESSION_VARY, SESSION_SPARKLES, sessionLook } from '../brands.js';
+import { BLK36, BRAND_PALETTES, OPTION_PALETTES, PALETTES, SLOTS, TEAL } from '../palette.js';
+import { BRANDS, PROVIDERS, BRAND_BY_ID, BRAND_COLOURS, BRAND_OPTIONS, ACCESSORIES, FACE_KEYS, SAME_DRONE, SESSION_VARY, SESSION_SPARKLES, sessionLook } from '../brands.js';
 import { layout, extents, bodyAt, behaviour, smokeAt, skirtAt, faceAt, LOOP, MOTION_LOOP, MAX_CROWN, MAX_SKIRT } from '../drone.js';
 import { dist } from '../oklab.js';
 
@@ -34,9 +34,41 @@ test('brand params are known, inside their ranges, and laid over D-final', () =>
       else assert.ok(v >= p.min && v <= p.max, `${b.id}.${k} = ${v} outside ${p.min}..${p.max}`);
     }
   }
-  // The generic drone is D-final exactly.
+  // The generic drone is D-final exactly, and the unknown agent is the generic drone (human, 2026-11-10).
   assert.deepEqual(BRAND_BY_ID.generic.params, { ...DEFAULTS, ...FINAL.params });
   assert.equal(BRAND_PALETTES.generic.shell, PALETTES.base.shell);
+  assert.deepEqual(BRAND_BY_ID.unknown.params, BRAND_BY_ID.generic.params);
+  for (const slot of Object.keys(SLOTS)) assert.deepEqual(BRAND_PALETTES.unknown[slot], BRAND_PALETTES.generic[slot], `unknown.${slot}`);
+  assert.deepEqual(BRAND_BY_ID.unknown.trims, BRAND_BY_ID.generic.trims);
+  assert.deepEqual(BRAND_BY_ID.unknown.detail, BRAND_BY_ID.generic.detail);
+  assert.deepEqual(SAME_DRONE, [['generic', 'unknown']]);
+});
+
+test("accessory drones are D-final's exact shape plus one accessory and a face", () => {
+  const D = { ...DEFAULTS, ...FINAL.params };
+  // Copilot wears goggles and Claude its legs; the options cover both of Copilot's colourings and both of Claude's accessories.
+  assert.deepEqual(BRANDS.filter((b) => b.accessory).map((b) => [b.id, b.accessory]), [['claude', 'legs'], ['copilot', 'goggles']]);
+  assert.deepEqual(BRAND_OPTIONS.map((o) => [o.id, o.accessory, o.palette]), [['copilot-a', 'goggles', 'copilot'], ['copilot-b', 'goggles', 'copilot-b'], ['claude-a', 'legs', 'claude'], ['claude-b', 'tentacles', 'claude']]);
+  // An accessory only sets its own part's parameters (goggles or the skirt), never the head, screen, thrusters or motion.
+  for (const [k, a] of Object.entries(ACCESSORIES)) {
+    for (const key of Object.keys(a.params)) assert.match(key, /^(topper|gog|skirt)/, `${k} sets ${key}`);
+    assert.ok(a.detail.key in a.params && a.detail.min < a.detail.max, `${k}: its seeded detail is one of its own parameters`);
+  }
+  for (const d of [...BRANDS.filter((b) => b.accessory), ...BRAND_OPTIONS]) {
+    const own = new Set([...Object.keys(ACCESSORIES[d.accessory].params), ...FACE_KEYS]);
+    for (const { key } of PARAMS) if (d.params[key] !== D[key]) assert.ok(own.has(key), `${d.id}: ${key} differs from D-final`);
+  }
+  // Option a of each is the brand drone; option b differs only in its accessory (Claude) or palette (Copilot).
+  for (const o of BRAND_OPTIONS.filter((x) => x.id.endsWith('-a'))) assert.deepEqual(o.params, BRAND_BY_ID[o.brand].params, o.id);
+  assert.notDeepEqual(BRAND_OPTIONS.find((o) => o.id === 'claude-b').params, BRAND_BY_ID.claude.params);
+  assert.deepEqual(BRAND_OPTIONS.find((o) => o.id === 'copilot-b').params, BRAND_BY_ID.copilot.params);
+  // Copilot b is the generic drone's palette with only the goggles (the accent) in Copilot's colours.
+  const b = OPTION_PALETTES['copilot-b'];
+  for (const slot of Object.keys(SLOTS)) {
+    if (slot === 'accent') assert.deepEqual(b.accent, BRAND_PALETTES.copilot.accent);
+    else assert.deepEqual(b[slot], PALETTES.base[slot], `copilot-b.${slot}`);
+  }
+  for (const [slot, n] of Object.entries(SLOTS)) for (const h of b[slot]) assert.ok(b[slot].length === n && (slot === 'glow' ? TEAL.includes(h) : BLK36.includes(h)), `copilot-b.${slot} ${h}`);
 });
 
 test('every brand palette is BLK 36 only, and the eyes glow [OIII] teal', () => {
@@ -97,7 +129,7 @@ test('A3 size class: every drone is within D-final\'s size class', () => {
 });
 
 test('brand parts attach to the head (one connected piece)', () => {
-  for (const b of BRANDS) {
+  for (const b of [...BRANDS, ...BRAND_OPTIONS]) {
     const P = b.params, L = layout(P);
     const on = (v, tol, what) => assert.ok(L.core(v) <= tol, `${b.id}: ${what} is ${L.core(v).toFixed(4)} off the head`);
     L.crown.forEach((c) => on(c, P.crownR, 'a crown puff'));
@@ -107,6 +139,24 @@ test('brand parts attach to the head (one connected piece)', () => {
     L.ant.forEach((a) => on(a.base, 0, 'an antenna base'));
     L.thr.forEach((n) => on(n.a, 0, 'a nozzle root'));
     if (P.antenna === 3) assert.equal(L.hook.length, 4, `${b.id}: the question hook`);
+    if (P.topper === 1) {
+      // Each lens stands on its root on the head (lifted by less than its half-height), the bridge
+      // runs from lens to lens over the head, and the strap hugs the head all the way round.
+      L.gog.forEach((g) => { on(g.at, 0.001, 'a goggle root'); assert.ok(g.at.distanceTo(g.c) < P.gogH, `${b.id}: a lens floats off its root`); });
+      if (P.gogBridge) {
+        const { a, m, b: e, r } = L.bridge;
+        on(m, r, 'the goggle bridge');
+        [a, e].forEach((p, i) => assert.ok(p.distanceTo(L.gog[i].c) < P.gogW, `${b.id}: the bridge misses lens ${i}`));
+      }
+      if (P.gogStrap) {
+        const { c, n, r, t } = L.strap;
+        const along = n.clone().set(0, -n.z, n.y);
+        for (let i = 0; i < 24; i++) {
+          const th = (i / 24) * Math.PI * 2;
+          on(c.clone().add(along.clone().multiplyScalar(Math.cos(th) * (r[1] - 0.35 * t))).setX(Math.sin(th) * (r[0] - 0.35 * t)), t, `the goggle strap at ${i * 15}°`);
+        }
+      }
+    }
   }
 });
 
@@ -159,11 +209,21 @@ test('A5 per-session variety stays inside a provider: only seeded details differ
 test('A4: the last lab run found every pair distinct at the crew close-up and at system distance', () => {
   const a4 = JSON.parse(readFileSync(new URL('../out/brands-a4.json', import.meta.url), 'utf8'));
   assert.deepEqual(a4.thresholds, { shape: 0.25, colour: 0.06 });
+  assert.deepEqual(a4.same, SAME_DRONE);
   const gated = a4.scales.filter((s) => s.gate);
   assert.deepEqual(gated.map((s) => s.name), ['crew close-up', 'system distance']);
   const n = BRANDS.length;
   for (const s of gated) {
     assert.equal(s.pairs.length, (n * (n - 1)) / 2, `${s.name}: every pair measured`);
-    for (const p of s.pairs) assert.ok(p.score >= 1, `${s.name}: ${p.a}–${p.b} score ${p.score.toFixed(2)}`);
+    for (const p of s.pairs) {
+      // Generic and unknown are the same drone by design: measured, flagged, not gated.
+      const same = SAME_DRONE.some(([a, b]) => (p.a === a && p.b === b) || (p.a === b && p.b === a));
+      assert.equal(!!p.same, same, `${s.name}: ${p.a}–${p.b} same flag`);
+      if (!same) assert.ok(p.score >= 1, `${s.name}: ${p.a}–${p.b} score ${p.score.toFixed(2)}`);
+    }
+    assert.ok(!s.closest.same && !s.minDE.same && !s.maxIoU.same, `${s.name}: the summary skips the same-drone pair`);
+    // Every option is measured against the ten drones that aren't its own brand's.
+    assert.deepEqual(s.options.map((o) => o.id), BRAND_OPTIONS.map((o) => o.id));
+    for (const o of s.options) assert.equal(o.pairs.length, n - 1, `${s.name}: ${o.id}`);
   }
 });
