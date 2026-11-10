@@ -39,3 +39,6 @@ docs/design/iterations/
 
 # Team-lead working journal (local only)
 JOURNAL.md
+
+# Agent and feature worktrees (each is its own checkout)
+.sandboxes/

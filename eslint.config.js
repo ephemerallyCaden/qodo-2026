@@ -18,7 +18,8 @@ const determinism = {
 };
 
 export default tseslint.config(
-  { ignores: ['dist/', 'factory/dist/', 'node_modules/', 'coverage/'] },
+  // .sandboxes/ holds agent and feature worktrees: each is its own checkout, linted there.
+  { ignores: ['dist/', 'factory/dist/', 'node_modules/', 'coverage/', '.sandboxes/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: ['src/core/**', 'src/scan/**', 'src/attrib/**'], rules: determinism },

@@ -193,6 +193,17 @@ describe('kill timers (R13)', () => {
   });
 });
 
+describe('agent worktrees inside the checkout (Qodo PR37 26208d1d)', () => {
+  it('are outside lint and git, so a run cannot break the main checkout', async () => {
+    const root = join(import.meta.dirname, '../..');
+    const { ESLint } = await import('eslint');
+    const eslint = new ESLint({ cwd: root });
+    expect(await eslint.isPathIgnored(join(root, '.sandboxes/agent-24/src/x.ts'))).toBe(true);
+    expect(await eslint.isPathIgnored(join(root, 'factory/runner.ts'))).toBe(false);
+    expect(readFileSync(join(root, '.gitignore'), 'utf8').split('\n')).toContain('.sandboxes/');
+  });
+});
+
 describe('packaging (task AC7)', () => {
   it('the runner is not part of the published commet package', () => {
     const root = join(import.meta.dirname, '../..');
