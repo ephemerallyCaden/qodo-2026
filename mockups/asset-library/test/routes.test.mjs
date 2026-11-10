@@ -83,6 +83,20 @@ test('without an archive every archive request is a 404, and the rest still work
   }
 });
 
+test('the debris lab: its top-level modules only, never its outputs, tests, scripts or node_modules', async () => {
+  for (const m of ['variants.js', 'kits.js', 'layout.js', 'palette.js', 'colour.js', 'lab.js']) {
+    const r = await route('GET', `/debris-lab/${m}`);
+    assert.deepEqual([r.status, r.type], [200, 'text/javascript'], m);
+  }
+  for (const p of [
+    '/debris-lab/out/loop-A3.gif', '/debris-lab/out/lineup-A.png', '/debris-lab/out/measures.json', '/debris-lab/out/measures.md',
+    '/debris-lab/test/pure.test.mjs', '/debris-lab/test/render.test.mjs', '/debris-lab/node_modules/three/build/three.module.js',
+    '/debris-lab/lab.mjs', '/debris-lab/serve.mjs', '/debris-lab/routes.mjs', '/debris-lab/checks.mjs', '/debris-lab/harness.mjs',
+    '/debris-lab/README.md', '/debris-lab/package.json', '/debris-lab/index.html', '/debris-lab/', '/debris-lab',
+    '/debris-lab/../asset-library/routes.mjs', '/debris-lab/%2e%2e/drone-lab/serve.mjs', '/debris-lab/out%2floop-A3.gif',
+  ]) assert.equal((await route('GET', p)).status, 404, p);
+});
+
 test('the drone lab: its top-level modules only, never its outputs, tests, scripts or node_modules', async () => {
   for (const m of ['drone.js', 'brands.js', 'params.js', 'palette.js', 'variants.js']) {
     const r = await route('GET', `/drone-lab/${m}`);
