@@ -234,6 +234,22 @@ function inTestData(segs: string[]): boolean {
   return segs.some((s, i) => DATA_DIRS.has(s) || (TEST_DIRS.has(s) && TEST_DATA_DIRS.has(segs[i + 1] ?? '')));
 }
 
+/**
+ * Test data (#16 AC10): under `__fixtures__/` or `__snapshots__/`, or `fixtures/` or `golden/` in a
+ * test folder. Never a test (`FileEntry.isTest` is false) or a test target; it rides with the tests (#23).
+ */
+export function isTestData(path: string): boolean {
+  return inTestData(path.split('/').slice(0, -1));
+}
+
+/**
+ * A planet's surface file: in a top-level folder, and neither a test nor test data. A top-level
+ * folder is a planet exactly when it holds one, so `test/` never is (#23).
+ */
+export function isSurfacePath(path: string): boolean {
+  return path.includes('/') && !isTestPath(path) && !isTestData(path);
+}
+
 /** A test file: named like one, or under a `test/`, `tests/` or `__tests__/` folder, but never test data. */
 function isTestPath(path: string): boolean {
   const segs = path.split('/').slice(0, -1);
