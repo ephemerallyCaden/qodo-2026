@@ -33,7 +33,7 @@ Scan → session attributed to a tool (R2) → drone seeded from tool + session 
   - Per drone: Claude Code = Clawd (wide flat terracotta block on stub legs, asterisk spinner); Cursor = graphite cube with a white top facet; Copilot = wide helmet with pilot goggles; Codex = Codey (cloud-puff head round a navy screen); Google = the Jules octopus (purple dome, six swaying tentacles); Devin = hexagon head between two hex pods; Kiro / Amazon Q = white ghost with a wobbling scalloped hem; OpenCode = tall white block with a ring screen; Qodo = hooded anteater with a snout and shades visor; generic = D-final with a name label; unknown agent = a dusty-plum saucer with dim eyes and a question-mark antenna.
   - A4: every pair scores at least 1 in front and 3/4 views at the crew close-up (~37 px) and system distance (~18 px). The closest pair is Cursor–Devin (1.10, separated by shape). At the 6 px depth step the purples merge (Qodo–generic 0.84, not gated), so name labels carry identity there.
   - Colour: BLK 36 only. Claude's #d77757 has no good match, so it uses #ff965f lit and #cc5250 turned. #0f4a4c is avoided because it sits near the [OIII] event teal.
-  - Needs the human: two lab-only eye glyphs (Copilot Pills, Codex `>_`), and whether OpenCode's and Kiro's whites sit too close to the astronaut suit.
+  - Decided (human, 2026-11-10): the Pills (Copilot) and `>_` (Codex) eye glyphs are approved as drone-only eyes, and OpenCode's and Kiro's whites stay as designed. Follow-up: make the approved glyphs the defaults.
 
 ## Completion
 - Merged: —

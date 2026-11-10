@@ -201,7 +201,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
   - At a distance the eyes shrink with the figure; that's accepted.
 - **Contributor identity:** shoulder bands, the backpack stripe and the eye glow.
 
-**Drones (agent sessions).** Each supported provider has its own variation of the base drone D-final, in BLK 36 only and with V2 eyes (`docs/features/agent-drones.md`, `feature/drone-lab`). Two provider eye glyphs exist in the drone lab only, pending the human's approval: Pills (Copilot) and a `>_` prompt (Codex).
+**Drones (agent sessions).** Each supported provider has its own variation of the base drone D-final, in BLK 36 only and with V2 eyes (`docs/features/agent-drones.md`, `feature/drone-lab`). Drones may also use two provider eye designs, approved by the human on 2026-11-10: **Pills** (Copilot) and a **`>_` prompt** (Codex). That makes 12 eye designs for drones; astronauts keep the 10 V2 designs. OpenCode's and Kiro's near-suit whites are approved too: they stay apart from the crew by size, shape and the dark screen.
 
 ## 9. The code layer (ASCII / cyberbrutalist)
 
