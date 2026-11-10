@@ -5,6 +5,7 @@ import { sha256Hex } from '../core/hash.js';
 import { formatSummary } from '../core/summary.js';
 import { scan } from '../scan/index.js';
 import { QODO_CACHE_FILE } from '../scan/qodo.js';
+import { CHART_USAGE, chartCommand } from './chart.js';
 import { loadOrCreateKey } from '../state/key.js';
 import { stateDir, writeAtomic } from '../state/io.js';
 import { runOpen } from './open.js';
@@ -18,6 +19,7 @@ export interface Io {
 
 const USAGE = 'usage: commet scan [--window <months>] [--no-ingest] [--with-qodo] [--out <file>]\n'
   + '       commet open [--port <n>] [--no-open (keeps the token out of process lists)]\n'
+  + CHART_USAGE
   + '  --with-qodo  opt in to reading this repo\'s Qodo review findings (read-only, over the network via gh and qodo)\n';
 
 interface ScanArgs { window: number; ingest: boolean; withQodo: boolean; out?: string }
@@ -59,6 +61,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
     return 0;
   }
   if (cmd === 'open') return runOpen(rest, io);
+  if (cmd === 'chart') return chartCommand(rest, io);
   if (cmd !== 'scan') {
     io.stderr(`commet: ${cmd ? `unknown command ${JSON.stringify(cmd)}` : 'missing command'}\n${USAGE}`);
     return EXIT.usage;
