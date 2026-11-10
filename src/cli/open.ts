@@ -7,7 +7,6 @@ import { gitRunner, tryGit } from '../scan/git.js';
 import { NO_SNAPSHOT, packageWebRoot, readStateFile, STATE_FILES } from '../server/files.js';
 import { newToken } from '../server/guard.js';
 import { startServer, type ServerOptions } from '../server/server.js';
-import { stateDir } from '../state/io.js';
 import type { Io } from './main.js';
 
 export const OPEN_USAGE = 'usage: commet open [--port <n>] [--no-open]\n';
@@ -74,27 +73,27 @@ export async function runOpen(argv: string[], io: Io, ctl: OpenControl = {}): Pr
 }
 
 /**
- * `<git-common-dir>/commet`, but only once `commet scan` has written a snapshot there: `open` never
- * creates state. The dir goes through `stateDir()` (symlink and type refusal, mode 0700), and the
- * snapshot through the server's own reader (a symlink or non-file is a state error).
+ * `<git-common-dir>/commet`, but only once `commet scan` has written a snapshot there. `open` only
+ * reads state, so it checks the dir itself rather than through `stateDir()`, which creates and
+ * chmods (Qodo #32 r1): a missing dir means no scan yet, and a symlink or non-dir there is refused
+ * like `stateDir()` refuses it. The snapshot goes through the server's own no-follow reader.
  */
 async function scannedStateDir(cwd: string): Promise<string> {
   const out = await tryGit(gitRunner(cwd), ['rev-parse', '--path-format=absolute', '--git-common-dir']);
   if (out === null) throw new CommetError('not inside a git repository', EXIT.noRepo);
   const commonDir = realpathSync.native(out.trim());
-  if (!lstatExists(join(commonDir, 'commet'))) throw new CommetError(NO_SNAPSHOT, EXIT.state);
-  const dir = stateDir(commonDir);
+  const dir = join(commonDir, 'commet');
+  let st: ReturnType<typeof lstatSync>;
+  try {
+    st = lstatSync(dir);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw new CommetError(NO_SNAPSHOT, EXIT.state);
+    throw e;
+  }
+  if (st.isSymbolicLink()) throw new CommetError('state error: .git/commet is a symlink; refusing to read through it', EXIT.state);
+  if (!st.isDirectory()) throw new CommetError('state error: .git/commet is not a directory', EXIT.state);
   if ((await readStateFile(dir, STATE_FILES.snapshot)) === null) throw new CommetError(NO_SNAPSHOT, EXIT.state);
   return dir;
-}
-
-function lstatExists(path: string): boolean {
-  try {
-    lstatSync(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**

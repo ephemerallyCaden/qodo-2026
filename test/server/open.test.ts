@@ -1,7 +1,7 @@
 // `commet open` end to end (#32): exit codes, the printed URL, the token's single appearance, and a
 // live push after a real `commet scan`, all on a real 127.0.0.1 socket.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -48,6 +48,25 @@ describe('commet open', () => {
     // State dir present (e.g. from an older run) but no snapshot: same answer.
     mkdirSync(join(repo.dir, '.git', 'commet'), { mode: 0o700 });
     expect((await cli(['open', '--no-open'], repo.dir, env)).err).toContain('run `commet scan` first');
+  });
+
+  it('only reads state: never creates, chmods or follows .git/commet (Qodo #32 r1)', async () => {
+    const repo = oneCommitRepo();
+    expect((await cli(['scan', '--no-ingest'], repo.dir, env)).code).toBe(0);
+    const state = join(repo.dir, '.git', 'commet');
+    chmodSync(state, 0o750);
+    const s = await launch(repo.dir, ['--no-open'], join(repo.dir, 'no-web'));
+    expect(await s.stop()).toBe(0);
+    expect(statSync(state).mode & 0o777).toBe(0o750);
+    // A planted link or a file in its place is a state error, never followed.
+    const moved = join(repo.dir, 'moved-state');
+    renameSync(state, moved);
+    symlinkSync(moved, state);
+    const link = await cli(['open', '--no-open'], repo.dir, env);
+    expect([link.code, link.err]).toEqual([EXIT.state, 'commet: state error: .git/commet is a symlink; refusing to read through it\n']);
+    rmSync(state);
+    writeFileSync(state, 'not a dir');
+    expect((await cli(['open', '--no-open'], repo.dir, env)).err).toContain('.git/commet is not a directory');
   });
 
   it('rejects bad options with exit 2', async () => {
