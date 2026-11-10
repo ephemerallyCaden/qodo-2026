@@ -14,8 +14,8 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/render/tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json && vite build --config web/vite.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/render/tsconfig.json --noEmit && tsc -p web/tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
     "test:render": "playwright test",
@@ -34,6 +34,7 @@
     "three": "0.187.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.1",
+    "vite": "^7.3.7",
     "vitest": "^3.2.7"
   }
 }

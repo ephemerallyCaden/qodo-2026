@@ -21,3 +21,17 @@ it('keeps src/core isomorphic', async () => {
 it('allows clocks outside the pipeline (CLI)', async () => {
   expect(await errors('export const t = Date.now();\n', 'src/cli/x.ts')).toEqual([]);
 });
+
+it('bans clocks and unseeded randomness in the web view (#30)', async () => {
+  expect(await errors('export const r = Math.random();\n', 'web/src/render/x.ts')).toContain('no-restricted-properties');
+  expect(await errors('export const t = performance.now();\n', 'web/src/view.ts')).toContain('no-restricted-properties');
+  expect(await errors("import * as THREE from 'three';\nexport const c = new THREE.Clock();\n", 'web/src/render/x.ts')).toContain('no-restricted-syntax');
+});
+
+it('lets only web/src/loop.ts read display time (#30)', async () => {
+  const raf = 'export const h = requestAnimationFrame(() => {});\n';
+  expect(await errors(raf, 'web/src/view.ts')).toContain('no-restricted-globals');
+  expect(await errors('export const h = window.requestAnimationFrame(() => {});\n', 'web/src/view.ts')).toContain('no-restricted-properties');
+  expect(await errors(raf, 'web/src/loop.ts')).toEqual([]);
+  expect(await errors('export const r = Math.random();\n', 'web/src/loop.ts')).toContain('no-restricted-properties');
+});
