@@ -56,6 +56,10 @@ describe('Golden-Update gate (.github/scripts/golden-update.sh)', () => {
     const good = git('rev-parse', 'HEAD');
     const gate = (from: string, to: string) => spawnSync('sh', [SCRIPT, from, to], { cwd: dir, encoding: 'utf8' });
     expect(gate(base, good).status).toBe(0);
+    // A range git can't read fails the gate; it never passes having checked nothing.
+    const unreadable = gate('0000000000000000000000000000000000000000', good);
+    expect(unreadable.status).toBe(2);
+    expect(unreadable.stdout).toContain("::error::can't list commits in 0000000000000000000000000000000000000000..");
     commit('test/golden/render/b.txt', 'test: golden without a reason\n\nGolden-Update:');
     commit('test/golden/c.json', 'test: another golden, no line');
     const bad = gate(base, git('rev-parse', 'HEAD'));
