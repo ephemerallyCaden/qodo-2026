@@ -15,9 +15,9 @@ export const SMOKE = ['round puffs', 'wispy trails', 'sputter dots'];
 
 export const PARAMS = [
   // Head: the whole body. One shape family covers dome, capsule, cube, teardrop and saucer.
-  { key: 'headW', group: 'head', min: 0.1, max: 0.28, step: 0.0025, def: 0.17, words: 'Head half-width' },
+  { key: 'headW', group: 'head', min: 0.08, max: 0.28, step: 0.0025, def: 0.17, words: 'Head half-width' },
   { key: 'headH', group: 'head', min: 0.07, max: 0.24, step: 0.0025, def: 0.15, words: 'Head half-height' },
-  { key: 'headD', group: 'head', min: 0.08, max: 0.3, step: 0.0025, def: 0.16, words: 'Head half-depth (front to back)' },
+  { key: 'headD', group: 'head', min: 0.06, max: 0.3, step: 0.0025, def: 0.16, words: 'Head half-depth (front to back)' },
   { key: 'headRound', group: 'head', min: 0, max: 1, step: 0.01, def: 0.6, words: 'Blend from a rounded box (0) to an ellipsoid (1)' },
   { key: 'headCorner', group: 'head', min: 0.1, max: 1, step: 0.01, def: 0.6, words: "Box corner radius / the head's smallest half-size" },
   { key: 'headTaper', group: 'head', min: 0.55, max: 1.6, step: 0.01, def: 1, words: 'Bottom width / top width (above 1 = a teardrop or bell, below 1 = narrows downward)' },

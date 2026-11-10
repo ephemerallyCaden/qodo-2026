@@ -739,6 +739,21 @@ export function smokeAt(Lay, t, motion) {
   return { puffs: live, sparks };
 }
 
+/**
+ * Skirt parts at time t: hem scallops bob and tentacle tips sway in a wave round the ring,
+ * locked to the bob (whole cycles per loop). Pure; returns [{ a, b, c }] in the body frame.
+ */
+export function skirtAt(Lay, t) {
+  const { P } = Lay, w = P.skirtWave;
+  return Lay.skirt.map((k, i) => {
+    const ph = W12 * t * CYCLES.bob + (i / Math.max(1, Lay.skirt.length)) * TAU;
+    const s = w * Math.sin(ph);
+    const a = k.a.clone();
+    if (P.skirt === 3) a.y += s;
+    return { a, b: k.b?.clone() ?? null, c: k.c ? k.c.clone().addScaledVector(k.out, s).add(V(0, w * Math.cos(ph), 0)) : null };
+  });
+}
+
 /** Pieces the silhouette is meant to have with smoke and sparkles off: always 1. */
 export const intendedPieces = () => 1;
 
@@ -750,7 +765,13 @@ export function extents(Lay) {
   for (const h of Lay.hook) top = Math.max(top, h.y + P.antTip);
   for (const c of Lay.crown) top = Math.max(top, c.y + P.crownR);
   if (P.topper === 2) top = Math.max(top, Lay.crest.c.y + Lay.crest.b.y);
-  return { top: top * P.size, bottom: Lay.bottom * P.size };
+  // Half-width at rest (for the brand size-class check): head, rim, ears, crown puffs, skirt.
+  let half = P.headW * Math.max(1, P.headTaper);
+  if (P.rim) half = Math.max(half, Lay.rim.r[0] + P.rimT);
+  if (P.ears) half = Math.max(half, Lay.ears[1].x + (P.ears === 3 ? P.earR : P.earT));
+  for (const c of Lay.crown) half = Math.max(half, Math.abs(c.x) + P.crownR);
+  for (const k of Lay.skirt) half = Math.max(half, Math.abs(k.a.x) + P.skirtR, k.c ? Math.abs(k.c.x) + P.skirtR : 0);
+  return { top: top * P.size, bottom: Lay.bottom * P.size, half: half * P.size };
 }
 
 /** A parameterised drone. setParams() takes any subset of params.js keys; setPalette() a palette.js entry. */
@@ -815,24 +836,14 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     U.uHeadHex.value = P.headHex;
     U.uCrownN.value = Lay.crown.length; Lay.crown.forEach((c, i) => U.uCrownC.value[i].copy(c)); U.uCrownR.value = P.crownR;
     U.uSkirt.value = P.skirt; U.uSkirtN.value = Lay.skirt.length; U.uSkR.value = P.skirtR;
-    placeSkirt(0, false);
+    placeSkirt(0);
     U.uSnout.value = P.snout;
     if (Lay.snout) { U.uSnA.value.copy(Lay.snout.a); U.uSnB.value.copy(Lay.snout.b); U.uSnR.value.set(...Lay.snout.r); }
     U.uHookN.value = Lay.hook.length; Lay.hook.forEach((h, i) => U.uHook.value[i].copy(h));
     U.uSplit.value = P.screenSplit; U.uSplitY.value = P.splitY; U.uGlyphSet.value = P.glyphSet; U.uScrFlat.value = P.screenFlat;
   }
-  // Skirt parts at time t: hem scallops bob and tentacle tips sway in a wave round the ring,
-  // locked to the bob (whole cycles per loop).
-  function placeSkirt(t, motion) {
-    const P = params, w = P.skirtWave;
-    Lay.skirt.forEach((k, i) => {
-      const ph = W12 * t * CYCLES.bob + (i / Math.max(1, Lay.skirt.length)) * TAU;
-      const s = w * Math.sin(ph);
-      U.uSkA.value[i].copy(k.a);
-      if (P.skirt === 3) U.uSkA.value[i].y += s;
-      if (k.b) U.uSkB.value[i].copy(k.b);
-      if (k.c) U.uSkC.value[i].copy(k.c).addScaledVector(k.out, s).add(V(0, w * Math.cos(ph), 0));
-    });
+  function placeSkirt(t) {
+    skirtAt(Lay, t).forEach((k, i) => { U.uSkA.value[i].copy(k.a); if (k.b) U.uSkB.value[i].copy(k.b); if (k.c) U.uSkC.value[i].copy(k.c); });
   }
   setParams({});
 
@@ -856,7 +867,7 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     U.uBlink.value = Math.min(blink ?? beh.blink, face.eyeOpen);
     U.uEyesOn.value = face.eyes ? 1 : 0;
     U.uEyeXf.value.set(P.glance * beh.glance, P.gaze, P.eyeScale, U.uBlink.value);
-    if (P.skirtWave > 0) placeSkirt(t, motion);
+    if (P.skirtWave > 0) placeSkirt(t);
     U.uGlyph.value.set(face.glyphs, beh.workT, P.glyphRate, P.glyphPx);
     U.uFaceDebug.value = faceDebug ? 1 : 0;
     U.uSmokeOn.value = smoke ? 1 : 0;

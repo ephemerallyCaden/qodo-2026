@@ -93,6 +93,8 @@ A white-blue shell melts into the K suits at 180p: the phase-1 `frost` slot test
 
 ## Worked example: GitHub Copilot (description only)
 
+*Superseded by the Copilot brand drone (next section). It keeps the goggles, with GitHub's permission (human, 2026-11-10). The pills became a lab-only prototype eye, not a change to `faces.js`; the drone's own eye is the V2 Dots.*
+
 **The logo** (`github-copilot-logo.svg`): a wide, rounded helmet head that widens toward the cheeks; two big rounded-rectangle goggle lenses across the top half, almost touching at the bridge; round ear pads low on each side; a wide lower face plate with two upright pill eyes.
 
 **The mapping,** from the base (the values are absolute, so they apply from D-final or any variant):

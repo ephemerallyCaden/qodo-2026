@@ -339,7 +339,11 @@ if (ui) {
     const b = document.createElement('button');
     b.textContent = v.id;
     b.title = `${v.name}: ${v.leaning}`;
-    b.onclick = () => { state.params = paramsOf(v.id); state.variant = v.id; sync(); };
+    b.onclick = () => {
+      state.params = paramsOf(v.id); state.variant = v.id;
+      if (BRAND_BY_ID[v.id] || state.palette in BRAND_PALETTES) palSel.value = state.palette = BRAND_BY_ID[v.id] ? v.id : 'base';
+      sync();
+    };
     picker.append(b);
   }
   let group = '';
@@ -371,7 +375,7 @@ if (ui) {
     controls[p.key] = { input, readout };
   }
   const palSel = document.getElementById('palette');
-  Object.entries(PALETTES).forEach(([k, p]) => palSel.append(new Option(p.name, k)));
+  Object.entries({ ...PALETTES, ...BRAND_PALETTES }).forEach(([k, p]) => palSel.append(new Option(p.name, k)));
   palSel.onchange = () => (state.palette = palSel.value);
   document.getElementById('mode').onchange = (e) => (state.mode = e.target.value);
   document.getElementById('animate').onchange = (e) => (state.animate = e.target.checked);

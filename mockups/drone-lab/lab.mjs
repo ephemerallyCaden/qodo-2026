@@ -18,7 +18,7 @@ import { PALETTES, SLOTS, BRAND_PALETTES, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS, showValue } from './params.js';
 import { VARIANTS, PICKED, FINAL, FINAL_PARAMS } from './variants.js';
 import { LOOP, MOTION_LOOP, CYCLES } from './drone.js';
-import { BRANDS, PROVIDERS, BRAND_COLOURS, sessionLook } from './brands.js';
+import { BRANDS, BRAND_COLOURS, sessionLook } from './brands.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
@@ -280,11 +280,12 @@ try {
     // detail, personality (sparkles, gaze) and phase. The silhouette and shell never change.
     const SEEDS = ['session-7f3a', 'session-c21e', 'session-90bd'];
     await render('seeds', {
-      title: 'A5 · three sessions per drone (3/4, 180p x2) · only seeded details differ: trim, one shape detail, sparkles, gaze',
-      w: 100, h: 100, scale: 2, rowLabelW: 120,
-      rows: BRANDS.map((b) => ({ label: b.name, cells: SEEDS.map((sd) => {
+      title: 'A5 · three sessions per drone · 3/4, 180p x2',
+      footer: 'only seeded details differ: the trim, one shape detail (named per row), sparkles, gaze',
+      w: 100, h: 100, scale: 2, rowLabelW: 150,
+      rows: BRANDS.map((b) => ({ label: `${b.name} (${b.detail.key})`, cells: SEEDS.map((sd) => {
         const look = sessionLook(b.id, sd);
-        return { brand: b.id, seed: sd, yaw: -0.75, t: STILL_T, caption: `${sd.slice(8)} · trim ${look.trim + 1} · ${b.detail.key} ${look.params[b.detail.key].toFixed(3)}` };
+        return { brand: b.id, seed: sd, yaw: -0.75, t: STILL_T, caption: `${sd.slice(8)} · trim ${look.trim + 1} · ${look.params[b.detail.key].toFixed(3)}` };
       }) })),
     }, path.join(OUT, 'brands-seeds.png'));
   }
@@ -475,7 +476,74 @@ async function paramsDoc() {
   const used = { shell: 'the head, lit in four bands', trim: 'bezel, nozzles, rim, ears, goggle frames, antenna stalks', screen: 'screen and goggle lenses (two near-blacks), then the glint', glow: 'emissive and unlit: eyes and antenna tips [3], code lines and nozzle mouths [2]; [0] and [1] are spare', accent: 'band / panel / stripe / crest', smoke: 'puffs, lit in three bands and a band darker as they fade; sparkles [2]' };
   for (const [slot, n] of Object.entries(SLOTS)) lines.push(`| \`${slot}\` | ${n} | ${used[slot]} | ${PALETTES.base[slot].map((h) => `\`${h}\``).join(' ')} | ${PALETTES.ember[slot].map((h) => `\`${h}\``).join(' ')} |`);
   lines.push('', `Motion, in whole cycles per ${MOTION_LOOP} s motion loop (which divides the 24 s scene loop): ${Object.entries(CYCLES).map(([k, n]) => `${k} ${n}`).join(', ')}. The turntable and stills use the ${LOOP} s idle loop (no drift, looking or working).`, '', notes.trim(), '');
+  lines.push(...(await brandsDoc()), '');
   return lines.join('\n');
+}
+
+// The brand section of params.md: what each drone borrows, its parameters (bold = differs from
+// D-final), its palette, the brand colour -> BLK 36 mapping, per-session variety and the A4 numbers.
+async function brandsDoc() {
+  const { dist } = await import('./oklab.js');
+  const { BLK36 } = await import('./palette.js');
+  const { SESSION_VARY, SESSION_SPARKLES } = await import('./brands.js');
+  const D = { ...DEFAULTS, ...FINAL.params };
+  const keys = PARAMS.map((p) => p.key).filter((k) => BRANDS.some((b) => b.params[k] !== D[k]));
+  const code = (h) => `\`${h}\``;
+  const out = [
+    '## Brand drones (phase 2)',
+    '',
+    "Each brand drone is D-final with a parameter set laid over it plus a palette (`brands.js`, `palette.js` `BRAND_PALETTES`). They're original designs that borrow a silhouette, one or two signature features and a colour from each provider's mascot or logo. No logo is drawn, and names appear only as labels outside the pixel pass. **Not affiliated with or endorsed by any of these companies.**",
+    '',
+    '| Drone | Covers | Inspired by | Signature |',
+    '|---|---|---|---|',
+    ...BRANDS.map((b) => `| **${b.name}** | ${b.covers} | ${b.mascot} | ${b.signature} |`),
+    '',
+    '### Brand parameters',
+    '',
+    `Only parameters that some brand changes from D-final. **Bold** marks a value that differs from D-final.`,
+    '',
+    `| Parameter | D-final | ${BRANDS.map((b) => b.id).join(' | ')} |`,
+    `|---|---|${BRANDS.map(() => '---').join('|')}|`,
+    ...keys.map((k) => `| \`${k}\` | ${showValue(k, D[k])} | ${BRANDS.map((b) => (b.params[k] !== D[k] ? `**${showValue(k, b.params[k])}**` : showValue(k, b.params[k]))).join(' | ')} |`),
+    '',
+    '### Brand palettes (BLK 36 only; the glow is [OIII] teal)',
+    '',
+    `| Drone | ${Object.keys(SLOTS).join(' | ')} |`,
+    `|---|${Object.keys(SLOTS).map(() => '---').join('|')}|`,
+    ...BRANDS.map((b) => `| ${b.id} | ${Object.keys(SLOTS).map((sl) => b.palette[sl].map(code).join(' ')).join(' | ')} |`),
+    '',
+    'Legs and tentacles take the accent slot; ghost-hem scallops and crown puffs are the shell; snouts, hex pods and the question hook are trim.',
+    '',
+    '### Brand colour → BLK 36',
+    '',
+    'Sampled brand colours (scout report, Part B) mapped to BLK 36 by OKLab distance. Where the palette doesn\'t use the nearest entry, the last column says why.',
+    '',
+    '| Drone | Part | Brand | Nearest BLK 36 (ΔE) | Chosen (ΔE) | Why |',
+    '|---|---|---|---|---|---|',
+    ...BRAND_COLOURS.map((c) => {
+      const near = BLK36.map((h) => [h, dist(c.hex, h)]).sort((x, y) => x[1] - y[1])[0];
+      return `| ${c.brand} | ${c.part} | ${code(c.hex)} | ${code(near[0])} (${near[1].toFixed(3)}) | ${c.chosen.map((h) => `${code(h)} (${dist(c.hex, h).toFixed(3)})`).join(', ')} | ${c.why || 'nearest'} |`;
+    }),
+    '',
+    '### Per-session variety (A5)',
+    '',
+    `\`sessionLook(brand, session)\` hashes \`<brand>:<session>\` (\`hashStr\`, then mulberry32) into seeded details only: ${Object.entries(SESSION_VARY).map(([k, d]) => `\`${k}\` ±${d}`).join(', ')}, \`sparkles\` ±${SESSION_SPARKLES}, one shape detail per brand, a trim from the brand's list and a phase (a time offset under 12 s, so sessions bob out of step). The silhouette, shell, screen, glow, accent and smoke never vary. \`out/brands-seeds.png\` shows three sessions each.`,
+    '',
+    '| Drone | Shape detail | Trims |',
+    '|---|---|---|',
+    ...BRANDS.map((b) => `| ${b.id} | \`${b.detail.key}\` ${b.detail.min}–${b.detail.max} | ${b.trims.length} |`),
+  ];
+  try {
+    const a4 = JSON.parse(await readFile(path.join(OUT, 'brands-a4.json'), 'utf8'));
+    out.push('', '### A4 distinctness (from `out/brands-a4.json`)', '',
+      `Per pair, in the front and 3/4 views (smoke off): the silhouette IoU at the best alignment, and the OKLab distance of the mean colours. Score = max((1 − IoU) / ${a4.thresholds.shape}, ΔE / ${a4.thresholds.colour}); every pair must score at least 1 at the gated scales, in both views (the table shows the worse view).`, '',
+      '| Scale | Drone height | Gated | Closest pair (score: IoU, ΔE) | Smallest ΔE | Largest IoU |', '|---|---|---|---|---|---|',
+      ...a4.scales.map((s) => `| ${s.name} | ${s.heightPx} px | ${s.gate ? 'yes' : 'no'} | ${s.closest.a}–${s.closest.b} (${s.closest.score.toFixed(2)}: ${s.closest.iou.toFixed(2)}, ${s.closest.dE.toFixed(3)}) | ${s.minDE.a}–${s.minDE.b} ${s.minDE.dE.toFixed(3)} | ${s.maxIoU.a}–${s.maxIoU.b} ${s.maxIoU.iou.toFixed(2)} |`),
+      '', 'The five closest pairs at each gated scale:', '',
+      '| Scale | Pair | IoU | ΔE | Score |', '|---|---|---|---|---|',
+      ...a4.scales.filter((s) => s.gate).flatMap((s) => s.pairs.slice(0, 5).map((p) => `| ${s.name} | ${p.a}–${p.b} | ${p.iou.toFixed(2)} | ${p.dE.toFixed(3)} | ${p.score.toFixed(2)} |`)));
+  } catch { /* no A4 run yet */ }
+  return out;
 }
 
 if (problems.length) {

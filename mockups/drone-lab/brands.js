@@ -21,7 +21,7 @@ export const BRANDS = [
     params: {
       rim: 0, antenna: 0,
       headW: 0.15, headH: 0.074, headD: 0.105, headRound: 0.08, headCorner: 0.45, headTaper: 1, headFlat: 0,
-      ears: 2, earR: 0.022, earT: 0.02, earY: -0.2, earSweep: 0,
+      ears: 2, earR: 0.025, earT: 0.02, earY: -0.2, earSweep: 0,
       skirt: 1, skirtN: 4, skirtL: 0.036, skirtR: 0.017, skirtSpread: 0.82, skirtZ: 0.55,
       screenW: 0.62, screenH: 0.42, screenY: 0.22, screenRound: 7, bezel: 0.08, eyes: 0, screenFlat: 1,
       thrusters: 1, thrR: 0.032, thrL: 0.02, thrFlare: 0.9,
@@ -157,7 +157,7 @@ export const BRANDS = [
       screenW: 0.78, screenH: 0.28, screenY: 0.32, screenRound: 4, bezel: 0.14, eyes: 8,
       thrusters: 0, thrR: 0.024, thrL: 0.022, thrSpread: 0.6, thrFlare: 1.1,
       smoke: 0, puffSize: 0.95, puffRate: 0.4, sparkles: 1, glyphSet: 2, workNod: 0.2,
-      bobAmp: 0.028, drift: 0.2, bank: 0.32, lookYaw: 0.3,
+      bobAmp: 0.028, drift: 0.2, bank: 0.32, lookYaw: 0.3, size: 1.5,
     },
     detail: { key: 'snoutL', min: 0.082, max: 0.098 },
     trims: [['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff'], ['#b991f2', '#c1d9f2', '#ffffff', '#ffffff']],
@@ -212,7 +212,7 @@ export function sessionLook(brandId, session) {
   params.sparkles = clampTo('sparkles', b.params.sparkles + Math.round((rnd() * 2 - 1) * SESSION_SPARKLES));
   params[b.detail.key] = b.detail.min + rnd() * (b.detail.max - b.detail.min);
   const trim = Math.floor(rnd() * b.trims.length) % b.trims.length;
-  return { params, palette: { ...b.palette, trim: b.trims[trim] }, phase: Math.round(rnd() * 120) / 10, trim };
+  return { params, palette: { ...b.palette, trim: b.trims[trim] }, phase: Math.floor(rnd() * 120) / 10, trim };
 }
 
 // Brand colour -> BLK 36, for the README and params.md (lab.mjs adds the nearest entries and
