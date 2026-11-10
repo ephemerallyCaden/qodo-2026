@@ -1,6 +1,6 @@
 # Phase 2 contract (#29)
 
-**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
+**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
 
 | Shape | Types | Produced by | Consumed by |
 |---|---|---|---|
@@ -44,6 +44,7 @@
 - **Test mode:** only with `?test=1` (`TEST_MODE_PARAM`). There is no animation loop, and `window.__commet: RenderHook` is exposed. Without the parameter, the hook doesn't exist.
 - **Calls:** `load(input)`, then `renderFrame(n)`, which draws exactly frame `n` and returns `renderer.info` draw calls and triangles. `lowResPixels()` returns the internal target before upscale, so goldens can sit near a 0 threshold.
 - **Determinism:** a frame is a pure function of (`RenderInput`, frame number), per principle 3.
+- **Palette check (amended 2026-11-10):** `RenderInput.depthFade` (default true) switches the per-pixel depth fade. With it off, off-palette pixels must be 0 (system-design §10), because the fade is the only off-palette output.
 
 ## Directory ownership in Phase 2
 

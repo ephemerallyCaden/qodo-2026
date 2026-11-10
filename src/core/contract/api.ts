@@ -50,6 +50,11 @@ export interface RenderInput {
   pixelHeight?: number;
   /** Default: the view's own start pose. */
   camera?: CameraPose;
+  /**
+   * Per-pixel depth fade (art-direction §5). Default true. With it off, every pixel must be a palette
+   * colour (system-design §10: off-palette pixels = 0), because the fade is the only off-palette output.
+   */
+  depthFade?: boolean;
 }
 
 export interface RenderStats { drawCalls: number; triangles: number; width: number; height: number }
