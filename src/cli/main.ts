@@ -7,6 +7,7 @@ import { scan } from '../scan/index.js';
 import { QODO_CACHE_FILE } from '../scan/qodo.js';
 import { loadOrCreateKey } from '../state/key.js';
 import { stateDir, writeAtomic } from '../state/io.js';
+import { runOpen } from './open.js';
 
 export interface Io {
   stdout: (text: string) => void;
@@ -16,6 +17,7 @@ export interface Io {
 }
 
 const USAGE = 'usage: commet scan [--window <months>] [--no-ingest] [--with-qodo] [--out <file>]\n'
+  + '       commet open [--port <n>] [--no-open]\n'
   + '  --with-qodo  opt in to reading this repo\'s Qodo review findings (read-only, over the network via gh and qodo)\n';
 
 interface ScanArgs { window: number; ingest: boolean; withQodo: boolean; out?: string }
@@ -56,6 +58,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
     io.stdout(USAGE);
     return 0;
   }
+  if (cmd === 'open') return runOpen(rest, io);
   if (cmd !== 'scan') {
     io.stderr(`commet: ${cmd ? `unknown command ${JSON.stringify(cmd)}` : 'missing command'}\n${USAGE}`);
     return EXIT.usage;
