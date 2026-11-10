@@ -27,3 +27,22 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+
+  render:
+    # R8 render tests (#31). Goldens are authoritative only in this image: test/render/README.md.
+    # Bump the tag together with @playwright/test, and re-pin the digest with it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npm run test:render
+      # What UPDATE_GOLDEN=1 would write in this image, for a deliberate golden update.
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-goldens
+          path: test-results/render-goldens/
+          if-no-files-found: ignore

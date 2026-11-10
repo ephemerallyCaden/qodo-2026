@@ -22,7 +22,8 @@ export default tseslint.config(
   { ignores: ['dist/', 'factory/dist/', 'node_modules/', 'coverage/', '.sandboxes/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  { files: ['src/core/**', 'src/scan/**', 'src/attrib/**'], rules: determinism },
+  // The render stand-in (#31) is render code: a frame must be a pure function of (input, frame).
+  { files: ['src/core/**', 'src/scan/**', 'src/attrib/**', 'test/render/standin/**'], rules: determinism },
   {
     // src/core is pure and isomorphic: no Node built-ins, nothing outside core (design §3).
     files: ['src/core/**'],

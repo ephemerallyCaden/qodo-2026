@@ -14,5 +14,7 @@
     "skipLibCheck": true,
     "rootDir": "."
   },
-  "include": ["src", "test", "factory", "eslint.config.js", "vitest.config.ts"]
+  "include": ["src", "test", "factory", "eslint.config.js", "vitest.config.ts"],
+  // Render tests run browser code too: test/render/tsconfig.json adds the DOM lib for them.
+  "exclude": ["test/render"]
 }
