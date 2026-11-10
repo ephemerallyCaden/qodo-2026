@@ -113,7 +113,8 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
     if (!o.chart) return sendJson(res, 501, { ok: false, error: 'chart writes are not implemented yet (R5)' } satisfies ChartResult);
     const result = await o.chart(action);
     if (result.ok) broadcast({ type: 'fog', head: result.fog.head });
-    sendJson(res, result.ok ? 200 : 400, result);
+    // 409 Conflict: the action was decided on a view of an older head (#58); the view refetches and asks again.
+    sendJson(res, result.ok ? 200 : result.head !== undefined ? 409 : 400, result);
   }
 
   async function events(req: IncomingMessage, res: ServerResponse): Promise<void> {

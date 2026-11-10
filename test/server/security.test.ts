@@ -456,6 +456,26 @@ describe('R14 server: missing bundle, missing snapshot, and the R5 seams', () =>
     }
   });
 
+  it('answers 409 for a stale chart action and 400 for other refusals, with no fog event (#58)', async () => {
+    const head = 'b'.repeat(40);
+    const results: ChartResult[] = [{ ok: false, error: 'stale', head }, { ok: false, error: 'no such file in the latest snapshot' }];
+    const f = await fixture({ fog: true, chart: async () => results.shift()! });
+    const stream = openStream(f.port, API.events, { [TOKEN_HEADER]: f.token });
+    try {
+      expect(await stream.status).toBe(200);
+      const post = () => req(f.port, { method: 'POST', path: API.chart, headers: { [TOKEN_HEADER]: f.token, 'content-type': 'application/json' },
+        body: JSON.stringify({ kind: 'chart', fileId: 'f_000000000001', at: AT }) });
+      const stale = await post();
+      expect([stale.status, JSON.parse(stale.body)]).toEqual([409, { ok: false, error: 'stale', head }]);
+      const refused = await post();
+      expect([refused.status, JSON.parse(refused.body)]).toEqual([400, { ok: false, error: 'no such file in the latest snapshot' }]);
+      expect(liveEvents(stream.text())).toEqual([]);
+    } finally {
+      stream.close();
+      await teardown(f);
+    }
+  });
+
   it('gives onError only the error and the route, never the request or its token (Qodo PR #47 r1)', async () => {
     const seen: unknown[][] = [];
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'commet-server-')));

@@ -37,7 +37,7 @@
 - **Token:** the opened URL is `http://127.0.0.1:<port>/#t=<token>`. The fragment is never sent to the server. The view reads it and sends `x-commet-token` on every data request.
 - **Static bundle:** served at `/` from `dist/web` without a token, because it holds no repo data. No directory listing and no traversal.
 - **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`.
-- **Write routes:** `POST /api/chart` with a `ChartAction` JSON body (exact keys, `at` a full 40-hex SHA, or 64-hex in a SHA-256 repo) returns a `ChartResult`. A stale `at` gets `ChartStale`, told apart from other refusals by its `head`. `POST /api/beacon` answers 501 until R10. Every other method or path is refused.
+- **Write routes:** `POST /api/chart` with a `ChartAction` JSON body (exact keys, `at` a full 40-hex SHA, or 64-hex in a SHA-256 repo) returns a `ChartResult`. A stale `at` gets `ChartStale` with status 409, told apart from other refusals (400) by its `head`. `POST /api/beacon` answers 501 until R10. Every other method or path is refused.
 - **Live updates:** `GET /api/events` is a `text/event-stream` read with `fetch`, so the token stays in a header. Each `data:` line is a `LiveEvent`. The view refetches the named resource.
 - **No CORS headers,** and cross-origin writes are refused.
 
