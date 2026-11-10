@@ -544,29 +544,39 @@ class Tick {
     };
   }
 
-  /** Swaps `agent-working` for the end label and posts the run summary (R9). */
-  private async report(state: 'done' | 'needs-help', reason: string | null): Promise<void> {
-    await this.relabel(LABELS.working, state === 'done' ? LABELS.done : LABELS.help);
-    await this.post('issue', String(this.ticket!.number), summaryComment({
+  private summary(state: 'done' | 'needs-help', reason: string | null): string {
+    return summaryComment({
       state, reason, runId: this.runId, logPath: join(this.runDir, 'log.jsonl'), checks: this.checks, ci: this.lastReview?.ci ?? null,
       lastRun: this.lastReview?.run ?? null, maxFixRounds: this.cfg.maxFixRounds, findings: this.lastReview?.findings ?? [],
       dispositions: this.dispositions, ...this.stats(),
-    }));
+    });
   }
 
+  /**
+   * Posts the summary (R9), then swaps `agent-working` for `agent-done`. The label goes last: if
+   * the comment fails, the ticket still carries agent-working, which needs-help then replaces.
+   */
   private async finish(): Promise<Outcome> {
     await this.assertNotEdited();
-    await this.report('done', null);
+    await this.post('issue', String(this.ticket!.number), this.summary('done', null));
+    await this.relabel(LABELS.working, LABELS.done);
     this.log.event('end', { state: 'done', reason: null, ...this.stats() });
     return { state: 'done', issue: this.ticket!.number, pr: this.pr!.url };
   }
 
+  /** The last resort: each step runs even if the one before failed. */
   private async needsHelp(reason: string): Promise<Outcome> {
     this.log.event('stop', { reason });
-    try {
-      await this.report('needs-help', reason);
-    } catch (e) {
-      this.log.event('end-report-failed', { error: e instanceof Error ? e.message : String(e) });
+    const steps = [
+      () => this.post('issue', String(this.ticket!.number), this.summary('needs-help', reason)),
+      () => this.relabel(LABELS.working, LABELS.help),
+    ];
+    for (const step of steps) {
+      try {
+        await step();
+      } catch (e) {
+        this.log.event('end-report-failed', { error: e instanceof Error ? e.message : String(e) });
+      }
     }
     this.log.event('end', { state: 'needs-help', reason, ...this.stats() });
     return { state: 'needs-help', issue: this.ticket!.number, reason };

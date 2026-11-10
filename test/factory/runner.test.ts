@@ -338,6 +338,32 @@ describe('review loop (R6, R7)', () => {
     expect(summary).not.toContain(w.root);
   });
 
+  it('a failed summary comment never leaves agent-done behind (Qodo PR37 7713dac4)', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.claude.push(implementDone());
+    const exec: typeof w.exec = (cmd, args, opts) => {
+      const file = args[0] === 'issue' && args[1] === 'comment' ? args[args.indexOf('--body-file') + 1] : undefined;
+      if (file && readFileSync(file, 'utf8').includes('**Agent run done.**')) return Promise.resolve({ code: 1, stdout: '', stderr: 'HTTP 502', timedOut: false });
+      return w.exec(cmd, args, opts);
+    };
+    expect(await w.tick({}, { exec })).toMatchObject({ state: 'needs-help', reason: expect.stringContaining('comment on issue 24 failed') });
+    expect(labels(w, 24)).toEqual([LABELS.help]);
+  });
+
+  it('still swaps to agent-needs-help when its own comment fails', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.claude.push(agentError);
+    const exec: typeof w.exec = (cmd, args, opts) => {
+      const file = args[0] === 'issue' && args[1] === 'comment' ? args[args.indexOf('--body-file') + 1] : undefined;
+      if (file && readFileSync(file, 'utf8').includes('needs help')) return Promise.resolve({ code: 1, stdout: '', stderr: 'HTTP 502', timedOut: false });
+      return w.exec(cmd, args, opts);
+    };
+    expect(await w.tick({}, { exec })).toMatchObject({ state: 'needs-help' });
+    expect(labels(w, 24)).toEqual([LABELS.help]);
+  });
+
   it('a would-be third fix round ends in agent-needs-help', async () => {
     const w = world();
     w.findings = (head) => [finding(`f-${head.slice(-4)}`)];
