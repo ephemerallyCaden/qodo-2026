@@ -1,12 +1,29 @@
 // The catalogue (R1): every entry is a starting configuration for the inspector (a partial state:
 // focus, framing and asset), or for the palette editor. Seeds are the asset viewer's own (its
 // system shot), so each tile is a look the viewer already shows. `final: false` marks the
-// exploration archive (R6). `t` (optional) is the loop time it opens at. Pure data, no DOM.
+// exploration archive (R6). `t` (optional) is the loop time it opens at. `tag` (optional)
+// replaces the final badge: a library extra, or a look whose meaning is open (R9). Pure data, no DOM.
 
 const astro = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'astronaut', framing: 'body', asset: { kind: 'astronaut', ...asset } }, ...extra });
 const planet = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'planet', framing: 'planet', asset: { kind: 'planet', ...asset } }, ...extra });
 const focus = (f, framing = 'planet') => (e) => ({ ...e, state: { ...e.state, focus: f, framing } });
 const HOST_HIDDEN = { surface: false, haze: false, clouds: false, ring: false };
+
+// What each planet look means (art direction §6, "What a planet tells you"): its code-health band,
+// worst to best (lava, toxic, ash, healthy; lush, ocean and ice are the healthy band's three
+// seeded looks), or a library extra that never appears in the product view.
+export const BIOME_MEANING = {
+  lava: 'the worst health band',
+  toxic: 'the second-worst health band, between lava and ash',
+  desert: 'the ash health band (the desert look)',
+  lush: 'the healthy band: one of its three seeded looks (lush, ocean, ice)',
+  ocean: 'the healthy band: one of its three seeded looks (lush, ocean, ice)',
+  ice: 'the healthy band: one of its three seeded looks (lush, ocean, ice)',
+  gas: 'a library extra, never shown in the product view',
+  moon: 'a library extra, never shown in the product view',
+};
+export const EXTRA = 'library extra';
+export const RING_TAG = 'meaning open';
 
 export const GROUPS = [
   {
@@ -21,20 +38,21 @@ export const GROUPS = [
     ],
   },
   {
-    id: 'planets', title: 'Planets', note: 'one shader, a branch per biome; extras marked',
+    // worst to best, then the extras; no rings, since a ring's meaning is open
+    id: 'planets', title: 'Planets', note: 'a look is a code-health band, worst to best; size = lines of code, moons = test files',
     items: [
-      planet('lush', 'healthy, active · seed 7', { biome: 'lush', seed: 7 }),
-      planet('ocean', 'stable, rarely touched · 42', { biome: 'ocean', seed: 42, ring: 'off' }),
-      planet('ice', 'stable · 21', { biome: 'ice', seed: 21, ring: 'off' }),
-      planet('desert', 'stale, low coverage · 3', { biome: 'desert', seed: 3, ring: 'off' }),
-      planet('lava', 'churn hotspot · 11', { biome: 'lava', seed: 11, ring: 'off' }),
-      planet('gas giant', 'extra · very large · 5', { biome: 'gas', seed: 5, ring: 'off' }),
-      planet('barren moon', 'extra · tiny or dead · 9', { biome: 'moon', seed: 9, ring: 'off', moons: false }),
-      planet('toxic', 'health band · between lava and desert · 13', { biome: 'toxic', seed: 13, ring: 'off' }),
+      planet('lava', 'worst health band · 11', { biome: 'lava', seed: 11, ring: 'off' }),
+      planet('toxic', 'second-worst band · 13', { biome: 'toxic', seed: 13, ring: 'off' }),
+      planet('desert', 'ash band · 3', { biome: 'desert', seed: 3, ring: 'off' }),
+      planet('lush', 'healthy look 1/3 · 7', { biome: 'lush', seed: 7, ring: 'off' }),
+      planet('ocean', 'healthy look 2/3 · 42', { biome: 'ocean', seed: 42, ring: 'off' }),
+      planet('ice', 'healthy look 3/3 · 21', { biome: 'ice', seed: 21, ring: 'off' }),
+      planet('gas giant', 'very large · 5', { biome: 'gas', seed: 5, ring: 'off' }, { tag: EXTRA }),
+      planet('barren moon', 'tiny, cratered · 9', { biome: 'moon', seed: 9, ring: 'off', moons: false }, { tag: EXTRA }),
     ],
   },
   {
-    id: 'moons', title: 'Moons', note: 'the two warm moons every planet can carry',
+    id: 'moons', title: 'Moons', note: 'moons are test files; the two warm moons every planet can carry',
     items: [
       focus('moon')(planet('moon pair', 'orbiting the lush hero', { biome: 'lush', seed: 7, ring: 'off' })),
       focus('moon')(planet('moons alone', 'host body hidden', { biome: 'lush', seed: 7, ring: 'off', layers: HOST_HIDDEN })),
@@ -42,13 +60,13 @@ export const GROUPS = [
     ],
   },
   {
-    id: 'rings', title: 'Rings', note: 'a modifier on any biome: width × distance',
+    id: 'rings', title: 'Rings', note: 'a modifier on any band: width × distance. Meaning open: library only',
     items: [
-      focus('ring')(planet('thin ring', 'default · 0.22 at 1.69', { biome: 'lush', seed: 7, moons: false })),
-      focus('ring')(planet('wide ring', 'shared lib · 0.72 at 1.54', { biome: 'lush', seed: 7, ring: 'wide', ringWidth: 0.72, ringInner: 1.54, moons: false })),
-      focus('ring')(planet('thread', '0.04 at 1.25', { biome: 'ocean', seed: 42, ringWidth: 0.04, ringInner: 1.25, moons: false })),
-      focus('ring')(planet('far belt', '0.72 at 2.6', { biome: 'desert', seed: 3, ringWidth: 0.72, ringInner: 2.6, moons: false })),
-      focus('ring')(planet('ring alone', 'host body hidden', { biome: 'lush', seed: 7, ring: 'wide', ringWidth: 0.72, ringInner: 1.54, moons: false, layers: HOST_HIDDEN })),
+      focus('ring')(planet('thin ring', 'default · 0.22 at 1.69', { biome: 'lush', seed: 7, moons: false }, { tag: RING_TAG })),
+      focus('ring')(planet('wide ring', 'wide belt · 0.72 at 1.54', { biome: 'lush', seed: 7, ring: 'wide', ringWidth: 0.72, ringInner: 1.54, moons: false }, { tag: RING_TAG })),
+      focus('ring')(planet('thread', '0.04 at 1.25', { biome: 'ocean', seed: 42, ringWidth: 0.04, ringInner: 1.25, moons: false }, { tag: RING_TAG })),
+      focus('ring')(planet('far belt', '0.72 at 2.6', { biome: 'desert', seed: 3, ringWidth: 0.72, ringInner: 2.6, moons: false }, { tag: RING_TAG })),
+      focus('ring')(planet('ring alone', 'host body hidden', { biome: 'lush', seed: 7, ring: 'wide', ringWidth: 0.72, ringInner: 1.54, moons: false, layers: HOST_HIDDEN }, { tag: RING_TAG })),
     ],
   },
   {
@@ -56,7 +74,7 @@ export const GROUPS = [
     items: [
       focus('clouds')(planet('cloud masses', 'lush weather', { biome: 'lush', seed: 7, ring: 'off', moons: false })),
       focus('clouds')(planet('thin clouds', 'ocean weather', { biome: 'ocean', seed: 42, ring: 'off', moons: false })),
-      focus('clouds')(planet('spores', 'toxic weather', { biome: 'toxic', seed: 13, ring: 'off', moons: false })),
+      focus('clouds')(planet('rust smoke', 'toxic weather', { biome: 'toxic', seed: 13, ring: 'off', moons: false })),
       focus('clouds')(planet('ash plumes', 'lava smoke', { biome: 'lava', seed: 11, ring: 'off', moons: false })),
       focus('clouds', 'clouds-zoom')(planet('cloud close-up', 'the cloud-zoom framing', { biome: 'lush', seed: 7, ring: 'off', moons: false })),
       focus('clouds')(planet('clouds alone', 'host body hidden', { biome: 'lush', seed: 7, ring: 'off', moons: false, cover: 0.35, layers: { ...HOST_HIDDEN, clouds: true } })),

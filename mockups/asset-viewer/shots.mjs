@@ -185,7 +185,7 @@ const PLANET_SET = [
   ['ringed: lush', 'lush', [[7, 0.8, 'wide']]],
   ['gas giant (extra)', 'gas', [[5, 1.6, 'off', true], [14, 1.8, 'thin'], [33, 1.45, 'off']]],
   ['moon (extra)', 'moon', [[9, 0.35, 'off'], [2, 0.5, 'off'], [66, 0.42, 'off']]],
-  ['toxic (extra)', 'toxic', [[13, 1.0, 'off'], [37, 0.7, 'off'], [81, 1.3, 'off']]],
+  ['toxic', 'toxic', [[13, 1.0, 'off'], [37, 0.7, 'off'], [81, 1.3, 'off']]],
 ];
 
 // Planet artefacts on every biome (plus the teal accent on lush). Each tile uses the
