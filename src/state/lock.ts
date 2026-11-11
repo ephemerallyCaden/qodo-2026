@@ -44,3 +44,19 @@ export function tryLock(lock: string): boolean {
   }
   return false;
 }
+
+/**
+ * Runs `fn` holding the lock, waiting up to `tries` × `waitMs` for another holder to finish. Null
+ * when it never came free (the caller says what that means).
+ */
+export async function withLock<T>(lock: string, fn: () => T, tries = 250, waitMs = 20): Promise<{ value: T } | null> {
+  for (let i = 0; !tryLock(lock); i++) {
+    if (i >= tries) return null;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+  try {
+    return { value: fn() };
+  } finally {
+    rmSync(lock, { force: true });
+  }
+}

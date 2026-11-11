@@ -1,15 +1,17 @@
 // `commet hook install | remove | event | refresh` (R7, #77): consent, chaining, worktrees,
 // core.hooksPath, the Claude Code settings merge, deduplicated events and coalesced refreshes.
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterAll, describe, expect, it } from 'vitest';
 import { installText, removeText } from '../src/hooks/claude-settings.js';
-import { HOOK_MARK } from '../src/hooks/git-hooks.js';
+import { placePath } from '../src/hooks/event.js';
+import { applyInstall, HOOK_MARK, planInstall } from '../src/hooks/git-hooks.js';
 import { coalescedRefresh } from '../src/hooks/refresh.js';
 import { EVENTS_FILE, readEvents } from '../src/state/events.js';
+import { withLock } from '../src/state/lock.js';
 import { scripted } from './fixtures/cli.js';
 import { calls, cleanupHookFixtures, fakeCli, git, GIT_ENV, hook, hookRepo, mkdirp, tempDir, tree } from './fixtures/hooks.js';
 
@@ -272,6 +274,48 @@ describe('git hooks', () => {
     expect(existsSync(join(tracked, '.githooks'))).toBe(false);
   });
 
+  it('writes executable hooks whatever the umask, and rewrites a Commet hook that lost its execute bit', async () => {
+    const dir = hookRepo();
+    const paths = fakeCli();
+    const old = process.umask(0o177);
+    try {
+      expect((await hook(['install', '--yes', '--git-only'], dir, { paths })).code).toBe(0);
+    } finally {
+      process.umask(old);
+    }
+    expect(statSync(join(dir, '.git/hooks/post-commit')).mode & 0o777).toBe(0o755);
+    chmodSync(join(dir, '.git/hooks/post-merge'), 0o644);
+    const r = await hook(['install', '--yes', '--git-only'], dir, { paths });
+    expect(r.out).toContain("<git-common-dir>/hooks/post-merge: Commet's hook updated");
+    expect(statSync(join(dir, '.git/hooks/post-merge')).mode & 0o777).toBe(0o755);
+  });
+
+  it('installs all or nothing: when the settings can\'t be written, the git hooks written first are undone', async () => {
+    const dir = hookRepo();
+    writeFileSync(join(dir, '.git/hooks/post-merge'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    mkdirp(join(dir, '.claude'));
+    const before = tree(dir);
+    // The settings folder turns read-only while the question is open, so only the settings write fails.
+    const r = await hook(['install'], dir, { paths: fakeCli(), ask: async () => {
+      chmodSync(join(dir, '.claude'), 0o555);
+      return 'y';
+    } });
+    chmodSync(join(dir, '.claude'), 0o755);
+    expect(r.code).toBe(1);
+    expect(tree(dir)).toEqual(before);
+  });
+
+  it('refuses to write into a hooks folder swapped for a link after planning', () => {
+    const dir = hookRepo();
+    const hooks = join(dir, '.git/hooks');
+    const steps = planInstall(hooks, process.execPath, '/x/cli.js');
+    const elsewhere = tempDir('commet-hooks-swap-');
+    renameSync(hooks, join(dir, '.git/hooks-moved'));
+    symlinkSync(elsewhere, hooks);
+    expect(() => applyInstall(hooks, steps)).toThrow('the hooks folder changed (now a link); nothing was written');
+    expect(tree(elsewhere)).toEqual({});
+  });
+
   it('with the CLI gone and no commet on PATH, the hook still exits with the chained hook\'s status, quietly', async () => {
     const dir = hookRepo();
     writeFileSync(join(dir, '.git/hooks/post-commit'), '#!/bin/sh\nexit 4\n', { mode: 0o755 });
@@ -499,6 +543,35 @@ describe('hook event', () => {
     expect(e!.hunks[0]!.addedHashes).toHaveLength(2);
   });
 
+  it('places a file by its real path under the deepest worktree, Windows paths included', () => {
+    const real = (f: string) => f;
+    const roots = ['C:\\repo\\.sandboxes\\t1', 'C:\\repo'];
+    expect(placePath('C:\\repo\\src\\a.ts', roots, win32, real)).toBe('src/a.ts');
+    expect(placePath('C:\\repo\\.sandboxes\\t1\\src\\a.ts', roots, win32, real)).toBe('src/a.ts');
+    expect(placePath('C:\\repo\\.git\\config', roots, win32, real)).toBeNull();
+    expect(placePath('C:\\other\\a.ts', roots, win32, real)).toBeNull();
+    expect(placePath('src\\a.ts', roots, win32, real)).toBe('unplaceable');
+    // A root that is a prefix of another folder's name doesn't hold it.
+    expect(placePath('C:\\repo2\\a.ts', ['C:\\repo'], win32, real)).toBeNull();
+    // POSIX: a backslash is part of a filename.
+    expect(placePath('/r/dir/a\\b.ts', ['/r'], posix, real)).toBe('dir/a\\b.ts');
+    // A file already gone is placed through its folder; one whose folder is gone too, inside a root, can't be.
+    const gone = (f: string) => {
+      if (f.endsWith('.ts') || f.endsWith('gone')) throw new Error('ENOENT');
+      return f;
+    };
+    expect(placePath('/r/src/x.ts', ['/r'], posix, gone)).toBe('src/x.ts');
+    expect(placePath('/r/gone/x.ts', ['/r'], posix, gone)).toBe('unplaceable');
+  });
+
+  it('an edit to a POSIX filename with a backslash is recorded and read back', async () => {
+    const dir = eventRepo();
+    writeFileSync(join(dir, 'src/a\\b.ts'), 'export const slashed = 1;\n');
+    await sendEvent(dir, payload(dir, { tool_response: { filePath: join(dir, 'src/a\\b.ts'), structuredPatch: [{ oldStart: 1, oldLines: 0,
+      newStart: 1, newLines: 1, lines: ['+export const slashed = 1;'] }] } }));
+    expect(await readEvents(join(dir, '.git/commet'))).toMatchObject({ events: [{ path: 'src/a\\b.ts' }], dropped: 0 });
+  });
+
   it('an oversized payload is drained and counted as a drop', async () => {
     const dir = eventRepo();
     const big = Readable.from((function* () {
@@ -548,12 +621,22 @@ describe('hook refresh', () => {
     expect(scans).toBe(1);
   });
 
+  it('scans publish one at a time: a held lock is waited for, never written through', async () => {
+    const dir = tempDir('commet-hooks-publish-');
+    const lock = join(dir, 'publish.lock');
+    writeFileSync(lock, String(process.pid));
+    expect(await withLock(lock, () => 1, 3, 5)).toBeNull();
+    setTimeout(() => rmSync(lock), 50);
+    expect(await withLock(lock, () => 2, 100, 5)).toEqual({ value: 2 });
+    expect(existsSync(lock)).toBe(false);
+  });
+
   it('runs a quiet scan of the worktree it was called from', async () => {
     const dir = hookRepo();
     const r = await hook(['refresh'], dir, { env: { CLAUDE_CONFIG_DIR: tempDir('commet-hooks-claude-') } });
     expect(r).toEqual({ code: 0, out: '', err: '' });
     expect(existsSync(join(dir, '.git/commet/snapshot.json'))).toBe(true);
-    expect(Object.keys(tree(join(dir, '.git/commet'))).filter((f) => f.includes('refresh'))).toEqual([]);
+    expect(Object.keys(tree(join(dir, '.git/commet'))).filter((f) => f.includes('refresh') || f.includes('lock'))).toEqual([]);
   });
 });
 

@@ -2,8 +2,9 @@
 // background. An existing hook is chained, never replaced: it's renamed to `<hook>.commet-chained`
 // and run first, and its exit code is the hook's. `remove` renames it back, so its bytes and mode
 // come back exactly. Hooks are only written inside this repo's git dir (see hooksTarget).
-import { lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { CommetError, EXIT } from '../core/errors.js';
 import { tryGit, type Git } from '../scan/git.js';
 
 export const GIT_HOOKS = ['post-commit', 'post-merge'] as const;
@@ -85,7 +86,7 @@ export async function hooksTarget(git: Git, commonDir: string): Promise<HooksTar
   return { dir, label: rel === '' ? '<git-common-dir>' : `<git-common-dir>/${rel.split(sep).join('/')}` };
 }
 
-type Entry = { kind: 'absent' } | { kind: 'ours'; text: string } | { kind: 'other' } | { kind: 'unusable' };
+type Entry = { kind: 'absent' } | { kind: 'ours'; text: string; executable: boolean } | { kind: 'other' } | { kind: 'unusable' };
 
 function entry(file: string): Entry {
   let st: ReturnType<typeof lstatSync>;
@@ -100,11 +101,12 @@ function entry(file: string): Entry {
   if (!st.isFile()) return { kind: 'unusable' };
   if (st.size > MAX_HOOK_BYTES) return { kind: 'other' };
   const text = readFileSync(file, 'utf8');
-  return text.split('\n')[1] === HOOK_MARK ? { kind: 'ours', text } : { kind: 'other' };
+  return text.split('\n')[1] === HOOK_MARK ? { kind: 'ours', text, executable: (st.mode & 0o111) !== 0 } : { kind: 'other' };
 }
 
 export type HookStep =
-  | { hook: GitHookName; action: 'write' | 'chain-and-write' | 'rewrite'; script: string }
+  | { hook: GitHookName; action: 'write' | 'chain-and-write'; script: string }
+  | { hook: GitHookName; action: 'rewrite'; script: string; previous: string }
   | { hook: GitHookName; action: 'unchanged' }
   | { hook: GitHookName; action: 'conflict'; why: string };
 
@@ -115,7 +117,10 @@ export function planInstall(dir: string, node: string, cli: string): HookStep[] 
     const target = entry(join(dir, hook));
     const chained = entry(join(dir, hook + CHAINED)).kind !== 'absent';
     if (target.kind === 'unusable') return { hook, action: 'conflict', why: `${hook} is not a file` };
-    if (target.kind === 'ours') return target.text === script ? { hook, action: 'unchanged' } : { hook, action: 'rewrite', script };
+    // Commet's own hook that git can't run (not executable) is written again.
+    if (target.kind === 'ours') {
+      return target.text === script && target.executable ? { hook, action: 'unchanged' } : { hook, action: 'rewrite', script, previous: target.text };
+    }
     if (chained) {
       return { hook, action: 'conflict', why: `${hook}${CHAINED} is already there but ${hook} isn't Commet's; move one of them away first` };
     }
@@ -123,31 +128,61 @@ export function planInstall(dir: string, node: string, cli: string): HookStep[] 
   });
 }
 
-/**
- * Writes the planned hooks. The new script is staged beside the target first (exclusive create,
- * mode 0755), so a failure before the rename leaves the original where it was; a failed final
- * rename moves the original back.
- */
-export function applyInstall(dir: string, steps: HookStep[]): void {
-  mkdirSync(dir, { recursive: true, mode: 0o755 });
-  for (const step of steps) {
-    if (step.action !== 'write' && step.action !== 'chain-and-write' && step.action !== 'rewrite') continue;
-    const target = join(dir, step.hook);
-    const staged = join(dir, `.${step.hook}.commet-${process.pid}`);
+/** Writes `text` at `target` by renaming a staged copy over it, executable whatever the umask. */
+function putScript(dir: string, target: string, text: string, beforeRename: () => void = () => undefined): void {
+  const staged = join(dir, `.${basename(target)}.commet-${process.pid}`);
+  rmSync(staged, { force: true });
+  writeFileSync(staged, text, { mode: 0o755, flag: 'wx' });
+  try {
+    chmodSync(staged, 0o755);
+    beforeRename();
+    renameSync(staged, target);
+  } finally {
     rmSync(staged, { force: true });
-    writeFileSync(staged, step.script, { mode: 0o755, flag: 'wx' });
-    try {
-      if (step.action === 'chain-and-write') renameSync(target, target + CHAINED);
-      try {
-        renameSync(staged, target);
-      } catch (e) {
-        if (step.action === 'chain-and-write') renameSync(target + CHAINED, target);
-        throw e;
-      }
-    } finally {
-      rmSync(staged, { force: true });
-    }
   }
+}
+
+/**
+ * Writes the planned hooks and returns how to undo them. The hooks dir must still be the one
+ * planned (a real folder, not swapped for a link). Each new script is staged beside its target
+ * (exclusive create, mode 0755), so a failure before the rename leaves the original where it was;
+ * if any hook fails, the ones already written are undone, so an install either happens or doesn't.
+ */
+export function applyInstall(dir: string, steps: HookStep[]): () => void {
+  mkdirSync(dir, { recursive: true, mode: 0o755 });
+  if (realpathSync.native(dir) !== dir) throw new CommetError('state error: the hooks folder changed (now a link); nothing was written', EXIT.state);
+  const undo: (() => void)[] = [];
+  const undoAll = () => {
+    for (const u of undo.splice(0).reverse()) u();
+  };
+  try {
+    for (const step of steps) {
+      const target = join(dir, step.hook);
+      if (step.action === 'write') {
+        putScript(dir, target, step.script);
+        undo.push(() => rmSync(target, { force: true }));
+      } else if (step.action === 'chain-and-write') {
+        let moved = false;
+        try {
+          putScript(dir, target, step.script, () => {
+            renameSync(target, target + CHAINED);
+            moved = true;
+          });
+        } catch (e) {
+          if (moved) renameSync(target + CHAINED, target);
+          throw e;
+        }
+        undo.push(() => renameSync(target + CHAINED, target));
+      } else if (step.action === 'rewrite') {
+        putScript(dir, target, step.script);
+        undo.push(() => putScript(dir, target, step.previous));
+      }
+    }
+  } catch (e) {
+    undoAll();
+    throw e;
+  }
+  return undoAll;
 }
 
 export type RemoveStep =

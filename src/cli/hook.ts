@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { CommetError, EXIT } from '../core/errors.js';
 import { lineHasher, sha256Hex } from '../core/hash.js';
 import { installText, removeText, shownGroup } from '../hooks/claude-settings.js';
-import { eventsFromPayload } from '../hooks/event.js';
+import { eventsFromPayload, placePath } from '../hooks/event.js';
 import {
   applyInstall, applyRemove, CHAINED, hookScript, hooksTarget, planInstall, planRemove, shellQuote, type HookStep, type RemoveStep,
 } from '../hooks/git-hooks.js';
@@ -80,6 +80,19 @@ async function readSettings(repo: Repo): Promise<SettingsFile | { refused: strin
   }
   const ignored = (await tryGit(git, ['check-ignore', '-q', '--', SETTINGS])) !== null;
   return { file, dir, text: st ? readFileSync(file, 'utf8') : null, mode: st ? st.mode & 0o777 : 0o600, ignored };
+}
+
+/**
+ * Writes the settings file atomically, keeping its mode. readSettings refused anything at .claude
+ * but a real folder; it's checked again here, just before the write, so a folder swapped for a
+ * link since is refused rather than written through.
+ */
+function writeSettings(settings: SettingsFile, text: string): void {
+  mkdirSync(settings.dir, { recursive: true, mode: 0o755 });
+  if (!lstatSync(settings.dir).isDirectory() || realpathSync.native(settings.dir) !== settings.dir) {
+    throw new CommetError('state error: .claude changed (now a link); nothing was written to it', EXIT.state);
+  }
+  writeAtomic(settings.file, text, settings.mode);
 }
 
 const indent = (text: string) => text.replace(/\n$/, '').split('\n').map((l) => `  | ${l}`).join('\n') + '\n';
@@ -185,12 +198,13 @@ async function install(args: string[], io: Io, paths: HookPaths): Promise<number
       io.stderr('commet: the hooks changed while you were asked; nothing was written. Run `commet hook install` again\n');
       return EXIT.state;
     }
-    if (plan.git) applyInstall(plan.git.dir, plan.git.steps);
-    if (plan.claude) {
-      const { settings, text: next } = plan.claude;
-      // readSettings refused anything at .claude but a real folder, so this only makes a missing one.
-      mkdirSync(settings.dir, { recursive: true, mode: 0o755 });
-      writeAtomic(settings.file, next, settings.mode);
+    // All or nothing: git hooks already written are undone if the settings can't be.
+    const undoGit = plan.git ? applyInstall(plan.git.dir, plan.git.steps) : () => undefined;
+    try {
+      if (plan.claude) writeSettings(plan.claude.settings, plan.claude.text);
+    } catch (e) {
+      undoGit();
+      throw e;
     }
     io.stdout('installed; undo with `commet hook remove`\n');
     return 0;
@@ -228,7 +242,7 @@ async function planRemoveAll(repo: Repo, parts: Parts): Promise<RemovePlan> {
         plan.done.push(`${SETTINGS}: Commet's hook taken out; ${before.exact ? 'every other byte of the file is as it was'
           : 'the file was reformatted since install, so it was rewritten with every other setting kept'}`);
         plan.apply.push(() => {
-          if (before.text !== null) return writeAtomic(settings.file, before.text, settings.mode);
+          if (before.text !== null) return writeSettings(settings, before.text);
           rmSync(settings.file);
           try {
             rmdirSync(settings.dir);
@@ -308,29 +322,6 @@ async function event(io: Io, now: () => number): Promise<number> {
   appendEvents(dir, eventsFromPayload(payload, { place: (abs) => placePath(abs, realRoots), hash, nowMs, repoId: repoIdOf(roots ?? ''),
     branch: branch?.replace(/\n$/, ''), headSha: head?.trim() || undefined }));
   return 0;
-}
-
-/**
- * A file's repo-relative path: its real path (or its folder's, for a file already gone) under the
- * deepest worktree root holding it. Outside every root: null (another repo's file). `.git`
- * internals are never an edit to the repo. A relative path can't be placed.
- */
-function placePath(abs: string, realRoots: string[]): string | null | 'unplaceable' {
-  if (!abs.startsWith('/')) return 'unplaceable';
-  let real: string;
-  try {
-    real = realpathSync.native(abs);
-  } catch {
-    try {
-      real = join(realpathSync.native(join(abs, '..')), abs.slice(abs.lastIndexOf('/') + 1));
-    } catch {
-      return realRoots.some((r) => abs.startsWith(r + '/')) ? 'unplaceable' : null;
-    }
-  }
-  const root = realRoots.find((r) => real.startsWith(r + '/'));
-  if (!root) return null;
-  const rel = real.slice(root.length + 1);
-  return rel === '.git' || rel.startsWith('.git/') ? null : rel;
 }
 
 /** `commet hook refresh`: a coalesced, quiet scan of this worktree (the git hooks run it detached). */

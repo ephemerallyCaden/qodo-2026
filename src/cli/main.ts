@@ -10,6 +10,7 @@ import { QODO_CACHE_FILE } from '../scan/qodo.js';
 import { CHART_USAGE, chartCommand } from './chart.js';
 import { loadOrCreateKey } from '../state/key.js';
 import { stateDir, writeAtomic } from '../state/io.js';
+import { withLock } from '../state/lock.js';
 import { HOOK_USAGE, hookCommand } from './hook.js';
 import { runOpen } from './open.js';
 import { chooseRoots, type Ask, type RootFlags } from './roots.js';
@@ -149,7 +150,11 @@ async function runScan(rest: string[], io: Io): Promise<number> {
     const out = args.out && resolve(io.cwd, args.out);
     // With --out, the layout goes beside the snapshot (x.json → x.layout.json), so the state dir keeps one scan's pair.
     const layoutOut = out && out.replace(/(\.json)?$/, '.layout.json');
-    writePair([[layoutOut || join(stateDir(commonDir), 'layout.json'), layoutJson], [out || join(stateDir(commonDir), 'snapshot.json'), json]]);
+    // One scan publishes at a time (a git hook's refresh can run beside one typed by hand, or in
+    // another worktree), so the pair on disk always comes from a single scan.
+    const published = await withLock(join(stateDir(commonDir), 'publish.lock'), () =>
+      writePair([[layoutOut || join(stateDir(commonDir), 'layout.json'), layoutJson], [out || join(stateDir(commonDir), 'snapshot.json'), json]]));
+    if (!published) throw new CommetError('state error: another scan has been writing its results for 5 s; nothing was written, scan again', EXIT.state);
     io.stdout(formatSummary(snapshot, logs, !args.withQodo) + formatLayout(layout, layoutNotes));
     if (qodoCache !== null && !saveQodoCache(commonDir, qodoCache)) {
       io.stdout('qodo findings cache could not be written; a scan without --with-qodo will not see these counts\n');

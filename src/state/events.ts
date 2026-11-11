@@ -61,9 +61,13 @@ const count = (v: unknown) => Number.isSafeInteger(v) && (v as number) >= 0;
 const hashes = (v: unknown) => Array.isArray(v) && v.every((h) => typeof h === 'string' && HASH.test(h));
 const optional = (v: unknown, ok: (x: unknown) => boolean) => v === undefined || ok(v);
 const str = (re: RegExp) => (v: unknown) => typeof v === 'string' && re.test(v);
-/** A repo-relative POSIX path: no leading `/`, drive or `~`, no `.`/`..` segment, no `.git/` internals. */
-const isRepoPath = (p: unknown): p is string => typeof p === 'string' && p !== '' && !/^(?:\/|~|[A-Za-z]:)/.test(p)
-  && !p.includes('\\') && !p.includes('\0') && p.split('/').every((s) => s !== '' && s !== '.' && s !== '..') && p.split('/')[0] !== '.git';
+/**
+ * A repo-relative POSIX path: nothing absolute-shaped (`/…`, `C:\…`, `C:/…`, `\\host`), no NUL,
+ * no empty, `.` or `..` segment, no `.git/` internals. Any other byte is a filename's (Rule 7):
+ * a backslash, `~` or `a:b` is a legal POSIX name.
+ */
+const isRepoPath = (p: unknown): p is string => typeof p === 'string' && p !== '' && !/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(p)
+  && !p.includes('\0') && p.split('/').every((s) => s !== '' && s !== '.' && s !== '..') && p.split('/')[0] !== '.git';
 
 const isHunk = (h: unknown) => isObj(h) && Object.keys(h).every((k) => HUNK_KEYS.has(k))
   && count(h['oldStart']) && count(h['oldLines']) && count(h['newStart']) && count(h['newLines'])

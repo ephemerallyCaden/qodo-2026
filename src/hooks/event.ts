@@ -3,7 +3,8 @@
 // `tool_input` (old and new strings), `originalFile`, prompts and `cwd` are never touched;
 // `transcript_path` is only shape-tested, then discarded. No path, code or text leaves this module
 // except repo-relative paths, HMAC hashes and allowlisted tokens.
-import { basename, dirname } from 'node:path';
+import { realpathSync } from 'node:fs';
+import path, { basename, dirname, type PlatformPath } from 'node:path';
 import { metaToken } from '../attrib/parsers/claude.js';
 import { sessionKey, sha256Hex } from '../core/hash.js';
 import { hashLines } from '../core/lines.js';
@@ -48,6 +49,34 @@ function isClaudeCode(p: Obj, sid: string): boolean {
   if (basename(file) === `${sid}.jsonl`) return basename(dirname(dir)) === 'projects';
   return /^agent-[\w-]+\.jsonl$/.test(basename(file)) && basename(dir) === 'subagents' && basename(dirname(dir)) === sid
     && basename(dirname(dirname(dirname(dir)))) === 'projects';
+}
+
+/**
+ * A file's repo-relative POSIX path: its real path (or its folder's, for a file already gone) under
+ * the deepest worktree root holding it (`realRoots` are real paths). Outside every root: null
+ * (another repo's file); `.git` internals are never an edit to the repo. A path that isn't
+ * absolute can't be placed. Paths are the host's: a Windows payload names `C:\…` files, and its
+ * roots and real paths use `\`. `p` and `real` are the path module and realpath, for tests.
+ */
+export function placePath(abs: string, realRoots: string[], p: PlatformPath = path,
+  real: (file: string) => string = realpathSync.native): string | null | 'unplaceable' {
+  if (!p.isAbsolute(abs)) return 'unplaceable';
+  const under = (file: string) => realRoots.find((r) => file.startsWith(r.endsWith(p.sep) ? r : r + p.sep));
+  let resolved: string;
+  try {
+    resolved = real(abs);
+  } catch {
+    try {
+      resolved = p.join(real(p.dirname(abs)), p.basename(abs));
+    } catch {
+      return under(abs) ? 'unplaceable' : null;
+    }
+  }
+  const root = under(resolved);
+  if (!root) return null;
+  const rel = resolved.slice(root.length).replace(/^[\\/]/, '');
+  const posixRel = p.sep === '\\' ? rel.replaceAll('\\', '/') : rel;
+  return posixRel === '.git' || posixRel.startsWith('.git/') ? null : posixRel;
 }
 
 /** structuredPatch hunks, or null when one is malformed. Line text is hashed here and dropped. */
