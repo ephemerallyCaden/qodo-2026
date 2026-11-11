@@ -189,6 +189,52 @@ describe('FreeFlightRig', () => {
     expect(rig.pose().dist).toBeCloseTo(2 * 1.35, 9);
   });
 
+  // Qodo PR #93 r1 aa4520b0: track() takes the new radius but never re-clamps the distance, so a
+  // focused planet that grows on a live reload (live.ts:79-80) can end up around the camera. A
+  // planet's radius is clamp(0.75 × log2(1 + LOC)) in 1.5..12 layout units, so it can grow up to 8×.
+  // The default focus frames at r / (FOCUS_FILL × tan(FOV/2)) ≈ 7.05 r. Marked `fails` until fixed.
+  describe('a focused planet that grows on a reload (Qodo PR #93 aa4520b0)', () => {
+    const MIN_FOCUS_DIST = 1.35; // rig.ts:45
+    const centre: [number, number, number] = [5, 0, 0];
+    const gap = (rig: FreeFlightRig) => Math.hypot(...eyeOf(rig.pose()).map((v, i) => v - centre[i]!));
+
+    it.fails('during a glide: the glide ends outside the new zoom limit', () => {
+      const rig = new FreeFlightRig(POSE);
+      rig.focus({ centre, radius: 1 }, false); // planet at 3 LOC (radius 1500)
+      rig.step({}, GLIDE_MS / 2);
+      rig.track({ centre, radius: 8 }); // reload mid-glide: 65,535 LOC (radius 12000, 8×)
+      rig.step({}, GLIDE_MS);
+      expect(rig.moving()).toBe(false);
+      expect(gap(rig)).toBeGreaterThanOrEqual(8 * MIN_FOCUS_DIST); // observed: 7.048
+    });
+
+    it.fails('no glide, default framing: the camera stays outside the new zoom limit', () => {
+      const rig = new FreeFlightRig(POSE);
+      rig.focus({ centre, radius: 1 }, true);
+      rig.track({ centre, radius: 8 });
+      expect(gap(rig)).toBeGreaterThanOrEqual(8 * MIN_FOCUS_DIST); // observed: 7.048, inside the 8-unit planet
+    });
+
+    it.fails('no glide, zoomed in to the limit: a 35% growth puts the camera inside the planet', () => {
+      const rig = new FreeFlightRig(POSE);
+      rig.focus({ centre, radius: 1 }, true);
+      rig.step({ wheel: -100000 }, 16); // zoom in as far as allowed: 1.35 radii
+      expect(gap(rig)).toBeCloseTo(MIN_FOCUS_DIST, 9);
+      rig.track({ centre, radius: 1.351 }); // 100 LOC → 510 LOC (radius 4993 → 6747)
+      expect(gap(rig)).toBeGreaterThanOrEqual(1.351 * MIN_FOCUS_DIST); // observed: 1.35, under the 1.351 surface
+    });
+
+    it('today the limit only applies on the next orbit or zoom input, as a jump', () => {
+      const rig = new FreeFlightRig(POSE);
+      rig.focus({ centre, radius: 1 }, true);
+      rig.step({ wheel: -100000 }, 16);
+      rig.track({ centre, radius: 2 });
+      expect(gap(rig)).toBeCloseTo(1.35, 9); // inside the radius-2 planet, with no input
+      rig.step({ drag: [1, 0] }, 16); // a 1 px drag
+      expect(gap(rig)).toBeCloseTo(2 * 1.35, 9); // jumps out to the new limit
+    });
+  });
+
   it('tracks a moving focus and returns to free flight on release', () => {
     const rig = new FreeFlightRig(POSE);
     rig.focus({ centre: [5, 0, 0], radius: 1 }, true);
