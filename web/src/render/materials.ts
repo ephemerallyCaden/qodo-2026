@@ -2,6 +2,7 @@
 // tints). Colours only ever come from palette.ts (AGENTS.md Rule 5).
 import * as THREE from 'three';
 import { palette } from '../../../src/core/palette.js';
+import { TUNED_DEPTH } from '../model/depth.js';
 import type { Vec3 } from '../model/vec.js';
 import { TOON_FRAG, VERT } from './shaders.js';
 
@@ -21,6 +22,8 @@ export const SHARED = {
   uLight: { value: LIGHT_VIEW.clone() },
   uEye: { value: new THREE.Vector3() },
   uDepthOn: { value: true },
+  /** (squeeze, shift) from depthStretch: the fade's later steps scaled to the system drawn (#59). */
+  uDepthStretch: { value: new THREE.Vector2(TUNED_DEPTH.squeeze, TUNED_DEPTH.shift) },
   uDepthTint: { value: palette.world.depth.map((d) => { const c = color(d.tint); return new THREE.Vector4(c.r, c.g, c.b, d.strength); }) },
 };
 

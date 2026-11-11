@@ -5,6 +5,7 @@
 // (contract amendment 2026-11-10). Every colour arrives as a uniform from the palette
 // (AGENTS.md Rule 5); the shaders only pick ramp steps. All lighting comes from the one key light
 // (uLight) in flat bands; there are no stock materials, shadow maps or post passes (Rule 4).
+import { DEPTH_RANGE } from '../model/depth.js';
 
 /**
  * Lava fissures and ice crevasses, and their open plates (lava pools, ice water), from the asset
@@ -19,8 +20,6 @@ export const CRACKS = {
 export type CrackSpec = (typeof CRACKS)['lava' | 'ice'];
 /** Loop-locked lava flow (asset viewer LAVA_FLOW, 'layered' mode). */
 export const LAVA_FLOW = { freq: 1.2, warp: 1.0, drift: 0.5, layer: [0.337, 0.39, 0.65] } as const;
-/** Smooth depth fade (art-direction §5, pixel-smooth): log distance from NEAR to FAR through the four depth steps. */
-export const DEPTH_RANGE = { near: 5, far: 44 } as const;
 
 /** Look ids, as the surface shader's uBiome (the asset viewer's BIOMES ids). */
 export const LOOK_ID = { lush: 0, ocean: 1, ice: 2, desert: 3, lava: 4, toxic: 7 } as const;
@@ -92,15 +91,19 @@ const BANDS = /* glsl */ `
 // The one sanctioned gradient (art-direction §5): a continuous per-pixel blend toward the depth tint,
 // by each fragment's own distance from the eye. k scales the strength (lava glow and the star fade at
 // half strength). uEye, not cameraPosition, so an ortho rig can share it. uDepthOn = 0 turns it off
-// (RenderInput.depthFade), leaving only palette colours.
+// (RenderInput.depthFade), leaving only palette colours. uDepthStretch (squeeze, shift) moves the
+// later steps out to the system's size (model/depth.ts depthStretch, #59); (1, 0) is the tuned fade.
 const DEPTH = /* glsl */ `
   uniform vec3 uEye;
   uniform vec4 uDepthTint[4];
   uniform bool uDepthOn;
+  uniform vec2 uDepthStretch;
   vec3 depthFade(vec3 c, vec3 posW, float k) {
     if (!uDepthOn) return c;
     float d = distance(posW, uEye);
-    float x = clamp(log(max(d, 1e-3) / ${f3(DEPTH_RANGE.near)}) / log(${f3(DEPTH_RANGE.far)} / ${f3(DEPTH_RANGE.near)}), 0.0, 1.0) * 3.0;
+    float x = log(max(d, 1e-3) / ${f3(DEPTH_RANGE.near)}) / log(${f3(DEPTH_RANGE.far)} / ${f3(DEPTH_RANGE.near)}) * 3.0;
+    if (x > 1.0) x = x <= 2.0 + uDepthStretch.y ? 1.0 + (x - 1.0) * uDepthStretch.x : x - uDepthStretch.y;
+    x = clamp(x, 0.0, 3.0);
     int i = int(min(floor(x), 2.0));
     vec4 tint = mix(uDepthTint[i], uDepthTint[i + 1], x - float(i));
     return mix(c, tint.rgb, tint.a * k);

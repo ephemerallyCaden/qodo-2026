@@ -91,6 +91,7 @@ export class SystemScene {
     this.camera.lookAt(view.target[0], view.target[1], view.target[2]);
     this.camera.updateMatrixWorld(true);
     SHARED.uEye.value.set(eye[0], eye[1], eye[2]);
+    SHARED.uDepthStretch.value.set(this.model.depth.squeeze, this.model.depth.shift); // shared by every scene: set per draw, like the eye
     // The key light is view-relative, so every planet keeps its top-left crescent from any angle.
     const b = basis(view.yaw, view.pitch);
     SHARED.uLight.value.set(...add(add(scale(b.right, LIGHT_VIEW.x), scale(b.up, LIGHT_VIEW.y)), scale(b.back, LIGHT_VIEW.z))).normalize();
