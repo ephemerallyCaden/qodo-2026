@@ -73,6 +73,7 @@ All ramps run dark → light, and the shader picks a band per pixel from lightin
 | Toxic (ember) | ground `#3a1c12`→`#e88a34`; slag seas `#150e0e`→`#643218`; crusts (fungus role) `#7a4a1e`→`#e8b45c`; smoke (spore role) `#2a2022`→`#b49680` | The second-worst health band, between lava and desert: cooled slag seas with ember veins, rust ground and dull smoke. Hues sit between lava glow and sand (#19). |
 | Haze | ocean `#86ccff`, ice `#ffffff`, toxic `#e07a48` | A thin lit-limb sliver, never an outline. |
 | Halo (optional) | `#30285a` | A 1–2 px dark back-shell, one step above space. Off by default. |
+| Star (the repo) | disc `#c9361a` `#ff761a` `#ffc93c` `#fff0b8` `#fffaf0`; corona crown `#c9361a`, halo `#481a18` | The Day 1 sun (human, 2026-11-11): five flat limb bands, hottest at the centre, with churning granulation; a flat undithered corona. Emissive; depth fade 0.15, so its cream core stays the hottest point at any distance. Built from the glow, sand, cloud and gas-giant ramps, so no new colours. |
 
 ### Rings
 `#141d5c` (in the planet's shadow) · `#f2d8b8` (most debris) · `#4ea3f7` · `#94dcff` (specks).
