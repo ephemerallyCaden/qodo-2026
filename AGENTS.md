@@ -52,6 +52,8 @@ Dev tooling, not Commet: Rule 2's "no GitHub posts" covers the product, not this
 
 It never merges, pushes `main` or a session branch, force-pushes, or edits repo settings or secrets (runtime guard: `factory/guard.ts`). It keeps Rule 2's local-data rules: no absolute paths in output or posts, an agent's Bash commands kept only as regex categories, logs only under `.git/factory/`.
 
+Installing it is the lead's job, without asking the human. Whenever a change to `factory/` merges into the session branch, the lead runs `npm run factory -- install` from an up-to-date checkout of that branch (with `npm ci` first). The installed copy in `.git/factory/bin` only updates on install, so skipping this leaves an old runner ticking. The human may still uninstall it at any time.
+
 Where it differs from the review loop above:
 - Fix rounds add new commits and never force-push.
 - No local `qodo review` before the PR: the PR review is the gate.
