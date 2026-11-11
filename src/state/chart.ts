@@ -26,6 +26,8 @@ const LOCK_WAIT_MS = 20;
 
 /** What fog needs, read once: the state dir and the chart-independent fog for the latest snapshot. */
 export interface FogSource {
+  /** The working directory it was opened from, so writeChart can reopen it. */
+  repoDir: string;
   dir: string;
   base: FogBase;
   /** Identity of the snapshot.json `base` was built from (null if it couldn't be stat'ed). */
@@ -141,7 +143,7 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
   }
   const dir = stateDir(common);
   const key = snapshotKey(dir);
-  if (key !== null && loaded?.key === key) return { dir, base: await loaded.base, key };
+  if (key !== null && loaded?.key === key) return { repoDir, dir, base: await loaded.base, key };
   const snapshot = readSnapshot(dir);
   const base = historyFor(repoDir, dir, snapshot).then((h) => fogBase(snapshot, h));
   // Stat before read: the cached content is never older than its key.
@@ -153,16 +155,17 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
     throw e;
   });
   if (loaded === entry && ready.degraded && snapshot.commits.length > 0) loaded = null;
-  return { dir, base: ready, key };
+  return { repoDir, dir, base: ready, key };
 }
 
 export const currentFog = (src: FogSource): FogView => fogFrom(src.base, readChart(src.dir));
 
 /**
- * Serialises chart writes across processes with an exclusive lock file. `fn` is synchronous, so
- * nothing else in this process can interleave while the lock is held.
+ * The state lock: serialises chart writes and the scan's snapshot publication across processes with
+ * an exclusive lock file. `fn` is synchronous, so nothing else in this process can interleave while
+ * the lock is held.
  */
-async function withLock<T>(dir: string, fn: () => T): Promise<T> {
+export async function withStateLock<T>(dir: string, fn: () => T): Promise<T> {
   const lock = join(dir, LOCK_FILE);
   for (let tries = 1; ; tries++) {
     try {
@@ -171,7 +174,7 @@ async function withLock<T>(dir: string, fn: () => T): Promise<T> {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
       if (tries >= LOCK_TRIES) {
-        throw new CommetError('state error: another commet is writing chart state (if none is running, delete .git/commet/chart.lock)', EXIT.state);
+        throw new CommetError('state error: another commet is writing to .git/commet (if none is running, delete .git/commet/chart.lock)', EXIT.state);
       }
       await new Promise((resolve) => setTimeout(resolve, LOCK_WAIT_MS));
     }
@@ -183,27 +186,36 @@ async function withLock<T>(dir: string, fn: () => T): Promise<T> {
   }
 }
 
-export type ChartWrite = { ok: true; prev: ChartState; chart: ChartState } | ChartStale | { ok: false; error: string; head?: undefined };
+export type ChartWrite =
+  | { ok: true; prev: ChartState; chart: ChartState; base: FogBase }
+  | ChartStale
+  | { ok: false; error: string; head?: undefined };
 
-/** Applies one action to the stored chart state: read, apply and write under the lock. */
-export function writeChart(src: FogSource, action: ChartAction): Promise<ChartWrite> {
-  return withLock(src.dir, () => {
-    // A scan may have replaced the snapshot since `src` was read: then the head on disk decides
-    // staleness, so a delayed action can't undo or chart past a newer head (Qodo local r1).
-    if (snapshotKey(src.dir) !== src.key) {
-      const head = readSnapshot(src.dir).repo.head;
-      if (head !== action.at) return { ok: false, error: 'stale', head };
-    }
-    // A scan publishing after this check can't make the write unsafe, which is why scans don't take
-    // this lock (Qodo local r2). What's written is recorded at `action.at`, the head the user saw, so
-    // it never covers a newer change. And only chart writes change chart state, all under this lock,
-    // so no baseline from a newer head can be on the stack for an undo to remove.
-    const prev = readChart(src.dir);
-    const r = applyChartAction(src.base, prev, action);
-    if (!r.ok) return r;
-    writeAtomic(join(src.dir, CHART_FILE), canonicalJson(r.chart));
-    return { ok: true, prev, chart: r.chart };
-  });
+/** Reloads of the fog source before a write gives up, when scans keep landing in between. */
+const WRITE_TRIES = 3;
+
+/**
+ * Applies one action to the stored chart state: read, apply and write under the state lock. Scans
+ * publish snapshot.json under the same lock, so while it's held the snapshot can't change. If it
+ * changed since `src` was read, the source is reloaded first, so `at` is always judged against the
+ * head on disk (Qodo local r1–r3): an older one is stale, the current one goes through. The ok result
+ * carries the base it was applied on.
+ */
+export async function writeChart(src: FogSource, action: ChartAction): Promise<ChartWrite> {
+  for (let tries = 1; ; tries++) {
+    const cur = src;
+    const r = await withStateLock(cur.dir, (): ChartWrite | null => {
+      if (snapshotKey(cur.dir) !== cur.key) return null;
+      const prev = readChart(cur.dir);
+      const applied = applyChartAction(cur.base, prev, action);
+      if (!applied.ok) return applied;
+      writeAtomic(join(cur.dir, CHART_FILE), canonicalJson(applied.chart));
+      return { ok: true, prev, chart: applied.chart, base: cur.base };
+    });
+    if (r !== null) return r;
+    if (tries >= WRITE_TRIES) throw new CommetError('state error: the snapshot kept changing during the write; try again', EXIT.state);
+    src = await openFogSource(cur.repoDir);
+  }
 }
 
 /** GET /api/fog (#32): the fog view for the latest snapshot. State errors throw CommetError. */
@@ -219,7 +231,6 @@ export async function readFog(repoDir: string): Promise<FogView> {
 export async function applyChart(repoDir: string, body: unknown): Promise<ChartResult> {
   const action = parseChartAction(body);
   if (!action) return { ok: false, error: 'not a chart action' };
-  const src = await openFogSource(repoDir);
-  const r = await writeChart(src, action);
-  return r.ok ? { ok: true, fog: fogFrom(src.base, r.chart) } : r;
+  const r = await writeChart(await openFogSource(repoDir), action);
+  return r.ok ? { ok: true, fog: fogFrom(r.base, r.chart) } : r;
 }

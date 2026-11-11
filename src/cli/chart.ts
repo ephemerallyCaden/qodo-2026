@@ -145,14 +145,14 @@ async function chartFile(src: FogSource, io: Io, arg: string): Promise<number> {
   const r = await writeChart(src, { kind: 'chart', fileId: file.id, at: src.base.snapshot.repo.head });
   if (!r.ok && r.head !== undefined) throw stale(r.head);
   if (!r.ok) throw new CommetError(r.error, EXIT.internal);
-  const after = fogFrom(src.base, r.chart);
-  const was = fogFrom(src.base, r.prev).files.find((f) => f.fileId === file.id)!;
+  const after = fogFrom(r.base, r.chart);
+  const was = fogFrom(r.base, r.prev).files.find((f) => f.fileId === file.id)!;
   const now = after.files.find((f) => f.fileId === file.id)!;
   const before = was.state === 'fogged' ? `It was fogged (${was.reasons.join(', ')}) since ${short(was.since!)}.`
     : was.state === 'charted' ? 'It was already charted.' : "It had no changes you didn't write.";
   const still = now.state === 'fogged' ? ` It is still fogged (${now.reasons.join(', ')}) since ${short(now.since!)}.` : '';
-  io.stdout(`Charted ${label(path)} at ${short(src.base.snapshot.repo.head)}. ${before}${still}\n`);
-  const where = tally(src, after).rowOf.get(file.id)!;
+  io.stdout(`Charted ${label(path)} at ${short(r.base.snapshot.repo.head)}. ${before}${still}\n`);
+  const where = tally({ ...src, base: r.base }, after).rowOf.get(file.id)!;
   io.stdout(`${where.name}: ${where.fogged} of ${where.files} files fogged\n`);
   return 0;
 }
@@ -165,16 +165,16 @@ async function baseline(src: FogSource, io: Io, undo: boolean): Promise<number> 
     io.stderr(`commet: ${r.error}\n`);
     return EXIT.state;
   }
-  const [before, fog] = [fogFrom(src.base, r.prev), fogFrom(src.base, r.chart)];
+  const [before, fog] = [fogFrom(r.base, r.prev), fogFrom(r.base, r.chart)];
   const changed = fog.files.filter((f, i) => (f.state === 'fogged') !== (before.files[i]!.state === 'fogged')).length;
   if (undo) {
     const removed = r.prev.baselines.at(-1)!;
     io.stdout(`Removed the baseline at ${short(removed)}; ${changed} files are fogged again. Baseline now: ${fog.baseline ? short(fog.baseline) : 'none'}.\n`);
   } else {
-    io.stdout(`Baseline at ${short(src.base.snapshot.repo.head)}: charting ${changed} fogged files, every change up to this commit. `
+    io.stdout(`Baseline at ${short(r.base.snapshot.repo.head)}: charting ${changed} fogged files, every change up to this commit. `
       + 'Undo with `commet chart baseline --undo`.\n');
   }
-  io.stdout(`Now: ${summary(tally(src, fog).total)}\n`);
+  io.stdout(`Now: ${summary(tally({ ...src, base: r.base }, fog).total)}\n`);
   return 0;
 }
 

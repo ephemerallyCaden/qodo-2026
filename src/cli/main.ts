@@ -9,6 +9,7 @@ import { scan } from '../scan/index.js';
 import { QODO_CACHE_FILE } from '../scan/qodo.js';
 import { CHART_USAGE, chartCommand } from './chart.js';
 import { loadOrCreateKey } from '../state/key.js';
+import { withStateLock } from '../state/chart.js';
 import { stateDir, writeAtomic } from '../state/io.js';
 import { runOpen } from './open.js';
 
@@ -124,7 +125,10 @@ export async function main(argv: string[], io: Io): Promise<number> {
     const out = args.out && resolve(io.cwd, args.out);
     // With --out, the layout goes beside the snapshot (x.json → x.layout.json), so the state dir keeps one scan's pair.
     const layoutOut = out && out.replace(/(\.json)?$/, '.layout.json');
-    writePair([[layoutOut || join(stateDir(commonDir), 'layout.json'), layoutJson], [out || join(stateDir(commonDir), 'snapshot.json'), json]]);
+    const pair: [string, string][] = [[layoutOut || join(stateDir(commonDir), 'layout.json'), layoutJson], [out || join(stateDir(commonDir), 'snapshot.json'), json]];
+    // Into the state dir, the snapshot is published under the state lock, so a chart write never sees it change mid-write (#58).
+    if (out) writePair(pair);
+    else await withStateLock(stateDir(commonDir), () => writePair(pair));
     io.stdout(formatSummary(snapshot, logs, !args.withQodo) + formatLayout(layout, layoutNotes));
     if (qodoCache !== null && !saveQodoCache(commonDir, qodoCache)) {
       io.stdout('qodo findings cache could not be written; a scan without --with-qodo will not see these counts\n');
