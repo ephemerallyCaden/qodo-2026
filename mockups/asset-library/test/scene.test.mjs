@@ -49,6 +49,8 @@ test('stage: click selects an item, shift-drag moves only it, the list adds and 
     const b = await page.evaluate(() => window.library.bounds(2));
     await page.mouse.click(b.x, b.y);
     assert.equal(await page.evaluate(() => window.library.state().scene.selected), 2, 'clicking the gold astronaut did not select it');
+    // the box is drawn by the next stage frame after the click, which a thumbnail render can delay under load
+    await page.waitForSelector('#sel', { state: 'visible', timeout: 60000 }).catch(() => {});
     assert.ok(await page.isVisible('#sel'), 'no selection box');
     const before = await page.evaluate(() => window.library.state().scene.items);
     await page.keyboard.down('Shift');
