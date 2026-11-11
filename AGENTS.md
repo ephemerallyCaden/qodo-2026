@@ -21,6 +21,7 @@ npm run build && npm run typecheck && npm run lint && npm test
 node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 ```
 - One test: `npx vitest run -t "<name>"`.
+- Test temp dirs come only from `tempDir()` / `realTempDir()` in `test/fixtures/tmp.ts` (ESLint bans direct `mkdtemp` under `test/`). Each file's dirs are removed after it, pass or fail; a run fails if any is left (in CI, also on any other new `commet-*` dir). The hook timeout is a 300 s hard cap (`vitest.config.ts`).
 - Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
 - Before a PR, run `qodo review --base "$(git merge-base HEAD "$BASE")" --json`, where `BASE` is the PR's base branch (e.g. `BASE=origin/session/week1`). Resolve `action_required` findings as in the review loop below for **at most 3 local rounds**, then open the PR anyway, listing any still-unresolved findings in its description. The loop continues in the PR review, and the merge gate (no unresolved `action_required`) applies there. (On #16, six local rounds took over 2 hours.)
 - `commet scan` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error.
