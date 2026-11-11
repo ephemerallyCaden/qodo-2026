@@ -34,6 +34,22 @@ const webDeterminism = {
   ],
 };
 
+// NUL-framed git output (AGENTS.md Rule 7, #24): a path can hold any byte but NUL, so the scanner
+// and attribution code never frame git output with U+0001. Bans a string or template holding it
+// (`'\x01'`, `'\u0001'` or the raw byte) or a `%x01` git format, and a regex matching it.
+// esquery compiles each `/…/` below: in a value, U+0001 or `%x01`; in a regex's source, U+0001
+// itself or an escape for it.
+const CTRL_A = String.raw`\u0001|%x01`;
+const CTRL_A_IN_REGEX = String.raw`\u0001|\\x01|\\u0001|\\u\{0*1\}|\\c[Aa]`;
+const ctrlA = 'U+0001 can be part of a path: parse git output with -z on NUL, by position (AGENTS.md Rule 7).';
+const nulFraming = {
+  'no-restricted-syntax': ['error', ...determinism['no-restricted-syntax'].slice(1),
+    { selector: `Literal[value=/${CTRL_A}/]`, message: ctrlA },
+    { selector: `TemplateElement[value.cooked=/${CTRL_A}/]`, message: ctrlA },
+    { selector: `Literal[regex.pattern=/${CTRL_A_IN_REGEX}/]`, message: ctrlA },
+  ],
+};
+
 export default tseslint.config(
   // .sandboxes/ holds agent and feature worktrees: each is its own checkout, linted there.
   { ignores: ['dist/', 'factory/dist/', 'node_modules/', 'coverage/', '.sandboxes/'] },
@@ -41,6 +57,8 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   // The render stand-in (#31) is render code: a frame must be a pure function of (input, frame).
   { files: ['src/core/**', 'src/scan/**', 'src/attrib/**', 'test/render/standin/**'], rules: determinism },
+  // Keeps the determinism selectors: a later no-restricted-syntax replaces the earlier one.
+  { files: ['src/scan/**', 'src/attrib/**'], rules: nulFraming },
   { files: ['web/src/**'], rules: webDeterminism },
   {
     // loop.ts is the one clock read: it may call requestAnimationFrame, and nothing else changes.
