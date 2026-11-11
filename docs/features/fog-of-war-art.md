@@ -1,7 +1,7 @@
 # Feature: Fog of war (art)
 
 ## Status
-In Progress (D2c approved; porting)
+In Progress (D2d approved; limb fix, then porting)
 
 ## Trigger
 The human, 2026-11-09: "suggest more things to design and make", then "keep going" (2026-11-10). Fog of war is R5, the product's core signal. Its logic and chart state are in PR #50 (#33), which says "drawing fog waits for the art pass".
@@ -10,7 +10,7 @@ The human, 2026-11-09: "suggest more things to design and make", then "keep goin
 Data meaning (R5 and #33):
 - [x] F1 **Per file.** Every file is a surface feature (a settlement on #18's surface cell grid). Each one is either **fogged** (some change since you last charted it isn't yours) or **charted**. Fog covers that file's cells, not the whole planet.
 - [x] F2 **Coverage reads at a glance.** A planet's charted share (0% → 100%) is readable from its look. A fully charted planet is completely clear. This is private map coverage, never a score.
-- [x] F3 **Health still reads through fog.** A fogged planet's health band (lava → toxic → ash → healthy) must stay identifiable under fog. Following the code layer's filter rule (art direction §9), fog reuses the colours of what it covers rather than painting over them. Measure it with the health-looks classifier.
+- [x] F3 (amended by the human: health reads on charted land only; fog hides it) **Health still reads through fog.** A fogged planet's health band (lava → toxic → ash → healthy) must stay identifiable under fog. Following the code layer's filter rule (art direction §9), fog reuses the colours of what it covers rather than painting over them. Measure it with the health-looks classifier.
 - [x] F4 (uniform by default; reasons sheet in the lab) **Reasons, maybe.** #33 gives each fogged file a reason (agent, mixed, teammate, unknown, self-committed-agent-written, lineage-unknown). Explore whether fog shows the reason subtly (e.g. glyph choice) or stays uniform. The default is uniform; drones already show agent work.
 - [x] F5 **Charting moment.** Charting a file clears its fog with a short wavefront (the §9 inverted-lightness wavefront; [OIII] teal allowed, as it's an event). Clearing a planet's last file can end in a small landing moment, but the flag and beacon are a later feature.
 - [x] F6 **Refog.** A later change that isn't yours refogs the whole file, in a distinct "rolling back in" motion so it never looks like a glitch.
@@ -40,10 +40,17 @@ Scan → fog view (#33) per file → fogged cells on each planet → you open a 
 - The 2 px parcel lines are a **fog-only exception** to the no-outlines rule, in the terrain's own colours.
 - The fog footprint is a **territory per file computed in the renderer**: every surface cell is shared among the planet's files, grown from each file's own #18 cell. #18 is unchanged; territories reshape slightly as files are added.
 
-**D2c approved (human, 2026-11-11; ad04ea7):**
+**D2c (veiled), measured (ad04ea7); superseded by D2d:**
 - **Look:** each fogged file's parcel is one flat tone from the band's own ramp (under the parcel's centre), lit in only two steps, with no terrain detail and no terminator crescents. Molten parcels smoulder in the glow's darkest step. On top: sparse dashed `\ /` hatching one step darker, drifting 1 px per 2 s (loop-locked), softened 2 px parcel lines in the terrain's own colours, and a single "?" on half the parcels of 7+ cells. Clouds and their shadows still pass over.
 - **Events:** charting clears a file outward from its parcel's centroid (+8.1 px/s, a 1 px teal core and an inverted-lightness rim); a planet-clear pulse fires when the last file clears; refog closes inward (−3.7 px/s), with no teal.
 - **Measured:** no disc misread or within a glance of another band; worst margin 0.039 at hero and 0.027 at far, fully fogged. Visible fog 65% fully fogged. Coverage ranked right 79% (25 points apart) and 91% (50 apart). Dark-look contrast 0.114. Teal 0 at rest, ≤0.19% during a clear. Fog never bulges and stays locked to the ground. Caveat: fogged lava sits near the ash-smoke colours (48–53% within 0.05), but shape and motion separate them.
+
+**D2d approved as final (human, 2026-11-11), after a darker pass (D2d dark veil, D2e dark veil + band edges):**
+- **Look:** fogged parcels are the ramp's darkest step mixed 65% toward space (82% on the night side), with faint hatching, a visible "?" and a dim outline.
+- **F3 changes by design:** health doesn't read through fully fogged land. It reads on charted land and in the label. Partly charted planets must still read their band from the charted part.
+- **Measured risks:**
+  - the fogged limb merges toward space (63% of the lava limb ring within 0.03 of space, against 28% clear), so a limb fix is required before the port;
+  - dark toxic sits near the lava crust ramp.
 
 ## Tasks
 - Exploration lab `mockups/fog-lab/` on `feature/fog-lab` (feature agent): 4–5 distinct fog directions on several bands and coverage levels (0/25/50/75/100% charted), with the clear and refog moments, measured against F3 and F8, for the human to pick.
