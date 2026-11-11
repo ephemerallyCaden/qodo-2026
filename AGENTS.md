@@ -61,7 +61,9 @@ Where it differs from the review loop above:
 - An `action_required` finding the agent rejects stops the run with `agent-needs-help` for the human's decision.
 
 ## Daily Discussion posts
-- Draft each day's post at `.archive/docs/hackathon/day<N>-discussion-post.md`, following that day's template. Create it if missing.
+- Each day has one post file, `.archive/docs/hackathon/day<N>-discussion-post.md`, following that day's template. Create it if missing.
+- The file has a `#` title, a `>` note on what to paste and what's still pending, the post between two `----` lines, then `## Notes`.
+- When asked to write the post or change it, edit that file in place. Never start a second copy (`-paste`, `-short`, `-v2`): copies drift, and Day 4 ended up with several. Supporting files (a GIF's on-screen text, a draft ticket) can sit beside it as `day<N>-<what>.md`.
 - After each change, add to its `## Notes`: the biggest Qodo lesson, a telling number, anything on the day's theme.
 - Never post it. Posting needs the human.
 
