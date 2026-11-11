@@ -1,6 +1,6 @@
 // `commet chart` and chart state on disk (#33, R5), end to end on a real git repo: charting, refog,
 // a rename, baseline and undo, re-scans, and the state I/O guarantees (AC 4–6).
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -242,44 +242,6 @@ describe('a request that opened the fog source before a scan, acting at the new 
   });
 });
 
-describe('scans publish the snapshot under the chart lock (Qodo local r2, r3)', () => {
-  it('a scan waits for a chart write, then refuses rather than publishing under it', async () => {
-    const r = repo();
-    r.commit(SELF, () => r.write('src/a.ts', lines('alpha')));
-    expect((await r.run('scan')).code).toBe(0);
-    const snapshot = join(r.dir, '.git/commet/snapshot.json');
-    const before = readFileSync(snapshot, 'utf8');
-    r.commit(SELF, () => r.write('src/a.ts', lines('alpha') + lines('more')));
-    const lock = join(r.dir, '.git/commet/chart.lock');
-    writeFileSync(lock, '');
-    const res = await r.run('scan');
-    expect([res.code, res.err]).toEqual([5, 'commet: state error: another commet is writing to .git/commet (if none is running, delete .git/commet/chart.lock)\n']);
-    expect(readFileSync(snapshot, 'utf8')).toBe(before);
-    // --out naming the live snapshot takes the lock too (Qodo PR66 r1).
-    const viaOut = await r.run('scan', '--out', '.git/commet/snapshot.json');
-    expect(viaOut.code).toBe(5);
-    expect(readFileSync(snapshot, 'utf8')).toBe(before);
-    rmSync(lock);
-    expect((await r.run('scan')).code).toBe(0);
-    expect(readFileSync(snapshot, 'utf8')).not.toBe(before);
-  });
-
-  it('a lock left by a process that died is recovered; one held by a live process is not (Qodo PR66 r1)', async () => {
-    const r = repo();
-    r.commit(SELF, () => r.write('src/a.ts', lines('alpha')));
-    const lock = join(r.dir, '.git/commet/chart.lock');
-    mkdirSync(dirname(lock), { recursive: true });
-    const dead = spawnSync(process.execPath, ['-e', '']).pid!;
-    writeFileSync(lock, `${dead}\n`);
-    expect((await r.run('scan')).code).toBe(0);
-    expect(existsSync(lock)).toBe(false);
-    writeFileSync(lock, `${process.pid}\n`);
-    expect((await r.run('chart', 'baseline')).code).toBe(5);
-    expect(readFileSync(lock, 'utf8')).toBe(`${process.pid}\n`);
-    rmSync(lock);
-  });
-});
-
 describe('changes the snapshot has no row for', () => {
   it('a binary-era change to a file that is text at HEAD still fogs it (Qodo local r1)', async () => {
     const r = repo();
@@ -376,7 +338,7 @@ describe('chart state I/O refusals (exit 5)', () => {
     writeFileSync(lock, '');
     const res = await r.run('chart', 'baseline');
     expect(res.code).toBe(5);
-    expect(res.err).toContain('another commet is writing to .git/commet');
+    expect(res.err).toContain('another commet is writing chart state');
     rmSync(lock);
     expect((await r.run('chart', 'baseline')).code).toBe(0);
   });

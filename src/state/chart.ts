@@ -1,7 +1,7 @@
 // Chart state on disk and the fog entry points (#33, R5). `commet chart` and the local server (#32)
 // both read and write through here: readFog for GET /api/fog, applyChart for POST /api/chart.
 // State lives in `.git/commet/chart.json` (canonical JSON, 0600, atomic writes, symlinks refused).
-import { lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJson } from '../core/canonical-json.js';
 import type { ChartResult } from '../core/contract/api.js';
@@ -160,52 +160,22 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
 
 export const currentFog = (src: FogSource): FogView => fogFrom(src.base, readChart(src.dir));
 
-/** Whether process `pid` is running. EPERM: it is, under another user. */
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
-
 /**
- * Removes a lock its holder left behind when it died (its pid is no longer running), so a killed
- * writer can't block every later scan (Qodo PR66 r1). A lock with no readable pid, or a live holder,
- * stays. The content is re-read just before removal, so a lock another process has just taken over
- * is left alone.
+ * Serialises chart writes across processes with an exclusive lock file. `fn` is synchronous, so
+ * nothing else in this process can interleave while the lock is held. Scans don't take it (writeChart
+ * checks for a publication around its write instead), so a lock a killed writer left can only block
+ * chart writes, which say how to clear it.
  */
-function clearAbandoned(lock: string): void {
-  const holder = (): string | null => {
-    try {
-      return readFileSync(lock, 'utf8');
-    } catch {
-      return null;
-    }
-  };
-  const seen = holder();
-  const pid = seen === null ? NaN : Number(seen.trim());
-  if (!Number.isSafeInteger(pid) || pid <= 0 || alive(pid)) return;
-  if (holder() === seen) rmSync(lock, { force: true });
-}
-
-/**
- * The state lock: serialises chart writes and the scan's snapshot publication across processes with
- * an exclusive lock file holding the writer's pid. `fn` is synchronous, so nothing else in this
- * process can interleave while the lock is held.
- */
-export async function withStateLock<T>(dir: string, fn: () => T): Promise<T> {
+async function withChartLock<T>(dir: string, fn: () => T): Promise<T> {
   const lock = join(dir, LOCK_FILE);
   for (let tries = 1; ; tries++) {
     try {
-      writeFileSync(lock, `${process.pid}\n`, { flag: 'wx', mode: 0o600 });
+      writeFileSync(lock, '', { flag: 'wx', mode: 0o600 });
       break;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      clearAbandoned(lock);
       if (tries >= LOCK_TRIES) {
-        throw new CommetError('state error: another commet is writing to .git/commet (if none is running, delete .git/commet/chart.lock)', EXIT.state);
+        throw new CommetError('state error: another commet is writing chart state (if none is running, delete .git/commet/chart.lock)', EXIT.state);
       }
       await new Promise((resolve) => setTimeout(resolve, LOCK_WAIT_MS));
     }
@@ -226,22 +196,29 @@ export type ChartWrite =
 const WRITE_TRIES = 3;
 
 /**
- * Applies one action to the stored chart state: read, apply and write under the state lock. Scans
- * publish snapshot.json under the same lock, so while it's held the snapshot can't change. If it
- * changed since `src` was read, the source is reloaded first, so `at` is always judged against the
- * head on disk (Qodo local r1–r3): an older one is stale, the current one goes through. The ok result
- * carries the base it was applied on.
+ * Applies one action to the stored chart state, under the chart lock. `at` is always judged against
+ * the snapshot on disk (Qodo local r1–r3, PR66): if snapshot.json changed since `src` was read, the
+ * source is reloaded first, so an older `at` is stale and the current one goes through. Scans publish
+ * without the lock, so the check brackets the write: a snapshot published during it puts the
+ * previous chart state back and the action is judged again. A write that stands therefore happened
+ * entirely while the snapshot it was judged against was current. The ok result carries that base.
  */
 export async function writeChart(src: FogSource, action: ChartAction): Promise<ChartWrite> {
   for (let tries = 1; ; tries++) {
     const cur = src;
-    const r = await withStateLock(cur.dir, (): ChartWrite | null => {
+    const file = join(cur.dir, CHART_FILE);
+    const r = await withChartLock(cur.dir, (): ChartWrite | null => {
       if (snapshotKey(cur.dir) !== cur.key) return null;
+      const before = readStateFile(cur.dir, CHART_FILE);
       const prev = readChart(cur.dir);
       const applied = applyChartAction(cur.base, prev, action);
       if (!applied.ok) return applied;
-      writeAtomic(join(cur.dir, CHART_FILE), canonicalJson(applied.chart));
-      return { ok: true, prev, chart: applied.chart, base: cur.base };
+      writeAtomic(file, canonicalJson(applied.chart));
+      if (snapshotKey(cur.dir) === cur.key) return { ok: true, prev, chart: applied.chart, base: cur.base };
+      // A scan published mid-write: undo it (other chart writes wait on the lock), then judge again.
+      if (before === null) rmSync(file, { force: true });
+      else writeAtomic(file, before);
+      return null;
     });
     if (r !== null) return r;
     if (tries >= WRITE_TRIES) throw new CommetError('state error: the snapshot kept changing during the write; try again', EXIT.state);
