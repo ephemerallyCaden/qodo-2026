@@ -11,23 +11,23 @@ export interface StateWatcher { close(): void }
 const UNKNOWN = 'unknown';
 
 /**
- * Calls `onChange(name, body)` whenever one of `names` in `dir` gets new content. Resolves once the
- * current contents are recorded, so nothing that exists at start counts as a change. fs.watch on the
- * directory (writeAtomic renames, so a file watch would lose the inode) gives low latency; a stat
- * poll backs it up where watch events are lost or unsupported. Content hashes decide, so rewriting
- * identical bytes is not an update. A file that vanishes is reported with a null body (chart state
- * going away changes the fog; the snapshot's GET route reports its absence). One that can't be read
- * is reported once as `unreadable`, retried on every check, and reported as `readable` if it comes
- * back unchanged. One
- * that was unreadable at the start counts as unknown, so its first good read is announced (#32 AC 8);
- * one that turns unreadable keeps its last known content, so reading the same bytes again isn't.
- */
-/**
  * What happened to a watched file: new content (`body` null when it went away), it turned unreadable,
  * or it reads again with the same content as before it turned unreadable.
  */
 export type StateChange = 'changed' | 'unreadable' | 'readable';
 
+/**
+ * Calls `onChange(name, body, change)` whenever one of `names` in `dir` changes. Resolves once the
+ * current contents are recorded, so nothing that exists at start counts as a change. fs.watch on the
+ * directory (writeAtomic renames, so a file watch would lose the inode) gives low latency; a stat
+ * poll backs it up where watch events are lost or unsupported. Content hashes decide, so rewriting
+ * identical bytes is not an update.
+ * - `changed`: new content, or a null `body` when the file went away (chart state going away changes
+ *   the fog; the snapshot's GET route reports its absence). A file unreadable at the start counts as
+ *   unknown, so its first good read is `changed` (#32 AC 8).
+ * - `unreadable`: it can't be read now. Said once, and retried on every check.
+ * - `readable`: it reads again with the content it had before it turned unreadable, so not `changed`.
+ */
 export async function watchState(dir: string, names: readonly string[],
   onChange: (name: string, body: Buffer | null, change: StateChange) => void, pollMs = 1000): Promise<StateWatcher> {
   const seen = new Map<string, { sig: string; hash: string; unreadable?: true }>();
