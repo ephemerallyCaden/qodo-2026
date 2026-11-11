@@ -15,21 +15,19 @@ npm ci && npm run build      # CLI entry: dist/cli.js
 ```
 
 ## Testing
-CI runs `npm ci` → build → typecheck → lint → test on Node 20 and 22, plus render and goldens, in about a minute on every PR and session-branch push. Locally, test what you touch while you work and run the full gate once, at the end:
+CI runs `npm ci` → build → typecheck → lint → test on Node 20 and 22, plus render and goldens, in about a minute on every PR and session-branch push. **CI is the full gate.** Locally, check only what you touched:
 ```sh
-npx vitest run test/<file>.test.ts     # while iterating: only the tests you touched
-npm run typecheck                      # fast; any time
-# once, just before you report or open a PR:
-npm run build && npm run typecheck && npm run lint && lockf -k /tmp/commet-fullsuite.lock npm test
+npx vitest run test/<file>.test.ts     # the tests you touched or added
+npm run typecheck && npm run lint      # fast; before you report
 node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 ```
-- Not before every commit or after every fix round. Several agents running the whole suite at once overload the machine until fixture suites time out (#49), and then everything runs again.
-- `npm run test:render` only if you changed something the view draws (`web/**`, shaders, the render contract). CI runs it on every PR anyway.
+- Don't run the full `npm test` or `test:render` locally when a PR will follow: the lead pushes the branch, opens the task PR, and CI runs everything. If CI fails, the task goes back to the agent. (On 2026-11-11, 8 full suites queued behind the shared lock at load average 28, while CI took a minute.)
+- A full local run is for work that gets no PR (a debugger's reproduction) or when CI is down. Use `lockf -k /tmp/commet-fullsuite.lock npm test` then, and never put targeted runs under that lock.
 - If a file times out under load, re-run that file alone, not the suite.
 - One test: `npx vitest run -t "<name>"`.
 - Test temp dirs come only from `tempDir()` / `realTempDir()` in `test/fixtures/tmp.ts` (ESLint bans direct `mkdtemp` under `test/`). Each file's dirs are removed after it, pass or fail; a run fails if any is left (in CI, also on any other new `commet-*` dir). The hook timeout is a 300 s hard cap (`vitest.config.ts`).
 - Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
-- Before a PR, run `qodo review --base "$(git merge-base HEAD "$BASE")" --json` **once**, where `BASE` is the PR's base branch (e.g. `BASE=origin/session/week1`). Fix its `action_required` findings in one batch as in the review loop below, then open the PR, listing anything unresolved in its description. The PR review is the gate. (Was up to 3 local rounds; on #16, six took over 2 hours.)
+- No local `qodo review` when a task PR follows: the PR review is the gate, as for the agent runner. Run one local round only for work that won't get a PR. (On #16, six local rounds took over 2 hours, and the PR review ran anyway.)
 - `commet scan` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error.
 
 ## Working efficiently
@@ -38,6 +36,7 @@ For the lead and every agent. Each rule replaced a measured cost (triage, 2026-1
 - **Point, don't paste.** Spawn prompts name files and line ranges. Agents read the last ~40 lines of `JOURNAL.md`, or `grep` it for their ticket, never the whole file. The lead keeps it to the current day and moves older entries to `.archive/journal/`. (It had grown to 196 KB, about 50K tokens a read.)
 - **One report.** Send the final report once with SendMessage, then end the turn with one line: the idle notice repeats your last message.
 - **Sandboxes without the network.** If `package-lock.json` matches the session worktree's, `cp -cR <session-worktree>/node_modules .` (5.6 s, no extra disk on APFS) instead of `npm ci`. Network outages stalled agents mid-install on 11-07, 11-09 and 11-11, and 11 sandboxes left about 5 GB free.
+- **No review sweeps inside a task.** Skip `/simplify`, `/code-review` and other multi-agent reviews: each one starts four more agents on an already loaded machine, and Qodo reviews the PR anyway.
 - **One agent per Qodo finding.** A finding with a file and line goes to one agent, which proves it with a failing test and fixes it in the same sandbox. A separate debugger is for symptoms with no known cause, like a human's bug report or a failure nobody can explain.
 - **The lead trusts CI after a fast-forward.** A `--ff-only` merge publishes the commit CI already tested on the PR, so the lead doesn't re-run the suite locally; the session-branch CI run covers it. Re-run locally only after the lead rebased or resolved a conflict.
 - **Close in one step.** When a completion report says nothing is pending, the lead merges and sends the shutdown in the same turn. Later corrections are a new task.
