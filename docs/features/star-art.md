@@ -9,7 +9,7 @@ The human, 2026-11-11, pointing at the Day 1 hype GIF (`.archive/docs/hackathon/
 Today the product view (PR #55) draws the star unlit, in three flat glow bands from the lava glow ramp. The asset viewer has no star at all.
 
 ## Requirements
-- [ ] S1 **The Day 1 look:** a banded pixel sphere with a hot cream-white core shading through yellow and orange to a deep red-orange limb and a dark-red rim (limb darkening). Its surface churns with granulation (fbm), so it never looks flat. Reference: the Day 1 `STAR_FRAG` in `mockups/day1-hype/scene.js` on `feature/hype-gif` (fbm × 0.75 + limb smoothstep × 0.5 − 0.18 into a 5-step ramp crimson → ember → orange → yellow → hot).
+- [ ] S1 **The Day 1 look:** a banded pixel sphere with a hot cream-white core shading through yellow and orange to a deep red-orange limb and a dark-red rim (limb darkening). Its surface churns with granulation (fbm), so it never looks flat. Reference: the D1 star, `feature/day1-gifs:mockups/day1-gifs/star.js` (see Research).
 - [ ] S2 **Corona, house-rule version:** the D1 corona is already undithered (flat crown + halo bands); the older hype-gif corona dithered. Dithering is banned (art direction §3), so any corona is flat colour bands with a lumpy, ray-modulated edge that bulges past the disc, like clouds do. Render it with and without, so the human can choose.
 - [ ] S3 **Palette:** the star's ramp comes from the world (v2) family, e.g. the lava glow `#d63c1a #ff8a1e #ffe066` topped with cream `#fffaf0`, with a deep crimson limb. It must not be mistaken for a lava planet (it's emissive everywhere, has no crust, and is bigger). Teal is never on the star.
 - [ ] S4 **Motion:** the granulation turns and churns loop-locked to the 24 s loop (whole cycles), with no visible seam.
