@@ -193,13 +193,14 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
   let watcher: StateWatcher;
   try {
     watcher = await watchState(o.stateDir, [...Object.values(STATE_FILES), CHART_FILE], (name, body) => {
-      // New chart state, from this server or a `commet chart` run: the fog changed, at the head it's computed at.
+      // New or removed chart state, from this server, a `commet chart` run or by hand: the fog changed.
       if (name === CHART_FILE) {
         // A fog read that fails sends nothing; GET /api/fog reports the problem when the view asks.
         if (o.fog) o.fog().then((f) => broadcast({ type: 'fog', head: f.head }), () => {});
         return;
       }
-      const ev = liveEvent(name, body);
+      // A snapshot or layout that vanished has nothing to announce: its GET route reports it.
+      const ev = body && liveEvent(name, body);
       if (!ev) return;
       broadcast(ev);
       // The fog view is derived from the snapshot, so it changed too.

@@ -1,5 +1,5 @@
 import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { open, realpath, type FileHandle } from 'node:fs/promises';
+import { lstat, open, realpath, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CommetError, EXIT } from '../core/errors.js';
 
@@ -53,14 +53,27 @@ const symlinked = (name: string) => new CommetError(`state error: .git/commet/${
 const notFile = (name: string) => new CommetError(`state error: .git/commet/${name} is not a regular file`, EXIT.state);
 const tooBig = (name: string) => new CommetError(`state error: .git/commet/${name} is larger than ${MAX_STATE_BYTES >> 20} MiB`, EXIT.state);
 
-/** A failed open or realpath: absent is null, a link is a state error, anything else is rethrown. */
-function openFailed(name: string, e: unknown): null {
+/**
+ * A failed open or realpath: absent is null, a link is a state error, anything else is rethrown.
+ * realpath also says ENOENT for a dangling symlink, so `present` (whether anything is at the path
+ * itself) tells that apart from an absent file (Qodo #32 local r1).
+ */
+function openFailed(name: string, e: unknown, present: boolean): null {
   if (e instanceof CommetError) throw e;
   const code = (e as NodeJS.ErrnoException).code;
-  if (code === 'ENOENT') return null;
-  if (code === 'ELOOP') throw symlinked(name);
+  if (code === 'ENOENT' && !present) return null;
+  if (code === 'ENOENT' || code === 'ELOOP') throw symlinked(name);
   throw e;
 }
+
+const presentSync = (file: string) => {
+  try {
+    lstatSync(file);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 function checkOpened(name: string, st: { isFile(): boolean; size: number }): void {
   if (!st.isFile()) throw notFile(name);
@@ -81,7 +94,7 @@ export function readStateFile(dir: string, name: string): string | null {
     if (realpathSync.native(file) !== file) throw symlinked(name);
     fd = openSync(file, openFlags());
   } catch (e) {
-    return openFailed(name, e);
+    return openFailed(name, e, presentSync(file));
   }
   try {
     checkOpened(name, fstatSync(fd));
@@ -99,7 +112,7 @@ export async function readStateBytes(dir: string, name: string): Promise<Buffer 
     if ((await realpath(file)) !== file) throw symlinked(name);
     handle = await open(file, openFlags());
   } catch (e) {
-    return openFailed(name, e);
+    return openFailed(name, e, await lstat(file).then(() => true, () => false));
   }
   try {
     checkOpened(name, await handle.stat());

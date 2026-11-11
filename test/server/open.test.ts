@@ -201,6 +201,17 @@ describe('commet open', () => {
       await waitFor(() => fogEvents() > before, 10_000, 'fog event after commet chart');
       expect((await fogNow()).baseline).toBe(h1);
 
+      // Chart state deleted while the view is open: fog changed back, so the view hears (Qodo #32 local r1).
+      const saved = readFileSync(join(repo.dir, '.git/commet/chart.json'));
+      const beforeDelete = fogEvents();
+      rmSync(join(repo.dir, '.git/commet/chart.json'));
+      await waitFor(() => fogEvents() > beforeDelete, 10_000, 'fog event after chart.json is deleted');
+      expect((await fogNow()).baseline).toBeNull();
+      const afterDelete = fogEvents();
+      writeFileSync(join(repo.dir, '.git/commet/chart.json'), saved, { mode: 0o600 });
+      await waitFor(() => fogEvents() > afterDelete, 10_000, 'fog event after chart.json is back');
+      expect((await fogNow()).baseline).toBe(h1);
+
       // A rescan after a new commit: the chart at h1 still stands and the new change is fogged.
       writeFileSync(join(repo.dir, 'src', 'a.ts'), 'export const a = 2;\n');
       execFileSync('git', ['commit', '-qam', 'feat: a2'], { cwd: repo.dir, env: { ...process.env, GIT_AUTHOR_DATE: '2026-10-02T09:00:00Z',

@@ -28,7 +28,7 @@ it('retries a state file whose read failed, and reports its new content', async 
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-watch-')));
   writeFileSync(join(dir, 'snapshot.json'), 'v1');
   const seen: string[] = [];
-  const w = await watchState(dir, ['snapshot.json'], (_name, body) => seen.push(body.toString()), 50);
+  const w = await watchState(dir, ['snapshot.json'], (_name, body) => seen.push(String(body)), 50);
   try {
     failing.reads = 1;
     writeAtomic(join(dir, 'snapshot.json'), 'v2');
@@ -46,7 +46,7 @@ it('announces a file unreadable at the start once it reads, exactly once, even w
   writeFileSync(join(dir, 'snapshot.json'), 'same bytes');
   const seen: string[] = [];
   failing.reads = 1;
-  const w = await watchState(dir, ['snapshot.json'], (_name, body) => seen.push(body.toString()), 50);
+  const w = await watchState(dir, ['snapshot.json'], (_name, body) => seen.push(String(body)), 50);
   try {
     expect(failing.reads).toBe(0);
     await waitFor(() => seen.length > 0, 5_000, 'the first good read');
@@ -63,7 +63,7 @@ it('does not announce a file that turns unreadable and then reads the same bytes
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-watch-')));
   writeFileSync(join(dir, 'snapshot.json'), 'v1');
   const seen: string[] = [];
-  const w = await watchState(dir, ['snapshot.json'], (_name, body) => seen.push(body.toString()), 50);
+  const w = await watchState(dir, ['snapshot.json'], (_name, body) => seen.push(String(body)), 50);
   try {
     failing.reads = 1;
     // Same bytes, new inode: the watcher re-reads it, fails once, then reads v1 again.

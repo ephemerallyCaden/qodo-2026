@@ -15,12 +15,13 @@ const UNKNOWN = 'unknown';
  * current contents are recorded, so nothing that exists at start counts as a change. fs.watch on the
  * directory (writeAtomic renames, so a file watch would lose the inode) gives low latency; a stat
  * poll backs it up where watch events are lost or unsupported. Content hashes decide, so rewriting
- * identical bytes is not an update. A file that vanishes or can't be read sends nothing (its GET
- * route reports the problem when the view asks); an unreadable one is retried on every check. One
+ * identical bytes is not an update. A file that vanishes is reported with a null body (chart state
+ * going away changes the fog; the snapshot's GET route reports its absence). One that can't be read
+ * sends nothing, and is retried on every check. One
  * that was unreadable at the start counts as unknown, so its first good read is announced (#32 AC 8);
  * one that turns unreadable keeps its last known content, so reading the same bytes again isn't.
  */
-export async function watchState(dir: string, names: readonly string[], onChange: (name: string, body: Buffer) => void,
+export async function watchState(dir: string, names: readonly string[], onChange: (name: string, body: Buffer | null) => void,
   pollMs = 1000): Promise<StateWatcher> {
   const seen = new Map<string, { sig: string; hash: string }>();
   let closed = false;
@@ -40,7 +41,7 @@ export async function watchState(dir: string, names: readonly string[], onChange
       }
       const hash = body ? createHash('sha256').update(body).digest('hex') : '';
       seen.set(name, { sig, hash });
-      if (prev && prev.hash !== hash && body && !closed) onChange(name, body);
+      if (prev && prev.hash !== hash && !closed) onChange(name, body);
     }
   };
   // One check at a time, in order. scanOnce catches its own I/O errors; the next poll retries anything else.

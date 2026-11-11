@@ -1,7 +1,7 @@
 // `commet chart` and chart state on disk (#33, R5), end to end on a real git repo: charting, refog,
 // a rename, baseline and undo, re-scans, and the state I/O guarantees (AC 4–6).
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -278,6 +278,15 @@ describe('chart state I/O refusals (exit 5)', () => {
       expect(res.err).toContain('.git/commet/chart.json is or sits behind a symlink');
     }
     expect(readFileSync(target, 'utf8')).toBe('untouched');
+  });
+
+  it('a dangling symlinked chart.json is refused, not replaced (Qodo #32 local r1)', async () => {
+    const r = await scanned();
+    symlinkSync(join(tempDir('commet-chart-gone-'), 'missing.json'), r.chartJson());
+    const res = await r.run('chart', 'baseline');
+    expect(res.code).toBe(5);
+    expect(res.err).toContain('.git/commet/chart.json is or sits behind a symlink');
+    expect(lstatSync(r.chartJson()).isSymbolicLink()).toBe(true);
   });
 
   it('a damaged chart.json is refused, not reset', async () => {
