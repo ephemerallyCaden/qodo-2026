@@ -1,7 +1,7 @@
 # Feature: Fog of war (art)
 
 ## Status
-Research (design exploration)
+In Progress (D picked; refining)
 
 ## Trigger
 The human, 2026-11-09: "suggest more things to design and make", then "keep going" (2026-11-10). Fog of war is R5, the product's core signal. Its logic and chart state are in PR #50 (#33), which says "drawing fog waits for the art pass".
@@ -18,7 +18,7 @@ Data meaning (R5 and #33):
 - [ ] F8 **Works with everything else:** clouds, moons (test files can be fogged too), debris, drones and artefacts. It must not be mistaken for clouds, ash smoke, artefacts (glitch sectors) or the toxic band's smoke.
 
 ## Assumptions
-- [ ] (load-bearing for F1) The surface cell grid's geometry and size per planet come from #18 (PR #51, `feature/18-layout`). The lab mocks files on cells the same way #18 lays them out, and matches its cell count and arrangement.
+- [x] (load-bearing for F1) The surface cell grid comes from #18 (PR #51): a 256-cell Fibonacci sphere with one settlement per cell. The lab matches it exactly. Because one cell per file leaves fog too small, the human chose territories in the renderer.
 - [ ] The ASCII FX round-2 fog (a glyph field with an inverted wavefront) is a strong starting point: `feature/ascii-fx` 29c64a1 `mockups/ascii-fx/`, with renders in `.archive/art-iteration/07-ascii-fx/`. Its renderer is built at import, so it's a reference to re-implement in the viewer pipeline, not a module to import.
 
 ## Flow
@@ -27,6 +27,18 @@ Scan → fog view (#33) per file → fogged cells on each planet → you open a 
 ## Research
 - The art direction §9 lists fog of war as a candidate: "fog of war as a glyph field: scene-tile slabs, with an inverted-lightness wavefront where teal helps most".
 - #33's fog view: per-file fogged/charted state with reasons, plus per-planet counts.
+
+**Exploration results (2026-11-11, 3c3946a on feature/fog-lab):** directions A glyph field, B unlit, C unrendered, D survey parcels, E mist and A2 (glyphs + parcels).
+- **F1:** the shader matches #18's cells on all 55,411 checked pixels.
+- **F2:** visible fog is 70/47/34/19/0% at 0–100% charted.
+- **F3:** every direction keeps every band readable except B, where a fogged desert reads as toxic.
+- **F7:** teal peaks at 0.19% during a clear and is 0 at rest.
+- **F8:** fog stays locked to the terrain and uses only the planet's own ramp colours.
+
+**Decided (human, 2026-11-11):**
+- Direction **D · survey parcels**, refined to look more "unknown / unseen" (D2a blank map, D2b terra incognita, D2c veiled; being built).
+- The 2 px parcel lines are a **fog-only exception** to the no-outlines rule, in the terrain's own colours.
+- The fog footprint is a **territory per file computed in the renderer**: every surface cell is shared among the planet's files, grown from each file's own #18 cell. #18 is unchanged; territories reshape slightly as files are added.
 
 ## Tasks
 - Exploration lab `mockups/fog-lab/` on `feature/fog-lab` (feature agent): 4–5 distinct fog directions on several bands and coverage levels (0/25/50/75/100% charted), with the clear and refog moments, measured against F3 and F8, for the human to pick.
