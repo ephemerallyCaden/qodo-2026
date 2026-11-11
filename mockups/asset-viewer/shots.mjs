@@ -4,6 +4,7 @@
 //        node shots.mjs --palettes   (25 Lospec palettes + labelled contact sheet)
 //        node shots.mjs --planets    (biome variety sheet, system shot, hero loop GIF, colour counts)
 //        node shots.mjs --planets lava-layered   (the sheets plus only the named loop GIFs)
+//        node shots.mjs --star       (the star: close-up sheet, Day 1 comparison, loop GIF, system shot; names pick some)
 import { chromium } from 'playwright';
 import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
@@ -31,12 +32,14 @@ const SHOTS = {
   'pixel-120': { view: 'planet', time: 3, pixelH: 120 },
   'pixel-360': { view: 'planet', time: 3, pixelH: 360 },
 };
-const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-smooth', depthBands: '3-band', artefacts: false, artAuto: true, artCount: 3, artTeal: false, cover: null, lavaMode: 'layered', lavaTime: null };
+const BASE = { seed: 7, biome: 'lush', size: 1, ringMode: 'thin', depth: true, pixelH: 180, color: 'coral', spin: true, ui: false, palette: 'final', moons: true, halo: false, period: 24, surfaceTurns: 2, cloudTurns: 3, cloudShadow: true, eyes: 'auto', depthMode: 'pixel-smooth', depthBands: '3-band', artefacts: false, artAuto: true, artCount: 3, artTeal: false, cover: null, lavaMode: 'layered', lavaTime: null,
+  star: false, starSize: 1.6, starSpin: 1, starGranulation: 1, starCorona: true, starMoonlets: 0 };
 
 const PALETTE_MODE = process.argv.includes('--palettes');
 const PLANET_MODE = process.argv.includes('--planets');
+const STAR_MODE = process.argv.includes('--star');
 const wanted = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-const names = PALETTE_MODE || PLANET_MODE ? [] : wanted.length ? wanted.filter((n) => SHOTS[n]) : Object.keys(SHOTS);
+const names = PALETTE_MODE || PLANET_MODE || STAR_MODE ? [] : wanted.length ? wanted.filter((n) => SHOTS[n]) : Object.keys(SHOTS);
 const outDir = path.join(ROOT, 'screenshots');
 await mkdir(outDir, { recursive: true });
 
@@ -119,7 +122,7 @@ const capture = async (opts) => {
   return page.locator('#view').screenshot();
 };
 
-if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('faces-sheet'))) {
+if (!PALETTE_MODE && !PLANET_MODE && !STAR_MODE && (!wanted.length || wanted.includes('faces-sheet'))) {
   // All 10 Avatar V2 eye designs on the same head close-up.
   const items = [];
   for (const [i, d] of EYE_DESIGNS.entries()) {
@@ -132,7 +135,7 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('faces-s
 
 // Ring width x distance on the lush hero (rows: thread, default, wide belt; columns: hugging,
 // default, far out). The middle tile is the default thin ring. Moons on: they move out with a far ring.
-if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('rings-sheet'))) {
+if (!PALETTE_MODE && !PLANET_MODE && !STAR_MODE && (!wanted.length || wanted.includes('rings-sheet'))) {
   const items = [];
   for (const [wl, ringWidth] of [['thread', 0.04], ['default', 0.22], ['wide belt', 0.72]]) {
     for (const [dl, ringInner] of [['hugging', 1.25], ['default', 1.69], ['far', 2.6]]) {
@@ -145,7 +148,7 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('rings-s
 }
 
 // Lava modes side by side on the lava hero: layered (default), static-painted, full-warp, at two loop times.
-if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('lava-modes'))) {
+if (!PALETTE_MODE && !PLANET_MODE && !STAR_MODE && (!wanted.length || wanted.includes('lava-modes'))) {
   const items = [];
   for (const time of [3, 9]) {
     for (const lavaMode of ['layered', 'static-painted', 'full-warp']) {
@@ -159,7 +162,7 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('lava-mo
 
 // Lava before / after at S/M/L (the variety-sheet tiles): 3b6a482 'flow', i.e. static-painted (top),
 // vs layered crust plates over the molten layer (bottom).
-if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('lava-layers-before-after'))) {
+if (!PALETTE_MODE && !PLANET_MODE && !STAR_MODE && (!wanted.length || wanted.includes('lava-layers-before-after'))) {
   const items = [];
   for (const [label, lavaMode] of [['before (3b6a482 flow)', 'static-painted'], ['after: layered', 'layered']]) {
     for (const [seed, size] of [[12, 0.7], [11, 1.0], [58, 1.3]]) {
@@ -194,7 +197,7 @@ const PLANET_SET = [
 const ART_SET = [['lush', 7, false, 0.4], ['lush', 7, false, 1.0], ['lush', 7, false, 1.5], ['lush', 7, false, 2.2],
   ['ocean', 5], ['ice', 19], ['desert', 3], ['lava', 11], ['gas', 5], ['moon', 2], ['toxic', 13], ['lush', 7, true]];
 const setNative = async (opts) => { await page.evaluate((o) => window.viewer.set(o), { ...BASE, ...opts }); return grabNative(); };
-if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('artefacts'))) {
+if (!PALETTE_MODE && !PLANET_MODE && !STAR_MODE && (!wanted.length || wanted.includes('artefacts'))) {
   const items = [];
   for (const [biome, seed, teal = false, size = 1] of ART_SET) {
     const base = { view: 'planet', biome, seed, size, ringMode: 'off', moons: false, artAuto: true, artTeal: teal };
@@ -212,7 +215,7 @@ if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('artefac
 
 // Depth modes side by side: the depth scene, and a big planet straddling the first
 // threshold (radius 2.2 at distance 13.2), per object vs per pixel (stepped).
-if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('depth-mode-compare'))) {
+if (!PALETTE_MODE && !PLANET_MODE && !STAR_MODE && (!wanted.length || wanted.includes('depth-mode-compare'))) {
   const STRADDLE = { view: 'studio', biome: 'lush', seed: 7, size: 2.2, ringMode: 'thin', moons: false, time: 3, camera: { pos: [0, 0, 13.2], target: [0, 0, 0] } };
   const items = [];
   for (const [label, opts] of [['depth scene', { view: 'depth', time: 2 }], ['planet straddling 12', STRADDLE]]) {
@@ -229,7 +232,7 @@ const DEPTH_OPTIONS = [
   ['6-band stepped', { depthMode: 'pixel-stepped', depthBands: '6-band' }], ['8-band stepped', { depthMode: 'pixel-stepped', depthBands: '8-band' }],
   ['pixel-smooth', { depthMode: 'pixel-smooth', depthBands: '3-band' }],
 ];
-if (!PALETTE_MODE && !PLANET_MODE && (!wanted.length || wanted.includes('depth-options-sheet'))) {
+if (!PALETTE_MODE && !PLANET_MODE && !STAR_MODE && (!wanted.length || wanted.includes('depth-options-sheet'))) {
   const items = [];
   const counts = [];
   for (const [scene, opts] of [['depth scene', { view: 'depth', time: 2 }], ['system', { view: 'system', time: 2 }], ['hero planet', { view: 'planet', time: 3 }]]) {
@@ -318,6 +321,122 @@ if (PLANET_MODE) {
     await renderLoop(name, { view: 'system', period: 6, surfaceTurns: 1, cloudTurns: 1, ...o }, '15');
   }
 
+}
+
+if (STAR_MODE) {
+  // The star (star.js; star-art.md). Outputs in screenshots/star/; `--star name ...` renders only those.
+  const dir = path.join(outDir, 'star');
+  await mkdir(dir, { recursive: true });
+  const wantS = (n) => !wanted.length || wanted.includes(n);
+  const FFMPEG = process.env.FFMPEG ?? '/opt/homebrew/bin/ffmpeg';
+  const at = (d) => ({ pos: [3.29, 1.92, 11.47].map((x) => (x * d) / 12), target: [0, 0, 0] }); // the star view's line (VIEWS.star is at 12)
+  // One capture at another depth-fade strength (the S5 evidence: star.js STAR_FADE, D1's 0.15, vs lava glow's 0.5), then back.
+  const fadeTo = (k) => page.evaluate((k) => {
+    const u = window.viewer.internals.star.parts.disc.material.uniforms.uFade; // shared by the disc and the corona
+    window.__starFade ??= u.value;
+    u.value = k ?? window.__starFade;
+  }, k);
+  const captureAt = async (opts, fade = null) => {
+    if (fade !== null) await fadeTo(fade);
+    const png = await capture(opts);
+    if (fade !== null) await fadeTo(null);
+    return png;
+  };
+  const STAR_BASE = { view: 'star', time: 3 };
+
+  // Close-up sheet: columns are sizes 1.0 / 1.6 / 2.4 at the star view (12 units), then the default 1.6 at
+  // 26 and 44 (the mid and far depth thresholds). Rows: corona on (the default), corona off, corona on at
+  // lava glow's fade strength 0.5 (the rejected S5 option), and a lava planet (seed 11) at the same size and distance, for S3.
+  if (wantS('star-sheet')) {
+    const cols = [[1.0, 12], [1.6, 12], [2.4, 12], [1.6, 26], [1.6, 44]];
+    const rows = [
+      ['corona on', (s, d) => captureAt({ ...STAR_BASE, starSize: s, camera: at(d) })],
+      ['corona off', (s, d) => captureAt({ ...STAR_BASE, starSize: s, starCorona: false, camera: at(d) })],
+      ['on, fade 0.5 (lava)', (s, d) => captureAt({ ...STAR_BASE, starSize: s, camera: at(d) }, 0.5)],
+      ['lava (seed 11)', (s, d) => capture({ view: 'studio', time: 3, biome: 'lava', seed: 11, size: s, ringMode: 'off', moons: false, camera: at(d) })],
+    ];
+    const items = [];
+    for (const [label, shot] of rows) for (const [s, d] of cols) items.push({ label: `${label} · ${s.toFixed(1)} at ${d} u`, url: asUrl(await shot(s, d)) });
+    await contactSheet(items, cols.length, path.join(dir, 'star-sheet.png'));
+    console.log('screenshots/star/star-sheet.png');
+  }
+
+  // The Day 1 GIF's sun beside ours at the GIF's scale (a 1.6 star at about 23 units: a disc ~40 px
+  // across), 60 x 60 internal px each, x4: the GIF (frame 0, from the local art archive), ours at STAR_FADE
+  // (D1's 0.15, the default), ours at lava glow's 0.5, and ours with no fade. Prints each crop's colours.
+  if (wantS('star-vs-day1')) {
+    const gifPath = path.join(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT }).toString().trim(), '..', '.archive/docs/hackathon/day1-images/art-1-system-loop.gif');
+    let gif = null;
+    try {
+      gif = execFileSync(FFMPEG, ['-v', 'error', '-i', gifPath, '-frames:v', '1', '-vf', 'scale=320:180:flags=neighbor', '-f', 'image2pipe', '-vcodec', 'png', '-']);
+    } catch {
+      console.log(`(the Day 1 GIF is not in the local archive: ${path.relative(ROOT, gifPath)}; its tile is left out)`);
+    }
+    const GIF_CAM = at(22.8);
+    const crops = [
+      ...(gif ? [{ label: 'Day 1 GIF (frame 0)', png: gif, x: 70, y: 3 }] : []),
+      { label: 'ours · fade 0.15 (default)', png: await (async () => { await capture({ ...STAR_BASE, camera: GIF_CAM }); return grabNative(); })(), x: 130, y: 60 },
+      { label: 'ours · fade 0.5 (lava glow\'s)', png: await (async () => { await fadeTo(0.5); await capture({ ...STAR_BASE, camera: GIF_CAM }); const p = await grabNative(); await fadeTo(null); return p; })(), x: 130, y: 60 },
+      { label: 'ours · no fade', png: await (async () => { await capture({ ...STAR_BASE, camera: GIF_CAM, depth: false }); return grabNative(); })(), x: 130, y: 60 },
+    ];
+    const { url, colours } = await page.evaluate(async (crops) => {
+      const S = 60, K = 4, LAB = 18, GAP = 8;
+      const c = Object.assign(document.createElement('canvas'), { width: GAP + crops.length * (S * K + GAP), height: GAP + S * K + LAB + GAP });
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.font = '12px ui-monospace, Menlo, monospace';
+      ctx.textBaseline = 'top';
+      const colours = [];
+      for (const [i, cr] of crops.entries()) {
+        const img = new Image();
+        img.src = cr.url;
+        await img.decode();
+        const x = GAP + i * (S * K + GAP);
+        ctx.drawImage(img, cr.x, cr.y, S, S, x, GAP, S * K, S * K);
+        ctx.fillStyle = '#e6e0ee';
+        ctx.fillText(cr.label, x + 2, GAP + S * K + 3);
+        const t = Object.assign(document.createElement('canvas'), { width: S, height: S }).getContext('2d');
+        t.drawImage(img, cr.x, cr.y, S, S, 0, 0, S, S);
+        const d = t.getImageData(0, 0, S, S).data, n = new Map();
+        for (let k = 0; k < d.length; k += 4) { const h = ((d[k] << 16) | (d[k + 1] << 8) | d[k + 2]).toString(16).padStart(6, '0'); n.set(h, (n.get(h) ?? 0) + 1); }
+        colours.push(`${cr.label}: ${[...n].sort((a, b) => b[1] - a[1]).slice(1, 8).map(([h, k]) => `#${h} ${k}`).join(', ')}`);
+      }
+      return { url: c.toDataURL('image/png'), colours };
+    }, crops.map((cr) => ({ label: cr.label, url: asUrl(cr.png), x: cr.x, y: cr.y })));
+    await writeFile(path.join(dir, 'star-vs-day1.png'), Buffer.from(url.split(',')[1], 'base64'));
+    console.log(`screenshots/star/star-vs-day1.png (top colours, background left out):\n  ${colours.join('\n  ')}`);
+  }
+
+  // One 24 s loop of the star close-up with 3 moonlets at 15 fps, with the seam test.
+  if (wantS('star-loop')) {
+    const frames = Math.round(BASE.period * 15);
+    const loopDir = path.join(ROOT, 'frames-loop');
+    await rm(loopDir, { recursive: true, force: true });
+    await mkdir(loopDir, { recursive: true });
+    const pngs = [];
+    for (let i = 0; i < frames; i++) {
+      const png = await setNative({ ...STAR_BASE, starMoonlets: 3, time: (i * BASE.period) / frames });
+      pngs.push(png);
+      await writeFile(path.join(loopDir, `${String(i).padStart(4, '0')}.png`), png);
+    }
+    const st = await imageStats(pngs);
+    const typical = [...st.diffs].sort((a, b) => a - b)[Math.floor(st.diffs.length / 2)];
+    console.log(`star-loop loop test: last->first diff ${st.seam} px vs median frame diff ${typical} px (${st.seam <= typical * 1.5 ? 'seamless' : 'SEAM'})`);
+    const out = path.join(dir, 'star-loop.gif');
+    execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-framerate', '15', '-i', path.join(loopDir, '%04d.png'),
+      '-vf', 'scale=iw*2:ih*2:flags=neighbor,split[a][b];[a]palettegen=max_colors=64:stats_mode=full:reserve_transparent=0[p];[b][p]paletteuse=dither=none:diff_mode=rectangle',
+      '-loop', '0', out]);
+    await rm(loopDir, { recursive: true, force: true });
+    console.log(`screenshots/star/star-loop.gif (${frames} frames, ${((await stat(out)).size / 1e6).toFixed(2)} MB)`);
+  }
+
+  // The viewer's system view with the star on (upper left, between the gas giant and the ringed desert).
+  if (wantS('system-shot')) {
+    await writeFile(path.join(dir, 'system-shot.png'), await capture({ view: 'system', time: 2, star: true }));
+    console.log('screenshots/star/system-shot.png');
+  }
 }
 
 if (PALETTE_MODE) {

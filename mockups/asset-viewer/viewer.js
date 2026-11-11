@@ -13,6 +13,7 @@ import { voronoiCells, poolField, crackMask, crackShare } from './snoise.js';
 import { ASTRO_SDF_GLSL, BMIN as ASTRO_BMIN, BMAX as ASTRO_BMAX, SCALE as ASTRO_SCALE, LIFT as ASTRO_LIFT, layout as astroLayout, pose as astroPose } from './astronaut.js';
 import { ARTEFACTS_GLSL, MAX_ART, ART_TICKS, artefactSectors, artefactCount } from './artefacts.js';
 import { debrisFactory, DEBRIS_STYLE } from './debris.js';
+import { starFactory, bindPalettes as bindStarPalettes, STAR, STAR_DEFAULTS } from './star.js';
 import { bindPalettes } from './debris-palette.js';
 import { demoItems, ranked, AGE_MIXES } from './debris-layout.js';
 
@@ -52,6 +53,7 @@ for (const pal of Object.values(PALETTES)) {
   pal.halo ??= pal.stars[0];
 }
 bindPalettes(PALETTES); // every palette carries the debris role (fixed colours: A3's grey, outline and lights)
+bindStarPalettes(PALETTES); // and the star's ramps (star.js), from its own world ramps
 export const CONTRIBUTOR_KEYS = ['coral', 'mint', 'lilac'];
 const HANDLES = { coral: '@caden', mint: '@mira', lilac: '@juno' }; // faces are hashed from these
 let paletteName = 'final';
@@ -880,6 +882,7 @@ const RING_CHUNK_FRAG = /* glsl */ `
 `;
 const FLAT_FRAG = /* glsl */ `${DEPTH_GLSL} uniform vec3 uColor; in vec3 vPosW; void main() { gl_FragColor = vec4(depthFade(uColor, vPosW, 1.0), 1.0); }`;
 const MOON_GEO = new THREE.SphereGeometry(1, 20, 14);
+const moonMaterial = () => paletteMaterial(TOON_FRAG, { uRamp: 'moonBody' }, { uBands: { value: new THREE.Vector3(-0.15, 0.35, 0.7) } }); // the moon look (planets' moons, the star's moonlets)
 // The two moons of every planet (sizes and orbits in planet radii; offset = orbit phase, 0..1).
 export const MOON_ORBITS = [
   { size: 0.11, orbit: 1.75, incl: 0.34, yaw: 0.25, offset: 0.15 },
@@ -892,6 +895,11 @@ const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size
 export const { makeDebris } = debrisFactory({ depthGlsl: DEPTH_GLSL, depthUniforms, light: LIGHT_DIR, viewSize: VIEW_SIZE });
 export { DEBRIS_STYLE, demoItems, AGE_MIXES };
 export const DEBRIS_COUNTS = [0, 1, 3, 8, 24];
+
+// The star (star.js): the repo at the centre of its system. It shares the viewer's noise, depth fade,
+// loop and moon look (its moonlets).
+export const { makeStar } = starFactory({ vert: VERT, noise: NOISE, depthGlsl: DEPTH_GLSL, depthUniforms, loop: LOOP, moonMaterial, moonGeo: MOON_GEO });
+export { STAR, STAR_DEFAULTS };
 
 export function makePlanet() {
   const group = new THREE.Group();
@@ -962,7 +970,7 @@ export function makePlanet() {
 
   // Moons: a big (~9 px) and a small (~5 px) warm sphere on inclined orbits that pass
   // in front at the bottom and fully behind the disc (depth-sorted by the z-buffer).
-  const moonMat = paletteMaterial(TOON_FRAG, { uRamp: 'moonBody' }, { uBands: { value: new THREE.Vector3(-0.15, 0.35, 0.7) } });
+  const moonMat = moonMaterial();
   const MOONS = MOON_ORBITS.map((m) => ({ ...m, mesh: Object.assign(new THREE.Mesh(MOON_GEO, moonMat), { visible: false }) }));
   for (const m of MOONS) {
     m.mesh.scale.setScalar(m.size);
@@ -1539,6 +1547,12 @@ const SYSTEM = LIBRARY ? [] : [
   return p;
 });
 
+// The star (star.js): alone at the origin in the 'star' view, and, with the star toggle on, the
+// system: up and back, upper left of the frame (where the Day 1 GIF had its sun).
+export const SYSTEM_STAR = [-8.4, 7.6, -28]; // upper left, between the gas giant and the ringed desert
+const star = LIBRARY ? null : makeStar();
+if (star) scene.add(star.group);
+
 export const VIEWS = {
   // Hero close-ups: distance 7 puts a size-1 planet at ~45% of frame height (Planetarium 42-50%).
   planet: { pos: [1.92, 1.12, 6.69], target: [0, 0, 0], scene: 'solo' },
@@ -1547,6 +1561,7 @@ export const VIEWS = {
   crew: { pos: [CREW_SPOT.x + 0.35, CREW_SPOT.y + 0.95, CREW_SPOT.z + 2.7], target: [CREW_SPOT.x, CREW_SPOT.y + 0.52, CREW_SPOT.z] },
   depth: { pos: [0.1, 1.2, 9.6], target: [-0.3, 0.3, -6] },
   face: { pos: [CREW_SPOT.x + 0.08, CREW_SPOT.y + 0.8, CREW_SPOT.z + 1.15], target: [CREW_SPOT.x, CREW_SPOT.y + 0.62, CREW_SPOT.z] }, // head close-up (mint)
+  star: { pos: [3.29, 1.92, 11.47], target: [0, 0, 0], scene: 'star' }, // the planet view's line at distance 12: the default star at ~42% of frame height
 };
 
 // ---------------------------------------------------------------- state
@@ -1564,10 +1579,12 @@ const state = {
   artDebug: false, // debug (measurement only): artefact cells as cell-index colours (artefacts.js uArtDebug)
   debris: false, debrisCount: 8, debrisAge: 'mixed', // space debris on the hero planet (DEBRIS_COUNTS, AGE_MIXES)
   debrisSwept: [], // [{ id, at }]: items swept at time `at` (s); the "sweep one" button takes the biggest left
+  star: false, // the star in the system view (the star view always shows it)
+  starSize: STAR_DEFAULTS.size, starSpin: STAR_DEFAULTS.spin, starGranulation: STAR_DEFAULTS.granulation, starCorona: STAR_DEFAULTS.corona, starMoonlets: STAR_DEFAULTS.moonlets, // star.js STAR
 };
 
 // Keep the orbit camera out of the cloud layer in planet views (clouds reach ~1.1 R).
-const minOrbit = () => ((VIEWS[state.view]?.scene ?? 'showcase') === 'solo' ? 1.35 * state.size : 0.5);
+const minOrbit = () => ({ solo: 1.35 * state.size, star: 1.35 * state.starSize })[VIEWS[state.view]?.scene] ?? 0.5;
 
 function applyView(name) {
   const v = VIEWS[name];
@@ -1644,11 +1661,12 @@ export function applyDepth({ depth, depthMode, depthBands }) {
 export const depthLevelAt = (d, { depth, depthMode }) => (!depth || depthMode !== 'object' ? 0 : DEPTH_RANGES.filter((r) => d >= r).length);
 
 /** Poses planets and astronauts at time t (s) on the shared loop, as the viewer's frame does. */
-export function poseWorld(t, { planets: ps = [], astronauts = [], spin = true, lavaTime = null }) {
+export function poseWorld(t, { planets: ps = [], astronauts = [], suns = [], spin = true, lavaTime = null }) { // suns: the repo stars (`stars` is the starfield)
   const wrap = (s) => (((s / LOOP.period) % 1) + 1) % 1;
   const phase = wrap(t);
   const lavaPhase = lavaTime == null ? (spin ? phase : 0) : wrap(lavaTime);
   ps.forEach((p) => p.update(spin ? phase : 0, lavaPhase, t));
+  suns.forEach((s) => s.update(spin ? phase : 0));
   astronauts.forEach((a) => a.update(t));
 }
 
@@ -1670,7 +1688,10 @@ function applyState() {
   const sceneMode = VIEWS[state.view]?.scene ?? 'showcase';
   planets.forEach((p, i) => (p.group.visible = sceneMode === 'showcase' || (sceneMode === 'solo' && i === 0)));
   SYSTEM.forEach((p) => (p.group.visible = sceneMode === 'system'));
-  crew.forEach((a) => (a.group.visible = sceneMode !== 'solo'));
+  crew.forEach((a) => (a.group.visible = sceneMode !== 'solo' && sceneMode !== 'star'));
+  star.group.visible = sceneMode === 'star' || (state.star && sceneMode === 'system');
+  star.group.position.set(...(sceneMode === 'star' ? [0, 0, 0] : SYSTEM_STAR));
+  star.set({ size: state.starSize, spin: state.starSpin, granulation: state.starGranulation, corona: state.starCorona, moonlets: state.starMoonlets });
   solos.forEach((a) => (a.group.visible = sceneMode === 'showcase'));
   if (usePalette(state.palette)) retint(scene); // force a re-tint
   renderer.setClearColor(resolve('space'));
@@ -1703,10 +1724,10 @@ function frame() {
   const t = state.time ?? clock.getElapsedTime();
   controls.update();
   stars.position.copy(camera.position);
-  poseWorld(t, { planets: [...planets, ...SYSTEM], astronauts: [...crew, ...solos], spin: state.spin, lavaTime: state.lavaTime });
+  poseWorld(t, { planets: [...planets, ...SYSTEM], astronauts: [...crew, ...solos], suns: [star], spin: state.spin, lavaTime: state.lavaTime });
   setDepthLevel(stars, 0); // stars and sky never fade, but still follow palette switches
   setDepthLevel(sky, 0);
-  for (const obj of [...planets, ...SYSTEM, ...crew, ...solos].map((o) => o.group)) {
+  for (const obj of [...planets, ...SYSTEM, ...crew, ...solos, star].map((o) => o.group)) {
     setDepthLevel(obj, depthLevelAt(camera.position.distanceTo(obj.getWorldPosition(tmp)), state));
   }
   renderer.render(scene, camera);
@@ -1774,6 +1795,12 @@ function bindUi() {
     if (next) state.debrisSwept = [...state.debrisSwept, { id: next.id, at: state.time ?? clock.getElapsedTime() }];
     applyState();
   });
+  $('star').addEventListener('change', (e) => { state.star = e.target.checked; applyState(); });
+  $('star-size').addEventListener('input', (e) => { state.starSize = +e.target.value / 100; $('star-size-readout').textContent = state.starSize.toFixed(2); applyState(); });
+  $('star-corona').addEventListener('change', (e) => { state.starCorona = e.target.checked; applyState(); });
+  $('star-spin').addEventListener('change', (e) => { state.starSpin = THREE.MathUtils.clamp(Math.round(+e.target.value), ...STAR.spin); applyState(); });
+  $('star-gran').addEventListener('input', (e) => { state.starGranulation = +e.target.value / 100; $('star-gran-readout').textContent = state.starGranulation.toFixed(2); applyState(); });
+  $('star-moonlets').addEventListener('change', (e) => { state.starMoonlets = THREE.MathUtils.clamp(Math.round(+e.target.value), ...STAR.moonlets); applyState(); });
   addEventListener('resize', resize);
 }
 
@@ -1804,4 +1831,4 @@ if (!LIBRARY) window.viewer = {
 };
 
 // Internals for the comparison mockups (../camera-modes, ../day2-compare), which pose the camera, hide objects and wrap the render passes.
-if (!LIBRARY) window.viewer.internals = { renderer, scene, camera, controls, sky, stars, state, frame, SYSTEM, planets, crew, solos };
+if (!LIBRARY) window.viewer.internals = { renderer, scene, camera, controls, sky, stars, state, frame, SYSTEM, planets, crew, solos, star };
