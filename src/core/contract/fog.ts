@@ -33,7 +33,7 @@ export interface FogView {
   baseline: Sha | null;
   /** Every file in snapshot.files, sorted by fileId. */
   files: FileFog[];
-  /** One entry per planet (top-level folder that is a planet in the layout), sorted by dirId. */
+  /** One entry per planet in the layout, content and outer (#71), sorted by dirId. */
   planets: ({ dirId: DirId } & FogCounts)[];
   /** Root files and unmatched tests (the star's moonlets). */
   star: FogCounts;

@@ -12,7 +12,7 @@ const ash: Health = { band: 'ash', markersPerKlocMilli: 3000, debtUnknownFiles: 
 
 export const miniLayout: LayoutV1 = {
   schemaVersion: 'layout.1',
-  source: { repoId: 'r_000000000001', head: HEAD },
+  source: { repoId: 'r_000000000001', head: HEAD, roots: [] },
   constants: { slotSpacingMilli: 24000, maxPlanetRadiusMilli: 12000, moonCap: 24 },
   star: {
     repoId: 'r_000000000001',
@@ -26,7 +26,7 @@ export const miniLayout: LayoutV1 = {
   },
   planets: [
     {
-      dirId: 'd_00000000000a', path: 'src', bornSeq: 1, partner: null,
+      dirId: 'd_00000000000a', path: 'src', zone: 'outer', bornSeq: 1, partner: null,
       slot: { index: 0, radiusMilli: 30000, phaseMilliturn: 0 },
       radiusMilli: 10000, loc: 1200, biomeSeed: 1234567, health: healthy,
       surface: {
@@ -46,7 +46,7 @@ export const miniLayout: LayoutV1 = {
       moonOverflow: 0,
     },
     {
-      dirId: 'd_00000000000c', path: 'web', bornSeq: 4, partner: 'd_00000000000a',
+      dirId: 'd_00000000000c', path: 'web', zone: 'outer', bornSeq: 4, partner: 'd_00000000000a',
       slot: { index: 1, radiusMilli: 54000, phaseMilliturn: 250 },
       radiusMilli: 7000, loc: 400, biomeSeed: 7654321, health: toxic,
       surface: {
@@ -59,7 +59,7 @@ export const miniLayout: LayoutV1 = {
       moonOverflow: 2,
     },
     {
-      dirId: 'd_00000000000d', path: 'docs', bornSeq: 2, partner: null,
+      dirId: 'd_00000000000d', path: 'docs', zone: 'outer', bornSeq: 2, partner: null,
       slot: { index: 2, radiusMilli: 78000, phaseMilliturn: 600 },
       radiusMilli: 5000, loc: 200, biomeSeed: 42, health: ash,
       surface: {

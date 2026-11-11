@@ -70,7 +70,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 2320971449,
@@ -137,7 +138,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 613262817,
@@ -196,7 +198,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 4015464827,
@@ -340,7 +343,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 595184745,
@@ -437,7 +441,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 2571284934,
@@ -518,7 +523,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 3815058341,
@@ -571,7 +577,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 2601501415,
@@ -624,7 +631,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 3288498945,
@@ -677,7 +685,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 2715860676,
@@ -730,7 +739,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 37328121,
@@ -783,7 +793,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 1714353833,
@@ -836,7 +847,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 887758962,
@@ -889,7 +901,8 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 3795989052,
@@ -942,13 +955,15 @@
             "size": 1
           }
         ]
-      }
+      },
+      "zone": "outer"
     }
   ],
   "schemaVersion": "layout.1",
   "source": {
     "head": "e4715837c36a0015db2c712874d8d03fa401934a",
-    "repoId": "da5108882d5685b8"
+    "repoId": "da5108882d5685b8",
+    "roots": []
   },
   "star": {
     "moonletOverflow": 0,

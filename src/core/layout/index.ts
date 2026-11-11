@@ -275,6 +275,7 @@ export function layoutReport(snapshot: SnapshotV02, history: StructureHistory, o
     return {
       dirId: id,
       path: dir.path,
+      zone: 'outer',
       bornSeq: dir.bornSeq,
       partner: p.partner,
       slot: orbitSlot(p.slot),
@@ -297,7 +298,7 @@ export function layoutReport(snapshot: SnapshotV02, history: StructureHistory, o
   const [shownMoonlets, moonletOverflow] = capped(moonlets.sort(byKey), MOONLET_CAP);
   const layout: LayoutV1 = {
     schemaVersion: 'layout.1',
-    source: { repoId: snapshot.repo.repoId, head: snapshot.repo.head },
+    source: { repoId: snapshot.repo.repoId, head: snapshot.repo.head, roots: [] },
     constants: { slotSpacingMilli: SLOT_SPACING_MILLI, maxPlanetRadiusMilli: MAX_PLANET_RADIUS_MILLI, moonCap: MOON_CAP },
     star: {
       repoId: snapshot.repo.repoId,

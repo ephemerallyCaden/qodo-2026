@@ -95,7 +95,8 @@
             "size": 3
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 7654321,
@@ -269,7 +270,8 @@
             "size": 3
           }
         ]
-      }
+      },
+      "zone": "outer"
     },
     {
       "biomeSeed": 42,
@@ -336,13 +338,15 @@
             "size": 2
           }
         ]
-      }
+      },
+      "zone": "outer"
     }
   ],
   "schemaVersion": "layout.1",
   "source": {
     "head": "1111111111111111111111111111111111111111",
-    "repoId": "r_000000000001"
+    "repoId": "r_000000000001",
+    "roots": []
   },
   "star": {
     "moonletOverflow": 0,

@@ -54,12 +54,23 @@ export interface Settlement {
 /** A test file orbiting the planet that holds its `testOf` source. */
 export interface Moon { fileId: FileId; testOf: FileId | DirId; slot: number }
 
-/** Root files and unmatched tests, on the innermost orbit around the star. */
+/**
+ * Root files and unmatched tests, on the innermost orbit around the star. `root-file` also covers a
+ * file directly inside a content root (#71), such as `src/cli.ts` when `src` is a root.
+ */
 export interface Moonlet { fileId: FileId; kind: 'root-file' | 'unmatched-test'; slot: number }
+
+/**
+ * Which ring a planet is on (#71). `content`: a direct subfolder of a content root, on the inner
+ * orbits. `outer`: any other top-level folder, on orbits beyond them. Always `outer` when
+ * `source.roots` is empty.
+ */
+export type PlanetZone = 'content' | 'outer';
 
 export interface Planet {
   dirId: DirId;
   path: string;
+  zone: PlanetZone;
   bornSeq: number;
   partner: DirId | null;
   slot: OrbitSlot;
@@ -77,8 +88,11 @@ export interface Planet {
 
 export interface LayoutV1 {
   schemaVersion: 'layout.1';
-  /** The snapshot this layout was computed from. */
-  source: { repoId: string; head: Sha };
+  /**
+   * The snapshot this layout was computed from, and the content roots it used (#71): repo-relative
+   * folder paths, sorted, no trailing slash. `[]` is #18's mapping, where every top-level folder is a planet.
+   */
+  source: { repoId: string; head: Sha; roots: string[] };
   constants: {
     /** Distance between neighbouring orbit slots, world units ×1000. At least 2× maxPlanetRadiusMilli. */
     slotSpacingMilli: number;

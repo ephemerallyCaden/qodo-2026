@@ -8,6 +8,7 @@ export type Checked<T> = { ok: true; value: T } | { ok: false; errors: string[] 
 
 const BANDS = ['lava', 'toxic', 'ash', 'healthy'];
 const MOONLET_KINDS = ['root-file', 'unmatched-test'];
+const ZONES = ['content', 'outer'];
 const FOG_STATES = ['clear', 'charted', 'fogged'];
 const FOG_REASONS = ['agent', 'mixed', 'self-committed-agent-written', 'teammate', 'unknown', 'lineage-unknown'];
 /** Reasons beyond this many are summarised, so a garbage document still gives a short message. */
@@ -87,6 +88,7 @@ function planet(c: Checker, v: unknown, at: string): void {
   if (!p) return;
   c.str(p['dirId'], `${at}.dirId`, 'd_');
   c.str(p['path'], `${at}.path`);
+  c.oneOf(p['zone'], `${at}.zone`, ZONES);
   c.int(p['bornSeq'], `${at}.bornSeq`);
   const slot = c.obj(p['slot'], `${at}.slot`);
   if (slot) {
@@ -136,6 +138,8 @@ export function checkLayout(v: unknown): Checked<LayoutV1> {
   if (source) {
     c.str(source['repoId'], 'layout.source.repoId');
     c.str(source['head'], 'layout.source.head');
+    // Content roots (#71): accepted and checked, not drawn differently yet.
+    c.arr(source['roots'], 'layout.source.roots').forEach((r, i) => c.str(r, `layout.source.roots[${i}]`));
   }
   const k = c.obj(l['constants'], 'layout.constants');
   if (k) {

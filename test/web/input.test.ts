@@ -47,6 +47,24 @@ describe('checkLayout', () => {
     ]);
   });
 
+  it('accepts content roots and zones (#71), and names a bad one', () => {
+    const roots = structuredClone(miniLayout);
+    roots.source.roots = ['packages', 'src'];
+    roots.planets[0]!.zone = 'content';
+    expect(checkLayout(roots).ok).toBe(true);
+    const bad = structuredClone(miniLayout) as unknown as { source: Record<string, unknown>; planets: Record<string, unknown>[] };
+    bad.source['roots'] = ['src', ''];
+    bad.planets[1]!['zone'] = 'inner';
+    delete bad.planets[2]!['zone'];
+    expect(errorsOf(bad)).toEqual([
+      'layout.source.roots[1] must be a non-empty string',
+      'layout.planets[1].zone must be one of content, outer',
+      'layout.planets[2].zone must be one of content, outer',
+    ]);
+    delete bad.source['roots'];
+    expect(errorsOf(bad)[0]).toBe('layout.source.roots must be an array');
+  });
+
   it('refuses other schemas and non-objects without listing every field', () => {
     expect(errorsOf({ schemaVersion: 'layout.2' })).toEqual(['layout.schemaVersion must be "layout.1" (got "layout.2")']);
     expect(errorsOf(null)).toEqual(['layout must be an object']);

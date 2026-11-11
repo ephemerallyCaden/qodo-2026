@@ -1,6 +1,6 @@
 # Phase 2 contract (#29)
 
-**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
+**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch) and 2026-11-11 (content roots, #71).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
 
 | Shape | Types | Produced by | Consumed by |
 |---|---|---|---|
@@ -14,6 +14,7 @@
 ## Layout
 - **Integers only:** `canonicalJson` only takes integers, so lengths are world units ×1000 (`…Milli`) and angles are thousandths of a turn.
 - **Ids:** every body is keyed by the snapshot's stable `DirId` / `FileId`. Paths are for labels only.
+- **Content roots (amended 2026-11-11, #71):** in most repos one folder (`src/`, `lib/`, `packages/`) holds most of the code, so as one planet it hid the structure that matters. The human decided (2026-11-11, `docs/features/content-roots.md`) that the user can name one or more content roots. `source.roots` lists them: repo-relative, sorted, no trailing slash. `[]` is #18's mapping, where every top-level folder is a planet. A root's direct subfolders holding a surface file are **content** planets (`Planet.zone: 'content'`), on the inner orbits. Every other top-level folder holding one is an **outer** planet, on orbits beyond them. A root is never a planet itself. A file directly inside a root is a star moonlet of kind `root-file`. With `roots: []` every planet is `outer`, and the layout is #18's apart from the two new keys. Fog's `planets` covers both zones, by the same rule (`planetHome` in `src/core/structure.ts`). The view accepts the fields and needn't style zones yet.
 - **Orbits:** slot 0 is innermost. `slotSpacingMilli ≥ 2 × maxPlanetRadiusMilli`, so growth never forces a move (#18). `phaseMilliturn` is the frame-0 angle. Orbital motion is the renderer's job, as a function of frame number.
 - **Surface:** a Fibonacci sphere of `grid.cells` cells. Cell `i` is centred at `fibonacciCell(i, cells)`, and both `layout()` and the renderer use that one helper. "Nearest free cell" means nearest by angle.
 - **Overflow is counted, never dropped (Rule 1):** `moonOverflow`, `surface.overflow`, `moonletOverflow`.
