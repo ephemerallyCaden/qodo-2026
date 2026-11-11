@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -174,23 +175,37 @@ it('a hook event keeps no prompt, code, command, cwd or absolute path: only hash
         userModified: false, replaceAll: false, attachment: CANARIES.attachment,
         structuredPatch: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, lines: [`-${CANARIES.prompt} old line`, `+${CANARIES.code}`, '+export const hookedValue = 2;'] }] },
     };
+    // A Write that creates a file carries its whole content: hashed, never kept.
+    const created = { ...payload, tool_name: 'Write', tool_use_id: 'toolu_02Canary',
+      tool_input: { file_path: join(repo.dir, 'src/created.ts'), content: `${CANARIES.code}\n// ${CANARIES.prompt}\n` },
+      tool_response: { type: 'create', filePath: join(repo.dir, 'src/created.ts'), content: `${CANARIES.code}\n// ${CANARIES.prompt}\n`,
+        structuredPatch: [], originalFile: null } };
+    // The branch is git's metadata, not the payload's: a path-shaped name is dropped like any metadata token.
+    execFileSync('git', ['checkout', '-q', '-b', `${homedir().slice(1)}/${CANARIES.metaBranch}`], { cwd: repo.dir });
     let out = '';
     let err = '';
-    const code = await main(['hook', 'event'], { stdout: (t) => (out += t), stderr: (t) => (err += t), cwd: repo.dir,
-      env: { ...process.env, CLAUDE_PROJECT_DIR: repo.dir }, stdin: Readable.from([JSON.stringify(payload)]) });
-    expect(code).toBe(0);
+    for (const body of [payload, created]) {
+      const code = await main(['hook', 'event'], { stdout: (t) => (out += t), stderr: (t) => (err += t), cwd: repo.dir,
+        env: { ...process.env, CLAUDE_PROJECT_DIR: repo.dir }, stdin: Readable.from([JSON.stringify(body)]) });
+      expect(code).toBe(0);
+    }
     const events = readFileSync(join(repo.dir, '.git/commet/events.jsonl'), 'utf8');
-    // Not vacuous: the edit was recorded, with its added and removed lines as hashes.
-    const [event] = events.trim().split('\n').map((l) => JSON.parse(l) as { path: string; hunks: { addedHashes: string[]; removedHashes: string[] }[] });
+    // Not vacuous: both edits were recorded, their added and removed lines as hashes, and no branch.
+    const [event, write] = events.trim().split('\n')
+      .map((l) => JSON.parse(l) as { path: string; branch?: string; hunks: { addedHashes: string[]; removedHashes: string[] }[] });
     expect(event!.path).toBe('src/hooked.ts');
     expect(event!.hunks[0]!.addedHashes).toHaveLength(2);
     expect(event!.hunks[0]!.removedHashes).toHaveLength(1);
-    const forbidden = [...Object.values(CANARIES), repo.dir, homedir(), tmpdir(), sid, 'toolu_01Canary', 'hookedValue', 'a1b2'];
+    expect(write!.path).toBe('src/created.ts');
+    expect(write!.hunks[0]!.addedHashes).toHaveLength(2);
+    expect([event!.branch, write!.branch]).toEqual([undefined, undefined]);
+    const forbidden = [...Object.values(CANARIES), repo.dir, homedir(), homedir().slice(1), tmpdir(), sid, 'toolu_01Canary', 'toolu_02Canary',
+      'hookedValue', 'a1b2'];
     for (const [name, text] of Object.entries({ events, out, err })) {
       for (const f of forbidden) expect(text.includes(f), `${name} contains ${f}`).toBe(false);
     }
     const strings: string[] = [];
-    JSON.parse(events, (_k, v: unknown) => (typeof v === 'string' && strings.push(v), v));
+    for (const line of events.trim().split('\n')) JSON.parse(line, (_k, v: unknown) => (typeof v === 'string' && strings.push(v), v));
     expect(strings.filter((s) => /^([A-Za-z]:\\|\/|~)/.test(s))).toEqual([]);
   } finally {
     rmSync(repo.dir, { recursive: true, force: true });

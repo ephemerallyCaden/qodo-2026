@@ -9,7 +9,7 @@
 import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import type { IsoUtc, SessionKey, Tool } from '../core/snapshot/types.js';
 import { isoUtc } from '../core/time.js';
-import { appendState, readStateBytes } from './io.js';
+import { appendStateLines, readStateBytes } from './io.js';
 
 export const EVENTS_FILE = 'events.jsonl';
 
@@ -91,7 +91,7 @@ function eventLine(record: AgentEditEvent | DropRecord): string {
 
 /** Appends records to the log through the state I/O, in one write. */
 export function appendEvents(dir: string, records: (AgentEditEvent | DropRecord)[]): void {
-  if (records.length > 0) appendState(dir, EVENTS_FILE, records.map(eventLine).join(''));
+  if (records.length > 0) appendStateLines(dir, EVENTS_FILE, records.map(eventLine).join(''));
 }
 
 export interface EventLog {

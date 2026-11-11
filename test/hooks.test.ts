@@ -70,6 +70,45 @@ describe('consent', () => {
     expect(existsSync(join(dir, SETTINGS))).toBe(false);
   });
 
+  it('acts on the files as they are after the question: an edit made meanwhile is kept, a new hook stops it', async () => {
+    const dir = hookRepo();
+    mkdirp(join(dir, '.claude'));
+    writeFileSync(join(dir, SETTINGS), '{\n  "model": "a"\n}\n');
+    const paths = fakeCli();
+    // Claude Code rewrites the settings while the question is open.
+    const edited = await hook(['install', '--claude-only'], dir, { paths, ask: async () => {
+      writeFileSync(join(dir, SETTINGS), '{\n  "model": "b",\n  "env": { "X": "1" }\n}\n');
+      return 'y';
+    } });
+    expect(edited.code).toBe(0);
+    expect(JSON.parse(readFileSync(join(dir, SETTINGS), 'utf8'))).toMatchObject({ model: 'b', env: { X: '1' } });
+    // Another tool adds a post-commit hook while the question is open: that's not the plan confirmed.
+    const other = hookRepo();
+    const r = await hook(['install', '--git-only'], other, { paths, ask: async () => {
+      writeFileSync(join(other, '.git/hooks/post-commit'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+      return 'y';
+    } });
+    expect(r.code).toBe(5);
+    expect(r.err).toContain('the hooks changed while you were asked; nothing was written');
+    expect(readFileSync(join(other, '.git/hooks/post-commit'), 'utf8')).toBe('#!/bin/sh\nexit 0\n');
+    expect(existsSync(join(other, '.git/hooks/post-commit.commet-chained'))).toBe(false);
+    expect(existsSync(join(other, '.git/hooks/post-merge'))).toBe(false);
+  });
+
+  it('one install or remove at a time: another holding the lock means nothing is written', async () => {
+    const dir = hookRepo();
+    writeFileSync(join(dir, '.git/hooks/post-commit'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeFileSync(join(dir, '.git/commet-hook.lock'), String(process.pid));
+    const before = tree(dir);
+    const r = await hook(['install', '--yes'], dir, { paths: fakeCli() });
+    expect(r.code).toBe(5);
+    expect(r.err).toContain('another `commet hook install` or `remove` is running; nothing was written');
+    expect(tree(dir)).toEqual(before);
+    rmSync(join(dir, '.git/commet-hook.lock'));
+    expect((await hook(['install', '--yes'], dir, { paths: fakeCli() })).code).toBe(0);
+    expect(existsSync(join(dir, '.git/commet-hook.lock'))).toBe(false);
+  });
+
   it('rejects unknown and contradictory flags', async () => {
     const dir = hookRepo();
     expect((await hook(['install', '--git-only', '--claude-only'], dir)).code).toBe(2);
@@ -286,6 +325,18 @@ describe('Claude Code hook', () => {
     expect(readFileSync(join(dir, SETTINGS), 'utf8')).toBe(text);
   });
 
+  it('a user command that merely ends in Commet\'s marker is not Commet\'s', async () => {
+    const dir = hookRepo();
+    mkdirp(join(dir, '.claude'));
+    const text = '{\n  "hooks": {\n    "PostToolUse": [\n      { "matcher": "Edit", "hooks": [{ "type": "command", "command": "echo ready # commet:hook-event" }] }\n    ]\n  }\n}\n';
+    writeFileSync(join(dir, SETTINGS), text);
+    expect((await hook(['remove'], dir)).out).toBe('no Commet hooks are installed; nothing to remove\n');
+    await hook(['install', '--yes', '--claude-only'], dir, { paths: fakeCli() });
+    expect(readFileSync(join(dir, SETTINGS), 'utf8')).toContain('echo ready # commet:hook-event');
+    await hook(['remove'], dir);
+    expect(readFileSync(join(dir, SETTINGS), 'utf8')).toBe(text);
+  });
+
   it('creates the file (and .claude) when absent, and remove takes both away', async () => {
     const dir = hookRepo();
     const before = tree(dir);
@@ -422,7 +473,10 @@ describe('hook event', () => {
     writeFileSync(join(state, EVENTS_FILE), readFileSync(join(state, EVENTS_FILE), 'utf8') + '{"schema":"commet.edit/1","even');
     const log = await readEvents(state);
     expect(log).toEqual({ events: [], duplicates: 0, dropped: 6 });
-    const reasons = readFileSync(join(state, EVENTS_FILE), 'utf8').split('\n').filter((l) => l.endsWith('}'))
+    // The next record starts on a line of its own: the cut-off one never swallows it.
+    await sendEvent(dir, payload(dir));
+    expect((await readEvents(state)).events).toHaveLength(1);
+    const reasons = readFileSync(join(state, EVENTS_FILE), 'utf8').split('\n').filter((l) => l.includes('commet.drop/1'))
       .map((l) => (JSON.parse(l) as { reason: string }).reason);
     expect(reasons).toEqual(['not_claude_code', 'not_claude_code', 'not_claude_code', 'malformed', 'malformed']);
   });
@@ -474,6 +528,15 @@ describe('hook refresh', () => {
     await first;
     expect(scans).toBe(2);
     expect(tree(dir)).toEqual({});
+  });
+
+  it('never takes a lock its owner is still writing (no pid yet, just made)', async () => {
+    const dir = tempDir('commet-hooks-fresh-');
+    writeFileSync(join(dir, 'refresh-k.lock'), '');
+    let scans = 0;
+    await coalescedRefresh(dir, 'k', async () => (scans++, 0));
+    expect(scans).toBe(0);
+    expect(existsSync(join(dir, 'refresh-k.lock'))).toBe(true);
   });
 
   it('takes over a lock its process left behind', async () => {

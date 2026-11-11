@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs';
+import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 import { lstat, open, realpath, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CommetError, EXIT } from '../core/errors.js';
@@ -43,12 +43,14 @@ export function writeAtomic(file: string, data: string | Uint8Array, mode = 0o60
 }
 
 /**
- * Appends `text` to `<state dir>/<name>` (created 0600) in one write, so concurrent appenders never
- * interleave a record. A link planted at the file is refused by O_NOFOLLOW (the state dir itself
- * is checked by stateDir), and anything but a regular file is refused before writing (exit 5).
+ * Appends lines (`text` ends in a newline) to `<state dir>/<name>` (created 0600) in one write, so
+ * concurrent appenders never interleave a record. A file left ending mid-line (a write cut short)
+ * gets a newline first, so the fragment stays one bad line and never swallows the next record. A
+ * link planted at the file is refused by O_NOFOLLOW (the state dir itself is checked by stateDir),
+ * and anything but a regular file is refused before writing (exit 5).
  */
-export function appendState(dir: string, name: string, text: string): void {
-  const flags = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+export function appendStateLines(dir: string, name: string, text: string): void {
+  const flags = constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
   let fd: number;
   try {
     fd = openSync(join(dir, name), flags, 0o600);
@@ -57,8 +59,11 @@ export function appendState(dir: string, name: string, text: string): void {
     throw e;
   }
   try {
-    if (!fstatSync(fd).isFile()) throw notFile(name);
-    const bytes = Buffer.from(text, 'utf8');
+    const st = fstatSync(fd);
+    if (!st.isFile()) throw notFile(name);
+    const last = Buffer.alloc(1);
+    const cut = st.size > 0 && readSync(fd, last, 0, 1, st.size - 1) === 1 && last[0] !== 0x0a;
+    const bytes = Buffer.from(cut ? `\n${text}` : text, 'utf8');
     // A short write (a full disk) leaves a cut-off line, which the reader counts as dropped.
     if (writeSync(fd, bytes) !== bytes.length) throw new CommetError(`state error: .git/commet/${name}: short write`, EXIT.state);
   } finally {

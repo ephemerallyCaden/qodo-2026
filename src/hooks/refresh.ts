@@ -1,43 +1,12 @@
 // `commet hook refresh` (R7): what the git hooks run, detached. A rebase runs post-commit once per
 // commit, so refreshes coalesce per worktree: one scan runs at a time and requests made meanwhile
 // fold into one more scan after it, never a scan per commit.
-import { lstatSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tryLock } from '../state/lock.js';
 
 /** At most this many scans back to back, however many commits arrive while they run. */
 const MAX_ROUNDS = 5;
-
-const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    // EPERM: the process exists but belongs to someone else.
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
-  }
-};
-
-/** Takes the lock (exclusive create, holding our pid); a lock whose process is gone is taken over. */
-function tryLock(lock: string): boolean {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      writeFileSync(lock, String(process.pid), { flag: 'wx', mode: 0o600 });
-      return true;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-    }
-    let pid = NaN;
-    try {
-      // Only a regular file is read: a planted FIFO would block.
-      if (lstatSync(lock).isFile()) pid = Number(readFileSync(lock, 'utf8'));
-    } catch {
-      // Gone already, or not readable: try again or leave it.
-    }
-    if (Number.isSafeInteger(pid) && pid > 0 && alive(pid)) return false;
-    rmSync(lock, { force: true });
-  }
-  return false;
-}
 
 /**
  * Runs `scan` unless one is already running for this worktree (`key`), in which case it leaves a
