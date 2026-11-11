@@ -1,12 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { sessionKey } from '../src/core/hash.js';
 import { gitRunner } from '../src/scan/git.js';
 import { scan, type ScanOptions } from '../src/scan/index.js';
-import { addedLines } from '../src/scan/repo.js';
+import { addedLines, windowCommits, type NumstatRow } from '../src/scan/repo.js';
 import { buildBasicRepo, CONTROL, SPACED, type FixtureRepo } from './fixtures/build/basic.js';
 import { cli } from './fixtures/cli.js';
 import { miniRepo } from './fixtures/mini.js';
@@ -169,5 +169,65 @@ describe('git patch parsing', () => {
     const { snapshot } = await run();
     const c8 = snapshot.commits.find((c) => c.sha === repo.commits['c8']!.sha)!;
     expect(c8.files.map((f) => f[0])).toEqual([SPACED.plain, SPACED.quoted]);
+  });
+});
+
+describe('#24: window numstat is parsed by position on NUL (AGENTS.md Rule 7)', () => {
+  const ODD = 'd/a\u0001b\nc\td.ts';
+  const row = (added: number, removed = 0, binary = false): NumstatRow => ({ added, removed, binary });
+  const since = '2000-01-01T00:00:00Z';
+  /** windowCommits over canned output: `stat` is the numstat log, one meta record per SHA. */
+  const canned = (stat: string, shas: string[]) => async (args: string[]) =>
+    (args.includes('--numstat') ? stat : shas.map((s) => [s, '100', '100', 'N', 'n@example.com', '', 's'].join('\0')).join('\0'));
+
+  it('a path holding U+0001, a newline and a tab neither splits its commit nor drops its rows (real git)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'commet-numstat-'));
+    let n = 0;
+    const git = (...args: string[]) => {
+      const at = `2026-07-${String(++n).padStart(2, '0')}T10:00:00Z`;
+      return execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 'Ada', GIT_AUTHOR_EMAIL: 'ada@example.com',
+        GIT_COMMITTER_NAME: 'Ada', GIT_COMMITTER_EMAIL: 'ada@example.com', GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } }).trim();
+    };
+    git('init', '-q', '-b', 'main');
+    // An empty root is the log's last record: its header is all that is left at the end.
+    git('commit', '-q', '--allow-empty', '-m', 'root');
+    mkdirSync(join(dir, 'd'));
+    writeFileSync(join(dir, ODD), 'odd\n');
+    writeFileSync(join(dir, 'd/c.ts'), 'c\nc\nc\nc\n');
+    writeFileSync(join(dir, 'd/z.ts'), 'z\nz\n');
+    writeFileSync(join(dir, 'd/logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 1, 2]));
+    git('add', '-A');
+    git('commit', '-qm', 'odd');
+    git('commit', '-q', '--allow-empty', '-m', 'empty');
+    mkdirSync(join(dir, '\nnl'));
+    git('mv', 'd/c.ts', '\nnl/c.ts');
+    writeFileSync(join(dir, ODD), 'odd\nodd\n');
+    git('commit', '-qam', 'move');
+    const commits = await windowCommits(gitRunner(dir), git('rev-parse', 'HEAD'), since);
+    expect(commits.map((c) => [c.subject, c.files])).toEqual([
+      ['root', new Map()],
+      ['odd', new Map([[ODD, row(1)], ['d/c.ts', row(4)], ['d/logo.png', row(0, 0, true)], ['d/z.ts', row(2)]])],
+      ['empty', new Map()],
+      ['move', new Map([[ODD, row(1)], ['\nnl/c.ts', row(0)]])],
+    ]);
+  });
+
+  it('a repeated header keeps only the first (first-parent) diff, as lineageLog does', async () => {
+    const [m, p] = ['e'.repeat(40), 'f'.repeat(40)];
+    const stat = ['', m, '\n1\t0\tm.ts', '', m, '\n2\t0\ts.ts', '', p, '\n3\t1\ta.ts', ''].join('\0');
+    const commits = await windowCommits(canned(stat, [m, p]), 'HEAD', since);
+    expect(commits.map((c) => [c.sha, c.files])).toEqual([[p, new Map([['a.ts', row(3, 1)]])], [m, new Map([['m.ts', row(1)]])]]);
+  });
+
+  it('keeps a well-formed final header without its closing NUL; refuses any other cut-off record', async () => {
+    const [a, b] = ['a'.repeat(40), 'b'.repeat(64)];
+    const ok = await windowCommits(canned(['', a, '\n1\t0\td/a.ts', '', b].join('\0'), [a, b]), 'HEAD', since);
+    expect(ok.map((c) => [c.sha, c.files])).toEqual([[b, new Map()], [a, new Map([['d/a.ts', row(1)]])]]);
+    for (const stat of [
+      ['', a, '\n1\t0\td/a.ts', '', 'b'.repeat(39)],
+      ['', a, '\n1\t0\td/a.t'],
+      ['', a, '\n0\t0\t', 'd/x.ts'],
+      ['', a, '\n0\t0\t', 'd/x.ts', 'e/x.ts'],
+    ]) await expect(windowCommits(canned(stat.join('\0'), [a]), 'HEAD', since)).rejects.toThrow(/incomplete/);
   });
 });
