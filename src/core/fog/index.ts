@@ -204,6 +204,12 @@ function place(base: FogBase, e: ChartEntry): { file: number; seq: number } | nu
   return name ? { file: name.file, seq } : null;
 }
 
+/** The id at HEAD of the file a chart entry reviewed, or null when it can't be placed (see place). */
+export function chartedFileId(base: FogBase, e: ChartEntry): FileId | null {
+  const p = place(base, e);
+  return p ? base.files[p.file]!.id : null;
+}
+
 function fileFog(base: FogBase, i: number, through: number): FileFog {
   const fileId = base.files[i]!.id;
   const why = new Set<FogReason>();

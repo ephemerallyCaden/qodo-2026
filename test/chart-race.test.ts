@@ -67,3 +67,56 @@ it('a snapshot published during a chart write leaves the write at the head the u
     vi.resetModules();
   }
 });
+
+it('`commet chart` reports a file a scan renamed while it charted, at the head it read (Qodo PR66 r3)', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-chart-race-')));
+  made.push(dir);
+  const git = (args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
+  git(['init', '-q', '-b', 'main']);
+  for (const [k, v] of [['user.name', SELF.name], ['user.email', SELF.email], ['commit.gpgsign', 'false']]) git(['config', k!, v!]);
+  mkdirSync(join(dir, 'src'), { recursive: true });
+  writeFileSync(join(dir, 'src/a.ts'), 'export const a = 1;\n');
+  git(['add', '-A']);
+  git(['commit', '-q', '-m', 'test: add']);
+  const oldHead = git(['rev-parse', 'HEAD']);
+  const env = { CLAUDE_CONFIG_DIR: join(dir, 'no-claude') };
+  const snapshot = join(dir, '.git/commet/snapshot.json');
+  expect((await cli(['scan', '--no-ingest'], dir, env)).code).toBe(0);
+  const oldSnap = readFileSync(snapshot, 'utf8');
+  git(['mv', 'src/a.ts', 'src/b.ts']);
+  writeFileSync(join(dir, 'src/b.ts'), 'export const a = 1;\nexport const b = 2;\n');
+  git(['add', '-A']);
+  git(['commit', '-q', '-m', 'test: rename']);
+  expect((await cli(['scan', '--no-ingest'], dir, env)).code).toBe(0);
+  const newSnap = readFileSync(snapshot, 'utf8');
+  git(['checkout', '-q', oldHead]);
+  writeFileSync(snapshot, oldSnap);
+
+  // The scan with the rename publishes just as the chart write takes its lock.
+  let armed = true;
+  vi.resetModules();
+  vi.doMock('node:fs', async (orig) => {
+    const fs = await orig<typeof import('node:fs')>();
+    const writeFileSync = ((file: Parameters<typeof fs.writeFileSync>[0], ...rest: unknown[]) => {
+      if (armed && String(file).endsWith('chart.lock')) {
+        armed = false;
+        fs.writeFileSync(snapshot, newSnap);
+      }
+      return (fs.writeFileSync as (...a: unknown[]) => void)(file, ...rest);
+    }) as typeof fs.writeFileSync;
+    return { ...fs, default: { ...fs, writeFileSync }, writeFileSync };
+  });
+  try {
+    const { main } = await import('../src/cli/main.js');
+    let out = '';
+    let err = '';
+    const code = await main(['chart', 'src/a.ts'], { stdout: (t) => (out += t), stderr: (t) => (err += t), cwd: dir, env });
+    expect(armed).toBe(false);
+    expect([code, err.split('\n').filter((l) => !l.startsWith('note:') && l !== '')]).toEqual([0, []]);
+    expect(out).toMatch(new RegExp(`^Charted src/a\\.ts at ${oldHead.slice(0, 7)}\\. It was fogged \\(unknown\\) since ${oldHead.slice(0, 7)}\\. It is still fogged`));
+    expect(JSON.parse(readFileSync(join(dir, '.git/commet/chart.json'), 'utf8')).charts).toEqual([{ fileId: fileIdOf('src/a.ts'), at: oldHead }]);
+  } finally {
+    vi.doUnmock('node:fs');
+    vi.resetModules();
+  }
+});

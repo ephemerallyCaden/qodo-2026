@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, sep } from 'node:
 import { byCodepoint } from '../core/canonical-json.js';
 import type { FogView } from '../core/contract/fog.js';
 import { CommetError, EXIT } from '../core/errors.js';
-import { fogFrom } from '../core/fog/index.js';
+import { chartedFileId, fogFrom } from '../core/fog/index.js';
 import type { FileId } from '../core/snapshot/types.js';
 import { gitRunner, tryGit } from '../scan/git.js';
 import { currentFog, openFogSource, writeChart, type FogSource } from '../state/chart.js';
@@ -142,24 +142,30 @@ async function chartFile(src: FogSource, io: Io, arg: string): Promise<number> {
       : `commet: ${label(path)} isn't in the latest snapshot (excluded, uncommitted or newer than the scan: run \`commet scan\`)\n`);
     return EXIT.usage;
   }
-  const r = await writeChart(src, { kind: 'chart', fileId: file.id, at: src.base.snapshot.repo.head });
+  const at = src.base.snapshot.repo.head;
+  const r = await writeChart(src, { kind: 'chart', fileId: file.id, at });
   if (!r.ok && r.head !== undefined) throw unknownHead(r.head);
   if (!r.ok) throw new CommetError(r.error, EXIT.internal);
+  // A scan may have landed (and renamed the file) before the write: report the file by its id in the
+  // base the write was applied on, and the chart at the head it was recorded at.
+  const id = chartedFileId(r.base, { fileId: file.id, at }) ?? file.id;
   const after = fogFrom(r.base, r.chart);
-  const was = fogFrom(r.base, r.prev).files.find((f) => f.fileId === file.id)!;
-  const now = after.files.find((f) => f.fileId === file.id)!;
+  const was = fogFrom(r.base, r.prev).files.find((f) => f.fileId === id);
+  const now = after.files.find((f) => f.fileId === id);
+  if (!was || !now) throw new CommetError('charted file is missing from the fog view', EXIT.internal);
   const before = was.state === 'fogged' ? `It was fogged (${was.reasons.join(', ')}) since ${short(was.since!)}.`
     : was.state === 'charted' ? 'It was already charted.' : "It had no changes you didn't write.";
   const still = now.state === 'fogged' ? ` It is still fogged (${now.reasons.join(', ')}) since ${short(now.since!)}.` : '';
-  io.stdout(`Charted ${label(path)} at ${short(r.base.snapshot.repo.head)}. ${before}${still}\n`);
-  const where = tally({ ...src, base: r.base }, after).rowOf.get(file.id)!;
+  io.stdout(`Charted ${label(path)} at ${short(at)}. ${before}${still}\n`);
+  const where = tally({ ...src, base: r.base }, after).rowOf.get(id)!;
   io.stdout(`${where.name}: ${where.fogged} of ${where.files} files fogged\n`);
   return 0;
 }
 
 async function baseline(src: FogSource, io: Io, undo: boolean): Promise<number> {
   // The CLI has no older view: it acts at the head of the snapshot it just read (#58).
-  const r = await writeChart(src, { kind: undo ? 'baseline-undo' : 'baseline', at: src.base.snapshot.repo.head });
+  const at = src.base.snapshot.repo.head;
+  const r = await writeChart(src, { kind: undo ? 'baseline-undo' : 'baseline', at });
   if (!r.ok && r.head !== undefined) throw unknownHead(r.head);
   if (!r.ok) {
     io.stderr(`commet: ${r.error}\n`);
@@ -171,7 +177,7 @@ async function baseline(src: FogSource, io: Io, undo: boolean): Promise<number> 
     const removed = r.prev.baselines.at(-1)!;
     io.stdout(`Removed the baseline at ${short(removed)}; ${changed} files are fogged again. Baseline now: ${fog.baseline ? short(fog.baseline) : 'none'}.\n`);
   } else {
-    io.stdout(`Baseline at ${short(r.base.snapshot.repo.head)}: charting ${changed} fogged files, every change up to this commit. `
+    io.stdout(`Baseline at ${short(at)}: charting ${changed} fogged files, every change up to this commit. `
       + 'Undo with `commet chart baseline --undo`.\n');
   }
   io.stdout(`Now: ${summary(tally({ ...src, base: r.base }, fog).total)}\n`);

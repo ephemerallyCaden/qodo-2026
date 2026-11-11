@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/core/canonical-json.js';
 import type { FileFog, FogView } from '../src/core/contract/fog.js';
 import {
-  applyChartAction, emptyChart, fileIdOf, fogBase, fogFrom, fogView, homes, parseChartAction, parseChartState, reasonsOf, unrowedChanges, type ChartState,
+  applyChartAction, chartedFileId, emptyChart, fileIdOf, fogBase, fogFrom, fogView, homes, parseChartAction, parseChartState, reasonsOf, unrowedChanges, type ChartState,
 } from '../src/core/fog/index.js';
 import { pathHistory, type PathHistory } from '../src/core/renames.js';
 import type { Commit, FileId } from '../src/core/snapshot/types.js';
@@ -178,6 +178,8 @@ describe('fogView', () => {
       expect(fileAt(fogFrom(base, chart), 'src/a.ts')).toMatchObject({ state: 'fogged', since: unseen });
     }
     // The pre-rename id as of `at` charts the renamed file; its later change is yours.
+    expect(chartedFileId(base, { fileId: fileIdOf('lib/e.ts'), at: seen })).toBe(fileIdOf('lib/f.ts'));
+    expect(chartedFileId(base, { fileId: fileIdOf('lib/e.ts'), at: m.sha(m.head) })).toBeNull();
     expect(fileAt(fogFrom(base, renamed.chart), 'lib/f.ts').state).toBe('charted');
     expect(fileAt(fogFrom(base, baseline.chart), 'lib/f.ts').state).toBe('charted');
     expect(applyChartAction(base, baseline.chart, { kind: 'baseline-undo', at: seen })).toEqual({ ok: true, chart: emptyChart() });
