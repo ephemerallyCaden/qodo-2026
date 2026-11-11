@@ -245,7 +245,7 @@ Determinism applies throughout:
    - For each added line on file F in commit C, the candidates are events on F's lineage paths whose ts is ≤ `C.committerDate + 1 s`. Event ts is the tool-call record's time, not the result's. **There is no lower bound:** with parallel worktrees and fast-forward integration, the previous commit to F is often authored after C's edits. *(As built on Day 1; Qodo PR #3 #1 removed the author-date fallback.)*
    - **Last writer wins:** the owner is the max ts, with ties broken by `eventId` ascending.
 6. **Line class (v1):** `verbatim` or `unmatched`. **Deferred:** `agent-modified`, through a keyed 64-bit SimHash per line (`addedSimhash?` is reserved in the schema), behind its own property test.
-7. **Commit class.** One pure function, `classify()` in `src/core/classify.ts`, decides it from `counted`, `shareMilli`, `matched`, `ranCommit`, `isMerge`, `isSelf`, `covered` and `partial`. It has an exhaustive decision-table test and a property test. The first matching row wins:
+7. **Commit class.** One pure function, `classify()` in `src/core/classify.ts`, decides it from `counted`, `shareMilli`, `matched`, `ranCommit`, `isMerge`, `isSelf`, `covered`, `partial` and `patchIncomplete` (the commit's `-U0` patch couldn't be read completely, #38). It has an exhaustive decision-table test and a property test. The first matching row wins:
 
    | Condition | Class | Tier |
    |---|---|---|
@@ -255,8 +255,8 @@ Determinism applies throughout:
    | No countable added lines | `unknown` | none |
    | Share ≥ 900‰ | `agent` | high |
    | Share 300–899‰ | `mixed` | high |
-   | Share under 300‰, author is self, `covered`, not `partial`, and no session ran it (no output SHA, no git command window) | `human` (any matched line means "with traces") | high |
-   | Share under 300‰, anything else: not self (R6), outside coverage, in a blind or partial span, or `agent_ran_commit` | `unknown`, never `human` | none |
+   | Share under 300‰, author is self, `covered`, not `partial`, its patch read completely, and no session ran it (no output SHA, no git command window) | `human` (any matched line means "with traces") | high |
+   | Share under 300‰, anything else: not self (R6), outside coverage, in a blind or partial span, a patch Commet couldn't fully read, or `agent_ran_commit` | `unknown`, never `human` | none |
 
    An agent-run commit with share 0 (the agent wrote it with a heredoc, `sed -i` or codegen, then ran `git commit`) is `unknown` and keeps its `agent_ran_commit` evidence and session. The UI can show it as "committed by an agent session; authorship unverified" (Issue #5). **Residual risk, accepted:** an agent heredoc that a human later commits leaves no allowlisted signal, so it can still be `human`.
 
