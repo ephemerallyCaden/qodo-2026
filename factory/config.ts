@@ -60,9 +60,15 @@ export const machinePaths = (c: Config): [string, string][] => [[c.repoDir, '.']
 
 export const ticksFile = (c: Config) => join(c.stateDir, 'ticks.jsonl');
 
+/**
+ * `session/<name>` with a name git accepts as a ref component (Qodo PR #93 4c0331e1): no leading
+ * dot, no `..`, and no trailing `.` or `.lock`, so a bad name fails here and not at the fetch.
+ */
+const SESSION_BRANCH = /^session\/(?!\.)(?!.*\.\.)(?!.*\.$)(?!.*\.lock$)[A-Za-z0-9._-]+$/;
+
 /** The base must be a session branch: the runner never targets or pushes `main` (R8). */
 export function configError(c: Config): string | null {
-  if (!/^session\/[A-Za-z0-9._-]+$/.test(c.base)) return `--base must be a session/<name> branch, not ${JSON.stringify(c.base)}`;
+  if (!SESSION_BRANCH.test(c.base)) return `--base must be a session/<name> branch, not ${JSON.stringify(c.base)}`;
   if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(c.slug)) return `bad GitHub repo ${JSON.stringify(c.slug)}`;
   if (c.previewIssue !== null && !c.dryRun) return '--issue only works with --dry-run';
   return null;

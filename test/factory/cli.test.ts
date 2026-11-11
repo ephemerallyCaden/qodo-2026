@@ -61,6 +61,18 @@ describe('one run at a time (R1)', () => {
     expect(await main(['merge'], d)).toBe(2);
     expect(w.callsTo('lockf')).toHaveLength(0);
   });
+
+  it.each(['session/.', 'session/foo.lock'])('a --base git refuses as a branch (%s) is a usage error before any setup (Qodo PR93 4c0331e1)', async (base) => {
+    const w = new World();
+    w.addIssue(24);
+    w.lockBusy = true;
+    const { d, err } = deps(w);
+    expect(await main(['tick', '--base', base], d)).toBe(2);
+    expect(err.join('')).toContain(`--base must be a session/<name> branch, not ${JSON.stringify(base)}`);
+    expect(w.callsTo('lockf')).toHaveLength(0);
+    expect(w.callsTo('gh')).toHaveLength(0);
+    expect(w.gitCalls('fetch')).toHaveLength(0);
+  });
 });
 
 describe('install and uninstall (R11)', () => {

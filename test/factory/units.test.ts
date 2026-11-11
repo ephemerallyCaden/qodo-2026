@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { fixResult, implementResult, lastJsonBlock, readClaude, systemPrompt } from '../../factory/agent.js';
 import { configError, defaults, slugFromRemote } from '../../factory/config.js';
@@ -238,6 +239,16 @@ describe('config', () => {
     expect(configError({ ...cfg, base: 'feature/x' })).toMatch(/session\/<name>/);
     expect(configError({ ...cfg, previewIssue: 3 })).toMatch(/--dry-run/);
   });
+  it('refuses a session name git would refuse as a branch, and accepts only names git accepts (Qodo PR93 4c0331e1)', () => {
+    const bad = ['session/.', 'session/..', 'session/.x', 'session/a..b', 'session/x.', 'session/foo.lock', 'session/', 'session/a/b', 'session/a b'];
+    const good = ['session/week1', 'session/v1.2', 'session/a_b-c', 'session/x.lockfile', 'session/-x'];
+    for (const base of bad) expect(configError({ ...cfg, base }), base).toMatch(/session\/<name>/);
+    for (const base of good) {
+      expect(configError({ ...cfg, base }), base).toBeNull();
+      expect(spawnSync('git', ['check-ref-format', `refs/heads/${base}`]).status, `git accepts ${base}`).toBe(0);
+    }
+  });
+
   it('reads the GitHub slug from the remote', () => {
     expect(slugFromRemote('https://github.com/ephemerallyCaden/qodo-2026.git\n')).toBe('ephemerallyCaden/qodo-2026');
     expect(slugFromRemote('git@github.com:o/r.git')).toBe('o/r');
