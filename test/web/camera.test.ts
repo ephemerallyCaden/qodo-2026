@@ -1,7 +1,7 @@
 // Camera maths and the free-flight rig (#30): pure, so picking, labels and the renderer agree.
 import { describe, expect, it } from 'vitest';
-import { FOCUS_FILL, FOV_DEG, eyeOf, focusPose, fromCameraPose, pick, project, projectedRadius, startPose, toCameraPose, type OrbitPose } from '../../web/src/camera/pose.js';
-import { FreeFlightRig, GLIDE_MS, type FlyKey } from '../../web/src/camera/rig.js';
+import { FOCUS_FILL, FOV_DEG, eyeOf, focusPose, framingDistance, fromCameraPose, pick, project, projectedRadius, startPose, toCameraPose, type OrbitPose } from '../../web/src/camera/pose.js';
+import { FreeFlightRig, GLIDE_MS, MIN_FOCUS_DIST, type FlyKey } from '../../web/src/camera/rig.js';
 import { placeLabels } from '../../web/src/labels/place.js';
 import { planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
@@ -184,54 +184,103 @@ describe('FreeFlightRig', () => {
   it('follows a focused planet that grew: the zoom limit uses its new radius', () => {
     const rig = new FreeFlightRig(POSE);
     rig.focus({ centre: [5, 0, 0], radius: 1 }, true);
-    rig.track({ centre: [5, 0, 0], radius: 2 }); // a reload: same place, bigger planet
+    const framed = rig.pose().dist; // about 7.05, outside the radius-2 limit of 2.7
+    expect(rig.track({ centre: [5, 0, 0], radius: 2 })).toBe(false); // a reload: same place, bigger planet
+    expect(rig.pose().dist).toBe(framed); // the framing already clears the new limit, so it stays
     rig.step({ wheel: -100000 }, 16);
-    expect(rig.pose().dist).toBeCloseTo(2 * 1.35, 9);
+    expect(rig.pose().dist).toBeCloseTo(2 * MIN_FOCUS_DIST, 9);
   });
 
   // Qodo PR #93 r1 aa4520b0: track() takes the new radius but never re-clamps the distance, so a
   // focused planet that grows on a live reload (live.ts:79-80) can end up around the camera. A
   // planet's radius is clamp(0.75 × log2(1 + LOC)) in 1.5..12 layout units, so it can grow up to 8×.
-  // The default focus frames at r / (FOCUS_FILL × tan(FOV/2)) ≈ 7.05 r. Marked `fails` until fixed.
+  // The default focus frames at r / (FOCUS_FILL × tan(FOV/2)) ≈ 7.05 r. track() now re-aims a
+  // running glide at the new framing and pushes the user's own framing out to the new limit at once.
   describe('a focused planet that grows on a reload (Qodo PR #93 aa4520b0)', () => {
-    const MIN_FOCUS_DIST = 1.35; // rig.ts:45
     const centre: [number, number, number] = [5, 0, 0];
     const gap = (rig: FreeFlightRig) => Math.hypot(...eyeOf(rig.pose()).map((v, i) => v - centre[i]!));
+    /** At or past the zoom limit of radius r: exactly on `dist`, and within an ulp on the eye rebuilt from it. */
+    const outside = (rig: FreeFlightRig, r: number) => {
+      expect(rig.pose().dist).toBeGreaterThanOrEqual(r * MIN_FOCUS_DIST);
+      expect(gap(rig)).toBeGreaterThan(r * MIN_FOCUS_DIST - 1e-9);
+    };
 
-    it.fails('during a glide: the glide ends outside the new zoom limit', () => {
+    it('during a glide: the glide ends outside the new zoom limit', () => {
       const rig = new FreeFlightRig(POSE);
       rig.focus({ centre, radius: 1 }, false); // planet at 3 LOC (radius 1500)
       rig.step({}, GLIDE_MS / 2);
       rig.track({ centre, radius: 8 }); // reload mid-glide: 65,535 LOC (radius 12000, 8×)
       rig.step({}, GLIDE_MS);
       expect(rig.moving()).toBe(false);
-      expect(gap(rig)).toBeGreaterThanOrEqual(8 * MIN_FOCUS_DIST); // observed: 7.048
+      outside(rig, 8); // before the fix: 7.048
     });
 
-    it.fails('no glide, default framing: the camera stays outside the new zoom limit', () => {
+    it('no glide, default framing: the camera stays outside the new zoom limit', () => {
       const rig = new FreeFlightRig(POSE);
       rig.focus({ centre, radius: 1 }, true);
       rig.track({ centre, radius: 8 });
-      expect(gap(rig)).toBeGreaterThanOrEqual(8 * MIN_FOCUS_DIST); // observed: 7.048, inside the 8-unit planet
+      outside(rig, 8); // before the fix: 7.048, inside the 8-unit planet
     });
 
-    it.fails('no glide, zoomed in to the limit: a 35% growth puts the camera inside the planet', () => {
+    it('no glide, zoomed in to the limit: a 35% growth puts the camera inside the planet', () => {
       const rig = new FreeFlightRig(POSE);
       rig.focus({ centre, radius: 1 }, true);
       rig.step({ wheel: -100000 }, 16); // zoom in as far as allowed: 1.35 radii
       expect(gap(rig)).toBeCloseTo(MIN_FOCUS_DIST, 9);
       rig.track({ centre, radius: 1.351 }); // 100 LOC → 510 LOC (radius 4993 → 6747)
-      expect(gap(rig)).toBeGreaterThanOrEqual(1.351 * MIN_FOCUS_DIST); // observed: 1.35, under the 1.351 surface
+      outside(rig, 1.351); // before the fix: 1.35, under the 1.351 surface
     });
 
-    it('today the limit only applies on the next orbit or zoom input, as a jump', () => {
+    it('the limit applies straight after track(), so the next input does not jump', () => {
       const rig = new FreeFlightRig(POSE);
       rig.focus({ centre, radius: 1 }, true);
       rig.step({ wheel: -100000 }, 16);
-      rig.track({ centre, radius: 2 });
-      expect(gap(rig)).toBeCloseTo(1.35, 9); // inside the radius-2 planet, with no input
+      expect(rig.track({ centre, radius: 2 })).toBe(true); // the pose moved: the frame loop redraws (live.ts:120)
+      expect(gap(rig)).toBeCloseTo(2 * MIN_FOCUS_DIST, 9); // out at the new limit, with no input
       rig.step({ drag: [1, 0] }, 16); // a 1 px drag
-      expect(gap(rig)).toBeCloseTo(2 * 1.35, 9); // jumps out to the new limit
+      expect(gap(rig)).toBeCloseTo(2 * MIN_FOCUS_DIST, 9); // no jump
+    });
+
+    it('track() reports a pose that moved for the resize alone, and only then', () => {
+      const rig = new FreeFlightRig(POSE);
+      rig.focus({ centre, radius: 1 }, true);
+      rig.step({ wheel: -100000 }, 16); // at the limit, 1.35
+      expect(rig.track({ centre, radius: 1 })).toBe(false); // nothing changed
+      expect(rig.track({ centre, radius: 1.2 })).toBe(true); // pushed out to 1.62
+      expect(rig.pose().dist).toBeCloseTo(1.2 * MIN_FOCUS_DIST, 9);
+      expect(rig.track({ centre, radius: 1.2 })).toBe(false); // already there
+    });
+
+    it('a planet that shrinks keeps the user\'s zoom: the camera is never pulled in', () => {
+      const rig = new FreeFlightRig(POSE);
+      rig.focus({ centre, radius: 4 }, true);
+      rig.step({ wheel: -200 }, 16); // the user's own zoom, between the framing and the limit
+      const zoom = rig.pose();
+      expect(zoom.dist).toBeGreaterThan(4 * MIN_FOCUS_DIST);
+      expect(rig.track({ centre, radius: 1 })).toBe(false);
+      expect(rig.pose()).toEqual(zoom);
+      rig.step({ wheel: -100000 }, 16); // the smaller planet's limit applies on the next zoom
+      expect(rig.pose().dist).toBeCloseTo(MIN_FOCUS_DIST, 9);
+    });
+
+    it('a running glide re-aims at the framing for the new radius, grown or shrunk', () => {
+      const grow = new FreeFlightRig(POSE);
+      grow.focus({ centre, radius: 1 }, false);
+      grow.step({}, GLIDE_MS / 2);
+      const mid = grow.pose();
+      expect(grow.track({ centre, radius: 8 })).toBe(true); // the glide's destination moved
+      expect(grow.pose()).toEqual(mid); // the glide carries the camera there; no cut
+      grow.step({}, GLIDE_MS);
+      expect(grow.moving()).toBe(false);
+      expect(grow.pose().dist).toBeCloseTo(framingDistance(8, FOCUS_FILL), 9);
+      expect(projectedRadius(8, grow.pose().dist)).toBeCloseTo(FOCUS_FILL, 9); // framed like a fresh focus
+
+      const shrink = new FreeFlightRig(POSE);
+      shrink.focus({ centre, radius: 4 }, false);
+      shrink.step({}, GLIDE_MS / 2);
+      shrink.track({ centre, radius: 1 });
+      shrink.settle();
+      expect(shrink.pose().dist).toBeCloseTo(framingDistance(1, FOCUS_FILL), 9);
     });
   });
 

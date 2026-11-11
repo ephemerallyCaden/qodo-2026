@@ -3,7 +3,7 @@
 // renderer (R4: the camera module stays pluggable). Pure: input arrives as plain values, and the
 // caller passes elapsed milliseconds, so this module reads no clock.
 import { add, scale, sub, type Sphere, type Vec3 } from '../model/vec.js';
-import { basis, clampPitch, eyeOf, focusPose, lerpPose, type OrbitPose } from './pose.js';
+import { basis, clampPitch, eyeOf, focusDistance, focusPose, lerpPose, type OrbitPose } from './pose.js';
 
 export type FlyKey = 'forward' | 'back' | 'left' | 'right' | 'up' | 'down';
 
@@ -42,7 +42,9 @@ const WHEEL_ZOOM = 0.0015;
 const FLY_RATE = 0.6;
 const MIN_FLY_SPEED = 0.5;
 /** A focused camera never enters the planet: the clouds reach about 1.1 radii. */
-const MIN_FOCUS_DIST = 1.35;
+export const MIN_FOCUS_DIST = 1.35;
+/** The closest a camera focused on a body of `radius` may come to its centre. */
+const zoomLimit = (radius: number) => radius * MIN_FOCUS_DIST;
 
 const smoothstep = (u: number) => { const x = Math.min(1, Math.max(0, u)); return x * x * (3 - 2 * x); };
 
@@ -80,10 +82,16 @@ export class FreeFlightRig implements CameraRig {
   track(body: Sphere): boolean {
     if (!this.target) return false;
     const d = sub(body.centre, this.target.centre);
+    const resized = body.radius !== this.target.radius;
     this.target = { centre: body.centre, radius: body.radius }; // the zoom limit follows a resized planet
-    if (d[0] === 0 && d[1] === 0 && d[2] === 0) return false;
-    if (this.glide) this.glide.to = { ...this.glide.to, target: add(this.glide.to.target, d) };
-    else this.current = { ...this.current, target: add(this.current.target, d) };
+    // On a resize, a glide (a focus action) re-aims at the framing for the new size, while the
+    // user's own framing stays, pushed out at once to the new zoom limit and never pulled in.
+    const base = this.glide ? this.glide.to : this.current;
+    const dist = !resized ? base.dist : this.glide ? focusDistance(base, body.radius) : Math.max(zoomLimit(body.radius), base.dist);
+    if (d[0] === 0 && d[1] === 0 && d[2] === 0 && dist === base.dist) return false;
+    const next = { ...base, target: add(base.target, d), dist };
+    if (this.glide) this.glide.to = next;
+    else this.current = next;
     return true;
   }
 
@@ -108,8 +116,7 @@ export class FreeFlightRig implements CameraRig {
     if (this.target) {
       // orbit the focused body
       p = { ...p, yaw: p.yaw - drag[0] * LOOK_RAD_PER_PX, pitch: clampPitch(p.pitch + drag[1] * LOOK_RAD_PER_PX) };
-      const min = this.target.radius * MIN_FOCUS_DIST;
-      p = { ...p, dist: Math.max(min, p.dist * Math.exp(wheel * WHEEL_ZOOM)) };
+      p = { ...p, dist: Math.max(zoomLimit(this.target.radius), p.dist * Math.exp(wheel * WHEEL_ZOOM)) };
     } else {
       // turn around the eye, then move the eye
       if (drag[0] !== 0 || drag[1] !== 0) {

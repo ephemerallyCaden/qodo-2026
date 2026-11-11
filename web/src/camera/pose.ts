@@ -117,10 +117,13 @@ export function systemDepth(model: SystemModel, start: OrbitPose = startPose(mod
   return depthStretch(model.extent, Math.max(0, ...model.planets.map((p) => length(sub(planetCentre(p, 0), eye)))));
 }
 
+/** The distance at which a focused body of `radius` fills FOCUS_FILL of the frame, with `p`'s field of view. */
+export const focusDistance = (p: OrbitPose, radius: number): number => framingDistance(radius, FOCUS_FILL, fovOf(p));
+
 /** The pose that frames a body of `radius` at `centre`, seen from the current eye's direction. */
 export function focusPose(current: OrbitPose, centre: Vec3, radius: number): OrbitPose {
   const { yaw, pitch } = anglesOf(sub(eyeOf(current), centre), current);
-  return { ...current, target: [...centre], yaw, pitch, dist: framingDistance(radius, FOCUS_FILL, fovOf(current)) };
+  return { ...current, target: [...centre], yaw, pitch, dist: focusDistance(current, radius) };
 }
 
 /** Blends two poses: target linearly, distance in log space, yaw the short way round. */
