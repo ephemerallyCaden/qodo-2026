@@ -103,6 +103,8 @@ The crew palette is never retuned. Use the BLK 36 mapping as it is.
 - **Fade:** distant objects fade toward the space colour using the v2 depth tint `#1b1f4a`, at strengths 0 / 0.38 / 0.72, then toward `#17172f` at 0.88. Every object keeps its full colours.
 - **Per pixel:** the fade level is chosen **per pixel** from each fragment's own camera distance, with thresholds at **12 / 26 / 44**. A planet that straddles a threshold shades its near side and far side differently, and a ring's far arc fades more than its near arc.
 - **Smooth (default):** the fade is a **continuous per-pixel blend** toward the depth tint ("pixel-smooth"), so distance grades softly across every planet and ring. It's the one deliberate gradient in the style, chosen by the human over stepped bands for its smoothness. Object-level, 3-band and 6/8-band stepped fades remain as viewer options.
+- **Scaled to the system (human, 2026-11-11, #59):** the fade's reach grows with the system, so a whole system seen from its start pose isn't washed out. The first step (0 → 0.38, out to about 10 units, the hero's range) stays as tuned, so a focused planet and its moons fade exactly as in the viewer. Past an extent of 8.4 render units (the `mini` fixture's size), the 0.72 and 0.88 steps move out in proportion to the extent. That puts the farthest planet of any system's start pose at 0.72 or less, the level up to which the health bands still read. The 0.88 step still applies to anything beyond the system, such as when flying out. Code: `web/src/model/depth.ts`.
+- **Overview readability:** at a system's start pose, the farthest planet on screen fades by at most 0.72, and its health band still separates from the next band (≥ 0.05 OKLab). Measured on Commet's own repo with `--root src`: before this change every planet sat at 0.84–0.88 and toxic, ash and healthy were 0.03 apart; after it they sit at 0.58–0.72 and 0.07 apart. Checked by `test/render/overview.spec.ts`.
 - **Lava** glow fades at half strength, so a distant lava world still glows.
 - **Rejected:** cutting colour counts with distance (5/3/2/1 tones). It clipped the look too hard.
 
@@ -205,7 +207,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 | Camera | **Pending:** ortho snapped vs ortho free rotation vs perspective free flight (mockups in progress) |
 | Palette | Crew = **BLK 36** exactly; world = **v2**; rings = planet-family colours only |
 | Accent | **[OIII] teal**, events only, under 10% of pixels |
-| Depth | v2 fade with full colours; **pixel-smooth** per-pixel blend by distance (stepped and object modes as options) |
+| Depth | v2 fade with full colours; **pixel-smooth** per-pixel blend by distance (stepped and object modes as options); its reach scales with the system, so the farthest planet at the start pose fades ≤ 0.72 (#59) |
 | Planet meaning | Code-health bands lava → toxic → ash → lush; size = LOC; fog, drones, constellations and debris carry the rest |
 | Planet types | Lush, ocean, ice, desert/crater, lava, plus gas giant, barren moon, toxic |
 | Shading | Quantised bands, lit directional terminator, hero at 42–50% of frame, optional moons and halo |

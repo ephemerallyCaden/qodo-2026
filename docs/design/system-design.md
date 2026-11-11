@@ -502,7 +502,8 @@ These live as `test/server/security.test.ts`, and the PR description lists the r
 - **Golden images:**
   - Playwright runs in a pinned `mcr.microsoft.com/playwright@sha256:…` image with `--use-gl=swiftshader`. It reads the 320×180 internal canvas (not a page screenshot) at fixed frames 0, 180 and 360 for each camera mode.
   - Tolerance is 0 pixels in the pinned container. If flakes appear, allow ≤ 0.1% with a written justification.
-  - **Anti-empty asserts:** ≥ 12 unique colours, and ≥ 5% of pixels that aren't space.
+  - **Anti-empty asserts:** ≥ 12 unique colours, and ≥ 5% of pixels that aren't space. These are the render tests' blank-frame checks on the test fixtures (`mini` and the stand-in), not a readability rule for a real system's overview (human, 2026-11-11, #59). A wide system's start pose can be well under 5%: Commet's own repo with `--root src` is about 1%.
+  - **Overview readability** (human, 2026-11-11, #59): at a system's start pose, the farthest planet on screen fades by at most 0.72, and its health band still separates from the next band (≥ 0.05 in OKLab, the health-looks lab's glance floor). `test/render/overview.spec.ts` checks it on two self-like layouts, without and with a content root. The depth fade's reach scales with the system to meet it (art direction §5).
   - Each test also asserts off-palette pixels = 0 with the depth fade off.
 - **Budgets:** draw calls ≤ 100, triangles ≤ 500k and instances ≤ 50k, read from `renderer.info`, plus scan time (§11).
 - **CI** (`.github/workflows/ci.yml`):
