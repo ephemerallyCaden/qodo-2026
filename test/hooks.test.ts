@@ -5,7 +5,7 @@ import { chmodSync, existsSync, lstatSync, readFileSync, renameSync, rmSync, sta
 import { homedir, tmpdir } from 'node:os';
 import { join, posix, win32 } from 'node:path';
 import { Readable } from 'node:stream';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { installText, removeText } from '../src/hooks/claude-settings.js';
 import { placePath } from '../src/hooks/event.js';
 import { applyInstall, HOOK_MARK, planInstall } from '../src/hooks/git-hooks.js';
@@ -13,9 +13,8 @@ import { coalescedRefresh } from '../src/hooks/refresh.js';
 import { EVENTS_FILE, readEvents } from '../src/state/events.js';
 import { withLock } from '../src/state/lock.js';
 import { scripted } from './fixtures/cli.js';
-import { calls, cleanupHookFixtures, fakeCli, git, GIT_ENV, hook, hookRepo, mkdirp, tempDir, tree } from './fixtures/hooks.js';
+import { calls, fakeCli, git, GIT_ENV, hook, hookRepo, mkdirp, tempDir, tree } from './fixtures/hooks.js';
 
-afterAll(cleanupHookFixtures);
 
 const SETTINGS = '.claude/settings.local.json';
 const commit = (dir: string, env: NodeJS.ProcessEnv = {}) => {

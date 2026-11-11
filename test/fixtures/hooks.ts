@@ -1,28 +1,19 @@
 // Fixtures for `commet hook` (R7): throwaway repos with git's own config isolated (no system or
 // global config, so a machine-wide core.hooksPath such as a security tool's never applies, and no
-// global ignore file), a fake CLI that logs how the hooks called it, and cleanup of everything made.
+// global ignore file), and a fake CLI that logs how the hooks called it. Temp dirs come from
+// tmp.ts, which removes them when the test file ends.
 import { execFileSync } from 'node:child_process';
-import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { hookCommand, type HookPaths } from '../../src/cli/hook.js';
 import { main, type Io } from '../../src/cli/main.js';
 import type { Ask } from '../../src/cli/roots.js';
 import { SELF } from './build/basic.js';
+import { realTempDir } from './tmp.js';
 
-const made: string[] = [];
-
-/** A temp dir removed by cleanupHookFixtures (#53). */
-export function tempDir(prefix: string): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
-  made.push(dir);
-  return dir;
-}
-
-export function cleanupHookFixtures(): void {
-  for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
-}
+/** A real temp dir, removed when the test file ends (#53). */
+export const tempDir = realTempDir;
 
 const sandbox = tempDir('commet-hooks-env-');
 /** Git config for every git this suite runs, the CLI's included: none but the repo's own. */
