@@ -435,9 +435,12 @@ describe('R14 server: missing bundle, missing snapshot, and the R5 seams', () =>
     }
   });
 
-  it('delegates validated chart actions and pushes a fog event on success', async () => {
+  it('delegates validated chart actions; the chart.json they write pushes a fog event', async () => {
     const seen: ChartAction[] = [];
-    const f = await fixture({ fog: true, chart: async (a) => (seen.push(a), { ok: true, fog: miniFog }) });
+    let state = '';
+    // Like R5's applyChart, the delegate writes chart.json; the watcher announces it.
+    const f = await fixture({ fog: true, chart: async (a) => (seen.push(a), writeFileSync(join(state, 'chart.json'), JSON.stringify(a)), { ok: true, fog: miniFog }) });
+    state = f.state;
     const stream = openStream(f.port, API.events, { [TOKEN_HEADER]: f.token });
     try {
       expect(await stream.status).toBe(200);

@@ -1,5 +1,5 @@
 // File access for `commet open`: the built bundle (an allowlist: no listing, no traversal, no
-// symlinks) and the state files under `.git/commet/` (never read through a symlink, Rule 2).
+// symlinks). State files under `.git/commet/` are read through src/state/io.ts (Rule 2, #54).
 import { constants } from 'node:fs';
 import { open, readdir, realpath } from 'node:fs/promises';
 import { extname, join } from 'node:path';
@@ -86,25 +86,6 @@ export function readBundleFile(file: string): Promise<Buffer | null> {
 /** The state files the server reads, all written by `commet scan`. */
 export const STATE_FILES = { snapshot: 'snapshot.json', layout: 'layout.json' } as const;
 export const NO_SNAPSHOT = 'no snapshot yet: run `commet scan` first';
-
-/**
- * A state file (`snapshot.json`, `layout.json`) from the already-checked, canonical state dir, or
- * null when it doesn't exist. A symlink on the way, a non-file or an oversized file is a state error,
- * never followed or loaded (Rule 2). Messages name the file, never its absolute path.
- */
-export async function readStateFile(dir: string, name: string): Promise<Buffer | null> {
-  try {
-    const body = await readRegularFile(join(dir, name));
-    if (body === null) throw new CommetError(`state error: .git/commet/${name} is not a regular file`, EXIT.state);
-    return body;
-  } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') return null;
-    if (code === 'ELOOP') throw new CommetError(`state error: .git/commet/${name} is or sits behind a symlink; refusing to read it`, EXIT.state);
-    if (code === 'EFBIG') throw new CommetError(`state error: .git/commet/${name} is larger than ${MAX_FILE_BYTES >> 20} MiB`, EXIT.state);
-    throw e;
-  }
-}
 
 /**
  * Refuses a symlink anywhere on the path before opening (Rule 2): `file` is already canonical (the

@@ -3,9 +3,12 @@ import { createHash } from 'node:crypto';
 import { watch, type FSWatcher } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { readStateFile } from './files.js';
+import { readStateBytes } from '../state/io.js';
 
 export interface StateWatcher { close(): void }
+
+/** The hash of a file whose content has never been read: any content read later is news. */
+const UNKNOWN = 'unknown';
 
 /**
  * Calls `onChange(name, body)` whenever one of `names` in `dir` gets new content. Resolves once the
@@ -13,7 +16,9 @@ export interface StateWatcher { close(): void }
  * directory (writeAtomic renames, so a file watch would lose the inode) gives low latency; a stat
  * poll backs it up where watch events are lost or unsupported. Content hashes decide, so rewriting
  * identical bytes is not an update. A file that vanishes or can't be read sends nothing (its GET
- * route reports the problem when the view asks); an unreadable one is retried on every check.
+ * route reports the problem when the view asks); an unreadable one is retried on every check. One
+ * that was unreadable at the start counts as unknown, so its first good read is announced (#32 AC 8);
+ * one that turns unreadable keeps its last known content, so reading the same bytes again isn't.
  */
 export async function watchState(dir: string, names: readonly string[], onChange: (name: string, body: Buffer) => void,
   pollMs = 1000): Promise<StateWatcher> {
@@ -27,9 +32,11 @@ export async function watchState(dir: string, names: readonly string[], onChange
       if (prev?.sig === sig) continue;
       let body: Buffer | null;
       try {
-        body = await readStateFile(dir, name);
+        body = await readStateBytes(dir, name);
       } catch {
-        continue; // Unreadable right now: nothing is recorded, so the next check reads it again.
+        // Unreadable right now: an empty signature makes the next check read it again.
+        seen.set(name, { sig: '', hash: prev?.hash ?? UNKNOWN });
+        continue;
       }
       const hash = body ? createHash('sha256').update(body).digest('hex') : '';
       seen.set(name, { sig, hash });

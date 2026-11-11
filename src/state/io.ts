@@ -1,4 +1,5 @@
-import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { open, realpath, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CommetError, EXIT } from '../core/errors.js';
 
@@ -41,25 +42,69 @@ export function writeAtomic(file: string, data: string | Uint8Array): void {
   renameSync(tmp, file);
 }
 
+/** Largest state file read into memory (snapshot.json is the big one). */
+export const MAX_STATE_BYTES = 256 * 1024 * 1024;
+
+// O_NOFOLLOW refuses a link planted at the file itself, even after the realpath check (not on
+// Windows, where the realpath check alone holds); O_NONBLOCK keeps a planted FIFO from hanging the
+// open before fstat can refuse it.
+const openFlags = () => constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+const symlinked = (name: string) => new CommetError(`state error: .git/commet/${name} is or sits behind a symlink; refusing to read it`, EXIT.state);
+const notFile = (name: string) => new CommetError(`state error: .git/commet/${name} is not a regular file`, EXIT.state);
+const tooBig = (name: string) => new CommetError(`state error: .git/commet/${name} is larger than ${MAX_STATE_BYTES >> 20} MiB`, EXIT.state);
+
+/** A failed open or realpath: absent is null, a link is a state error, anything else is rethrown. */
+function openFailed(name: string, e: unknown): null {
+  if (e instanceof CommetError) throw e;
+  const code = (e as NodeJS.ErrnoException).code;
+  if (code === 'ENOENT') return null;
+  if (code === 'ELOOP') throw symlinked(name);
+  throw e;
+}
+
+function checkOpened(name: string, st: { isFile(): boolean; size: number }): void {
+  if (!st.isFile()) throw notFile(name);
+  if (st.size > MAX_STATE_BYTES) throw tooBig(name);
+}
+
 /**
- * Reads `<state dir>/<name>`, or null when it's absent. A symlink or anything but a regular file is
- * refused (exit 5). O_NOFOLLOW makes the open itself refuse a link planted after any check, and
- * O_NONBLOCK keeps a planted FIFO from hanging the open before fstat can refuse it.
+ * Reads `<state dir>/<name>`, or null when it's absent (the one set of rules for every state read,
+ * Rule 2, #54). `dir` is canonical (stateDir and `commet open` build it from a real path), so a file
+ * whose real path isn't itself sits behind a symlink, the file or a folder swapped for one, and is
+ * refused. So is anything but a regular file, or one over MAX_STATE_BYTES (exit 5). Messages name the
+ * file, never its absolute path.
  */
 export function readStateFile(dir: string, name: string): string | null {
+  const file = join(dir, name);
   let fd: number;
   try {
-    fd = openSync(join(dir, name), constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    if (realpathSync.native(file) !== file) throw symlinked(name);
+    fd = openSync(file, openFlags());
   } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') return null;
-    if (code === 'ELOOP') throw new CommetError(`state error: .git/commet/${name} is a symlink; refusing to read through it`, EXIT.state);
-    throw e;
+    return openFailed(name, e);
   }
   try {
-    if (!fstatSync(fd).isFile()) throw new CommetError(`state error: .git/commet/${name} is not a regular file`, EXIT.state);
+    checkOpened(name, fstatSync(fd));
     return readFileSync(fd, 'utf8');
   } finally {
     closeSync(fd);
+  }
+}
+
+/** readStateFile for the server: the same rules, async (a large snapshot doesn't block other requests) and as bytes. */
+export async function readStateBytes(dir: string, name: string): Promise<Buffer | null> {
+  const file = join(dir, name);
+  let handle: FileHandle;
+  try {
+    if ((await realpath(file)) !== file) throw symlinked(name);
+    handle = await open(file, openFlags());
+  } catch (e) {
+    return openFailed(name, e);
+  }
+  try {
+    checkOpened(name, await handle.stat());
+    return await handle.readFile();
+  } finally {
+    await handle.close();
   }
 }

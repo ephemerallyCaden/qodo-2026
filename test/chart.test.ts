@@ -275,7 +275,7 @@ describe('chart state I/O refusals (exit 5)', () => {
     for (const args of [['chart', 'status'], ['chart', 'baseline']]) {
       const res = await r.run(...args);
       expect(res.code).toBe(5);
-      expect(res.err).toContain('.git/commet/chart.json is a symlink');
+      expect(res.err).toContain('.git/commet/chart.json is or sits behind a symlink');
     }
     expect(readFileSync(target, 'utf8')).toBe('untouched');
   });

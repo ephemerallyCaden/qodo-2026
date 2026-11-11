@@ -17,7 +17,8 @@ import { gitRunner, tryGit } from '../scan/git.js';
 import { lineageLog } from '../scan/structure.js';
 import { readStateFile, stateDir, writeAtomic } from './io.js';
 
-const CHART_FILE = 'chart.json';
+/** Chart state in the state dir. */
+export const CHART_FILE = 'chart.json';
 const SNAPSHOT_FILE = 'snapshot.json';
 const LOCK_FILE = 'chart.lock';
 /** About 2 s of waiting for another commet (the CLI and the server) to finish its write. */

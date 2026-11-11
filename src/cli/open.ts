@@ -4,9 +4,11 @@ import { lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { CommetError, EXIT } from '../core/errors.js';
 import { gitRunner, tryGit } from '../scan/git.js';
-import { NO_SNAPSHOT, packageWebRoot, readStateFile, STATE_FILES } from '../server/files.js';
+import { NO_SNAPSHOT, packageWebRoot, STATE_FILES } from '../server/files.js';
 import { newToken } from '../server/guard.js';
 import { startServer, type ServerOptions } from '../server/server.js';
+import { applyChart, readFog } from '../state/chart.js';
+import { readStateBytes } from '../state/io.js';
 import type { Io } from './main.js';
 
 export const OPEN_USAGE = 'usage: commet open [--port <n>] [--no-open (keeps the token out of process lists)]\n';
@@ -43,7 +45,9 @@ export async function runOpen(argv: string[], io: Io, ctl: OpenControl = {}): Pr
   }
   try {
     const dir = await scannedStateDir(io.cwd);
-    const opts: ServerOptions = { stateDir: dir, webRoot: ctl.webRoot ?? packageWebRoot(), port: args.port, token: newToken() };
+    const opts: ServerOptions = { stateDir: dir, webRoot: ctl.webRoot ?? packageWebRoot(), port: args.port, token: newToken(),
+      // R5 (#33, #58): the fog view and chart writes, through the same module `commet chart` uses.
+      fog: () => readFog(io.cwd), chart: (action) => applyChart(io.cwd, action) };
     if (ctl.pollMs !== undefined) opts.pollMs = ctl.pollMs;
     // Like startup errors, a failed request's details (which can hold absolute paths) only show on
     // request: the route, the error's message, code and stack. Nothing from the request itself.
@@ -107,7 +111,7 @@ async function scannedStateDir(cwd: string): Promise<string> {
   }
   if (st.isSymbolicLink()) throw new CommetError('state error: .git/commet is a symlink; refusing to read through it', EXIT.state);
   if (!st.isDirectory()) throw new CommetError('state error: .git/commet is not a directory', EXIT.state);
-  if ((await readStateFile(dir, STATE_FILES.snapshot)) === null) throw new CommetError(NO_SNAPSHOT, EXIT.state);
+  if ((await readStateBytes(dir, STATE_FILES.snapshot)) === null) throw new CommetError(NO_SNAPSHOT, EXIT.state);
   return dir;
 }
 
