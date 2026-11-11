@@ -28,6 +28,8 @@ export async function chooseRoots(flags: RootFlags, { commonDir, files, folders 
   ask: Ask | undefined): Promise<string[]> {
   const dir = () => stateDir(commonDir);
   const say = (roots: readonly string[], how: string) => out(`roots: ${list(roots)} (${how})\n`);
+  // An explicit choice replaces config.json unread, so it is also the way out of a damaged one; the
+  // write renames over the path, replacing a symlink itself, never writing through it.
   if (flags.kind === 'set' || flags.kind === 'none') {
     const parsed = flags.kind === 'none' ? { roots: [] } : parseRoots(flags.roots, folders);
     if ('error' in parsed) throw new CommetError(`--root: ${parsed.error}`, EXIT.usage);

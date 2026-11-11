@@ -235,6 +235,31 @@ describe('#71 C4 and C5: flags and the saved file', () => {
     }
   });
 
+  it('PR #72 r1 #3: a damaged config.json names only recoveries that work, and they replace it (a symlink itself, never its target)', async () => {
+    const err = await choose(DEFAULT, undefined, 'not json').catch((e: unknown) => e) as CommetError;
+    expect(err.exitCode).toBe(EXIT.state);
+    const advertised = [...err.message.matchAll(/--(root|no-root|ask)\b/g)].map((m) => m[1]);
+    expect(advertised).toEqual(['root', 'no-root']);
+    expect((await choose({ kind: 'set', roots: ['src'] }, undefined, 'not json')).config).toEqual({ roots: ['src'] });
+    expect((await choose({ kind: 'none' }, undefined, 'not json')).config).toEqual({ roots: [] });
+    // --ask still refuses it: the saved answer would be its fallback, so it is never silently reset.
+    expect(((await choose({ kind: 'ask' }, scripted(['y']), 'not json').catch((e: unknown) => e)) as CommetError).exitCode).toBe(EXIT.state);
+    const common = temp('commet-roots-');
+    mkdirSync(join(common, 'commet'), { mode: 0o700 });
+    writeFileSync(join(common, 'target.json'), 'not json');
+    symlinkSync(join(common, 'target.json'), join(common, 'commet/config.json'));
+    await chooseRoots({ kind: 'set', roots: ['web'] }, head(FILES, common), () => undefined, undefined);
+    expect(lstatSync(join(common, 'commet/config.json')).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(common, 'target.json'), 'utf8')).toBe('not json');
+  });
+
+  it('Qodo local r1 #2: saved roots that nest are damaged state (exit 5), not a usage error; order and repeats are only spelling', async () => {
+    const err = await choose(DEFAULT, undefined, '{"roots":["src","src/core"]}').catch((e: unknown) => e);
+    expect((err as CommetError).exitCode).toBe(EXIT.state);
+    expect((err as CommetError).message).toContain('roots can\'t nest');
+    expect((await choose(DEFAULT, undefined, '{"roots":["web","src","web"]}')).roots).toEqual(['src', 'web']);
+  });
+
   it('config.json holds { roots } only; anything else, or a symlink, is a state error (exit 5), never reset', async () => {
     for (const bad of ['{"roots":["src"],"x":1}', '{"roots":["/etc"]}', '{"roots":"src"}', 'not json', '[]']) {
       const err = await choose(DEFAULT, undefined, bad).catch((e: unknown) => e);
@@ -326,7 +351,8 @@ describe('#71 through commet scan', () => {
     expect(await readLayoutRoots(dir)).toEqual([]);
     write('{"schemaVersion":"layout.1","source":{"repoId":"r","head":"h","roots":["src"]}}');
     expect(await readLayoutRoots(dir)).toEqual(['src']);
-    for (const bad of ['{', '{"schemaVersion":"layout.1","source":{"roots":["/etc"]}}', '{"schemaVersion":"layout.1","source":{"roots":"src"}}', '[]']) {
+    for (const bad of ['{', '{"schemaVersion":"layout.1","source":{"roots":["/etc"]}}', '{"schemaVersion":"layout.1","source":{"roots":"src"}}', '[]',
+      '{"schemaVersion":"layout.1","source":{"roots":["src","src/core"]}}', '{"schemaVersion":"layout.1","source":{"roots":["web","src"]}}']) {
       write(bad);
       expect(((await readLayoutRoots(dir).catch((e: unknown) => e)) as CommetError).exitCode, bad).toBe(EXIT.state);
     }

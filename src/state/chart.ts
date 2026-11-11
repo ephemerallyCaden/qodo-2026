@@ -11,7 +11,7 @@ import {
   applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges, type ChartState, type FogBase,
 } from '../core/fog/index.js';
 import { pathHistory, type PathHistory } from '../core/renames.js';
-import { isCanonicalRoot } from '../core/roots.js';
+import { isCanonicalRoot, parseRoots } from '../core/roots.js';
 import type { SnapshotV02 } from '../core/snapshot/types.js';
 import { exclusionOf } from '../scan/exclusions.js';
 import { gitRunner, tryGit } from '../scan/git.js';
@@ -110,7 +110,13 @@ export async function readLayoutRoots(dir: string): Promise<string[]> {
   const source = isObject(v) && v['schemaVersion'] === 'layout.1' && isObject(v['source']) ? v['source'] : null;
   const roots = source?.['roots'];
   if (source !== null && roots === undefined) return [];
-  if (!Array.isArray(roots) || !roots.every(isCanonicalRoot)) {
+  // As the contract records them: sorted, no repeats, none inside another (as config.json, Qodo local r1 #2).
+  const canonical = (rs: unknown[]): rs is string[] => {
+    if (!rs.every(isCanonicalRoot)) return false;
+    const set = parseRoots(rs, new Set(rs));
+    return 'roots' in set && set.roots.join('\0') === rs.join('\0');
+  };
+  if (!Array.isArray(roots) || !canonical(roots)) {
     throw new CommetError(`state error: .git/commet/${LAYOUT_FILE} is damaged or from another commet version; run \`commet scan\``, EXIT.state);
   }
   return roots;
