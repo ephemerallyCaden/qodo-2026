@@ -5,7 +5,7 @@ import { lstatSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJson } from '../core/canonical-json.js';
 import type { ChartResult } from '../core/contract/api.js';
-import type { ChartAction, FogView } from '../core/contract/fog.js';
+import type { ChartAction, ChartStale, FogView } from '../core/contract/fog.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import {
   applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges, type ChartState, type FogBase,
@@ -25,7 +25,22 @@ const LOCK_TRIES = 100;
 const LOCK_WAIT_MS = 20;
 
 /** What fog needs, read once: the state dir and the chart-independent fog for the latest snapshot. */
-export interface FogSource { dir: string; base: FogBase }
+export interface FogSource {
+  dir: string;
+  base: FogBase;
+  /** Identity of the snapshot.json `base` was built from (null if it couldn't be stat'ed). */
+  key: string | null;
+}
+
+/** Identity of the snapshot file on disk: an atomic write gives it a new inode. Null when absent. */
+function snapshotKey(dir: string): string | null {
+  try {
+    const st = lstatSync(join(dir, SNAPSHOT_FILE), { bigint: true });
+    return `${dir}\0${st.dev}\0${st.ino}\0${st.size}\0${st.mtimeNs}`;
+  } catch {
+    return null; // readSnapshot reports why
+  }
+}
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -125,14 +140,8 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
     throw new CommetError('no snapshot yet: run `commet scan` first', EXIT.state);
   }
   const dir = stateDir(common);
-  let key: string | null = null;
-  try {
-    const st = lstatSync(join(dir, SNAPSHOT_FILE), { bigint: true });
-    key = `${dir}\0${st.dev}\0${st.ino}\0${st.size}\0${st.mtimeNs}`;
-  } catch {
-    // readSnapshot below reports it.
-  }
-  if (key !== null && loaded?.key === key) return { dir, base: await loaded.base };
+  const key = snapshotKey(dir);
+  if (key !== null && loaded?.key === key) return { dir, base: await loaded.base, key };
   const snapshot = readSnapshot(dir);
   const base = historyFor(repoDir, dir, snapshot).then((h) => fogBase(snapshot, h));
   // Stat before read: the cached content is never older than its key.
@@ -144,7 +153,7 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
     throw e;
   });
   if (loaded === entry && ready.degraded && snapshot.commits.length > 0) loaded = null;
-  return { dir, base: ready };
+  return { dir, base: ready, key };
 }
 
 export const currentFog = (src: FogSource): FogView => fogFrom(src.base, readChart(src.dir));
@@ -174,11 +183,17 @@ async function withLock<T>(dir: string, fn: () => T): Promise<T> {
   }
 }
 
-export type ChartWrite = { ok: true; prev: ChartState; chart: ChartState } | { ok: false; error: string };
+export type ChartWrite = { ok: true; prev: ChartState; chart: ChartState } | ChartStale | { ok: false; error: string; head?: undefined };
 
 /** Applies one action to the stored chart state: read, apply and write under the lock. */
 export function writeChart(src: FogSource, action: ChartAction): Promise<ChartWrite> {
   return withLock(src.dir, () => {
+    // A scan may have replaced the snapshot since `src` was read: then the head on disk decides
+    // staleness, so a delayed action can't undo or chart past a newer head (Qodo local r1).
+    if (snapshotKey(src.dir) !== src.key) {
+      const head = readSnapshot(src.dir).repo.head;
+      if (head !== action.at) return { ok: false, error: 'stale', head };
+    }
     const prev = readChart(src.dir);
     const r = applyChartAction(src.base, prev, action);
     if (!r.ok) return r;

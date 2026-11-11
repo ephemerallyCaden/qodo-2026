@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fileIdOf } from '../src/core/fog/index.js';
 import { relativeRepoPath } from '../src/cli/chart.js';
-import { applyChart, readFog } from '../src/state/chart.js';
+import { applyChart, openFogSource, readFog, writeChart } from '../src/state/chart.js';
 import { SELF, TEAMMATE } from './fixtures/build/basic.js';
 import { cli } from './fixtures/cli.js';
 import { miniClaude, session } from './fixtures/mini.js';
@@ -206,6 +206,26 @@ describe('a scan between the fog read and the chart write (#58)', () => {
     // After refetching, the same action at the head now shown goes through.
     const ok = await applyChart(r.dir, { kind: 'chart', fileId: fileIdOf('src/a.ts'), at: now.head });
     expect(ok.ok && ok.fog.files.find((f) => f.fileId === fileIdOf('src/a.ts'))!.state).toBe('charted');
+  });
+});
+
+describe('a scan between opening the fog source and taking the lock (#58, Qodo local r1)', () => {
+  it('a delayed undo decided at the old head is stale and never removes a baseline set at the new head', async () => {
+    const r = repo();
+    r.commit(SELF, () => r.write('src/a.ts', lines('alpha')));
+    expect((await r.run('scan')).code).toBe(0);
+    const old = await openFogSource(r.dir);
+    const oldHead = old.base.snapshot.repo.head;
+    const newHead = r.commit(TEAMMATE, () => r.write('src/a.ts', lines('alpha') + lines('mate')));
+    expect((await r.run('scan')).code).toBe(0);
+    expect(await applyChart(r.dir, { kind: 'baseline', at: newHead })).toMatchObject({ ok: true });
+    const before = readFileSync(r.chartJson(), 'utf8');
+    for (const action of [{ kind: 'baseline-undo', at: oldHead }, { kind: 'baseline', at: oldHead },
+      { kind: 'chart', fileId: fileIdOf('src/a.ts'), at: oldHead }] as const) {
+      expect(await writeChart(old, action)).toEqual({ ok: false, error: 'stale', head: newHead });
+    }
+    expect(readFileSync(r.chartJson(), 'utf8')).toBe(before);
+    expect(JSON.parse(before).baselines).toEqual([newHead]);
   });
 });
 
