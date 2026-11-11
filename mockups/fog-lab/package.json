@@ -1,0 +1,18 @@
+{
+  "name": "fog-lab",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Fog of war design lab: per-file fog on #18's surface cells in five directions A-E, on every health band and coverage level, with the clear wavefront, the refog and the measures for F1-F8.",
+  "type": "module",
+  "scripts": {
+    "dev": "node serve.mjs",
+    "lab": "node lab.mjs",
+    "test": "node --test --test-concurrency=1 test/pure.test.mjs test/render.test.mjs test/viewer-fidelity.test.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}
