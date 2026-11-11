@@ -4,6 +4,14 @@
 /** Orbits: slot i sits at FIRST_ORBIT + i × SLOT_SPACING. Spacing ≥ 2 × the largest planet, so growth never forces a move. */
 export const FIRST_ORBIT_MILLI = 30_000;
 export const SLOT_SPACING_MILLI = 24_000;
+/**
+ * Zones (#71). With content roots, content planets take slots 0..CONTENT_SLOTS-1 and outer planets
+ * start OUTER_GAP_SLOTS empty slots beyond them, so a growing zone never pushes the other (nothing
+ * moves). A content planet born while every content slot is taken takes the innermost free slot
+ * past the gap. With no roots every planet is outer, from slot 0 (#18).
+ */
+export const CONTENT_SLOTS = 8;
+export const OUTER_GAP_SLOTS = 1;
 /** Starting angle of slot i: i × 618 thousandths of a turn (the golden ratio), so neighbours never line up. */
 export const PHASE_STEP_MILLITURN = 618;
 

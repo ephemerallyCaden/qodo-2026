@@ -2,7 +2,7 @@
 // The pure logic is in src/core/structure.ts.
 import { byCodepoint } from '../core/canonical-json.js';
 import type { Branch, DebtCounts } from '../core/snapshot/types.js';
-import { DEBT_KEYS, zeroDebt, type Change, type Lineage, type LineageCommit, type MergeSides } from '../core/structure.js';
+import { DEBT_KEYS, fileHome, zeroDebt, type Change, type Lineage, type LineageCommit, type MergeSides } from '../core/structure.js';
 import { isoUtc } from '../core/time.js';
 import { exclusionOf } from './exclusions.js';
 import { DIFF_OPTS, LOG_OPTS, tryGit, type Git } from './git.js';
@@ -90,13 +90,17 @@ async function logChanges(git: Git, args: string[]): Promise<LineageCommit[]> {
 /**
  * The merged-in side of every first-parent merge that gives birth to a top-level folder (#18 AC8),
  * so partner detection can look through the merge to the branch's own commits: `M^1..M` (not
- * merges), oldest first, each as the top-level folder names it touches. Excluded paths touch
- * nothing, as in the lineage. A git failure fails the scan rather than quietly falling back to the merge.
+ * merges), oldest first, each as the top-level folder names it touches (`tops`). The same for every
+ * merge that gives birth to a content root's subfolder (#71), as the root subfolders it touches
+ * (`children`), from the same read. Excluded paths touch nothing, as in the lineage. A git failure
+ * fails the scan rather than quietly falling back to the merge.
  */
-export async function mergeSides(git: Git, commits: LineageCommit[], lineage: Lineage, excluded: (path: string) => boolean): Promise<MergeSides> {
-  const seqs = [...new Set(lineage.topBirths.map((b) => b.seq))].filter((s) => s > 0);
-  const sides: MergeSides = new Map();
-  if (seqs.length === 0) return sides;
+export async function mergeSides(git: Git, commits: LineageCommit[], lineage: Lineage, excluded: (path: string) => boolean):
+  Promise<{ tops: MergeSides; children: MergeSides }> {
+  const tops: MergeSides = new Map();
+  const children: MergeSides = new Map();
+  const seqs = [...new Set([...lineage.topBirths, ...lineage.rootBirths].map((b) => b.seq))].filter((s) => s > 0);
+  if (seqs.length === 0) return { tops, children };
   const seqOf = new Map(seqs.map((s) => [commits[s]!.sha, s]));
   const out = await git(['rev-list', '--no-walk', '--parents', ...seqOf.keys()]);
   const merges = out.split('\n').map((l) => l.split(' ')).filter((l) => l.length > 2).map((l) => l[0]!);
@@ -106,33 +110,44 @@ export async function mergeSides(git: Git, commits: LineageCommit[], lineage: Li
       ['log', '--no-merges', '--topo-order', '--reverse', ...DIFF_OPTS, '--name-status', '-z', '--format=%x00%H%x00%ct', `${m}^1..${m}`])));
     batch.forEach((m, j) => {
       const seq = seqOf.get(m)!;
-      sides.set(seq, sideTops(logs[j]!, new Set(lineage.topsAt.get(seq)!.keys()), excluded));
+      const topsAt = lineage.topsAt.get(seq);
+      if (topsAt) tops.set(seq, sideGroups(logs[j]!, new Set(topsAt.keys()), excluded, topOf));
+      const childrenAt = lineage.childrenAt.get(seq);
+      if (childrenAt) children.set(seq, sideGroups(logs[j]!, new Set(childrenAt.keys()), excluded, childOf));
     });
   }
-  return sides;
+  return { tops, children };
+
+  /** The root subfolder holding a path, or null outside the roots and directly inside one. */
+  function childOf(p: string): string | null {
+    const home = fileHome(p, lineage.roots);
+    return home?.zone === 'content' ? home.path : null;
+  }
 }
 
-const topOf = (p: string) => p.slice(0, p.indexOf('/'));
+const topOf = (p: string) => (p.includes('/') ? p.slice(0, p.indexOf('/')) : null);
 
 /**
- * Each side commit's top-level folders, by their names at the merge: a folder the branch renamed
- * later is counted under its new name (the one most of its moved files went to), so its earlier
- * commits still count for it (Qodo local r1 #1). Only a folder gone by the merge was renamed; one
- * still there (`atMergeTops`) only had files moved out of it, so it keeps its commits (r2 #2).
+ * Each side commit's folders of one kind (`groupOf`: top-level folders, or root subfolders), by
+ * their names at the merge: a folder the branch renamed later is counted under its new name (the
+ * one most of its moved files went to), so its earlier commits still count for it (Qodo local r1
+ * #1). Only a folder gone by the merge was renamed; one still there (`atMergeNames`) only had files
+ * moved out of it, so it keeps its commits (r2 #2).
  */
-function sideTops(side: LineageCommit[], atMergeTops: Set<string>, excluded: (path: string) => boolean): Set<string>[] {
+function sideGroups(side: LineageCommit[], atMergeNames: Set<string>, excluded: (path: string) => boolean,
+  groupOf: (path: string) => string | null): Set<string>[] {
   const atMerge = new Map<string, string>();
   const name = (top: string) => atMerge.get(top) ?? top;
   const out: Set<string>[] = [];
   for (let i = side.length - 1; i >= 0; i--) {
     const changes = side[i]!.changes;
-    const paths = changes.flatMap((ch) => (ch.from === undefined ? [ch.path] : [ch.path, ch.from])).filter((p) => p.includes('/') && !excluded(p));
-    out[i] = new Set(paths.map((p) => name(topOf(p))));
+    const paths = changes.flatMap((ch) => (ch.from === undefined ? [ch.path] : [ch.path, ch.from])).filter((p) => !excluded(p));
+    out[i] = new Set(paths.flatMap((p) => groupOf(p) ?? []).map(name));
     const moved = new Map<string, Map<string, number>>();
     for (const ch of changes) {
-      if (ch.status !== 'R' || ch.from === undefined || !ch.from.includes('/') || !ch.path.includes('/') || excluded(ch.from) || excluded(ch.path)) continue;
-      const [from, to] = [topOf(ch.from), topOf(ch.path)];
-      if (from === to || atMergeTops.has(from)) continue;
+      if (ch.status !== 'R' || ch.from === undefined || excluded(ch.from) || excluded(ch.path)) continue;
+      const [from, to] = [groupOf(ch.from), groupOf(ch.path)];
+      if (from === null || to === null || from === to || atMergeNames.has(from)) continue;
       const t = moved.get(from) ?? new Map<string, number>();
       moved.set(from, t.set(to, (t.get(to) ?? 0) + 1));
     }

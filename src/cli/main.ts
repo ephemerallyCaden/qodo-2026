@@ -11,27 +11,39 @@ import { CHART_USAGE, chartCommand } from './chart.js';
 import { loadOrCreateKey } from '../state/key.js';
 import { stateDir, writeAtomic } from '../state/io.js';
 import { runOpen } from './open.js';
+import { chooseRoots, type Ask, type RootFlags } from './roots.js';
 
 export interface Io {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   cwd: string;
   env: NodeJS.ProcessEnv;
+  /** Asks the user a question (#71): present only at a terminal (terminalAsk), so nothing else is ever asked. */
+  ask?: Ask | undefined;
 }
 
-const USAGE = 'usage: commet scan [--window <months>] [--no-ingest] [--with-qodo] [--out <file>]\n'
+const USAGE = 'usage: commet scan [--window <months>] [--no-ingest] [--with-qodo] [--out <file>] [--root <dir>]... [--no-root] [--ask]\n'
   + '       commet open [--port <n>] [--no-open (keeps the token out of process lists)]\n'
   + CHART_USAGE
-  + '  --with-qodo  opt in to reading this repo\'s Qodo review findings (read-only, over the network via gh and qodo)\n';
+  + '  --with-qodo  opt in to reading this repo\'s Qodo review findings (read-only, over the network via gh and qodo)\n'
+  + '  --root <dir> a main folder whose subfolders become planets (repeatable; saved), --no-root: none (saved),\n'
+  + '               --ask: ask again (at a terminal; the first scan there asks too)\n';
 
-interface ScanArgs { window: number; ingest: boolean; withQodo: boolean; out?: string }
+interface ScanArgs { window: number; ingest: boolean; withQodo: boolean; out?: string; roots: RootFlags }
 
 function parseScanArgs(args: string[]): ScanArgs | string {
-  const o: ScanArgs = { window: 24, ingest: true, withQodo: false };
+  const o: ScanArgs = { window: 24, ingest: true, withQodo: false, roots: { kind: 'default' } };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--no-ingest') o.ingest = false;
-    else if (a === '--with-qodo') o.withQodo = true;
+    else if (a === '--root' || a === '--no-root' || a === '--ask') {
+      const dir = a === '--root' ? args[++i] : '';
+      if (dir === undefined) return '--root takes a folder path from the repo root';
+      // --root repeats; otherwise one root flag at most.
+      if (a === '--root' && o.roots.kind === 'set') o.roots.roots.push(dir);
+      else if (o.roots.kind !== 'default') return '--root, --no-root and --ask can\'t be combined';
+      else o.roots = a === '--root' ? { kind: 'set', roots: [dir] } : { kind: a === '--ask' ? 'ask' : 'none' };
+    } else if (a === '--with-qodo') o.withQodo = true;
     else if (a === '--window') {
       const n = Number(args[++i]);
       if (!Number.isInteger(n) || n < 1 || n > 240) return '--window takes a whole number of months (1–240)';
@@ -120,6 +132,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       repoDir: io.cwd, windowMonths: args.window, ingest: args.ingest,
       claudeProjectsDir: join(claudeDir, 'projects'), keyFor: (dir) => loadOrCreateKey(stateDir(dir)),
       qodo: { fetch: args.withQodo, stateDir },
+      roots: (head) => chooseRoots(args.roots, head, io.stdout, io.ask),
     });
     const out = args.out && resolve(io.cwd, args.out);
     // With --out, the layout goes beside the snapshot (x.json → x.layout.json), so the state dir keeps one scan's pair.

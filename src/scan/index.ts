@@ -2,6 +2,7 @@ import { matchCommits, buildSessions, type MatchCommit } from '../attrib/match.j
 import { discoverClaude, mergeIntervals, parseClaude, redactPaths, searchOutside, type ClaudeIngest, type Interval } from '../attrib/parsers/claude.js';
 import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import type { LayoutV1 } from '../core/contract/layout.js';
+import { CommetError, EXIT } from '../core/errors.js';
 import { fileId, lineHasher, sha256Hex } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
 import { hashLines } from '../core/lines.js';
@@ -9,7 +10,10 @@ import { layoutReport, type LayoutNotes } from '../core/layout/index.js';
 import { applyCache, serializeCache, tallyFindings, type QodoCache } from '../core/qodo.js';
 import { pathHistory } from '../core/renames.js';
 import type { Commit, FileQodo, PersonId, QodoReason, QodoSource, SessionKey, SnapshotV02 } from '../core/snapshot/types.js';
-import { binaryNames, buildLineage, debtCounted, dirsAtHead, matchTests, structureHistory, topBirthInfo, zeroDebt } from '../core/structure.js';
+import { foldersOf, parseRoots } from '../core/roots.js';
+import {
+  binaryNames, buildLineage, debtCounted, dirsAtHead, matchTests, rootBirthInfo, structureHistory, topBirthInfo, zeroDebt,
+} from '../core/structure.js';
 import { isoUtc, minusMonths } from '../core/time.js';
 import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
@@ -35,7 +39,16 @@ export interface ScanOptions {
    * neither (files[].qodo null).
    */
   qodo?: { fetch: boolean; stateDir: (commonDir: string) => string; timeoutMs?: number };
+  /**
+   * Content roots (#71), chosen once HEAD's files are known: the CLI reads the saved answer, or
+   * guesses and asks. The answer only shapes layout.json, never the snapshot, and is checked again
+   * here (a root that isn't a folder at HEAD is a usage error). Absent: none (#18's mapping).
+   */
+  roots?: (head: HeadTree) => Promise<string[]>;
 }
+
+/** HEAD as content roots are chosen from (#71): the scanned files with their LOC, and every folder holding one. */
+export interface HeadTree { commonDir: string; files: { path: string; loc: number }[]; folders: ReadonlySet<string> }
 
 /** Aggregate log-reading counts for the summary; null when logs weren't read. */
 export type LogStats = (LogCounts & { transcripts: number }) | null;
@@ -116,9 +129,15 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   // earlier names too, so it neither blocks nor dilutes its folder's move (Qodo local r1 #1, r4 #1).
   const binary = binaryNames(history, [...head].filter(([, row]) => row.binary).map(([p]) => p));
   const lineageExcluded = (p: string) => binary.has(p) || excluded(p, undefined);
-  const lineage = buildLineage(history, lineageExcluded);
-  // Folders born in a merge are looked through to the merged branch's own commits (#18 AC8).
-  const births = topBirthInfo(lineage, await mergeSides(git, history, lineage, lineageExcluded));
+  const folders = foldersOf(headPaths);
+  const asked = o.roots ? parseRoots(await o.roots({ commonDir: repo.commonDir, files: kept.map(([path, row]) => ({ path, loc: row.added })), folders }),
+    folders) : { roots: [] };
+  if ('error' in asked) throw new CommetError(`content roots: ${asked.error}`, EXIT.usage);
+  const lineage = buildLineage(history, lineageExcluded, asked.roots);
+  // Folders born in a merge are looked through to the merged branch's own commits (#18 AC8), for
+  // content planets too (#71).
+  const sides = await mergeSides(git, history, lineage, lineageExcluded);
+  const births = topBirthInfo(lineage, sides.tops);
   const { targets: testOf, bulkSkipped } = matchTests(headPaths, lineage.paths);
   const structure = dirsAtHead(lineage, headPaths, births);
   const dirIdOf = new Map(structure.dirs.map((d) => [d.path, d.id]));
@@ -222,7 +241,8 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   const unreadable = ingest?.unreadable.length ?? 0;
   const logs = found && { transcripts: found.transcripts.length - unreadable, tooLarge: found.stats.tooLarge,
     unavailable: found.stats.unavailable + unreadable, dropped: ingest?.dropped ?? 0, unattributed: found.stats.unattributed };
-  const placed = layoutReport(snapshot, structureHistory(lineage, births, pathHistory(history, 0, lineageExcluded)));
+  const placed = layoutReport(snapshot, structureHistory(lineage, births, pathHistory(history, 0, lineageExcluded),
+    rootBirthInfo(lineage, sides.children)));
   return { snapshot, json: canonicalJson(snapshot), layout: placed.layout, layoutJson: canonicalJson(placed.layout), layoutNotes: placed.notes,
     commonDir: repo.commonDir, logs,
     qodoCache: qodo.fetched ? serializeCache(qodo.fetched) : null };

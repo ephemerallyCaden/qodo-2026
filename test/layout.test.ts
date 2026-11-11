@@ -4,11 +4,14 @@
 import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/core/canonical-json.js';
 import type { LayoutV1 } from '../src/core/contract/layout.js';
-import { ASH_MAX_MILLI, HEALTHY_MAX_MILLI, MOON_CAP, MOONLET_CAP, TOXIC_MAX_MILLI } from '../src/core/layout/constants.js';
+import { homes } from '../src/core/fog/index.js';
+import {
+  ASH_MAX_MILLI, CONTENT_SLOTS, HEALTHY_MAX_MILLI, MOON_CAP, MOONLET_CAP, OUTER_GAP_SLOTS, TOXIC_MAX_MILLI,
+} from '../src/core/layout/constants.js';
 import { bandOf, health } from '../src/core/layout/health.js';
 import { layout, layoutReport, log2Milli, planetRadiusMilli, settlementSize, type LayoutOptions } from '../src/core/layout/index.js';
 import { pathHistory, RENAME_LIMIT } from '../src/core/renames.js';
-import { buildLineage, zeroDebt, type Change } from '../src/core/structure.js';
+import { buildLineage, planetHome, zeroDebt, type Change } from '../src/core/structure.js';
 import { mergeSides } from '../src/scan/structure.js';
 import { A, C, D, fileId, lineageCommits, M, planetAt as planet, R, world, type World } from './fixtures/layout.js';
 
@@ -59,7 +62,8 @@ class Gen {
   readonly live = new Set<string>();
   readonly commits: Change[][] = [];
   private n = 0;
-  constructor(private readonly r: () => number) {}
+  /** `subsOf`: the folders a top-level folder's files go in (a content root gets many, #71). */
+  constructor(private readonly r: () => number, private readonly subsOf: (top: string) => string[] = () => SUBS, private readonly tops = TOPS) {}
   pick<T>(xs: T[]): T {
     return xs[Math.floor(this.r() * xs.length)]!;
   }
@@ -74,7 +78,7 @@ class Gen {
     return changes;
   }
   /** Unique stems (n0, n1, …): a test named after one never matches another. */
-  addSource = (top = this.pick(TOPS)) => this.commit([A(`${top}/${this.pick(SUBS)}n${this.n++}.ts`)]);
+  addSource = (top = this.pick(this.tops)) => this.commit([A(`${top}/${this.pick(this.subsOf(top))}n${this.n++}.ts`)]);
   addTest = () => {
     const src = this.sources();
     if (src.length === 0) return this.addSource();
@@ -93,7 +97,7 @@ class Gen {
     if (src.length === 0) return this.addSource();
     const from = this.pick(src);
     const [top, base] = [from.slice(0, from.indexOf('/')), from.slice(from.lastIndexOf('/') + 1)];
-    const to = `${top}/${this.pick(SUBS.filter((s) => `${top}/${s}${base}` !== from))}${base}`;
+    const to = `${top}/${this.pick(this.subsOf(top).filter((s) => `${top}/${s}${base}` !== from))}${base}`;
     return this.live.has(to) ? this.modify() : this.commit([R(from, to)]);
   };
   step(): Change[] {
@@ -103,14 +107,19 @@ class Gen {
   }
 }
 
-function trial(seed: number) {
+/** Content root `a` (#71): files directly in it, in more subfolders than there are content slots, and deeper. */
+const ROOT_SUBS = ['', ...Array.from({ length: CONTENT_SLOTS + 4 }, (_, i) => `s${i}/`), 's0/deep/'];
+
+function trial(seed: number, roots: string[] = []) {
   const r = prng(seed);
-  const g = new Gen(r);
-  const steps = 20 + Math.floor(r() * 40);
+  // With a root, half the new files go into it, so the content zone fills up and overflows in some trials.
+  const g = roots.length ? new Gen(r, (top) => (roots.includes(top) ? ROOT_SUBS : SUBS), [...TOPS, ...roots, ...roots, ...roots, ...roots])
+    : new Gen(r);
+  const steps = 20 + Math.floor(r() * (roots.length ? 80 : 40));
   for (let i = 0; i < steps; i++) g.step();
   // Small grids in half the trials, so overflow is exercised too.
   const o: LayoutOptions = { surfaceCells: r() < 0.5 ? 6 : 256 };
-  return { g, o, before: () => run(world(g.commits), o) };
+  return { g, o, roots, before: () => run(world(g.commits, { roots }), o) };
 }
 
 /** Every placed body, keyed by what it is, valued by where it is. */
@@ -419,7 +428,7 @@ describe('#18 AC8: partners look through a merge (pure)', () => {
       return `\0${'b'.repeat(40)}\x00100\0\nR100\0pkg/p.ts\0lib/p.ts\0M\0core/a.ts\0`
         + `\0${'c'.repeat(40)}\x00200\0\nA\0\nodd/x.ts\0A\0node_modules/m/i.js\0`;
     };
-    const sides = await mergeSides(git, log, buildLineage(log, () => false), (p) => p.startsWith('node_modules/'));
+    const sides = (await mergeSides(git, log, buildLineage(log, () => false), (p) => p.startsWith('node_modules/'))).tops;
     expect(calls.map((c) => c[0])).toEqual(['rev-list', 'log']);
     expect(calls[1]).toContain(`${merge}^1..${merge}`);
     expect(sides).toEqual(new Map([[1, [new Set(['pkg', 'lib', 'core']), new Set(['\nodd'])]]]));
@@ -435,7 +444,7 @@ describe('local Qodo review (#18 r1)', () => {
       : `\0${'b'.repeat(40)}\x00100\0\nA\0tmp/p.ts\0M\0core/a.ts\0`
         + `\0${'c'.repeat(40)}\x00200\0\nM\0tmp/p.ts\0M\0core/a.ts\0`
         + `\0${'d'.repeat(40)}\x00300\0\nR100\0tmp/p.ts\0pkg/p.ts\0`);
-    const sides = await mergeSides(git, log, buildLineage(log, () => false), () => false);
+    const sides = (await mergeSides(git, log, buildLineage(log, () => false), () => false)).tops;
     expect(sides.get(1)).toEqual([new Set(['pkg', 'core']), new Set(['pkg', 'core']), new Set(['tmp', 'pkg'])]);
     const w = world(commits, { sides });
     expect(w.snapshot.dirs.find((d) => d.path === 'pkg')!.partner).toBe(w.snapshot.dirs.find((d) => d.path === 'core')!.id);
@@ -451,7 +460,7 @@ describe('local Qodo review (#18 r2)', () => {
     const git = async (args: string[]) => (args[0] === 'rev-list' ? `${log[1]!.sha} ${log[0]!.sha} ${'f'.repeat(40)}\n`
       : `\0${'b'.repeat(40)}\x00100\0\nM\0lib/l.ts\0M\0core/a.ts\0`
         + `\0${'c'.repeat(40)}\x00200\0\nR100\0lib/m.ts\0pkg/m.ts\0`);
-    const sides = await mergeSides(git, log, buildLineage(log, () => false), () => false);
+    const sides = (await mergeSides(git, log, buildLineage(log, () => false), () => false)).tops;
     expect(sides.get(1)).toEqual([new Set(['lib', 'core']), new Set(['lib', 'pkg'])]);
   });
 });
@@ -507,5 +516,177 @@ describe('#18 with #33: renames and unsure births come from the same lineage', (
     const big = Array.from({ length: RENAME_LIMIT + 1 }, (_, i) => i);
     const blind = world([big.map((i) => A(`a/${i}.ts`)), [...big.map((i) => D(`a/${i}.ts`)), ...big.map((i) => A(`b/${i}.ts`))]]);
     expect(layoutReport(blind.snapshot, blind.history).notes.unsure).toBe(RENAME_LIMIT + 1);
+  });
+});
+
+describe('#71 C6: content planets on the inner orbits, outer planets beyond', () => {
+  const OUTER = CONTENT_SLOTS + OUTER_GAP_SLOTS;
+  const w = world([
+    [A('docs/d.md'), A('README.md')],
+    [A('src/core/a.ts'), A('src/core/deep/b.ts'), A('src/scan/c.ts'), A('src/cli.ts')],
+    [A('test/a.test.ts'), A('src/cli.test.ts'), A('web/w.ts')],
+  ], { roots: ['src'] });
+  const l = run(w);
+
+  it('a root\'s subfolders are content planets from slot 0; other top-level folders are outer, past the gap; the root is no planet', () => {
+    expect(l.source.roots).toEqual(['src']);
+    // src/core and src/scan are born together, so they take slots 0 and 1 in id order.
+    expect(l.planets.map((p) => [p.path, p.zone, p.slot.index]).sort()).toEqual([
+      ['docs', 'outer', OUTER], ['src/core', 'content', slotOf(l, 'src/core')], ['src/scan', 'content', 1 - slotOf(l, 'src/core')],
+      ['web', 'outer', OUTER + 1]]);
+    expect([0, 1]).toContain(slotOf(l, 'src/core'));
+  });
+
+  it('deeper folders are continents of their content planet', () => {
+    const core = planet(l, 'src/core');
+    const deep = w.snapshot.dirs.find((d) => d.path === 'src/core/deep')!.id;
+    expect(core.surface.continents.map((c) => c.dirId)).toEqual([core.dirId, deep]);
+    expect(core.surface.settlements.find((s) => s.fileId === fileId('src/core/deep/b.ts'))!.dirId).toBe(deep);
+  });
+
+  it('A1: files directly inside a root are root-file moonlets, and so is a test of one', () => {
+    expect(l.star.moonlets.map((m) => [m.fileId, m.kind])).toEqual([
+      [fileId('README.md'), 'root-file'], [fileId('src/cli.ts'), 'root-file'], [fileId('src/cli.test.ts'), 'root-file']]);
+  });
+
+  it('A2: a test is a moon of the content planet holding its target', () => {
+    expect(planet(l, 'src/core').moons.map((m) => m.fileId)).toEqual([fileId('test/a.test.ts')]);
+  });
+
+  it('with no roots the same history is #18\'s layout: every planet outer, from slot 0', () => {
+    const plain = run(world([[A('docs/d.md')], [A('src/core/a.ts'), A('src/scan/c.ts')]]));
+    expect(plain.source.roots).toEqual([]);
+    expect(plain.planets.map((p) => [p.path, p.zone, p.slot.index])).toEqual([['docs', 'outer', 0], ['src', 'outer', 1]]);
+  });
+
+  it('a partner is an older planet in the same zone, never across zones', () => {
+    const born = [[A('docs/d.md')], [A('src/a/x.ts'), M('docs/d.md')], [A('src/b/y.ts'), M('src/a/x.ts')]];
+    const zoned = run(world(born, { roots: ['src'] }));
+    expect([planet(zoned, 'src/a').partner, planet(zoned, 'src/b').partner]).toEqual([null, planet(zoned, 'src/a').dirId]);
+    expect(planet(run(world(born)), 'src').partner).toBe(planet(run(world(born)), 'docs').dirId);
+  });
+
+  it('a folder moved into a root leaves its outer planet and is placed as a content planet, keeping its id', () => {
+    const before = [[A('core/a.ts'), A('src/x/b.ts'), A('src/y/c.ts')]];
+    const was = planet(run(world(before, { roots: ['src'] })), 'core');
+    const after = run(world([...before, [R('core/a.ts', 'src/core/a.ts')]], { roots: ['src'] }));
+    expect(was).toMatchObject({ zone: 'outer', slot: { index: OUTER } });
+    expect(after.planets.map((p) => [p.path, p.zone, p.slot.index])).toEqual([['src/x', 'content', 0], ['src/y', 'content', 1], ['src/core', 'content', 2]]);
+    expect(planet(after, 'src/core').dirId).toBe(was.dirId);
+  });
+
+  it('more content planets than content slots go past the gap, and nothing moves', () => {
+    const born = [[A('docs/d.md')], ...Array.from({ length: CONTENT_SLOTS + 2 }, (_, i) => [A(`src/s${i}/a.ts`)])];
+    const l1 = run(world(born, { roots: ['src'] }));
+    expect(l1.planets.map((p) => p.slot.index)).toEqual([...Array.from({ length: CONTENT_SLOTS }, (_, i) => i), OUTER, OUTER + 1, OUTER + 2]);
+    expect(planet(l1, 'docs').slot.index).toBe(OUTER);
+    // A freed content slot is reused by the next content planet; the others stay where they are.
+    const l2 = run(world([...born, [D('src/s3/a.ts')], [A('src/late/a.ts')], [A('web/w.ts')]], { roots: ['src'] }));
+    expect(planet(l2, 'src/late').slot.index).toBe(3);
+    expect(planet(l2, 'web').slot.index).toBe(OUTER + 3);
+    for (const p of l1.planets) if (p.path !== 'src/s3') expect(planet(l2, p.path).slot, p.path).toEqual(p.slot);
+  });
+
+  it('C7: identical history and roots give identical bytes; the roots are recorded', () => {
+    const c = [[A('src/a/x.ts'), A('src/b/y.ts'), A('lib/l.ts')]];
+    expect(canonicalJson(run(world(c, { roots: ['src'] })))).toBe(canonicalJson(run(world(c, { roots: ['src'] }))));
+    expect(run(world(c, { roots: ['lib', 'src'] })).source.roots).toEqual(['lib', 'src']);
+  });
+
+  it('the snapshot doesn\'t depend on the roots: only layout.json does', () => {
+    const c = [[A('src/a/x.ts'), A('src/b/y.ts')], [R('src/a/x.ts', 'src/c/x.ts'), A('lib/l.ts')]];
+    expect(canonicalJson(world(c, { roots: ['src'] }).snapshot)).toBe(canonicalJson(world(c).snapshot));
+  });
+});
+
+describe('#71 C7 and C8: property tests with a content root (40 seeded random histories each)', () => {
+  const ROOTS = ['a'];
+
+  it('adding a file, a folder or a commit never changes any existing body\'s slot, cell or moon slot, in either zone', () => {
+    let content = 0;
+    for (const seed of SEEDS) {
+      const t = trial(seed, ROOTS);
+      const before = t.before();
+      content += before.planets.filter((p) => p.zone === 'content').length;
+      const r = prng(seed * 7919);
+      const add = [() => t.g.addSource(), () => t.g.addSource('a'), () => t.g.addSource(`q${seed}`), () => t.g.addTest(), () => t.g.addOther(),
+        () => t.g.modify()];
+      add[Math.floor(r() * add.length)]!();
+      const w = world(t.g.commits, { roots: ROOTS });
+      const { layout: after, notes } = layoutReport(w.snapshot, w.history, t.o);
+      expect(notes.unmatched, `seed ${seed}`).toBe(0);
+      const now = bodies(after);
+      for (const [k, v] of bodies(before)) expect(now.get(k), `seed ${seed}: ${k}`).toBe(v);
+    }
+    // The trials do exercise the content zone, past its slots too.
+    expect(content).toBeGreaterThan(SEEDS.length * 2);
+  });
+
+  it('every planet sits in its zone: content planets are root subfolders on slots 0.., outer planets past the gap', () => {
+    let overflowed = 0;
+    for (const seed of SEEDS) {
+      const l = trial(seed, ROOTS).before();
+      const taken = new Set(l.planets.map((p) => p.slot.index));
+      for (const p of l.planets) {
+        if (p.zone === 'outer') {
+          expect(p.path.includes('/') || ROOTS.includes(p.path), `seed ${seed}: ${p.path}`).toBe(false);
+          expect(p.slot.index, `seed ${seed}: ${p.path}`).toBeGreaterThanOrEqual(CONTENT_SLOTS + OUTER_GAP_SLOTS);
+        } else {
+          expect(ROOTS.some((r) => p.path.startsWith(`${r}/`) && !p.path.slice(r.length + 1).includes('/')), `seed ${seed}: ${p.path}`).toBe(true);
+          expect(p.slot.index, `seed ${seed}`).not.toBe(CONTENT_SLOTS);
+          if (p.slot.index > CONTENT_SLOTS) overflowed++;
+        }
+      }
+      expect(taken.has(CONTENT_SLOTS), `seed ${seed}: the gap stays empty`).toBe(false);
+    }
+    expect(overflowed).toBeGreaterThan(0);
+  });
+
+  it('C8: fog counts exactly the layout\'s planets, by the same rule, for every file', () => {
+    for (const seed of SEEDS) {
+      const { g } = trial(seed, ROOTS);
+      const w = world(g.commits, { roots: ROOTS });
+      const l = run(w);
+      const home = homes(w.snapshot, ROOTS);
+      expect(new Set([...home.values()].filter((x) => x !== null)), `seed ${seed}`).toEqual(new Set(l.planets.map((p) => p.dirId)));
+      // Each surface file is counted on the planet it settles on.
+      for (const p of l.planets) for (const s of p.surface.settlements) expect(home.get(s.fileId), `seed ${seed}`).toBe(p.dirId);
+      for (const f of w.snapshot.files) if (planetHome(f.path, ROOTS) === null && !f.isTest) expect(home.get(f.id)).toBeNull();
+    }
+  });
+});
+
+describe('#71: content planets look through a merge too', () => {
+  // c0 makes src/core and src/api; c1 is a PR merge bringing in src/pkg and src/svc (and touching both).
+  const commits = [[A('src/core/a.ts'), A('src/api/b.ts')], [A('src/pkg/p.ts'), A('src/svc/s.ts'), M('src/core/a.ts'), M('src/api/b.ts')]];
+  const childSides = new Map([[1, [new Set(['src/pkg', 'src/core']), new Set(['src/pkg', 'src/core']), new Set(['src/svc', 'src/api'])]]]);
+  const partners = (l: LayoutV1) => Object.fromEntries(l.planets.map((p) => [p.path, l.planets.find((x) => x.dirId === p.partner)?.path ?? null]));
+
+  it('without the branch\'s commits both share one partner; with them each gets its own', () => {
+    const blind = partners(run(world(commits, { roots: ['src'] })));
+    expect(blind['src/pkg']).toBe(blind['src/svc']);
+    expect(['src/core', 'src/api']).toContain(blind['src/pkg']);
+    expect(partners(run(world(commits, { roots: ['src'], childSides }))))
+      .toEqual({ 'src/core': null, 'src/api': null, 'src/pkg': 'src/core', 'src/svc': 'src/api' });
+  });
+
+  it('allMergeSides reads each merge once and names root subfolders, following a rename on the branch', async () => {
+    const log = lineageCommits(commits);
+    const calls: string[][] = [];
+    const git = async (args: string[]) => {
+      calls.push(args);
+      if (args[0] === 'rev-list') return `${log[1]!.sha} ${log[0]!.sha} ${'f'.repeat(40)}\n`;
+      // The branch makes src/tmp with src/core, renames it to src/pkg, then adds src/svc with src/api and a root file.
+      return `\0${'b'.repeat(40)}\x00100\0\nA\0src/tmp/p.ts\0M\0src/core/a.ts\0`
+        + `\0${'c'.repeat(40)}\x00200\0\nR100\0src/tmp/p.ts\0src/pkg/p.ts\0`
+        + `\0${'d'.repeat(40)}\x00300\0\nA\0src/svc/s.ts\0M\0src/api/b.ts\0A\0src/x.ts\0`;
+    };
+    const sides = await mergeSides(git, log, buildLineage(log, () => false, ['src']), () => false);
+    expect(calls.map((c) => c[0])).toEqual(['rev-list', 'log']);
+    expect(sides.children.get(1)).toEqual([new Set(['src/pkg', 'src/core']), new Set(['src/tmp', 'src/pkg']), new Set(['src/svc', 'src/api'])]);
+    // No top-level folder is born in the merge, so there are no top-level sides.
+    expect(sides.tops.size).toBe(0);
+    // With no roots, nothing is read for content planets.
+    expect((await mergeSides(git, log, buildLineage(log, () => false), () => false)).children.size).toBe(0);
   });
 });

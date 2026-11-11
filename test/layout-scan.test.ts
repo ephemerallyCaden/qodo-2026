@@ -191,36 +191,43 @@ describe('Qodo PR51 r1', () => {
   });
 });
 
+/**
+ * A repo whose merged branch adds `<prefix><odd>/x.ts` alone, then touches `<prefix>core/` in another
+ * commit, where `odd` holds U+0001, a newline and a tab. Read whole, the folder's own commit doesn't
+ * touch core, so it has no partner; misread, it would fall back to the merge, which touches core.
+ */
+function oddMergeRepo(prefix: string): { dir: string; head: string; odd: string } {
+  const odd = 'a\u0001b\nc\td';
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-layout-rule7-')));
+  let n = 0;
+  const git = (...args: string[]) => {
+    const at = `2026-10-${String(++n).padStart(2, '0')}T10:00:00Z`;
+    return execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: SELF.name,
+      GIT_AUTHOR_EMAIL: SELF.email, GIT_COMMITTER_NAME: SELF.name, GIT_COMMITTER_EMAIL: SELF.email, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } });
+  };
+  git('init', '-q', '-b', 'main');
+  git('config', 'commit.gpgsign', 'false');
+  mkdirSync(join(dir, prefix, 'core'), { recursive: true });
+  writeFileSync(join(dir, prefix, 'core/a.ts'), 'export const a = 1;\n');
+  git('add', '-A');
+  git('commit', '-qm', 'root');
+  git('checkout', '-qb', 'pr');
+  mkdirSync(join(dir, prefix, odd));
+  writeFileSync(join(dir, prefix, odd, 'x.ts'), 'export const x = 1;\n');
+  git('add', '-A');
+  git('commit', '-qm', 'odd folder');
+  writeFileSync(join(dir, prefix, 'core/a.ts'), 'export const a = 2;\n');
+  git('commit', '-qam', 'core');
+  git('checkout', '-q', 'main');
+  git('merge', '-q', '--no-ff', '-m', 'merge pr', 'pr');
+  return { dir, head: git('rev-parse', 'HEAD').trim(), odd };
+}
+
 describe('#18 AC8 under Rule 7', () => {
   it('a merged branch\'s folder named with U+0001, a newline and a tab is read whole', async () => {
-    // The branch adds the folder alone, then touches core/ in another commit. Read whole, the folder's own
-    // commit doesn't touch core/, so it has no partner; misread, it would fall back to the merge (core/).
-    const odd = 'a\u0001b\nc\td';
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-layout-rule7-')));
-    let n = 0;
-    const git = (...args: string[]) => {
-      const at = `2026-10-${String(++n).padStart(2, '0')}T10:00:00Z`;
-      return execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: SELF.name,
-        GIT_AUTHOR_EMAIL: SELF.email, GIT_COMMITTER_NAME: SELF.name, GIT_COMMITTER_EMAIL: SELF.email, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } });
-    };
-    git('init', '-q', '-b', 'main');
-    git('config', 'commit.gpgsign', 'false');
-    mkdirSync(join(dir, 'core'));
-    writeFileSync(join(dir, 'core/a.ts'), 'export const a = 1;\n');
-    git('add', '-A');
-    git('commit', '-qm', 'root');
-    git('checkout', '-qb', 'pr');
-    mkdirSync(join(dir, odd));
-    writeFileSync(join(dir, odd, 'x.ts'), 'export const x = 1;\n');
-    git('add', '-A');
-    git('commit', '-qm', 'odd folder');
-    writeFileSync(join(dir, 'core/a.ts'), 'export const a = 2;\n');
-    git('commit', '-qam', 'core');
-    git('checkout', '-q', 'main');
-    git('merge', '-q', '--no-ff', '-m', 'merge pr', 'pr');
-    const head = git('rev-parse', 'HEAD').trim();
+    const { dir, head, odd } = oddMergeRepo('');
     const log = await lineageLog(gitRunner(dir), head);
-    const sides = await mergeSides(gitRunner(dir), log, buildLineage(log, () => false), () => false);
+    const sides = (await mergeSides(gitRunner(dir), log, buildLineage(log, () => false), () => false)).tops;
     expect(sides.get(1)).toEqual([new Set([odd]), new Set(['core'])]);
     const s = await scanStructure({ dir, sha: {}, head });
     expect(s.snapshot.dirs.find((x) => x.path === odd)!.partner).toBeNull();
@@ -242,5 +249,31 @@ describe('#18 edge cases through the scan', () => {
     const empty = JSON.parse(readFileSync(join(dir, '.git/commet/layout.json'), 'utf8')) as LayoutV1;
     expect(empty).toMatchObject({ planets: [], star: { moonlets: [], moonletOverflow: 0, testData: 0 } });
     expect(existsSync(join(dir, '.git/commet/snapshot.json'))).toBe(true);
+  });
+});
+
+describe('#71 content roots through the scan', () => {
+  it('the snapshot is the same for any roots; only layout.json changes, and records them', async () => {
+    const plain = await run();
+    const zoned = await run({ roots: async () => ['pkg'] });
+    expect(zoned.json).toBe(plain.json);
+    expect(plain.layoutJson).toBe(layoutJson);
+    expect(zoned.layout.source.roots).toEqual(['pkg']);
+    expect(zoned.layout.planets.some((p) => p.path === 'pkg')).toBe(false);
+  });
+
+  it('a content planet born in a merge looks through to the branch, its odd name (U+0001, newline, tab) read whole', async () => {
+    const { dir, head, odd } = oddMergeRepo('src/');
+    try {
+      const log = await lineageLog(gitRunner(dir), head);
+      const sides = await mergeSides(gitRunner(dir), log, buildLineage(log, () => false, ['src']), () => false);
+      expect(sides.children.get(1)).toEqual([new Set([`src/${odd}`]), new Set(['src/core'])]);
+      const s = await scanStructure({ dir, sha: {}, head }, { roots: async () => ['src'] });
+      // Misread, it would fall back to the merge, which touches src/core.
+      expect(planetAt(s.layout, `src/${odd}`)).toMatchObject({ zone: 'content', partner: null });
+      expect(planetAt(s.layout, 'src/core').zone).toBe('content');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

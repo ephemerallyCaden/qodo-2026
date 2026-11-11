@@ -6,8 +6,8 @@ import { fileId } from '../../src/core/hash.js';
 import { pathHistory } from '../../src/core/renames.js';
 import type { DebtCounts, FileEntry, SnapshotV02 } from '../../src/core/snapshot/types.js';
 import {
-  buildLineage, dirsAtHead, matchTests, structureHistory, topBirthInfo, zeroDebt, type Change, type LineageCommit, type MergeSides,
-  type StructureHistory,
+  buildLineage, dirsAtHead, matchTests, rootBirthInfo, structureHistory, topBirthInfo, zeroDebt, type Change, type LineageCommit,
+  type MergeSides, type StructureHistory,
 } from '../../src/core/structure.js';
 
 export { fileId };
@@ -23,6 +23,9 @@ export interface WorldOptions {
   /** Open Qodo findings per file; null (the default) is unknown. */
   qodo?: (path: string) => number | null;
   sides?: MergeSides;
+  /** Content roots (#71), and merge sides naming each branch commit's root subfolders. */
+  roots?: string[];
+  childSides?: MergeSides;
 }
 
 export interface World { snapshot: SnapshotV02; history: StructureHistory; commits: LineageCommit[] }
@@ -35,7 +38,7 @@ export const lineageCommits = (commits: Change[][]): LineageCommit[] =>
 
 export function world(changes: Change[][], o: WorldOptions = {}): World {
   const commits = lineageCommits(changes);
-  const lineage = buildLineage(commits, () => false);
+  const lineage = buildLineage(commits, () => false, o.roots ?? []);
   const end = new Map<number, string>();
   for (const ev of lineage.events) {
     if (ev.to === null) end.delete(ev.key);
@@ -70,7 +73,7 @@ export function world(changes: Change[][], o: WorldOptions = {}): World {
     commits: [],
     sessions: [],
   };
-  return { snapshot, history: structureHistory(lineage, info, pathHistory(commits)), commits };
+  return { snapshot, history: structureHistory(lineage, info, pathHistory(commits), rootBirthInfo(lineage, o.childSides ?? new Map())), commits };
 }
 
 /** The planet at `path`, or a thrown error naming it. */

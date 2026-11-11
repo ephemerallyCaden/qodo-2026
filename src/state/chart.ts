@@ -11,6 +11,7 @@ import {
   applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges, type ChartState, type FogBase,
 } from '../core/fog/index.js';
 import { pathHistory, type PathHistory } from '../core/renames.js';
+import { isCanonicalRoot } from '../core/roots.js';
 import type { SnapshotV02 } from '../core/snapshot/types.js';
 import { exclusionOf } from '../scan/exclusions.js';
 import { gitRunner, tryGit } from '../scan/git.js';
@@ -20,6 +21,7 @@ import { readStateBytes, stateDir, writeAtomic } from './io.js';
 /** Chart state in the state dir. */
 export const CHART_FILE = 'chart.json';
 const SNAPSHOT_FILE = 'snapshot.json';
+const LAYOUT_FILE = 'layout.json';
 const LOCK_FILE = 'chart.lock';
 /** About 2 s of waiting for another commet (the CLI and the server) to finish its write. */
 const LOCK_TRIES = 100;
@@ -31,18 +33,32 @@ export interface FogSource {
   repoDir: string;
   dir: string;
   base: FogBase;
-  /** Identity of the snapshot.json `base` was built from (null if it couldn't be stat'ed). */
+  /** Identity of the snapshot.json and layout.json `base` was built from (null if the snapshot couldn't be stat'ed). */
   key: string | null;
 }
 
-/** Identity of the snapshot file on disk: an atomic write gives it a new inode. Null when absent. */
+/**
+ * Identity of the snapshot file and the layout beside it, whose roots fog uses (#71): an atomic
+ * write gives a file a new inode. Null when the snapshot is absent.
+ */
 function snapshotKey(dir: string): string | null {
+  const id = (name: string) => {
+    const st = lstatSync(join(dir, name), { bigint: true });
+    return `${st.dev}\0${st.ino}\0${st.size}\0${st.mtimeNs}`;
+  };
+  let snapshot: string;
   try {
-    const st = lstatSync(join(dir, SNAPSHOT_FILE), { bigint: true });
-    return `${dir}\0${st.dev}\0${st.ino}\0${st.size}\0${st.mtimeNs}`;
+    snapshot = id(SNAPSHOT_FILE);
   } catch {
     return null; // readSnapshot reports why
   }
+  let layout = 'none';
+  try {
+    layout = id(LAYOUT_FILE);
+  } catch {
+    // No layout yet: readLayoutRoots gives [].
+  }
+  return `${dir}\0${snapshot}\0${layout}`;
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
@@ -76,6 +92,28 @@ export async function readSnapshot(dir: string): Promise<SnapshotV02> {
   }
   if (!isSnapshot(v)) throw new CommetError('state error: .git/commet/snapshot.json is damaged or from another commet version; run `commet scan`', EXIT.state);
   return v;
+}
+
+/**
+ * The content roots of the layout `commet scan` wrote beside the snapshot (#71), so fog counts the
+ * planets the view draws (C8). No layout yet, or one from before roots, is #18's mapping ([]).
+ */
+export async function readLayoutRoots(dir: string): Promise<string[]> {
+  const text = (await readStateBytes(dir, LAYOUT_FILE))?.toString('utf8') ?? null;
+  if (text === null) return [];
+  let v: unknown = null;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    // Falls through to the refusal below.
+  }
+  const source = isObject(v) && v['schemaVersion'] === 'layout.1' && isObject(v['source']) ? v['source'] : null;
+  const roots = source?.['roots'];
+  if (source !== null && roots === undefined) return [];
+  if (!Array.isArray(roots) || !roots.every(isCanonicalRoot)) {
+    throw new CommetError(`state error: .git/commet/${LAYOUT_FILE} is damaged or from another commet version; run \`commet scan\``, EXIT.state);
+  }
+  return roots;
 }
 
 /** Chart state, or the empty state when there is none yet. A damaged file is refused, never reset. */
@@ -145,8 +183,11 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
   const dir = stateDir(common);
   const key = snapshotKey(dir);
   if (key !== null && loaded?.key === key) return { repoDir, dir, base: await loaded.base, key };
+  const roots = readLayoutRoots(dir);
+  // Surfaced through `base` below; this keeps a refusal from going unhandled if the snapshot fails first.
+  roots.catch(() => undefined);
   const snapshot = await readSnapshot(dir);
-  const base = historyFor(repoDir, dir, snapshot).then((h) => fogBase(snapshot, h));
+  const base = Promise.all([historyFor(repoDir, dir, snapshot), roots]).then(([h, r]) => fogBase(snapshot, h, r));
   // Stat before read: the cached content is never older than its key.
   const entry = key === null ? null : { key, base };
   loaded = entry;

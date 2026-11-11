@@ -1,5 +1,6 @@
 // layout() (#18): the scan as a star system, in the layout.1 shape (src/core/contract/layout.ts).
-// Pure: the same snapshot and structural history always give the same layout.json bytes (Rule 3).
+// Pure: the same snapshot and structural history (which carries the content roots, #71) always
+// give the same layout.json bytes (Rule 3).
 //
 // Placement is decided once. layout() replays the full first-parent history (StructureHistory, from
 // the scan's lineage pass), so every body is placed when it is born and stays put: later births
@@ -10,12 +11,13 @@ import type { Health, LayoutV1, Moon, Moonlet, Planet, Settlement } from '../con
 import { u32 } from '../hash.js';
 import type { DirId, FileEntry, FileId, SnapshotV02 } from '../snapshot/types.js';
 import {
-  ancestors, byBirth, clearLink, isSurfacePath, isTestData, olderThan, type BirthRank, type FileEvent, type StructureHistory,
+  ancestors, byBirth, clearLink, fileHome, folderHome, isTestData, olderThan, planetHome, trackedDepth, type BirthRank, type FileEvent,
+  type PlanetBirth, type StructureHistory, type Zone,
 } from '../structure.js';
 import { LIST_LIMIT, printable } from '../summary.js';
 import {
-  FIRST_ORBIT_MILLI, MAX_PLANET_RADIUS_MILLI, MIN_PLANET_RADIUS_MILLI, MOON_CAP, MOONLET_CAP, PHASE_STEP_MILLITURN,
-  RADIUS_PER_LOG2_MILLI, SETTLEMENT_SIZE_MAX_LOC, SLOT_SPACING_MILLI, SURFACE_CELLS,
+  CONTENT_SLOTS, FIRST_ORBIT_MILLI, MAX_PLANET_RADIUS_MILLI, MIN_PLANET_RADIUS_MILLI, MOON_CAP, MOONLET_CAP, OUTER_GAP_SLOTS,
+  PHASE_STEP_MILLITURN, RADIUS_PER_LOG2_MILLI, SETTLEMENT_SIZE_MAX_LOC, SLOT_SPACING_MILLI, SURFACE_CELLS,
 } from './constants.js';
 import { health, type HealthInput } from './health.js';
 import { Surface } from './surface.js';
@@ -69,31 +71,46 @@ export function settlementSize(loc: number): number {
 const orbitSlot = (index: number) =>
   ({ index, radiusMilli: FIRST_ORBIT_MILLI + index * SLOT_SPACING_MILLI, phaseMilliturn: (index * PHASE_STEP_MILLITURN) % 1000 });
 
-interface FileState { key: number; path: string; sub: DirId | null; planet: DirId | null; cell: number | null; unsure: boolean }
-interface PlanetState { slot: number; partner: DirId | null; rank: BirthRank }
+/**
+ * A planet in the replay: its zone and folder id (#71). A folder that moves between zones (into a
+ * content root, or out of one) leaves one planet and becomes another, placed in its new zone.
+ */
+type PlanetKey = `${Zone} ${DirId}`;
+const planetKey = (zone: Zone, id: DirId): PlanetKey => `${zone} ${id}`;
+const idOf = (k: PlanetKey) => k.slice(k.indexOf(' ') + 1) as DirId;
+const zoneOf = (k: PlanetKey) => k.slice(0, k.indexOf(' ')) as Zone;
+
+interface FileState { key: number; path: string; sub: DirId | null; planet: PlanetKey | null; cell: number | null; unsure: boolean }
+interface PlanetState { id: DirId; zone: Zone; slot: number; partner: DirId | null; rank: BirthRank }
 
 /**
  * Replays the structural history. Each commit: files that leave a planet free their cells; a
- * top-level folder left with no surface file stops being a planet and frees its slot; folders
+ * planet's folder left with no surface file stops being a planet and frees its slot; folders
  * gaining their first surface file are placed, oldest first; then arriving files claim cells,
- * oldest first. A file that moves within its planet keeps its cell. Only surface files
- * (isSurfacePath) settle: root files orbit the star and tests and test data ride with the tests.
+ * oldest first. A file that moves within its planet keeps its cell. Only surface files settle
+ * (planetHome): root files and files directly inside a content root orbit the star, and tests and
+ * test data ride with the tests.
  */
 class Replay {
   readonly files = new Map<number, FileState>();
-  readonly planets = new Map<DirId, PlanetState>();
-  readonly surfaces = new Map<DirId, Surface>();
-  private readonly surfaceFiles = new Map<DirId, number>();
+  readonly planets = new Map<PlanetKey, PlanetState>();
+  readonly surfaces = new Map<PlanetKey, Surface>();
+  private readonly surfaceFiles = new Map<PlanetKey, number>();
   private readonly slots = new Set<number>();
-  private readonly births: Map<DirId, StructureHistory['births'][number]>;
+  private readonly births: Record<Zone, Map<DirId, PlanetBirth>>;
+  private readonly roots: string[];
+  /** The outer zone's first slot: 0 with no roots (#18), else past the content slots and the gap (#71). */
+  private readonly outerFrom: number;
 
   constructor(history: StructureHistory, private readonly cells: number) {
-    this.births = new Map(history.births.map((b) => [b.id, b]));
+    this.births = { outer: new Map(history.births.map((b) => [b.id, b])), content: new Map(history.rootBirths.map((b) => [b.id, b])) };
+    this.roots = history.roots;
+    this.outerFrom = history.roots.length === 0 ? 0 : CONTENT_SLOTS + OUTER_GAP_SLOTS;
   }
 
-  private surface(top: DirId): Surface {
-    let s = this.surfaces.get(top);
-    if (!s) this.surfaces.set(top, (s = new Surface(this.cells, top)));
+  private surface(k: PlanetKey): Surface {
+    let s = this.surfaces.get(k);
+    if (!s) this.surfaces.set(k, (s = new Surface(this.cells, idOf(k))));
     return s;
   }
 
@@ -101,11 +118,15 @@ class Replay {
   step(events: FileEvent[], from: number, to: number): void {
     const seq = events[from]!.seq;
     const arrivals: FileState[] = [];
-    const changed = new Set<DirId>();
+    const changed = new Set<PlanetKey>();
     for (let i = from; i < to; i++) {
       const ev = events[i]!;
       const prev = this.files.get(ev.key);
-      const planet = ev.to !== null && ev.top !== null && isSurfacePath(ev.to) ? ev.top : null;
+      const home = ev.to === null ? null : planetHome(ev.to, this.roots);
+      const id = home === null ? undefined : ev.dirs[home.depth - 1];
+      const planet = home === null || id === undefined ? null : planetKey(home.zone, id);
+      // Its continent: the planet's subfolder it is in, if any (deeper folders fold into it).
+      const sub = home === null ? null : ev.dirs[home.depth] ?? null;
       if (prev?.planet && prev.planet !== planet) {
         if (prev.cell !== null) this.surfaces.get(prev.planet)!.release(prev.cell);
         this.surfaceFiles.set(prev.planet, this.surfaceFiles.get(prev.planet)! - 1);
@@ -116,51 +137,59 @@ class Replay {
         continue;
       }
       const stays = planet !== null && prev?.planet === planet;
-      const next: FileState = { key: ev.key, path: ev.to, sub: ev.sub, planet, cell: stays ? prev!.cell : null,
+      const next: FileState = { key: ev.key, path: ev.to, sub, planet, cell: stays ? prev!.cell : null,
         unsure: prev?.unsure ?? ev.unsure === true };
       this.files.set(ev.key, next);
       if (stays) {
         // A rename keeps its cell; a new continent still gets its seed when its folder arrives.
-        if (ev.sub !== null) this.surface(planet).seed(ev.sub);
+        if (sub !== null) this.surface(planet).seed(sub);
       } else if (planet !== null) {
         this.surfaceFiles.set(planet, (this.surfaceFiles.get(planet) ?? 0) + 1);
         changed.add(planet);
         arrivals.push(next);
       }
     }
-    for (const top of changed) {
-      const p = this.planets.get(top);
-      if (p && this.surfaceFiles.get(top) === 0) {
-        this.planets.delete(top);
+    for (const k of changed) {
+      const p = this.planets.get(k);
+      if (p && this.surfaceFiles.get(k) === 0) {
+        this.planets.delete(k);
         this.slots.delete(p.slot);
       }
     }
-    const rank = (id: DirId): BirthRank => {
-      const b = this.births.get(id);
-      return { id, seq: b?.seq ?? seq, order: b?.order ?? 0 };
-    };
-    const born = [...changed].filter((top) => !this.planets.has(top) && (this.surfaceFiles.get(top) ?? 0) > 0).map(rank).sort(byBirth);
-    for (const me of born) this.place(me);
+    const born = [...changed].filter((k) => !this.planets.has(k) && (this.surfaceFiles.get(k) ?? 0) > 0).map((k) => {
+      const b = this.births[zoneOf(k)].get(idOf(k));
+      return { k, rank: { id: idOf(k), seq: b?.seq ?? seq, order: b?.order ?? 0 } };
+    }).sort((a, b) => byBirth(a.rank, b.rank));
+    for (const me of born) this.place(me.k, me.rank);
     for (const f of arrivals.sort(byKey)) {
       const s = this.surface(f.planet!);
-      f.cell = s.claim(s.seed(f.sub ?? f.planet!));
+      f.cell = s.claim(s.seed(f.sub ?? idOf(f.planet!)));
     }
   }
 
-  /** The free slot nearest its birth partner (ties: the inner one), or with none the innermost free slot. */
-  private place(me: BirthRank): void {
-    const older = [...this.planets.values()].map((p) => p.rank).filter((x) => olderThan(x, me));
-    const partner = clearLink(this.births.get(me.id)?.first ?? [], older);
-    const free = (i: number) => i >= 0 && !this.slots.has(i);
-    let slot = 0;
-    if (partner === null) while (!free(slot)) slot++;
+  /**
+   * In its zone's slots, the free one nearest its birth partner (ties: the inner one), or with none
+   * the innermost free one. Partners are older planets in the same zone. A content planet born while
+   * every content slot is taken goes to the innermost free slot past the gap, so nothing moves (#71).
+   */
+  private place(k: PlanetKey, me: BirthRank): void {
+    const zone = zoneOf(k);
+    const older = [...this.planets.values()].filter((p) => p.zone === zone).map((p) => p.rank).filter((x) => olderThan(x, me));
+    const partner = clearLink(this.births[zone].get(me.id)?.first ?? [], older);
+    let full = zone === 'content';
+    for (let i = 0; full && i < CONTENT_SLOTS; i++) full = this.slots.has(i);
+    const [lo, hi] = zone === 'outer' || full ? [this.outerFrom, Infinity] : [0, CONTENT_SLOTS];
+    const near = full ? null : partner;
+    const free = (i: number) => i >= lo && i < hi && !this.slots.has(i);
+    let slot = lo;
+    if (near === null) while (!free(slot)) slot++;
     else {
-      const at = this.planets.get(partner)!.slot;
+      const at = this.planets.get(planetKey(zone, near))!.slot;
       let d = 1;
       while (!free(at - d) && !free(at + d)) d++;
       slot = free(at - d) ? at - d : at + d;
     }
-    this.planets.set(me.id, { slot, partner, rank: me });
+    this.planets.set(k, { id: me.id, zone, slot, partner, rank: me });
     this.slots.add(slot);
   }
 }
@@ -170,12 +199,20 @@ class Replay {
  * differ move, and files the history lacks are born last. So the replay ends exactly at the
  * snapshot and nothing in it is dropped. On a scan this is empty; what it repairs is counted.
  */
-function reconcile(snapshot: SnapshotV02, events: FileEvent[]): FileEvent[] {
+function reconcile(snapshot: SnapshotV02, events: FileEvent[], roots: readonly string[]): FileEvent[] {
   const dirByPath = new Map(snapshot.dirs.map((d) => [d.path, d.id]));
+  // The lineage's folder ids for a path (FileEvent.dirs); a folder the snapshot lacks ends the list
+  // there, as what's below it can't be placed on it.
   const idsOf = (path: string) => {
-    const [top, sub] = ancestors(path);
-    return { top: top === undefined ? null : dirByPath.get(top) ?? null, sub: sub === undefined ? null : dirByPath.get(sub) ?? null };
+    const dirs: DirId[] = [];
+    for (const d of ancestors(path).slice(0, trackedDepth(path, roots))) {
+      const id = dirByPath.get(d);
+      if (id === undefined) break;
+      dirs.push(id);
+    }
+    return dirs;
   };
+  const same = (a: DirId[], b: DirId[]) => a.length === b.length && a.every((x, i) => x === b[i]);
   const end = new Map<number, FileEvent>();
   let nextKey = 0;
   for (const ev of events) {
@@ -190,14 +227,14 @@ function reconcile(snapshot: SnapshotV02, events: FileEvent[]): FileEvent[] {
   for (const [key, ev] of [...end].sort((a, b) => a[0] - b[0])) {
     const path = ev.to!;
     if (!head.has(path) || seen.has(path)) {
-      out.push({ seq, key, from: path, to: null, top: null, sub: null });
+      out.push({ seq, key, from: path, to: null, dirs: [] });
       continue;
     }
     seen.add(path);
     const ids = idsOf(path);
-    if (ids.top !== ev.top || ids.sub !== ev.sub) out.push({ seq, key, from: path, to: path, ...ids });
+    if (!same(ids, ev.dirs)) out.push({ seq, key, from: path, to: path, dirs: ids });
   }
-  for (const f of snapshot.files) if (!seen.has(f.path)) out.push({ seq, key: nextKey++, from: null, to: f.path, ...idsOf(f.path) });
+  for (const f of snapshot.files) if (!seen.has(f.path)) out.push({ seq, key: nextKey++, from: null, to: f.path, dirs: idsOf(f.path) });
   return out;
 }
 
@@ -216,8 +253,9 @@ export function layout(snapshot: SnapshotV02, history: StructureHistory, o: Layo
 
 /** layout(), plus what it placed on weaker evidence. */
 export function layoutReport(snapshot: SnapshotV02, history: StructureHistory, o: LayoutOptions = {}): { layout: LayoutV1; notes: LayoutNotes } {
+  const { roots } = history;
   const replay = new Replay(history, o.surfaceCells ?? SURFACE_CELLS);
-  const closing = reconcile(snapshot, history.events);
+  const closing = reconcile(snapshot, history.events, roots);
   for (const events of [history.events, closing]) {
     for (let i = 0; i < events.length;) {
       let j = i;
@@ -235,17 +273,19 @@ export function layoutReport(snapshot: SnapshotV02, history: StructureHistory, o
   const dirByPath = new Map(snapshot.dirs.map((d) => [d.path, d]));
   const fileById = new Map(snapshot.files.map((f) => [f.id, f]));
   // A test orbits the planet holding its source; a test of a test, of test data or of a root file has none.
-  const targetPlanet = (testOf: FileId | DirId): DirId | null => {
+  const targetPlanet = (testOf: FileId | DirId): PlanetKey | null => {
     if (testOf.startsWith('f_')) {
       const t = fileById.get(testOf as FileId);
       return t ? stateOf.get(t.path)?.planet ?? null : null;
     }
     const d = dirById.get(testOf as DirId);
-    const top = d && dirByPath.get(d.path.split('/', 1)[0]!);
-    return top && replay.planets.has(top.id) ? top.id : null;
+    const home = d ? folderHome(d.path, roots) : null;
+    const top = home ? dirByPath.get(home.path) : undefined;
+    const k = home && top ? planetKey(home.zone, top.id) : null;
+    return k !== null && replay.planets.has(k) ? k : null;
   };
-  const surfaceFiles = new Map<DirId, FileEntry[]>();
-  const moons = new Map<DirId, { f: FileEntry; key: number }[]>();
+  const surfaceFiles = new Map<PlanetKey, FileEntry[]>();
+  const moons = new Map<PlanetKey, { f: FileEntry; key: number }[]>();
   const moonlets: { f: FileEntry; key: number }[] = [];
   let testData = 0;
   for (const f of snapshot.files) {
@@ -257,10 +297,11 @@ export function layoutReport(snapshot: SnapshotV02, history: StructureHistory, o
     else moonlets.push({ f, key: s.key });
   }
 
-  const planets: Planet[] = [...replay.planets].map(([id, p]): Planet => {
-    const files = surfaceFiles.get(id)!;
+  const planets: Planet[] = [...replay.planets].map(([k, p]): Planet => {
+    const id = p.id;
+    const files = surfaceFiles.get(k)!;
     const dir = dirById.get(id)!;
-    const surface = replay.surfaces.get(id)!;
+    const surface = replay.surfaces.get(k)!;
     const settlements: Settlement[] = [];
     const subs = new Set<DirId>();
     let overflow = 0;
@@ -271,11 +312,11 @@ export function layoutReport(snapshot: SnapshotV02, history: StructureHistory, o
       else settlements.push({ fileId: f.id, dirId: s.sub ?? id, cell: s.cell, loc: f.loc, size: settlementSize(f.loc), health: health([input(f)]) });
     }
     const loc = files.reduce((n, f) => n + f.loc, 0);
-    const [shown, moonOverflow] = capped((moons.get(id) ?? []).sort(byKey), MOON_CAP);
+    const [shown, moonOverflow] = capped((moons.get(k) ?? []).sort(byKey), MOON_CAP);
     return {
       dirId: id,
       path: dir.path,
-      zone: 'outer',
+      zone: p.zone,
       bornSeq: dir.bornSeq,
       partner: p.partner,
       slot: orbitSlot(p.slot),
@@ -298,13 +339,14 @@ export function layoutReport(snapshot: SnapshotV02, history: StructureHistory, o
   const [shownMoonlets, moonletOverflow] = capped(moonlets.sort(byKey), MOONLET_CAP);
   const layout: LayoutV1 = {
     schemaVersion: 'layout.1',
-    source: { repoId: snapshot.repo.repoId, head: snapshot.repo.head, roots: [] },
+    source: { repoId: snapshot.repo.repoId, head: snapshot.repo.head, roots: [...roots] },
     constants: { slotSpacingMilli: SLOT_SPACING_MILLI, maxPlanetRadiusMilli: MAX_PLANET_RADIUS_MILLI, moonCap: MOON_CAP },
     star: {
       repoId: snapshot.repo.repoId,
       moonlets: shownMoonlets.map(({ f }, slot): Moonlet => ({ fileId: f.id,
-        // A root-level file is a root file, unless it is a test with no target (#18 AC3).
-        kind: f.isTest && (f.testOf === null || f.path.includes('/')) ? 'unmatched-test' : 'root-file', slot })),
+        // A file beside the star (in the repo root or directly inside a content root: no fileHome) is a
+        // root file, unless it is a test with no target (#18 AC3, #71).
+        kind: f.isTest && (f.testOf === null || fileHome(f.path, roots) !== null) ? 'unmatched-test' : 'root-file', slot })),
       moonletOverflow,
       testData,
     },
@@ -320,11 +362,17 @@ export function formatLayout(l: LayoutV1, notes: LayoutNotes): string {
   const pathOf = new Map(l.planets.map((p) => [p.dirId, p.path]));
   const bands = (hs: Health[]) => BANDS.map((b) => `${b} ${hs.filter((h) => h.band === b).length}`).join(' · ');
   const sum = (f: (p: Planet) => number) => l.planets.reduce((n, p) => n + f(p), 0);
-  const lines = [`layout: ${l.planets.length} planet(s), ${l.star.moonlets.length + l.star.moonletOverflow} moonlet(s) around the star, `
+  // With content roots (#71), each planet's zone is shown; without, the summary is #18's.
+  const zoned = l.source.roots.length > 0;
+  const content = l.planets.filter((p) => p.zone === 'content').length;
+  const count = zoned ? `${l.planets.length} planet(s) (${content} content in ${l.source.roots.map(printable).join(', ')}, `
+    + `${l.planets.length - content} outer)` : `${l.planets.length} planet(s)`;
+  const lines = [`layout: ${count}, ${l.star.moonlets.length + l.star.moonletOverflow} moonlet(s) around the star, `
     + `${l.star.testData} test-data file(s) riding with the tests`];
   for (const p of l.planets.slice(0, LIST_LIMIT)) {
     const partner = p.partner === null ? '-' : printable(pathOf.get(p.partner) ?? p.partner);
-    lines.push(`  slot ${String(p.slot.index).padStart(2)}  ${printable(p.path).slice(0, 24).padEnd(24)} partner ${partner.slice(0, 24).padEnd(24)} `
+    lines.push(`  slot ${String(p.slot.index).padStart(2)}  ${zoned ? `${p.zone.padEnd(7)} ` : ''}${printable(p.path).slice(0, 24).padEnd(24)} `
+      + `partner ${partner.slice(0, 24).padEnd(24)} `
       + `${p.health.band.padEnd(7)} ${p.surface.settlements.length + p.surface.overflow} file(s), ${p.moons.length + p.moonOverflow} moon(s)`);
   }
   if (l.planets.length > LIST_LIMIT) lines.push(`  … and ${l.planets.length - LIST_LIMIT} more`);

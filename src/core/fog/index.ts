@@ -8,7 +8,7 @@ import type { ChartAction, ChartUnknownHead, FileFog, FogCounts, FogReason, FogV
 import { sha256Hex } from '../hash.js';
 import type { PathHistory, Unrowed } from '../renames.js';
 import type { Commit, CommitFile, DirId, FileEntry, FileId, PersonId, Sha, SnapshotV02 } from '../snapshot/types.js';
-import { isSurfacePath, type LineageCommit } from '../structure.js';
+import { folderHome, planetHome, type Home, type LineageCommit } from '../structure.js';
 import { byEntry, type ChartEntry, type ChartState } from './chart-state.js';
 
 export { emptyChart, parseChartAction, parseChartState, type ChartEntry, type ChartState } from './chart-state.js';
@@ -28,28 +28,26 @@ export function reasonsOf(c: Commit | undefined, self: ReadonlySet<PersonId>): F
 }
 
 /**
- * Where each file is counted: its planet's DirId, or null for the star. A top-level folder is a
- * planet when it holds a surface file (isSurfacePath), so `test/` never is (#23); #18's layout uses
- * the same rule. A matched test is a moon of its target's planet. Root files, unmatched tests, tests
- * of a root file and test data are on the star. A surface file whose top folder has no dirs[] entry
- * is counted on the star, not dropped.
+ * Where each file is counted: its planet's DirId, or null for the star. A planet is a folder holding
+ * a surface file, by planetHome, the rule #18's layout uses too (#71 C8): with no `roots` a top-level
+ * folder, so `test/` never is (#23), and with roots also each root's subfolders. A matched test is a
+ * moon of its target's planet. Root files, files directly inside a root, unmatched tests, tests of
+ * either and test data are on the star. A surface file whose planet folder has no dirs[] entry is
+ * counted on the star, not dropped. `roots` are the layout's (`source.roots`).
  */
-export function homes(s: SnapshotV02): Map<FileId, DirId | null> {
-  const topIds = new Map(s.dirs.filter((d) => d.depth === 1).map((d) => [d.path, d.id]));
-  const planets = new Set(s.files.filter((f) => isSurfacePath(f.path)).map((f) => f.path.slice(0, f.path.indexOf('/'))));
-  const planetAt = (path: string) => {
-    const top = path.split('/')[0]!;
-    return planets.has(top) ? topIds.get(top) ?? null : null;
-  };
-  const fileById = new Map(s.files.map((f) => [f.id, f]));
+export function homes(s: SnapshotV02, roots: readonly string[] = []): Map<FileId, DirId | null> {
+  const dirIds = new Map(s.dirs.map((d) => [d.path, d.id]));
+  const own = new Map(s.files.map((f) => [f.id, planetHome(f.path, roots)]));
+  const planets = new Set([...own.values()].flatMap((h) => h?.path ?? []));
+  const planetAt = (home: Home | null | undefined) => (home && planets.has(home.path) ? dirIds.get(home.path) ?? null : null);
   const dirById = new Map(s.dirs.map((d) => [d.id, d]));
   const homeOf = (f: FileEntry): DirId | null => {
-    if (isSurfacePath(f.path)) return planetAt(f.path);
+    const mine = own.get(f.id);
+    if (mine) return planetAt(mine);
     if (!f.isTest || f.testOf === null) return null;
-    const file = fileById.get(f.testOf as FileId);
-    if (file) return isSurfacePath(file.path) ? planetAt(file.path) : null;
+    if (own.has(f.testOf as FileId)) return planetAt(own.get(f.testOf as FileId));
     const dir = dirById.get(f.testOf as DirId);
-    return dir ? planetAt(dir.path) : null;
+    return dir ? planetAt(folderHome(dir.path, roots)) : null;
   };
   return new Map(s.files.map((f) => [f.id, homeOf(f)]));
 }
@@ -111,9 +109,10 @@ function bySeqOf<T extends { seq: number }>(items: readonly T[]): Map<number, T[
 /**
  * Walks the window back from HEAD. Before commit `seq` is undone, byPath and curId name each file
  * as it was just after that commit, which is how a chart taken at that commit names it. `history`
- * must cover the snapshot's window; anything else counts as no history.
+ * must cover the snapshot's window; anything else counts as no history. `roots` are the content
+ * roots of the layout beside the snapshot (#71), so fog counts the planets the view draws.
  */
-export function fogBase(snapshot: SnapshotV02, history: PathHistory | null): FogBase {
+export function fogBase(snapshot: SnapshotV02, history: PathHistory | null, roots: readonly string[] = []): FogBase {
   const files = [...snapshot.files].sort((a, b) => byCodepoint(a.id, b.id));
   const self = new Set<PersonId>(snapshot.repo.selfPersonIds);
   const bySeq = new Map(snapshot.commits.map((c) => [c.seq, c]));
@@ -193,7 +192,7 @@ export function fogBase(snapshot: SnapshotV02, history: PathHistory | null): Fog
     }
   }
   for (const i of byPath.values()) endName(i, minSeq);
-  return { snapshot, files, home: homes(snapshot), degraded: !usable, seqOf, shaAt, touches, unknownAt, names };
+  return { snapshot, files, home: homes(snapshot, roots), degraded: !usable, seqOf, shaAt, touches, unknownAt, names };
 }
 
 /** The HEAD file a chart entry reviewed and the entry's seq; null when it can't be placed in the window. */
@@ -270,8 +269,8 @@ export function fogFrom(base: FogBase, chart: ChartState): FogView {
  * agent. Only content changes count, so a pure rename never fogs. `history` is the PathHistory for the
  * snapshot's window, or null when it couldn't be read.
  */
-export const fogView = (snapshot: SnapshotV02, chart: ChartState, history: PathHistory | null): FogView =>
-  fogFrom(fogBase(snapshot, history), chart);
+export const fogView = (snapshot: SnapshotV02, chart: ChartState, history: PathHistory | null, roots: readonly string[] = []): FogView =>
+  fogFrom(fogBase(snapshot, history, roots), chart);
 
 export type ChartApplied = { ok: true; chart: ChartState } | ChartUnknownHead | { ok: false; error: string; head?: undefined };
 
