@@ -28,6 +28,11 @@ it('the CI render job runs in the Playwright image matching @playwright/test, pi
   expect(body).toMatch(/if: failure\(\) && steps\.update\.outcome == 'success'\n\s+uses: actions\/upload-artifact@v4\n\s+with:\n\s+name: render-goldens\n\s+path: test\/golden\/render\//);
 });
 
+it('every render run builds dist/web first (Playwright global setup), so the render job never drives a missing or stale view (#31 AC 8)', async () => {
+  const { default: config } = await import('../playwright.config.js');
+  expect(config.globalSetup).toBe('./test/render/global-setup.ts');
+});
+
 describe('Golden-Update gate (.github/scripts/golden-update.sh)', () => {
   const SCRIPT = join(import.meta.dirname, '../.github/scripts/golden-update.sh');
 
