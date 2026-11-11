@@ -126,9 +126,9 @@ export async function main(argv: string[], io: Io): Promise<number> {
     // With --out, the layout goes beside the snapshot (x.json → x.layout.json), so the state dir keeps one scan's pair.
     const layoutOut = out && out.replace(/(\.json)?$/, '.layout.json');
     const pair: [string, string][] = [[layoutOut || join(stateDir(commonDir), 'layout.json'), layoutJson], [out || join(stateDir(commonDir), 'snapshot.json'), json]];
-    // Into the state dir, the snapshot is published under the state lock, so a chart write never sees it change mid-write (#58).
-    if (out) writePair(pair);
-    else await withStateLock(stateDir(commonDir), () => writePair(pair));
+    // Published under the state lock, so a chart write never sees the snapshot change mid-write (#58).
+    // That includes --out, which can name the live snapshot by another path (Qodo PR66 r1).
+    await withStateLock(stateDir(commonDir), () => writePair(pair));
     io.stdout(formatSummary(snapshot, logs, !args.withQodo) + formatLayout(layout, layoutNotes));
     if (qodoCache !== null && !saveQodoCache(commonDir, qodoCache)) {
       io.stdout('qodo findings cache could not be written; a scan without --with-qodo will not see these counts\n');

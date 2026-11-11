@@ -1,7 +1,7 @@
 // Chart state on disk and the fog entry points (#33, R5). `commet chart` and the local server (#32)
 // both read and write through here: readFog for GET /api/fog, applyChart for POST /api/chart.
 // State lives in `.git/commet/chart.json` (canonical JSON, 0600, atomic writes, symlinks refused).
-import { lstatSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJson } from '../core/canonical-json.js';
 import type { ChartResult } from '../core/contract/api.js';
@@ -160,19 +160,50 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
 
 export const currentFog = (src: FogSource): FogView => fogFrom(src.base, readChart(src.dir));
 
+/** Whether process `pid` is running. EPERM: it is, under another user. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
+ * Removes a lock its holder left behind when it died (its pid is no longer running), so a killed
+ * writer can't block every later scan (Qodo PR66 r1). A lock with no readable pid, or a live holder,
+ * stays. The content is re-read just before removal, so a lock another process has just taken over
+ * is left alone.
+ */
+function clearAbandoned(lock: string): void {
+  const holder = (): string | null => {
+    try {
+      return readFileSync(lock, 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const seen = holder();
+  const pid = seen === null ? NaN : Number(seen.trim());
+  if (!Number.isSafeInteger(pid) || pid <= 0 || alive(pid)) return;
+  if (holder() === seen) rmSync(lock, { force: true });
+}
+
 /**
  * The state lock: serialises chart writes and the scan's snapshot publication across processes with
- * an exclusive lock file. `fn` is synchronous, so nothing else in this process can interleave while
- * the lock is held.
+ * an exclusive lock file holding the writer's pid. `fn` is synchronous, so nothing else in this
+ * process can interleave while the lock is held.
  */
 export async function withStateLock<T>(dir: string, fn: () => T): Promise<T> {
   const lock = join(dir, LOCK_FILE);
   for (let tries = 1; ; tries++) {
     try {
-      writeFileSync(lock, '', { flag: 'wx', mode: 0o600 });
+      writeFileSync(lock, `${process.pid}\n`, { flag: 'wx', mode: 0o600 });
       break;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      clearAbandoned(lock);
       if (tries >= LOCK_TRIES) {
         throw new CommetError('state error: another commet is writing to .git/commet (if none is running, delete .git/commet/chart.lock)', EXIT.state);
       }
