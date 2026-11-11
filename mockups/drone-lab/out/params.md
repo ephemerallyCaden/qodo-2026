@@ -263,7 +263,7 @@ Each brand drone is D-final with a parameter set laid over it plus a palette (`b
 | **Cursor** | Cursor (IDE, CLI, cloud agent) | logo only: an isometric hexagonal cube with a light arrow facet | a crisp graphite cube with a white top facet and a flat screen, sputtering precise dots |
 | **GitHub Copilot** | GitHub Copilot (cloud agent, CLI, app, VS Code) | the goggled head (its goggles kept with GitHub's permission, human 2026-11-10): goggles above upright pill eyes | the generic drone's exact shape in blue to violet, with flat pilot goggles across the top of its screen (two lenses joined by a bridge, strapped round the head) above upright pill eyes |
 | **OpenAI Codex** | OpenAI Codex (CLI, cloud) | Codey, the Codex pet: one smooth cloud-blob head, mid blue, with a big dark rounded screen face and >_ glyph eyes | one smooth mid-blue cloud head (five broad, low lobes blended into one shape) round a big dark navy screen with >_ prompt eyes; works in prompt characters |
-| **Google** | Google: Jules, Gemini CLI, Antigravity (one drone) | the Jules octopus: a domed head, two oval eyes, curled tentacles (the site's pixel avatar is purple) | a tall purple dome on a ring of six curling tentacles that sway in time with the bob |
+| **Google** | Google: Jules, Gemini CLI, Antigravity (one drone) | the Gemini sparkle: a four-point star with deeply concave sides and rounded tips, coral red at the top, yellow on the left, green at the bottom and blue on the right and in the middle | head-is-body: a puffy four-point sparkle, thin at the tips and fat in the middle, its tips in the four Gemini colours and a round dark screen in its blue middle |
 | **Devin** | Devin (cloud, CLI, Devin Desktop, formerly Windsurf) | logo only: three joined white hexagons on near-black | a near-black hexagonal head between two white hexagonal side pods (three hexagons in a row), three eyes |
 | **Kiro** | Kiro (CLI, IDE, cloud agent) and Amazon Q | the Kiro ghost: a white dome with a wavy hem and two black oval eyes | a white ghost dome with a scalloped hem that wobbles, shaded in Kiro purple, trailing wisps; floats high |
 | **OpenCode** | OpenCode (CLI, GitHub agent) | logo only: a pixel block "O", a light square ring round a dark-over-grey core | a tall sharp white block, its square screen a thick ring round a dark-over-grey split core; a cyclops ring eye |
@@ -280,7 +280,7 @@ Copilot and Claude Code are the generic drone's exact shape plus one signature a
 | goggles | flat pilot goggles worn flush across the top of the screen: two lenses joined by a bridge, strapped round the head | `topper` goggles, `gogW` 0.048, `gogH` 0.034, `gogX` 0.42, `gogY` 0.6, `gogT` 0.012, `gogFrame` 0.015, `gogBridge` on, `gogStrap` on, `gogStrapY` 0.3 | `gogY` 0.55–0.65 | copilot |
 | legs | four stubby legs in two pairs, hanging below the saucer | `skirt` stub legs, `skirtN` 4, `skirtL` 0.05, `skirtR` 0.019, `skirtSpread` 0.7, `skirtZ` 0.55 | `skirtL` 0.044–0.056 | claude |
 | tentacles | six curling tentacles under the saucer, swaying with the bob | `skirt` tentacles, `skirtN` 6, `skirtL` 0.06, `skirtR` 0.015, `skirtSpread` 0.86, `skirtCurl` 0.8, `skirtWave` 0.006 | `skirtL` 0.054–0.066 | none (an option the human didn't pick) |
-| antenna star | a small puffy four-point sparkle on the antenna in place of its tip, its tips in the four Gemini colours | `starPart` antenna star, `starR` 0.06, `starT` 0.42 | `starR` 0.057–0.063 | Google option g2 |
+| antenna star | a small puffy four-point sparkle on the antenna in place of its tip, its tips in the four Gemini colours | `starPart` antenna star, `starR` 0.06, `starT` 0.42 | `starR` 0.057–0.063 | unpicked Google option g2 |
 
 ### Brand parameters
 
@@ -288,13 +288,13 @@ Only parameters that some brand changes from D-final. **Bold** marks a value tha
 
 | Parameter | D-final | claude | cursor | copilot | codex | google | devin | kiro | opencode | qodo | generic | unknown |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `headW` | 0.128 | 0.128 | **0.104** | 0.128 | **0.122** | **0.104** | **0.094** | **0.1** | **0.094** | **0.112** | 0.128 | 0.128 |
-| `headH` | 0.095 | 0.095 | **0.1** | 0.095 | **0.098** | **0.112** | **0.112** | **0.118** | **0.118** | **0.098** | 0.095 | 0.095 |
-| `headD` | 0.125 | 0.125 | **0.104** | 0.125 | **0.11** | **0.1** | **0.07** | **0.095** | **0.088** | **0.112** | 0.125 | 0.125 |
-| `headRound` | 0.83 | 0.83 | **0** | 0.83 | **0.9** | **1** | **0** | **1** | **0** | **0.9** | 0.83 | 0.83 |
-| `headCorner` | 0.1 | 0.1 | **0.16** | 0.1 | **0.6** | **0.6** | **0.16** | **0.6** | 0.1 | **0.6** | 0.1 | 0.1 |
-| `headTaper` | 0.99 | 0.99 | **1** | 0.99 | **1** | **1** | **1** | **1.18** | **1** | **1.05** | 0.99 | 0.99 |
-| `headFlat` | 0.4 | 0.4 | **0** | 0.4 | **0.2** | **0.42** | **0** | **0.35** | **0** | **0.2** | 0.4 | 0.4 |
+| `headW` | 0.128 | 0.128 | **0.104** | 0.128 | **0.122** | **0.15** | **0.094** | **0.1** | **0.094** | **0.112** | 0.128 | 0.128 |
+| `headH` | 0.095 | 0.095 | **0.1** | 0.095 | **0.098** | **0.15** | **0.112** | **0.118** | **0.118** | **0.098** | 0.095 | 0.095 |
+| `headD` | 0.125 | 0.125 | **0.104** | 0.125 | **0.11** | **0.06** | **0.07** | **0.095** | **0.088** | **0.112** | 0.125 | 0.125 |
+| `headRound` | 0.83 | 0.83 | **0** | 0.83 | **0.9** | **0** | **0** | **1** | **0** | **0.9** | 0.83 | 0.83 |
+| `headCorner` | 0.1 | 0.1 | **0.16** | 0.1 | **0.6** | 0.1 | **0.16** | **0.6** | 0.1 | **0.6** | 0.1 | 0.1 |
+| `headTaper` | 0.99 | 0.99 | **1** | 0.99 | **1** | 0.99 | **1** | **1.18** | **1** | **1.05** | 0.99 | 0.99 |
+| `headFlat` | 0.4 | 0.4 | **0** | 0.4 | **0.2** | 0.4 | **0** | **0.35** | **0** | **0.2** | 0.4 | 0.4 |
 | `rim` | on | on | **off** | on | **off** | **off** | **off** | **off** | **off** | **off** | on | on |
 | `ears` | none | none | none | none | none | none | **hex pods** | none | none | **pods** | none | none |
 | `earR` | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | **0.04** | 0.03 | 0.03 | **0.026** | 0.03 | 0.03 |
@@ -315,47 +315,48 @@ Only parameters that some brand changes from D-final. **Bold** marks a value tha
 | `crownOut` | 0.3 | 0.3 | 0.3 | 0.3 | **-0.3** | 0.3 | 0.3 | 0.3 | 0.3 | 0.3 | 0.3 | 0.3 |
 | `crownK` | 0.012 | 0.012 | 0.012 | 0.012 | **0.032** | 0.012 | 0.012 | 0.012 | 0.012 | 0.012 | 0.012 | 0.012 |
 | `crownZ` | -0.15 | -0.15 | -0.15 | -0.15 | **-0.1** | -0.15 | -0.15 | -0.15 | -0.15 | -0.15 | -0.15 | -0.15 |
-| `skirt` | none | **stub legs** | none | none | none | **tentacles** | none | **ghost hem** | none | none | none | none |
-| `skirtN` | 4 | 4 | 4 | 4 | 4 | **6** | 4 | **7** | 4 | 4 | 4 | 4 |
-| `skirtL` | 0.03 | **0.05** | 0.03 | 0.03 | 0.03 | **0.055** | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 |
-| `skirtR` | 0.015 | **0.019** | 0.015 | 0.015 | 0.015 | **0.014** | 0.015 | **0.024** | 0.015 | 0.015 | 0.015 | 0.015 |
-| `skirtSpread` | 0.7 | 0.7 | 0.7 | 0.7 | 0.7 | **0.86** | 0.7 | **0.92** | 0.7 | 0.7 | 0.7 | 0.7 |
+| `skirt` | none | **stub legs** | none | none | none | none | none | **ghost hem** | none | none | none | none |
+| `skirtN` | 4 | 4 | 4 | 4 | 4 | 4 | 4 | **7** | 4 | 4 | 4 | 4 |
+| `skirtL` | 0.03 | **0.05** | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 | 0.03 |
+| `skirtR` | 0.015 | **0.019** | 0.015 | 0.015 | 0.015 | 0.015 | 0.015 | **0.024** | 0.015 | 0.015 | 0.015 | 0.015 |
+| `skirtSpread` | 0.7 | 0.7 | 0.7 | 0.7 | 0.7 | 0.7 | 0.7 | **0.92** | 0.7 | 0.7 | 0.7 | 0.7 |
 | `skirtZ` | 0.1 | **0.55** | 0.1 | 0.1 | 0.1 | 0.1 | 0.1 | 0.1 | 0.1 | 0.1 | 0.1 | 0.1 |
-| `skirtCurl` | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | **0.8** | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 | 0.5 |
-| `skirtWave` | 0 | 0 | 0 | 0 | 0 | **0.006** | 0 | **0.004** | 0 | 0 | 0 | 0 |
+| `skirtWave` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | **0.004** | 0 | 0 | 0 | 0 |
 | `snout` | off | off | off | off | off | off | off | off | off | **on** | off | off |
 | `snoutL` | 0.07 | 0.07 | 0.07 | 0.07 | 0.07 | 0.07 | 0.07 | 0.07 | 0.07 | **0.09** | 0.07 | 0.07 |
 | `snoutR` | 0.022 | 0.022 | 0.022 | 0.022 | 0.022 | 0.022 | 0.022 | 0.022 | 0.022 | **0.024** | 0.022 | 0.022 |
 | `snoutY` | -0.35 | -0.35 | -0.35 | -0.35 | -0.35 | -0.35 | -0.35 | -0.35 | -0.35 | **-0.28** | -0.35 | -0.35 |
 | `snoutDrop` | 0.3 | 0.3 | 0.3 | 0.3 | 0.3 | 0.3 | 0.3 | 0.3 | 0.3 | **0.35** | 0.3 | 0.3 |
+| `headStar` | 0 | 0 | 0 | 0 | 0 | **1** | 0 | 0 | 0 | 0 | 0 | 0 |
+| `quadTint` | off | off | off | off | off | **head** | off | off | off | off | off | off |
 | `snoutTip` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | **0.3** | 0 | 0 |
 | `size` | 1.36 | 1.36 | 1.36 | 1.36 | 1.36 | 1.36 | 1.36 | 1.36 | 1.36 | **1.5** | 1.36 | 1.36 |
-| `screenW` | 1.17 | 1.17 | **0.74** | 1.17 | **0.82** | **0.72** | **0.74** | **0.6** | **0.5** | **0.78** | 1.17 | 1.17 |
-| `screenH` | 0.77 | 0.77 | **0.6** | 0.77 | **0.6** | **0.42** | **0.42** | **0.36** | **0.42** | **0.5** | 0.77 | 0.77 |
-| `screenY` | 0.18 | 0.18 | **-0.08** | 0.18 | **0.02** | **-0.02** | **0.04** | **0.24** | **0.02** | **0.32** | 0.18 | 0.18 |
-| `screenRound` | 3 | 3 | **8** | 3 | **4.5** | 3 | **6** | **2.6** | **10** | **4** | 3 | 3 |
-| `bezel` | 0.18 | 0.18 | **0.08** | 0.18 | **0.08** | **0.14** | **0.12** | **0.1** | **0.5** | **0.14** | 0.18 | 0.18 |
+| `screenW` | 1.17 | 1.17 | **0.74** | 1.17 | **0.82** | **0.4** | **0.74** | **0.6** | **0.5** | **0.78** | 1.17 | 1.17 |
+| `screenH` | 0.77 | 0.77 | **0.6** | 0.77 | **0.6** | **0.4** | **0.42** | **0.36** | **0.42** | **0.5** | 0.77 | 0.77 |
+| `screenY` | 0.18 | 0.18 | **-0.08** | 0.18 | **0.02** | **0** | **0.04** | **0.24** | **0.02** | **0.32** | 0.18 | 0.18 |
+| `screenRound` | 3 | 3 | **8** | 3 | **4.5** | **2** | **6** | **2.6** | **10** | **4** | 3 | 3 |
+| `bezel` | 0.18 | 0.18 | **0.08** | 0.18 | **0.08** | **0.2** | **0.12** | **0.1** | **0.5** | **0.14** | 0.18 | 0.18 |
 | `eyes` | Binocular | **Dots** | **LED bar** | **Pills (drone-only)** | **Prompt >_ (drone-only)** | **Dots** | **Three eyes** | **Dots** | **Cyclops** | **Slant** | Binocular | Binocular |
 | `eyeScale` | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | **0.8** | 1 | 1 |
-| `screenFlat` | off | off | **on** | off | off | off | **on** | off | **on** | off | off | off |
+| `screenFlat` | off | off | **on** | off | off | **straight on** | **on** | off | **on** | off | off | off |
 | `screenShades` | off | off | off | off | off | off | off | off | off | **on** | off | off |
 | `noEyes` | off | off | off | off | off | off | off | off | off | **on** | off | off |
 | `screenSplit` | off | off | off | off | off | off | off | off | **on** | off | off | off |
 | `splitY` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | **-0.12** | 0 | 0 | 0 |
 | `glyphSet` | all | **asterisk spinner** | all | all | **prompt** | all | all | all | all | **glint sweep** | all | all |
-| `thrusters` | single under-jet | single under-jet | single under-jet | single under-jet | **twin under-pods** | single under-jet | single under-jet | single under-jet | single under-jet | **twin under-pods** | single under-jet | single under-jet |
-| `thrR` | 0.053 | 0.053 | **0.028** | 0.053 | **0.026** | **0.026** | **0.028** | **0.028** | **0.026** | **0.024** | 0.053 | 0.053 |
+| `thrusters` | single under-jet | single under-jet | single under-jet | single under-jet | **twin under-pods** | **twin under-pods** | single under-jet | single under-jet | single under-jet | **twin under-pods** | single under-jet | single under-jet |
+| `thrR` | 0.053 | 0.053 | **0.028** | 0.053 | **0.026** | **0.02** | **0.028** | **0.028** | **0.026** | **0.024** | 0.053 | 0.053 |
 | `thrL` | 0.015 | 0.015 | **0.02** | 0.015 | **0.022** | **0.018** | **0.02** | **0.02** | **0.02** | **0.022** | 0.015 | 0.015 |
-| `thrFlare` | 0.85 | 0.85 | **0.9** | 0.85 | **1.1** | **0.9** | **0.9** | **0.9** | **0.9** | **1.1** | 0.85 | 0.85 |
+| `thrFlare` | 0.85 | 0.85 | **0.9** | 0.85 | **1.1** | **1** | **0.9** | **0.9** | **0.9** | **1.1** | 0.85 | 0.85 |
 | `thrAccent` | off | off | off | off | off | off | off | off | off | **on** | off | off |
 | `thrSpread` | 0.9 | 0.9 | 0.9 | 0.9 | **0.55** | 0.9 | 0.9 | 0.9 | 0.9 | **0.6** | 0.9 | 0.9 |
 | `smoke` | round puffs | round puffs | **sputter dots** | round puffs | round puffs | round puffs | round puffs | **wispy trails** | **sputter dots** | round puffs | round puffs | round puffs |
 | `puffSize` | 0.95 | 0.95 | **1.1** | 0.95 | **1.15** | **0.9** | 0.95 | **1** | **1.1** | 0.95 | 0.95 | 0.95 |
-| `puffRate` | 0.32 | 0.32 | **0.55** | 0.32 | **0.45** | **0.35** | **0.4** | **0.5** | **0.5** | **0.4** | 0.32 | 0.32 |
-| `sparkles` | 3 | 3 | **0** | 3 | **1** | **1** | **0** | **0** | **0** | **1** | 3 | 3 |
-| `bobAmp` | 0.043 | 0.043 | **0.02** | 0.043 | **0.03** | **0.036** | **0.026** | **0.045** | **0.022** | **0.028** | 0.043 | 0.043 |
-| `drift` | 0.165 | 0.165 | **0.14** | 0.165 | **0.16** | **0.15** | **0.15** | **0.18** | **0.14** | **0.2** | 0.165 | 0.165 |
-| `bank` | 0.32 | 0.32 | **0.18** | 0.32 | **0.26** | **0.24** | **0.24** | **0.3** | **0.2** | 0.32 | 0.32 | 0.32 |
+| `puffRate` | 0.32 | 0.32 | **0.55** | 0.32 | **0.45** | **0.4** | **0.4** | **0.5** | **0.5** | **0.4** | 0.32 | 0.32 |
+| `sparkles` | 3 | 3 | **0** | 3 | **1** | 3 | **0** | **0** | **0** | **1** | 3 | 3 |
+| `bobAmp` | 0.043 | 0.043 | **0.02** | 0.043 | **0.03** | **0.035** | **0.026** | **0.045** | **0.022** | **0.028** | 0.043 | 0.043 |
+| `drift` | 0.165 | 0.165 | **0.14** | 0.165 | **0.16** | **0.16** | **0.15** | **0.18** | **0.14** | **0.2** | 0.165 | 0.165 |
+| `bank` | 0.32 | 0.32 | **0.18** | 0.32 | **0.26** | **0.28** | **0.24** | **0.3** | **0.2** | 0.32 | 0.32 | 0.32 |
 | `lookYaw` | 0.5 | 0.5 | **0.28** | 0.5 | **0.4** | **0.4** | **0.32** | **0.36** | **0.28** | **0.3** | 0.5 | 0.5 |
 | `workNod` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | **0.2** | 0 | 0 |
 | `accent` | none | none | **top facet** | none | none | none | none | none | none | **band** | none | none |
@@ -370,7 +371,7 @@ Only parameters that some brand changes from D-final. **Bold** marks a value tha
 | cursor | `#000000` `#12173d` `#293268` `#464b8c` | `#464b8c` `#909edd` `#c1d9f2` `#ffffff` | `#000000` `#12173d` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#909edd` `#c1d9f2` `#ffffff` `#ffffff` | `#464b8c` `#909edd` `#c1d9f2` |
 | copilot | `#29174c` `#36277f` `#354ab2` `#8c51cc` | `#354ab2` `#4185d8` `#5ab9e5` `#a5e6ff` | `#000000` `#12173d` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#354ab2` `#4185d8` `#5ab9e5` `#a5e6ff` | `#909edd` `#c1d9f2` `#ffffff` |
 | codex | `#293268` `#354ab2` `#354ab2` `#4185d8` | `#293268` `#354ab2` `#4185d8` `#5ab9e5` | `#12173d` `#293268` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#354ab2` `#4185d8` `#5ab9e5` `#a5e6ff` | `#909edd` `#c1d9f2` `#ffffff` |
-| google | `#12173d` `#29174c` `#412866` `#643499` | `#8c51cc` `#b991f2` `#ffffff` `#ffffff` | `#12173d` `#29174c` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#412866` `#643499` `#8c51cc` `#b991f2` | `#8c51cc` `#b991f2` `#ffffff` |
+| google | `#36277f` `#354ab2` `#4185d8` `#5ab9e5` | `#909edd` `#c1d9f2` `#ffffff` `#ffffff` | `#000000` `#12173d` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#36277f` `#354ab2` `#4185d8` `#5ab9e5` | `#909edd` `#c1d9f2` `#ffffff` |
 | devin | `#000000` `#000000` `#12173d` `#293268` | `#6b74b2` `#c1d9f2` `#ffffff` `#ffffff` | `#000000` `#12173d` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#000000` `#12173d` `#293268` `#464b8c` | `#909edd` `#c1d9f2` `#ffffff` |
 | kiro | `#643499` `#8c51cc` `#b991f2` `#ffffff` | `#412866` `#643499` `#8c51cc` `#b991f2` | `#000000` `#12173d` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#412866` `#643499` `#8c51cc` `#b991f2` | `#8c51cc` `#b991f2` `#ffffff` |
 | opencode | `#464b8c` `#909edd` `#c1d9f2` `#ffffff` | `#909edd` `#c1d9f2` `#ffffff` `#ffffff` | `#000000` `#293268` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#12173d` `#293268` `#464b8c` `#6b74b2` | `#6b74b2` `#909edd` `#c1d9f2` |
@@ -378,35 +379,41 @@ Only parameters that some brand changes from D-final. **Bold** marks a value tha
 | generic | `#293268` `#464b8c` `#6b74b2` `#909edd` | `#6b74b2` `#909edd` `#c1d9f2` `#ffffff` | `#12173d` `#29174c` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#36277f` `#354ab2` `#4185d8` `#5ab9e5` | `#909edd` `#c1d9f2` `#ffffff` |
 | unknown | `#293268` `#464b8c` `#6b74b2` `#909edd` | `#6b74b2` `#909edd` `#c1d9f2` `#ffffff` | `#12173d` `#29174c` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#36277f` `#354ab2` `#4185d8` `#5ab9e5` | `#909edd` `#c1d9f2` `#ffffff` |
 
-Legs, tentacles and goggles (frames, bridge, strap) take the accent slot; goggle lenses take the screen tones; ghost-hem scallops and crown puffs are the shell; snouts and hex pods are trim.
+Legs, tentacles and goggles (frames, bridge, strap) take the accent slot; goggle lenses take the screen tones; ghost-hem scallops and crown puffs are the shell; snouts and hex pods are trim (Qodo's nose tip is accent).
+
+Google's palette also has `tints`, the Gemini sparkle's four quadrant ramps (split on the diagonals): top `#66334b` `#872a38` `#cc5250` `#ff6866`; left `#cc5250` `#ff965f` `#ffe091` `#ffe091`; bottom `#14665b` `#22896e` `#42bc7f` `#8cff9b`; right `#36277f` `#354ab2` `#4185d8` `#5ab9e5`. The sparkle head's panels take them.
 
 ### Brand colour → BLK 36
 
-Sampled brand colours (scout report, Part B) mapped to BLK 36 by OKLab distance. Where the palette doesn't use the nearest entry, the last column says why.
+Sampled brand colours (scout report, Part B; Google's from the human's Gemini reference) mapped to BLK 36 by OKLab distance. "ΔE to teal" is the chosen colour's distance to the nearest [OIII] event teal. Where the palette doesn't use the nearest entry, the last column says why; it also carries any note.
 
-| Drone | Part | Brand | Nearest BLK 36 (ΔE) | Chosen (ΔE) | Why |
-|---|---|---|---|---|---|
-| claude | Clawd terracotta | `#d77757` | `#ff6866` (0.079) | `#ff965f` (0.106), `#cc5250` (0.085) | The nearest, #ff6866, is a pink-red coral (hue 24° against the brand's 39°) and the coral contributor's brightest tone. The lit front takes #ff965f (the hue) and turned faces take #cc5250 (the lightness), so the shell averages to a terracotta orange. |
-| cursor | near-black | `#14120b` | `#12173d` (0.097) | `#12173d` (0.097) | nearest |
-| cursor | cream (light facet) | `#f0efea` | `#ffffff` (0.049) | `#ffffff` (0.049) | nearest |
-| cursor | cube grey | `#43413c` | `#0f4a4c` (0.061) | `#293268` (0.109), `#464b8c` (0.132) | The nearest, #0f4a4c, is a teal slate 0.037 from the [OIII] event teal #004538, so it would read as an event. The gear greys read as graphite. |
-| copilot | head blue | `#2f5bff` | `#4185d8` (0.125) | `#354ab2` (0.125) | Tied with #4185d8 (0.125). #354ab2 keeps it off the suit ramp and apart from Codex. |
-| copilot | head lilac | `#b18cff` | `#b991f2` (0.028) | `#8c51cc` (0.163) | The nearest, #b991f2, washes the lit shell out to Kiro's lilac. One step darker keeps the blue-to-violet read. |
-| copilot | goggle frames | `#5cc8ff` | `#5ab9e5` (0.049) | `#5ab9e5` (0.049) | nearest |
-| codex | Codey blue, lit (human's reference, 2026-11-10) | `#4a6cf0` | `#4185d8` (0.077) | `#4185d8` (0.077) | nearest |
-| codex | Codey shaded rim (estimated from the reference) | `#3a52c0` | `#354ab2` (0.031) | `#354ab2` (0.031) | nearest |
-| codex | Codey screen | `#232d66` | `#293268` (0.018) | `#293268` (0.018) | nearest |
-| google | Jules purple | `#642cc2` | `#643499` (0.067) | `#643499` (0.067) | nearest |
-| devin | near-black | `#0e1015` | `#12173d` (0.081) | `#12173d` (0.081) | nearest |
-| devin | hexagons | `#ffffff` | `#ffffff` (0.000) | `#ffffff` (0.000) | nearest |
-| kiro | Kiro purple | `#9046ff` | `#8c51cc` (0.080) | `#8c51cc` (0.080) | nearest |
-| kiro | ghost white | `#ffffff` | `#ffffff` (0.000) | `#ffffff` (0.000) | nearest |
-| opencode | ring light | `#eeeeee` | `#ffffff` (0.051) | `#ffffff` (0.051) | nearest |
-| opencode | core dark | `#0c0c0c` | `#12173d` (0.102) | `#000000` (0.154) | The nearest, #12173d, is the screen's usual navy. True black makes the split core read as two tones. |
-| opencode | core grey | `#4b4b4b` | `#0f4a4c` (0.069) | `#293268` (0.119) | The nearest, #0f4a4c, is a teal slate next to the [OIII] event teal. The gear navy keeps the eyes the only teal. |
-| qodo | anteater white | `#ffffff` | `#ffffff` (0.000) | `#ffffff` (0.000) | nearest |
-| qodo | hoodie purple (boosters, hem band) | `#7a68fa` | `#8c51cc` (0.086) | `#8c51cc` (0.086) | nearest |
-| qodo | sunglasses black | `#000000` | `#000000` (0.000) | `#000000` (0.000), `#12173d` (0.237) | nearest |
+| Drone | Part | Brand | Nearest BLK 36 (ΔE) | Chosen (ΔE) | ΔE to teal | Why |
+|---|---|---|---|---|---|---|
+| claude | Clawd terracotta | `#d77757` | `#ff6866` (0.079) | `#ff965f` (0.106), `#cc5250` (0.085) | 0.258, 0.258 | The nearest, #ff6866, is a pink-red coral (hue 24° against the brand's 39°) and the coral contributor's brightest tone. The lit front takes #ff965f (the hue) and turned faces take #cc5250 (the lightness), so the shell averages to a terracotta orange. |
+| cursor | near-black | `#14120b` | `#12173d` (0.097) | `#12173d` (0.097) | 0.162 | nearest |
+| cursor | cream (light facet) | `#f0efea` | `#ffffff` (0.049) | `#ffffff` (0.049) | 0.200 | nearest |
+| cursor | cube grey | `#43413c` | `#0f4a4c` (0.061) | `#293268` (0.109), `#464b8c` (0.132) | 0.123, 0.165 | The nearest, #0f4a4c, is a teal slate 0.037 from the [OIII] event teal #004538, so it would read as an event. The gear greys read as graphite. |
+| copilot | head blue | `#2f5bff` | `#4185d8` (0.125) | `#354ab2` (0.125) | 0.212 | Tied with #4185d8 (0.125). #354ab2 keeps it off the suit ramp and apart from Codex. |
+| copilot | head lilac | `#b18cff` | `#b991f2` (0.028) | `#8c51cc` (0.163) | 0.261 | The nearest, #b991f2, washes the lit shell out to Kiro's lilac. One step darker keeps the blue-to-violet read. |
+| copilot | goggle frames | `#5cc8ff` | `#5ab9e5` (0.049) | `#5ab9e5` (0.049) | 0.122 | nearest |
+| codex | Codey blue, lit (human's reference, 2026-11-10) | `#4a6cf0` | `#4185d8` (0.077) | `#4185d8` (0.077) | 0.184 | nearest |
+| codex | Codey shaded rim (estimated from the reference) | `#3a52c0` | `#354ab2` (0.031) | `#354ab2` (0.031) | 0.212 | nearest |
+| codex | Codey screen | `#232d66` | `#293268` (0.018) | `#293268` (0.018) | 0.123 | nearest |
+| google | top tip (coral red) | `#df525f` | `#cc5250` (0.041) | `#cc5250` (0.041) | 0.258 | nearest |
+| google | left side (orange) | `#e2992d` | `#ff965f` (0.070) | `#ff965f` (0.070) | 0.258 | nearest |
+| google | left tip (yellow) | `#d4c02c` | `#ffe091` (0.129) | `#ffe091` (0.129) | 0.193 | nearest. A loose match (0.129): BLK 36 has no saturated yellow, so the left tip reads cream-yellow over an orange shade. |
+| google | bottom tip (green) | `#2bb67b` | `#42bc7f` (0.023) | `#42bc7f` (0.023) | 0.041 | nearest. 0.041 from the [OIII] event teal #00bc9c, and the ramp's #22896e is 0.043 from #007c66: nearly as close as the teal slate the brand drones avoid (0.037). Kept by the human (2026-11-11): a lit body colour, never emissive, only the bottom quadrant, beside red, yellow and blue. |
+| google | right tip and middle (blue) | `#3287ff` | `#4185d8` (0.058) | `#4185d8` (0.058) | 0.184 | nearest |
+| devin | near-black | `#0e1015` | `#12173d` (0.081) | `#12173d` (0.081) | 0.162 | nearest |
+| devin | hexagons | `#ffffff` | `#ffffff` (0.000) | `#ffffff` (0.000) | 0.200 | nearest |
+| kiro | Kiro purple | `#9046ff` | `#8c51cc` (0.080) | `#8c51cc` (0.080) | 0.261 | nearest |
+| kiro | ghost white | `#ffffff` | `#ffffff` (0.000) | `#ffffff` (0.000) | 0.200 | nearest |
+| opencode | ring light | `#eeeeee` | `#ffffff` (0.051) | `#ffffff` (0.051) | 0.200 | nearest |
+| opencode | core dark | `#0c0c0c` | `#12173d` (0.102) | `#000000` (0.154) | 0.355 | The nearest, #12173d, is the screen's usual navy. True black makes the split core read as two tones. |
+| opencode | core grey | `#4b4b4b` | `#0f4a4c` (0.069) | `#293268` (0.119) | 0.123 | The nearest, #0f4a4c, is a teal slate next to the [OIII] event teal. The gear navy keeps the eyes the only teal. |
+| qodo | anteater white | `#ffffff` | `#ffffff` (0.000) | `#ffffff` (0.000) | 0.200 | nearest |
+| qodo | hoodie purple (boosters, hem band) | `#7a68fa` | `#8c51cc` (0.086) | `#8c51cc` (0.086) | 0.261 | nearest |
+| qodo | sunglasses black | `#000000` | `#000000` (0.000) | `#000000` (0.000), `#12173d` (0.237) | 0.355, 0.162 | nearest |
 
 ### Per-session variety (A5)
 
@@ -418,7 +425,7 @@ Sampled brand colours (scout report, Part B) mapped to BLK 36 by OKLab distance.
 | cursor | `headCorner` 0.12–0.2 | 3 |
 | copilot | `gogY` 0.55–0.65 | 3 |
 | codex | `crownR` 0.049–0.055 | 3 |
-| google | `skirtL` 0.042–0.054 | 3 |
+| google | `starCurve` 1.1–1.2 | 2 |
 | devin | `earR` 0.036–0.044 | 3 |
 | kiro | `skirtR` 0.021–0.027 | 3 |
 | opencode | `bezel` 0.44–0.56 | 3 |
@@ -426,97 +433,14 @@ Sampled brand colours (scout report, Part B) mapped to BLK 36 by OKLab distance.
 | generic | `antL` 0.04–0.05 | 2 |
 | unknown | `antL` 0.04–0.05 | 2 |
 
-## Google options G1–G5 (for the human to pick, 2026-11-11)
-
-The human: "for the google bot, I want to completely redesign it ... inspired by ... the google gemini logo, see what you can do and do 5 variations I can pick from." Each option is D-final with a parameter set (or an accessory) laid over it plus a palette (`brands.js` `GOOGLE_OPTIONS`, `palette.js` `OPTION_PALETTES`). They aren't in `BRANDS`: the current Google drone stays until the human picks. The Gemini sparkle's soft gradient becomes four flat BLK 36 ramps, one per quadrant panel (the palette's `tints`: top, left, bottom, right), with no gradients and no dithering.
-
-| Option | Idea | Session detail |
-|---|---|---|
-| **G1 · Sparkle** | head-is-body: the drone is a puffy four-point sparkle, its tips in the four Gemini colours, with a round screen in its blue middle | `starCurve` 1.1–1.2 |
-| **G2 · Star antenna** | the generic drone's exact shape in white, a big four-colour sparkle on its antenna in place of the tip | `starR` 0.057–0.063 |
-| **G3 · Sparkle visor** | the generic drone's exact shape in Gemini's light blue, its screen a four-point sparkle framed in the four Gemini colours, small dot eyes in the middle | `antL` 0.04–0.05 |
-| **G4 · Compass fins** | a round light-blue core with four tapered fins pointing up, left, down and right in the four Gemini colours (a sparkle drawn as a compass) | `finL` 0.055–0.065 |
-| **G5 · Orbiting sparkle** | a Gemini-blue egg with a wraparound visor band, and a small four-colour sparkle orbiting its crown once per 6 s, spinning as it goes | `orbY` 0.65–0.75 |
-
-### Option parameters
-
-Only parameters that some option changes from D-final. **Bold** marks a value that differs from D-final.
-
-| Parameter | D-final | g1 | g2 | g3 | g4 | g5 |
-|---|---|---|---|---|---|---|
-| `headW` | 0.128 | **0.15** | 0.128 | 0.128 | **0.1** | **0.1** |
-| `headH` | 0.095 | **0.15** | 0.095 | 0.095 | **0.1** | **0.13** |
-| `headD` | 0.125 | **0.06** | 0.125 | 0.125 | **0.1** | **0.105** |
-| `headRound` | 0.83 | **0** | 0.83 | 0.83 | **1** | **1** |
-| `headCorner` | 0.1 | 0.1 | 0.1 | 0.1 | **0.6** | **0.6** |
-| `headTaper` | 0.99 | 0.99 | 0.99 | 0.99 | **1** | **1** |
-| `headFlat` | 0.4 | 0.4 | 0.4 | 0.4 | **0** | **0.25** |
-| `rim` | on | **off** | on | on | **off** | **off** |
-| `antenna` | stalk | **none** | stalk | stalk | **none** | **none** |
-| `headStar` | 0 | **1** | 0 | 0 | 0 | 0 |
-| `starPart` | none | none | **antenna star** | none | none | **orbiting star** |
-| `starR` | 0.035 | 0.035 | **0.06** | 0.035 | 0.035 | **0.042** |
-| `starT` | 0.45 | 0.45 | **0.42** | 0.45 | 0.45 | **0.42** |
-| `orbY` | 0.6 | 0.6 | 0.6 | 0.6 | 0.6 | **0.7** |
-| `fins` | none | none | none | none | **four tips** | none |
-| `finL` | 0.05 | 0.05 | 0.05 | 0.05 | **0.06** | 0.05 |
-| `finTip` | 0.35 | 0.35 | 0.35 | 0.35 | **0.3** | 0.35 |
-| `quadTint` | off | **head** | off | **bezel** | off | off |
-| `screenW` | 1.17 | **0.4** | 1.17 | **0.9** | **0.7** | **1.6** |
-| `screenH` | 0.77 | **0.4** | 0.77 | **0.62** | **0.55** | **0.35** |
-| `screenY` | 0.18 | **0** | 0.18 | **0.2** | **0** | **0.05** |
-| `screenRound` | 3 | **2** | 3 | 3 | 3 | **4** |
-| `bezel` | 0.18 | **0.2** | 0.18 | **0.24** | **0.14** | **0.1** |
-| `eyes` | Binocular | **Dots** | Binocular | **Dots** | **Happy** | **Dots** |
-| `eyeScale` | 1 | 1 | 1 | **0.6** | 1 | 1 |
-| `screenFlat` | off | **straight on** | off | off | off | off |
-| `screenStar` | off | off | off | **on** | off | off |
-| `thrusters` | single under-jet | **twin under-pods** | single under-jet | single under-jet | **twin under-pods** | single under-jet |
-| `thrR` | 0.053 | **0.02** | 0.053 | 0.053 | **0.02** | **0.03** |
-| `thrL` | 0.015 | **0.018** | 0.015 | 0.015 | **0.018** | **0.018** |
-| `thrFlare` | 0.85 | **1** | 0.85 | 0.85 | **1** | **0.9** |
-| `puffSize` | 0.95 | **0.9** | 0.95 | 0.95 | **0.9** | **0.9** |
-| `puffRate` | 0.32 | **0.4** | 0.32 | 0.32 | **0.4** | **0.4** |
-| `sparkles` | 3 | 3 | 3 | 3 | **2** | **2** |
-| `bobAmp` | 0.043 | **0.035** | 0.043 | 0.043 | **0.03** | **0.035** |
-| `drift` | 0.165 | **0.16** | 0.165 | 0.165 | **0.16** | **0.16** |
-| `bank` | 0.32 | **0.28** | 0.32 | 0.32 | **0.28** | **0.28** |
-| `lookYaw` | 0.5 | **0.4** | 0.5 | 0.5 | **0.4** | **0.4** |
-
-### Option palettes (BLK 36 only; the glow is [OIII] teal)
-
-| Option | shell | trim | screen | glow | accent | smoke |
-|---|---|---|---|---|---|---|
-| g1 | `#36277f` `#354ab2` `#4185d8` `#5ab9e5` | `#909edd` `#c1d9f2` `#ffffff` `#ffffff` | `#000000` `#12173d` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#36277f` `#354ab2` `#4185d8` `#5ab9e5` | `#909edd` `#c1d9f2` `#ffffff` |
-| g2 | `#6b74b2` `#909edd` `#c1d9f2` `#ffffff` | `#909edd` `#c1d9f2` `#ffffff` `#ffffff` | `#12173d` `#29174c` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#354ab2` `#4185d8` `#5ab9e5` `#a5e6ff` | `#909edd` `#c1d9f2` `#ffffff` |
-| g3 | `#4185d8` `#5ab9e5` `#a5e6ff` `#ffffff` | `#909edd` `#c1d9f2` `#ffffff` `#ffffff` | `#12173d` `#29174c` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#354ab2` `#4185d8` `#5ab9e5` `#a5e6ff` | `#909edd` `#c1d9f2` `#ffffff` |
-| g4 | `#4185d8` `#5ab9e5` `#a5e6ff` `#ffffff` | `#354ab2` `#4185d8` `#5ab9e5` `#a5e6ff` | `#12173d` `#29174c` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#354ab2` `#4185d8` `#5ab9e5` `#a5e6ff` | `#909edd` `#c1d9f2` `#ffffff` |
-| g5 | `#354ab2` `#4185d8` `#5ab9e5` `#a5e6ff` | `#909edd` `#c1d9f2` `#ffffff` `#ffffff` | `#000000` `#12173d` `#ffffff` | `#004538` `#007c66` `#00bc9c` `#00ffd5` | `#354ab2` `#4185d8` `#5ab9e5` `#a5e6ff` | `#909edd` `#c1d9f2` `#ffffff` |
-
-Every option shares the four tint ramps: top `#66334b` `#872a38` `#cc5250` `#ff6866`; left `#cc5250` `#ff965f` `#ffe091` `#ffe091`; bottom `#14665b` `#22896e` `#42bc7f` `#8cff9b`; right `#36277f` `#354ab2` `#4185d8` `#5ab9e5`. Sparkle tips, fins, the sparkle head's panels and the sparkle screen's bezel take them; split on the diagonals.
-
-### The Gemini colours → BLK 36
-
-Sampled from the human's reference (21 × 21 px means) and mapped by OKLab distance. The last column is the distance to the nearest [OIII] event teal.
-
-| Part | Quadrant | Gemini | Nearest BLK 36 (ΔE) | Chosen (ΔE) | ΔE to teal | Note |
-|---|---|---|---|---|---|---|
-| top tip (coral red) | top | `#df525f` | `#cc5250` (0.041) | `#cc5250` (0.041) | 0.258 | nearest |
-| left side (orange) | left | `#e2992d` | `#ff965f` (0.070) | `#ff965f` (0.070) | 0.258 | nearest |
-| left tip (yellow) | left | `#d4c02c` | `#ffe091` (0.129) | `#ffe091` (0.129) | 0.193 | a loose match (0.129): BLK 36 has no saturated yellow, so the left tip reads cream-yellow over an orange shade |
-| bottom tip (green) | bottom | `#2bb67b` | `#42bc7f` (0.023) | `#42bc7f` (0.023) | 0.041 | 0.041 from the [OIII] event teal #00bc9c, and the green ramp's #22896e is 0.043 from #007c66: nearly as close as the teal slate the brand drones avoid (0.037). It's a lit body colour, never emissive, and only the bottom quadrant, beside red, yellow and blue |
-| right tip and middle (blue) | right | `#3287ff` | `#4185d8` (0.058) | `#4185d8` (0.058) | 0.184 | nearest |
-
-The shading tones round each chosen colour, and their distance to the event teal: top `#66334b` 0.152, `#872a38` 0.206, `#cc5250` 0.258, `#ff6866` 0.309; left `#cc5250` 0.258, `#ff965f` 0.258, `#ffe091` 0.193, `#ffe091` 0.193; bottom `#14665b` 0.067, `#22896e` 0.043, `#42bc7f` 0.041, `#8cff9b` 0.084; right `#36277f` 0.174, `#354ab2` 0.212, `#4185d8` 0.184, `#5ab9e5` 0.122.
-
 ### A4 distinctness (from `out/brands-a4.json`)
 
 Per pair, in the front and 3/4 views (smoke off): the silhouette IoU at the best alignment, and the OKLab distance of the mean colours. Score = max((1 − IoU) / 0.25, ΔE / 0.06); every pair must score at least 1 at the gated scales, in both views (the table shows the worse view). unknown is the generic drone (only the label differs), so it isn't measured again: its pairs are generic's.
 
 | Scale | Drone height | Gated | Closest pair (score: IoU, ΔE) | Smallest ΔE | Largest IoU |
 |---|---|---|---|---|---|
-| crew close-up | 38 px | yes | cursor–devin (1.10: 0.73, 0.036) | cursor–devin 0.036 | copilot–generic 0.99 |
-| system distance | 18 px | yes | cursor–devin (1.10: 0.73, 0.055) | cursor–devin 0.055 | copilot–generic 1.00 |
+| crew close-up | 39 px | yes | cursor–devin (1.10: 0.73, 0.036) | cursor–devin 0.036 | copilot–generic 0.99 |
+| system distance | 19 px | yes | cursor–devin (1.10: 0.73, 0.055) | cursor–devin 0.055 | copilot–generic 1.00 |
 | far (mid depth step, info only) | 6 px | no | copilot–generic (0.74: 1.00, 0.045) | copilot–generic 0.045 | copilot–generic 1.00 |
 
 The five closest pairs at each gated scale:
@@ -526,22 +450,10 @@ The five closest pairs at each gated scale:
 | crew close-up | cursor–devin | 0.73 | 0.036 | 1.10 |
 | crew close-up | copilot–codex | 0.79 | 0.067 | 1.12 |
 | crew close-up | kiro–qodo | 0.74 | 0.071 | 1.18 |
-| crew close-up | codex–google | 0.69 | 0.079 | 1.32 |
+| crew close-up | google–generic | 0.66 | 0.055 | 1.35 |
 | crew close-up | opencode–qodo | 0.74 | 0.082 | 1.36 |
 | system distance | cursor–devin | 0.73 | 0.055 | 1.10 |
 | system distance | copilot–codex | 0.79 | 0.068 | 1.14 |
 | system distance | cursor–copilot | 0.69 | 0.064 | 1.24 |
+| system distance | google–generic | 0.68 | 0.065 | 1.27 |
 | system distance | kiro–qodo | 0.79 | 0.077 | 1.29 |
-| system distance | codex–google | 0.70 | 0.078 | 1.29 |
-
-### A4 for the Google options
-
-Each option against every drone but the current Google drone (the one it would replace), gated like the brand pairs: every pair must score at least 1 in both views. The three closest pairs per option (score: IoU, ΔE):
-
-| Option | crew close-up | system distance | far (mid depth step, info only) |
-|---|---|---|---|
-| g1 | generic (1.35: 0.66, 0.055); copilot (1.76: 0.66, 0.105); kiro (1.85: 0.65, 0.111) | generic (1.27: 0.68, 0.065); kiro (1.58: 0.66, 0.095); copilot (1.78: 0.55, 0.082) | generic (1.19: 0.70, 0.056); qodo (1.66: 0.60, 0.100); copilot (1.68: 0.70, 0.101) |
-| g2 | qodo (1.09: 0.73, 0.028); kiro (1.20: 0.70, 0.061); generic (1.27: 0.83, 0.076) | qodo (1.08: 0.73, 0.031); kiro (1.25: 0.69, 0.061); generic (1.39: 0.83, 0.083) | qodo (1.00: 0.75, 0.024); generic (1.76: 0.80, 0.105); opencode (1.76: 0.56, 0.034) |
-| g3 | qodo (1.21: 0.78, 0.072); opencode (1.33: 0.67, 0.013); kiro (2.50: 0.73, 0.150) | opencode (1.23: 0.69, 0.015); qodo (1.31: 0.78, 0.079); kiro (2.59: 0.76, 0.156) | opencode (1.11: 0.72, 0.048); qodo (1.26: 0.86, 0.076); kiro (2.79: 0.71, 0.167) |
-| g4 | kiro (1.13: 0.79, 0.068); generic (1.22: 0.74, 0.073); qodo (1.24: 0.69, 0.065) | kiro (1.21: 0.80, 0.072); qodo (1.21: 0.70, 0.050); generic (1.47: 0.77, 0.088) | opencode (1.24: 0.69, 0.042); qodo (1.29: 0.68, 0.051); generic (1.69: 0.72, 0.101) |
-| g5 | generic (1.13: 0.72, 0.063); copilot (1.15: 0.71, 0.030); codex (1.76: 0.64, 0.105) | generic (1.10: 0.73, 0.052); copilot (1.14: 0.71, 0.061); cursor (1.30: 0.81, 0.078) | opencode (1.05: 0.88, 0.063); qodo (1.33: 0.67, 0.051); copilot (1.38: 0.66, 0.031) |

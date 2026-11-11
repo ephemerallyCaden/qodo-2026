@@ -1,8 +1,8 @@
 // Regenerates every lab output in out/ with headless Chromium (SwiftShader). The page is served
 // through Playwright request interception, so no socket is opened and nothing touches the network.
 // Usage: node lab.mjs [lineup] [crew] [closeups] [turntable] [motion] [final] [working] [params] [brands] [brand-closeups]
-//   [seeds] [squads] [brand-gifs] [codex-before-after] [qodo-before-after] [google-options] [google-crew] [google-gifs]
-//   [a4] [identity]   (no names = all; brand=<ids> limits brand-closeups, brand-gifs and google-gifs)
+//   [seeds] [squads] [brand-gifs] [codex-before-after] [qodo-before-after] [a4] [identity]
+//   (no names = all; brand=<ids> limits brand-closeups and brand-gifs)
 // Every rendered tile is checked: only the drone's palette + space (+ BLK 36 crew in the crew
 // shot), so no antialiasing or dithering; the intended number of silhouette pieces (1, plus any
 // free-floating halos); not empty; not clipped by the tile edge. Each turntable's frame one loop
@@ -20,7 +20,7 @@ import { PALETTES, SLOTS, BRAND_PALETTES, TEAL, paletteHexes } from './palette.j
 import { PARAMS, DEFAULTS, DRONE_EYE, showValue } from './params.js';
 import { VARIANTS, PICKED, FINAL, FINAL_PARAMS } from './variants.js';
 import { LOOP, MOTION_LOOP, CYCLES } from './drone.js';
-import { BRANDS, BRAND_BY_ID, DISTINCT, BRAND_COLOURS, GOOGLE_OPTIONS, sessionLook } from './brands.js';
+import { BRANDS, DISTINCT, BRAND_COLOURS, GOOGLE_UNPICKED, sessionLook } from './brands.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
@@ -251,11 +251,11 @@ try {
     }
     console.log('  face probe: working = glyphs and no eyes, idle = eyes and no glyphs (A–E and D-final)');
   }
-  if (want('brands') || want('google-options')) {
-    // The same face probe for every brand drone and Google option (its own eye, and the V2 fallback
-    // where it has one). Green counts the working face: glyphs, or Qodo's glint sweep. A drone with no
-    // eyes (Qodo, 2026-11-11) must show none at rest either.
-    for (const b of [...(want('brands') ? BRANDS : []), ...(want('google-options') ? GOOGLE_OPTIONS : [])]) {
+  if (want('brands')) {
+    // The same face probe for every brand drone (its own eye, and the V2 fallback where it has one).
+    // Green counts the working face: glyphs, or Qodo's glint sweep. A drone with no eyes (Qodo,
+    // 2026-11-11) must show none at rest either.
+    for (const b of BRANDS) {
       for (const eyes of [null, b.v2Eyes ?? null].filter((e, i) => i === 0 || e != null)) {
         for (const [t, working] of [[0.5, false], [3.2, false], [7.0, true], [8.6, true]]) {
           const p = await page.evaluate(([id, tt, e]) => window.lab.faceProbe({ brand: id, params: e == null ? {} : { eyes: e }, t: tt, yaw: 0, zoom: 2, motion: true, smoke: false }, 160, 160), [b.id, t, eyes]);
@@ -346,57 +346,6 @@ try {
     }
   }
 
-  // ---------------------------------------------------------------- Google options G1-G5 (2026-11-11)
-  const gheads = [[`${BRAND_BY_ID.google.name} (current)`, BRAND_BY_ID.google.signature], ...GOOGLE_OPTIONS.map((o) => [o.name, o.look])];
-  const gcells = [{ brand: 'google' }, ...GOOGLE_OPTIONS.map((o) => ({ brand: o.id }))];
-  if (want('google-options')) {
-    // G1-G5 beside the current Google drone: front, 3/4 and side at 180p (x3), then at the 2x close-up.
-    await render('google options', {
-      title: `Google · five options inspired by the Gemini sparkle, beside the current drone · 180p crops at x3 · idle t = ${STILL_T} s · BLK 36 only · original designs, not affiliated with or endorsed by Google`,
-      w: 100, h: 100, scale: 3, rowLabelW: 56, headH: 96, heads: gheads,
-      rows: VIEWS.map(([label, yaw]) => ({ label, cells: gcells.map((c) => ({ ...c, yaw, t: STILL_T })) })),
-    }, path.join(OUT, 'brands-google-options.png'));
-    await render('google options close-up', {
-      title: `Google · the five options and the current drone · 2x close-up (camera at half distance), x2 · idle t = ${STILL_T} s`,
-      w: 160, h: 160, scale: 2, rowLabelW: 56, headH: 96, heads: gheads,
-      rows: VIEWS4.map(([label, yaw]) => ({ label, cells: gcells.map((c) => ({ ...c, yaw, t: STILL_T, zoom: 2 })) })),
-    }, path.join(OUT, 'brands-google-options-closeup.png'));
-  }
-
-  if (want('google-crew')) {
-    // The five options with two K astronauts at the viewer's crew close-up (three per frame, as in
-    // brands-crew-closeup.png; the current Google drone fills the sixth place), and all five at its
-    // system-view distance.
-    const at = (ids, xs, ys, zs) => ids.map((id, i) => ({ brand: id, seed: `crew-${id}`, phased: true, x: xs[i], y: ys[i], z: zs[i], yaw: 0.25 - 0.25 * i }));
-    const name = (id) => GOOGLE_OPTIONS.find((o) => o.id === id)?.name ?? `${BRAND_BY_ID[id].name} (current)`;
-    const frame = (ids) => ({ t: STILL_T, view: 'crew', squad: at(ids, [-0.42, 0, 0.42], [0.5, 0.62, 0.48], [0.15, -0.25, 0.1]), caption: ids.map(name).join(' · ') });
-    const ids = GOOGLE_OPTIONS.map((o) => o.id);
-    await render('google options crew', {
-      title: "Google · the five options with two K astronauts · the viewer's crew close-up (top) and its system-view distance, 5.98 (bottom) · 320x180 at x3",
-      footer: `bottom, left to right: ${GOOGLE_OPTIONS.map((o) => o.name).join(', ')}`,
-      w: 320, h: 180, scale: 3,
-      rows: [
-        { cells: [frame(ids.slice(0, 3)), frame([...ids.slice(3), 'google'])] },
-        { cells: [{ t: STILL_T, view: 'system', lift: 0.1, astros: [[-1.6, 0.03, -0.3, 0.4], [1.6, 0.03, -0.3, -0.4]],
-          squad: at(ids, ids.map((_, i) => -1.0 + 0.5 * i), ids.map((_, i) => 0.5 + 0.12 * (i % 2)), ids.map((_, i) => (i % 2 ? -0.35 : 0.15))), caption: 'system distance' }] },
-      ],
-    }, path.join(OUT, 'brands-google-options-crew.png'));
-  }
-
-  if (want('google-gifs')) {
-    // Per option: the 6 s turntable and the 12 s motion loop, as for the brand drones.
-    for (const o of only(GOOGLE_OPTIONS)) {
-      await loopGif(`brand-google-${o.id}-turntable`, LOOP, (f) => ({
-        w: 220, h: 220, scale: 3, crispLabels: true,
-        rows: [{ cells: [{ brand: o.id, yaw: -0.75 - (Math.PI * 2 * f) / (LOOP * FPS), t: f / FPS, zoom: 2, caption: `${o.name} · turntable, 6 s` }] }],
-      }), o.palette);
-      await loopGif(`brand-google-${o.id}-motion`, MOTION_LOOP, (f) => ({
-        w: 280, h: 220, scale: 2, crispLabels: true,
-        rows: [{ cells: [{ brand: o.id, yaw: -0.5, t: f / FPS, zoom: 2, motion: true, caption: `${o.name} · motion loop, 12 s` }] }],
-      }), o.palette);
-    }
-  }
-
   if (want('qodo-before-after')) {
     // Qodo before and after: idle at the 2x close-up, then reviewing (front, drift held still) at four
     // moments 0.2 s apart, one glint sweep's worth (before: diff marks read row by row in teal).
@@ -445,10 +394,6 @@ try {
     for (const s of a4.scales) {
       console.log(`  A4 ${s.name} (drone ~${s.heightPx}px tall): closest pair ${s.closest.a}–${s.closest.b} (score ${s.closest.score.toFixed(2)}: IoU ${s.closest.iou.toFixed(2)}, ΔE ${s.closest.dE.toFixed(3)}); min ΔE ${s.minDE.a}–${s.minDE.b} ${s.minDE.dE.toFixed(3)}; max IoU ${s.maxIoU.a}–${s.maxIoU.b} ${s.maxIoU.iou.toFixed(2)}`);
       if (s.gate) for (const p of s.pairs) if (p.score < 1) problems.push(`A4 ${s.name}: ${p.a} and ${p.b} too alike (IoU ${p.iou.toFixed(2)}, ΔE ${p.dE.toFixed(3)}, score ${p.score.toFixed(2)} < 1)`);
-      for (const o of s.options) {
-        console.log(`    ${o.id} (would replace ${o.replaces}): closest ${o.closest.b} (score ${o.closest.score.toFixed(2)}: IoU ${o.closest.iou.toFixed(2)}, ΔE ${o.closest.dE.toFixed(3)}), then ${o.pairs[1].b} ${o.pairs[1].score.toFixed(2)}, ${o.pairs[2].b} ${o.pairs[2].score.toFixed(2)}${o.pass ? '' : ` · ${o.pairs.filter((p) => p.score < 1).length} pair(s) below 1`}`);
-        if (s.gate && !o.pass) for (const p of o.pairs.filter((q) => q.score < 1)) problems.push(`A4 ${s.name}: option ${o.id} and ${p.b} too alike (IoU ${p.iou.toFixed(2)}, ΔE ${p.dE.toFixed(3)}, score ${p.score.toFixed(2)} < 1)`);
-      }
     }
   }
 
@@ -512,9 +457,8 @@ async function brandDistinctness(page) {
       }
       return views;
     };
-    const looks = {}, optLooks = {};
+    const looks = {};
     for (const b of DISTINCT) looks[b.id] = await lookOf({ brand: b.id }, b.id);
-    for (const o of GOOGLE_OPTIONS) optLooks[o.id] = await lookOf({ brand: o.id }, o.id);
     const iouOf = (p, q) => {
       let best = 0;
       const dx0 = Math.round(p.cx - q.cx), dy0 = Math.round(p.cy - q.cy);
@@ -543,18 +487,13 @@ async function brandDistinctness(page) {
       pairs.push({ a, b, ...pairOf(looks[a], looks[b]) });
     }
     pairs.sort((p, q) => p.score - q.score);
-    // Each Google option against every drone but the one it would replace (it must pass them all).
-    const options = GOOGLE_OPTIONS.map((o) => {
-      const ps = DISTINCT.filter((b) => b.id !== o.brand).map((b) => ({ a: o.id, b: b.id, ...pairOf(optLooks[o.id], looks[b.id]) })).sort((p, q) => p.score - q.score);
-      return { id: o.id, replaces: o.brand, closest: ps[0], pass: ps.every((p) => p.score >= 1), pairs: ps };
-    });
     const heights = Object.values(looks).map((l) => l[0].height);
     scales.push({
       name: sc.name, gate: sc.gate, zoom: sc.zoom, heightPx: Math.round(heights.reduce((s, h) => s + h, 0) / heights.length),
       closest: pairs[0],
       minDE: pairs.reduce((m, p) => (p.dE < m.dE ? p : m)), maxIoU: pairs.reduce((m, p) => (p.iou > m.iou ? p : m)),
-      means: Object.fromEntries(Object.entries({ ...looks, ...optLooks }).map(([id, l]) => [id, l.map((v) => v.mean.map((x) => Math.round(x * 1000) / 1000))])),
-      pairs, options,
+      means: Object.fromEntries(Object.entries(looks).map(([id, l]) => [id, l.map((v) => v.mean.map((x) => Math.round(x * 1000) / 1000))])),
+      pairs,
     });
   }
   return { thresholds: { shape: A4_SHAPE, colour: A4_COLOUR }, views: A4_VIEWS.map(([n]) => n), sameAs: Object.fromEntries(BRANDS.filter((b) => b.sameAs).map((b) => [b.id, b.sameAs])), scales };
@@ -606,8 +545,10 @@ async function paramsDoc() {
 async function brandsDoc() {
   const { dist } = await import('./oklab.js');
   const { BLK36 } = await import('./palette.js');
-  const { SESSION_VARY, SESSION_SPARKLES, ACCESSORIES, FACE_KEYS, GEMINI_COLOURS } = await import('./brands.js');
+  const { SESSION_VARY, SESSION_SPARKLES, ACCESSORIES, FACE_KEYS } = await import('./brands.js');
   const { TEAL: TEALS, GEMINI_TINTS } = await import('./palette.js');
+  const tealOf = (h) => Math.min(...TEALS.map((t) => dist(h, t)));
+  const quads = ['top', 'left', 'bottom', 'right'];
   const D = { ...DEFAULTS, ...FINAL.params };
   const keys = PARAMS.map((p) => p.key).filter((k) => BRANDS.some((b) => b.params[k] !== D[k]));
   const code = (h) => `\`${h}\``;
@@ -626,7 +567,7 @@ async function brandsDoc() {
     '',
     '| Accessory | What | Parameters | Seeded detail | Used by |',
     '|---|---|---|---|---|',
-    ...Object.entries(ACCESSORIES).map(([k, a]) => `| ${k} | ${a.words} | ${Object.entries(a.params).map(([p, v]) => `${code(p)} ${showValue(p, v)}`).join(', ')} | ${code(a.detail.key)} ${a.detail.min}–${a.detail.max} | ${[...BRANDS.filter((b) => b.accessory === k).map((b) => b.id), ...GOOGLE_OPTIONS.filter((o) => o.accessory === k).map((o) => `Google option ${o.id}`)].join(', ') || 'none (an option the human didn\'t pick)'} |`),
+    ...Object.entries(ACCESSORIES).map(([k, a]) => `| ${k} | ${a.words} | ${Object.entries(a.params).map(([p, v]) => `${code(p)} ${showValue(p, v)}`).join(', ')} | ${code(a.detail.key)} ${a.detail.min}–${a.detail.max} | ${[...BRANDS.filter((b) => b.accessory === k).map((b) => b.id), ...GOOGLE_UNPICKED.filter((o) => o.accessory === k).map((o) => `unpicked Google option ${o.id}`)].join(', ') || 'none (an option the human didn\'t pick)'} |`),
     '',
     '### Brand parameters',
     '',
@@ -642,17 +583,19 @@ async function brandsDoc() {
     `|---|${Object.keys(SLOTS).map(() => '---').join('|')}|`,
     ...BRANDS.map((b) => `| ${b.id} | ${Object.keys(SLOTS).map((sl) => b.palette[sl].map(code).join(' ')).join(' | ')} |`),
     '',
-    'Legs, tentacles and goggles (frames, bridge, strap) take the accent slot; goggle lenses take the screen tones; ghost-hem scallops and crown puffs are the shell; snouts and hex pods are trim.',
+    'Legs, tentacles and goggles (frames, bridge, strap) take the accent slot; goggle lenses take the screen tones; ghost-hem scallops and crown puffs are the shell; snouts and hex pods are trim (Qodo\'s nose tip is accent).',
+    '',
+    `Google\'s palette also has \`tints\`, the Gemini sparkle\'s four quadrant ramps (split on the diagonals): ${GEMINI_TINTS.map((r, i) => `${quads[i]} ${r.map(code).join(' ')}`).join('; ')}. The sparkle head\'s panels take them.`,
     '',
     '### Brand colour → BLK 36',
     '',
-    'Sampled brand colours (scout report, Part B) mapped to BLK 36 by OKLab distance. Where the palette doesn\'t use the nearest entry, the last column says why.',
+    'Sampled brand colours (scout report, Part B; Google\'s from the human\'s Gemini reference) mapped to BLK 36 by OKLab distance. "ΔE to teal" is the chosen colour\'s distance to the nearest [OIII] event teal. Where the palette doesn\'t use the nearest entry, the last column says why; it also carries any note.',
     '',
-    '| Drone | Part | Brand | Nearest BLK 36 (ΔE) | Chosen (ΔE) | Why |',
-    '|---|---|---|---|---|---|',
+    '| Drone | Part | Brand | Nearest BLK 36 (ΔE) | Chosen (ΔE) | ΔE to teal | Why |',
+    '|---|---|---|---|---|---|---|',
     ...BRAND_COLOURS.map((c) => {
       const near = BLK36.map((h) => [h, dist(c.hex, h)]).sort((x, y) => x[1] - y[1])[0];
-      return `| ${c.brand} | ${c.part} | ${code(c.hex)} | ${code(near[0])} (${near[1].toFixed(3)}) | ${c.chosen.map((h) => `${code(h)} (${dist(c.hex, h).toFixed(3)})`).join(', ')} | ${c.why || 'nearest'} |`;
+      return `| ${c.brand} | ${c.part} | ${code(c.hex)} | ${code(near[0])} (${near[1].toFixed(3)}) | ${c.chosen.map((h) => `${code(h)} (${dist(c.hex, h).toFixed(3)})`).join(', ')} | ${c.chosen.map((h) => tealOf(h).toFixed(3)).join(', ')} | ${[c.why || 'nearest', c.note].filter(Boolean).join('. ')} |`;
     }),
     '',
     '### Per-session variety (A5)',
@@ -663,29 +606,6 @@ async function brandsDoc() {
     '|---|---|---|',
     ...BRANDS.map((b) => `| ${b.id} | \`${b.detail.key}\` ${b.detail.min}–${b.detail.max} | ${b.trims.length} |`),
   ];
-  // The Google options (2026-11-11): what each one is, its parameters and palette, and the Gemini colours.
-  const okeys = PARAMS.map((p) => p.key).filter((k) => GOOGLE_OPTIONS.some((o) => o.params[k] !== D[k]));
-  const tealOf = (h) => Math.min(...TEALS.map((t) => dist(h, t)));
-  const quads = ['top', 'left', 'bottom', 'right'];
-  out.push('', '## Google options G1–G5 (for the human to pick, 2026-11-11)', '',
-    'The human: "for the google bot, I want to completely redesign it ... inspired by ... the google gemini logo, see what you can do and do 5 variations I can pick from." Each option is D-final with a parameter set (or an accessory) laid over it plus a palette (`brands.js` `GOOGLE_OPTIONS`, `palette.js` `OPTION_PALETTES`). They aren\'t in `BRANDS`: the current Google drone stays until the human picks. The Gemini sparkle\'s soft gradient becomes four flat BLK 36 ramps, one per quadrant panel (the palette\'s `tints`: top, left, bottom, right), with no gradients and no dithering.', '',
-    '| Option | Idea | Session detail |', '|---|---|---|',
-    ...GOOGLE_OPTIONS.map((o) => `| **${o.name}** | ${o.look} | ${code(o.detail.key)} ${o.detail.min}–${o.detail.max} |`),
-    '', '### Option parameters', '', 'Only parameters that some option changes from D-final. **Bold** marks a value that differs from D-final.', '',
-    `| Parameter | D-final | ${GOOGLE_OPTIONS.map((o) => o.id).join(' | ')} |`, `|---|---|${GOOGLE_OPTIONS.map(() => '---').join('|')}|`,
-    ...okeys.map((k) => `| \`${k}\` | ${showValue(k, D[k])} | ${GOOGLE_OPTIONS.map((o) => (o.params[k] !== D[k] ? `**${showValue(k, o.params[k])}**` : showValue(k, o.params[k]))).join(' | ')} |`),
-    '', '### Option palettes (BLK 36 only; the glow is [OIII] teal)', '',
-    `| Option | ${Object.keys(SLOTS).join(' | ')} |`, `|---|${Object.keys(SLOTS).map(() => '---').join('|')}|`,
-    ...GOOGLE_OPTIONS.map((o) => `| ${o.id} | ${Object.keys(SLOTS).map((sl) => o.palette[sl].map(code).join(' ')).join(' | ')} |`),
-    '', `Every option shares the four tint ramps: ${GEMINI_TINTS.map((r, i) => `${quads[i]} ${r.map(code).join(' ')}`).join('; ')}. Sparkle tips, fins, the sparkle head\'s panels and the sparkle screen\'s bezel take them; split on the diagonals.`,
-    '', '### The Gemini colours → BLK 36', '',
-    'Sampled from the human\'s reference (21 × 21 px means) and mapped by OKLab distance. The last column is the distance to the nearest [OIII] event teal.', '',
-    '| Part | Quadrant | Gemini | Nearest BLK 36 (ΔE) | Chosen (ΔE) | ΔE to teal | Note |', '|---|---|---|---|---|---|---|',
-    ...GEMINI_COLOURS.map((c) => {
-      const near = BLK36.map((h) => [h, dist(c.hex, h)]).sort((x, y) => x[1] - y[1])[0];
-      return `| ${c.part} | ${quads[c.quad]} | ${code(c.hex)} | ${code(near[0])} (${near[1].toFixed(3)}) | ${c.chosen.map((h) => `${code(h)} (${dist(c.hex, h).toFixed(3)})`).join(', ')} | ${c.chosen.map((h) => tealOf(h).toFixed(3)).join(', ')} | ${c.why || c.note || 'nearest'} |`;
-    }),
-    '', `The shading tones round each chosen colour, and their distance to the event teal: ${GEMINI_TINTS.map((r, i) => `${quads[i]} ${r.map((h) => `${code(h)} ${tealOf(h).toFixed(3)}`).join(', ')}`).join('; ')}.`);
   try {
     const a4 = JSON.parse(await readFile(path.join(OUT, 'brands-a4.json'), 'utf8'));
     const f2 = (p) => `${p.score.toFixed(2)}: ${p.iou.toFixed(2)}, ${p.dE.toFixed(3)}`;
@@ -696,12 +616,6 @@ async function brandsDoc() {
       '', 'The five closest pairs at each gated scale:', '',
       '| Scale | Pair | IoU | ΔE | Score |', '|---|---|---|---|---|',
       ...a4.scales.filter((s) => s.gate).flatMap((s) => s.pairs.slice(0, 5).map((p) => `| ${s.name} | ${p.a}–${p.b} | ${p.iou.toFixed(2)} | ${p.dE.toFixed(3)} | ${p.score.toFixed(2)} |`)));
-    if (a4.scales[0].options) {
-      out.push('', '### A4 for the Google options', '',
-        'Each option against every drone but the current Google drone (the one it would replace), gated like the brand pairs: every pair must score at least 1 in both views. The three closest pairs per option (score: IoU, ΔE):', '',
-        `| Option | ${a4.scales.map((s) => s.name).join(' | ')} |`, `|---|${a4.scales.map(() => '---').join('|')}|`,
-        ...a4.scales[0].options.map((o, i) => `| ${o.id} | ${a4.scales.map((s) => { const r = s.options[i]; return `${r.pairs.slice(0, 3).map((p) => `${p.b} (${f2(p)})`).join('; ')}${r.pass ? '' : ` · **${r.pairs.filter((p) => p.score < 1).length} below 1**`}`; }).join(' | ')} |`));
-    }
   } catch { /* no A4 run yet */ }
   return out;
 }

@@ -1,6 +1,6 @@
 # Drone lab
 
-> **Exploration, 2026-11-06: five base drones (A–E) to the human's brief. The human picked D; D-final (D with the human's exact parameters) is the base drone.** Phase 2 (2026-11-10) adapts it into one drone per approved agent provider, plus a generic and an "unknown agent" drone, each a parameter set plus a palette: see [Phase 2](#phase-2-brand-drones). Later that day the human asked for four changes. Copilot and Claude Code keep D-final's exact shape and add one accessory each: flat goggles, and stubby legs. The unknown agent becomes the generic drone. Codex's cloud head becomes one smooth shape. Qodo gets sunglasses and turns white, like the anteater. See [Accessory drones](#accessory-drones), [Codex's cloud head](#codexs-cloud-head) and [Qodo's sunglasses](#qodos-sunglasses). On 2026-11-11 Qodo gets a purple nose tip and loses its eyes (just the sunglasses), and Google gets five Gemini-inspired options, G1–G5, for the human to pick from: see [Google options](#google-options-g1g5-gemini-inspired-2026-11-11). The lineup keeps the current Google drone until the human picks.
+> **Exploration, 2026-11-06: five base drones (A–E) to the human's brief. The human picked D; D-final (D with the human's exact parameters) is the base drone.** Phase 2 (2026-11-10) adapts it into one drone per approved agent provider, plus a generic and an "unknown agent" drone, each a parameter set plus a palette: see [Phase 2](#phase-2-brand-drones). Later that day the human asked for four changes. Copilot and Claude Code keep D-final's exact shape and add one accessory each: flat goggles, and stubby legs. The unknown agent becomes the generic drone. Codex's cloud head becomes one smooth shape. Qodo gets sunglasses and turns white, like the anteater. See [Accessory drones](#accessory-drones), [Codex's cloud head](#codexs-cloud-head) and [Qodo's sunglasses](#qodos-sunglasses). On 2026-11-11 Qodo gets a purple nose tip and loses its eyes (just the sunglasses), and Google is redesigned from the Gemini logo: of five options the human picked G1 · Sparkle, a puffy four-point sparkle that replaces the Jules octopus. See [Google: the Gemini sparkle](#google-the-gemini-sparkle-2026-11-11).
 >
 > **The brand drones are original designs. They aren't affiliated with or endorsed by Anthropic, Anysphere (Cursor), GitHub, OpenAI, Google, Cognition (Devin), Amazon (Kiro), the OpenCode project or Qodo.** No logo is drawn, and names appear only as plain-text labels outside the pixel pass.
 
@@ -27,7 +27,7 @@ npm run lab   # regenerates everything in out/: about 2 min for A–E and D-fina
 npm run dev   # live page at http://127.0.0.1:5192/ (loopback only; PORT=... to change)
 ```
 
-`node lab.mjs final working` renders just the named outputs (`lineup`, `crew`, `closeups`, `turntable`, `motion`, `final`, `working`, `params`; for the brands `brands`, `brand-closeups`, `seeds`, `squads`, `brand-gifs`, `codex-before-after`, `qodo-before-after`, `a4`; for the Google options `google-options`, `google-crew`, `google-gifs`; and `identity`, the A–E / D-final pixel-identity check). Add `brand=copilot,codex` to limit `brand-closeups`, `brand-gifs` and `google-gifs` to those drones (or options, `brand=g1,g3`).
+`node lab.mjs final working` renders just the named outputs (`lineup`, `crew`, `closeups`, `turntable`, `motion`, `final`, `working`, `params`; for the brands `brands`, `brand-closeups`, `seeds`, `squads`, `brand-gifs`, `codex-before-after`, `qodo-before-after`, `a4`; and `identity`, the A–E / D-final pixel-identity check). Add `brand=copilot,codex` to limit `brand-closeups` and `brand-gifs` to those drones.
 
 ## Outputs (`out/`)
 
@@ -52,10 +52,6 @@ npm run dev   # live page at http://127.0.0.1:5192/ (loopback only; PORT=... to 
 | `brands-a4.json` | The A4 distinctness measurements: per scale, view and pair, the silhouette IoU, the mean-colour ΔE and the score |
 | `brand-codex-before-after.png` | Codex's head before (seven small puffs, sky blue) and after (one smooth blended cloud, mid blue), 2× close-up |
 | `brand-qodo-before-after.png` | Qodo before (teal slant eyes behind the shades, teal diff marks while reviewing) and after (a purple nose tip, just the sunglasses, a glint sweep while reviewing), 2× close-up |
-| `brands-google-options.png` | The Google options G1–G5 beside the current Google drone: front, 3/4 and side, 180p crops ×3, labelled |
-| `brands-google-options-closeup.png` | The same six at the 2× close-up: front, 3/4, side, back 3/4 |
-| `brands-google-options-crew.png` | The five options with two K astronauts: at the viewer's crew close-up (three per frame; the current Google drone fills the sixth place) and all five at system distance |
-| `brand-google-<g1–g5>-turntable.gif`, `brand-google-<g1–g5>-motion.gif` | Each option's 6 s turntable and 12 s motion loop, 15 fps, seamless |
 
 Every tile `npm run lab` renders is checked, and the run fails if any check fails:
 - only the drone's palette plus space appears (plus BLK 36 crew colours in the crew shot), so there's no antialiasing and no dithering;
@@ -64,10 +60,10 @@ Every tile `npm run lab` renders is checked, and the run fails if any check fail
 - nothing is clipped by the tile edge;
 - each GIF shows smoke in at least half its checked frames;
 - each GIF's frame one loop later is pixel-identical to frame 0;
-- the face probe passes for every variant, every brand drone and every Google option (and for Copilot's and Codex's V2 fallback eyes): while working, working-face pixels (glyphs, or Qodo's glint sweep) and no eye pixels; at rest, eyes (Qodo: none) and no working face;
+- the face probe passes for every variant and every brand drone (and for Copilot's and Codex's V2 fallback eyes): while working, working-face pixels (glyphs, or Qodo's glint sweep) and no eye pixels; at rest, eyes (Qodo: none) and no working face;
 - Qodo's nose tip is at least a 2 × 2 block of its own at 180p in the front, 3/4 and side views;
 - A–E and D-final are pixel-identical to their renders before the brand geometry existed (25 hashed tiles in `test/identity.json`);
-- every pair of brand drones passes A4 at the crew close-up and at system distance (see below; the unknown agent is the generic drone, so it isn't measured again), and so does each Google option against every drone but the Google drone it would replace.
+- every pair of brand drones passes A4 at the crew close-up and at system distance (see below; the unknown agent is the generic drone, so it isn't measured again).
 
 ## How it's built
 
@@ -102,7 +98,7 @@ One drone per approved provider (human, 2026-11-10), plus **generic** (every oth
 | Cursor | IDE, CLI, cloud | the isometric cube logo | a crisp graphite cube with a white top facet (the logo's light facet) and a flat screen; sputters precise dots | LED bar |
 | GitHub Copilot | cloud agent, CLI, app, VS Code | the goggled head (its goggles kept with GitHub's permission) | **D-final's exact shape** in blue to violet, with flat pilot goggles worn flush across the top of its screen (two lenses joined by a bridge, strapped round the head), above upright pill eyes | Pills (drone-only) |
 | OpenAI Codex | CLI, cloud | Codey, the Codex pet | one smooth mid-blue cloud head (five broad, low lobes blended into one shape) round a big navy screen with `>_` prompt eyes; works in prompt characters | Prompt `>_` (drone-only) |
-| Google | Jules, Gemini CLI, Antigravity | the Jules octopus | a tall purple dome on six curling lilac tentacles that sway with the bob | Dots |
+| Google | Jules, Gemini CLI, Antigravity | the Gemini sparkle (the human's pick, 2026-11-11; it was the Jules octopus) | head-is-body: a puffy four-point sparkle, thin at the tips and fat in the middle, its tips in the four Gemini colours (red, yellow, green, blue) and a round dark screen in its blue middle | Dots |
 | Devin | cloud, CLI, Devin Desktop (ex-Windsurf) | the three-hexagon logo | a near-black hexagonal head between two white hexagonal side pods (three hexagons in a row) | Three eyes |
 | Kiro | Kiro CLI/IDE/cloud, Amazon Q | the Kiro ghost | a white ghost dome shaded in Kiro purple, with a scalloped hem that wobbles; trails wisps and floats high | Dots |
 | OpenCode | CLI, GitHub agent | the pixel block "O" | a tall sharp white block whose square screen is a thick ring round a dark-over-grey split core | Cyclops (a ring, the "O") |
@@ -184,8 +180,8 @@ A pair scores max((1 − IoU) / 0.25, ΔE / 0.06), and must score at least 1 in 
 
 | Scale | Drone height | Gated | Closest pair (score: IoU, ΔE) | Smallest ΔE | Largest IoU |
 |---|---|---|---|---|---|
-| crew close-up | 38 px | yes | **Cursor–Devin** (1.10: 0.73, 0.036) | Cursor–Devin 0.036 | Copilot–generic 0.99 |
-| system distance (5.98, the viewer's system view) | 18 px | yes | **Cursor–Devin** (1.10: 0.73, 0.055) | Cursor–Devin 0.055 | Copilot–generic 1.00 |
+| crew close-up | 39 px | yes | **Cursor–Devin** (1.10: 0.73, 0.036) | Cursor–Devin 0.036 | Copilot–generic 0.99 |
+| system distance (5.98, the viewer's system view) | 19 px | yes | **Cursor–Devin** (1.10: 0.73, 0.055) | Cursor–Devin 0.055 | Copilot–generic 1.00 |
 | far (the mid depth step) | 6 px | no (info) | Copilot–generic (0.74: 1.00, 0.045) | Copilot–generic 0.045 | Copilot–generic 1.00 |
 
 - **The closest pair is Cursor–Devin** (1.10). Both are near-black with white details, so they separate by shape: a cube with a white top against a hexagon between white pods.
@@ -193,6 +189,7 @@ A pair scores max((1 − IoU) / 0.25, ΔE / 0.06), and must score at least 1 in 
   - Copilot–Codex (1.12 / 1.14). Both are blue with a dark screen, and they separate by colour (ΔE 0.067–0.068).
   - Kiro–Qodo (1.18 / 1.29), two white drones that separate by shape (IoU 0.74–0.79) and by Kiro's lilac.
 - **OpenCode–Qodo**, the closest pair until 2026-11-11 (1.05), is now 1.36 / 1.40: Qodo lost its teal eyes and gained a purple nose tip. Qodo–generic is 2.19 / 2.15.
+- **Google**, the sparkle since 2026-11-11, is closest to the generic drone (1.35 / 1.27), separated by shape (IoU 0.66–0.68), then Copilot and Kiro (1.58–1.85).
 - **Copilot–generic** have the same silhouette (IoU 0.99–1.00): the flat goggles sit inside it. They separate by colour alone (ΔE 0.079–0.088; scores 1.46 at the close-up and 1.31 at system distance).
 - **Copilot–Qodo**, close in phase 2 (1.10–1.14), is now 4.10 / 3.86. **Codex–generic**, once the closest pair, is 2.53 / 2.44.
 - **At 6 px** Copilot and generic merge (0.74). That scale isn't gated, and it's where the name labels carry identity.
@@ -214,42 +211,41 @@ The silhouette, shell, screen, glow, accent and smoke never vary, so two Claude 
 | `headHex` | Devin | blend the head toward a front-facing hexagonal prism, point up |
 | `ears` = hex pods | Devin | front-facing hexagonal side pods |
 | `crown` (`crownN`, `crownR`, `crownArc`, `crownZ`, `crownOut`, `crownK`) | Codex | lobes round the top of the head, smooth-unioned into one cloud outline (`crownOut` sinks them in, `crownK` sets the blend) |
-| `skirt` = stub legs / tentacles / ghost hem (`skirtN`, `skirtL`, `skirtR`, `skirtSpread`, `skirtZ`, `skirtCurl`, `skirtWave`) | Claude (legs), Google, Kiro | legs in two pairs; a ring of curling tentacles; a scalloped hem. Tentacles and hem wobble with the bob (loop-locked) |
+| `skirt` = stub legs / tentacles / ghost hem (`skirtN`, `skirtL`, `skirtR`, `skirtSpread`, `skirtZ`, `skirtCurl`, `skirtWave`) | Claude (legs), Kiro (ghost hem); the tentacles (the old Google octopus, and Claude's option b) are unused | legs in two pairs; a ring of curling tentacles; a scalloped hem. Tentacles and hem wobble with the bob (loop-locked) |
 | `topper` = goggles (`gogW`, `gogH`, `gogX`, `gogY`, `gogT`, `gogFrame`, `gogBridge`, `gogStrap`, `gogStrapY`) | Copilot | flat lenses on the head, a bridge between them, a strap in a plane tilted from the lenses down to `gogStrapY` at the back; frames, bridge and strap in the accent colour |
 | `screenShades` | Qodo | the screen is a pair of sunglasses: two rounded-trapezoid lenses under a straight brow bar, no bezel, the eyes glowing through |
 | `snout` (`snoutL`, `snoutR`, `snoutY`, `snoutDrop`) | Qodo | a long tapered snout out of the lower face |
 | `antenna` = question hook | none (the old unknown agent) | a stalk curled into a "?" |
 | `accent` = top facet | Cursor | the top face in the accent colour |
 | `thrAccent` | Qodo | the nozzles in the accent colour, not the trim (a coloured thruster pack) |
-| `screenFlat` | Cursor, Devin, OpenCode; Google option G1 (straight on) | a planar screen with straight edges on a flat face; or projected straight on from the front, so a round screen stays round on the thin, puffy sparkle head |
+| `screenFlat` | Cursor, Devin, OpenCode; Google (straight on) | a planar screen with straight edges on a flat face; or projected straight on from the front, so a round screen stays round on the thin, puffy sparkle head |
 | `screenSplit`, `splitY` | OpenCode | the screen's lower part in its second tone |
 | `glyphSet` | Claude, Codex, Qodo | the working face's glyphs: an asterisk spinner, prompt characters, or diff marks read row by row; or none and a glint sweeping across the screen (Qodo since 2026-11-11) |
 | `snoutTip` | Qodo | the last share of the snout in the accent colour (a nose tip) |
 | `noEyes` | Qodo | no eyes at rest: the screen alone |
-| `headStar` (`starCurve`, `starTip`) | Google option G1 | blend the head toward a front-facing four-point sparkle: concave sides (circles carved from a square's corners), rounded tips, puffed in the middle and thin at the tips |
-| `starPart` = antenna star / orbiting star (`starR`, `starT`, `orbR`, `orbY`, `orbTilt`, `orbSpin`) | Google options G2, G5 | a small sparkle of two crossed puffy plates (it reads from any side), tips in the four tints: on the antenna in place of its tip, or orbiting the head once per 6 s (free-floating, so it shows with the smoke and is off in the connectivity check and A4) |
-| `fins` (`finL`, `finR`, `finTip`) | Google option G4 | four tapered fins out of the head, up, left, down and right, each in its quadrant's tint |
-| `screenStar` | Google option G3 | the screen is a four-point sparkle, its bezel round it |
-| `quadTint` | Google options G1, G3 | paint the head (G1) or the screen bezel (G3) in four quadrant panels from the palette's `tints`, split on the diagonals |
-| palette `tints` | Google options | an optional seventh palette entry: four 4-tone ramps, top, left, bottom, right (`palette.js` `GEMINI_TINTS`) |
+| `headStar` (`starCurve`, `starTip`) | Google | blend the head toward a front-facing four-point sparkle: concave sides (circles carved from a square's corners), rounded tips, puffed in the middle and thin at the tips |
+| `starPart` = antenna star / orbiting star (`starR`, `starT`, `orbR`, `orbY`, `orbTilt`, `orbSpin`) | none (unpicked Google options G2, G5) | a small sparkle of two crossed puffy plates (it reads from any side), tips in the four tints: on the antenna in place of its tip, or orbiting the head once per 6 s (free-floating, so it shows with the smoke and is off in the connectivity check and A4) |
+| `fins` (`finL`, `finR`, `finTip`) | none (unpicked Google option G4) | four tapered fins out of the head, up, left, down and right, each in its quadrant's tint |
+| `screenStar` | none (unpicked Google option G3) | the screen is a four-point sparkle, its bezel round it |
+| `quadTint` | Google (head); unpicked option G3 (bezel) | paint the head or the screen bezel in four quadrant panels from the palette's `tints`, split on the diagonals |
+| palette `tints` | Google; the unpicked options | an optional seventh palette entry: four 4-tone ramps, top, left, bottom, right (`palette.js` `GEMINI_TINTS`) |
 | `workNod` | Qodo | the head dips while working (reviewing) |
 | `eyes` = Pills / Prompt `>_` | Copilot, Codex | the two drone-only eyes (approved 2026-11-10; not in `faces.js`) |
 
-The live page (`npm run dev`) has the brand drones and the Google options in its picker, and picking one switches to its palette.
+The live page (`npm run dev`) has the brand drones and the unpicked Google options (G2–G5) in its picker, and picking one switches to its palette.
 
-## Google options G1–G5: Gemini-inspired (2026-11-11)
+## Google: the Gemini sparkle (2026-11-11)
 
-The human, 2026-11-11, with the Gemini logo: "for the google bot, I want to completely redesign it ... I want it to be inspired by this the google gemini logo, see what you can do and do 5 variations I can pick from." The logo is a four-point sparkle with deeply concave sides and rounded tips, in a soft gradient: coral red at the top, orange-yellow on the left, green at the bottom and blue on the right and in the middle. The five options are original drones inspired by it. None draws the logo.
+The human, 2026-11-11, with the Gemini logo: "for the google bot, I want to completely redesign it ... I want it to be inspired by this the google gemini logo, see what you can do and do 5 variations I can pick from." The logo is a four-point sparkle with deeply concave sides and rounded tips, in a soft gradient: coral red at the top, orange-yellow on the left, green at the bottom and blue on the right and in the middle. The human picked **G1 · Sparkle** from five options and kept its green. It replaced the Jules octopus. It's an original drone inspired by the logo, which isn't drawn.
 
-| Option | The idea | Body | Eyes | Thrusters |
-|---|---|---|---|---|
-| **G1 · Sparkle** | head-is-body: the drone is the sparkle. A puffy four-point star (thin tips, fat middle) with its tips in the four colours and a round dark screen in its blue middle | the sparkle head (`headStar`), panels by quadrant (`quadTint` head) | Dots | twin pods under the lower sides, so the green tip shows between them |
-| **G2 · Star antenna** | an accessory drone: D-final's exact shape, all white, with a big four-colour sparkle on its antenna in place of the tip ball | D-final, white | Binocular (D-final's) | D-final's under-jet |
-| **G3 · Sparkle visor** | D-final's exact shape in Gemini's light blue, its screen a four-point sparkle framed in the four colours | D-final, light blue; only face parameters change | Dots, small | D-final's under-jet |
-| **G4 · Compass fins** | a round light-blue core with four tapered fins pointing up, left, down and right, each in its colour: the sparkle drawn as a compass | a ball with `fins` | Happy | twin pods under the lower sides |
-| **G5 · Orbiting sparkle** | a Gemini-blue egg with a wraparound visor band, and a small four-colour sparkle orbiting its crown once per 6 s, spinning twice per orbit | a tall egg with a visor band | Dots | a single under-jet |
+**The drone.** Head-is-body: the drone is the sparkle.
+- **Head** (`headStar`): a front-facing four-point star. Its sides are concave arcs (circles carved from a square's corners, `starCurve` 1.15) and its tips are rounded (`starTip` 0.08). It's puffed in the middle and thin at the tips (`headD` 0.06), so its banded light reads as a soft pillow.
+- **Panels** (`quadTint` head): the four tips in the four Gemini colours, split on the diagonals. The blue middle is the shell.
+- **Face:** a round dark screen with a white bezel and Dots eyes. It's projected straight on (`screenFlat` straight on), so it stays round on the thin head.
+- **Thrusters:** twin pods under the lower sides, so the green bottom tip shows between them. White puffs and three sparkles.
+- **Session detail:** `starCurve` 1.1–1.2 (slenderer or fuller tips), and two white trims.
 
-**BLK 36 only, no gradients.** The gradient becomes four flat ramps, one per quadrant panel, split on the diagonals (`palette.js` `GEMINI_TINTS`). Each ramp has four lit bands, so the panels shade like the rest of the drone:
+**BLK 36 only, no gradients.** The gradient becomes four flat ramps, one per quadrant panel (`palette.js` `GEMINI_TINTS`, the palette's `tints`). Each ramp has four lit bands, so the panels shade like the rest of the drone:
 
 | Quadrant | Gemini (sampled) | Nearest BLK 36 (ΔE) | Ramp |
 |---|---|---|---|
@@ -259,25 +255,15 @@ The human, 2026-11-11, with the Gemini logo: "for the google bot, I want to comp
 | right and middle | blue `#3287ff` | `#4185d8` (0.058) | `#36277f` `#354ab2` `#4185d8` `#5ab9e5` |
 
 - **Yellow is a loose match.** BLK 36 has no saturated yellow, so the left tip reads cream-yellow (`#ffe091`) over an orange shade.
-- **The green sits near the event teal.** `#42bc7f` is 0.041 from the [OIII] teal `#00bc9c`, and `#22896e` is 0.043 from `#007c66`. That's about as close as the teal slate the brand drones avoid (`#0f4a4c`, 0.037). The green is a lit body colour, never emissive, and only on the bottom quadrant beside red, yellow and blue, so I kept it: a sparkle without green wouldn't read as Gemini. If it reads as an event, the alternative is the yellow-green `#8cff9b` (0.084) alone, which would be a flatter bottom tip.
-- The full table with every option's palette is in `out/params.md`.
+- **The green sits near the event teal, and the human kept it.** `#42bc7f` is 0.041 from the [OIII] teal `#00bc9c`, and `#22896e` is 0.043 from `#007c66`. That's nearly as close as the teal slate the brand drones avoid (`#0f4a4c`, 0.037). It's a lit body colour, never emissive, and only on the bottom quadrant beside red, yellow and blue. A sparkle without green wouldn't read as Gemini. If it ever reads as an event, the alternative is the yellow-green `#8cff9b` (0.084) alone.
+- `out/params.md` has the mapping in its brand colour table, with every colour's distance to the event teal.
 
-**A4.** Each option is measured against every drone except the current Google drone, which it would replace, and gated like the brand pairs (every pair at least 1, both views, both gated scales). All five pass. The three closest pairs (crew close-up / system distance):
+**A4.** Closest to the generic drone (1.35 at the crew close-up, 1.27 at system distance), separated by shape (IoU 0.66–0.68), then Copilot and Kiro (1.58–1.85).
 
-| Option | Closest | Next |
-|---|---|---|
-| G1 | generic 1.35 / 1.27 (IoU 0.66–0.68) | Copilot 1.76, Kiro 1.85 / Kiro 1.58, Copilot 1.78 |
-| G2 | Qodo 1.09 / 1.08 (IoU 0.73) | Kiro 1.20, generic 1.27 / Kiro 1.25, generic 1.39 |
-| G3 | Qodo 1.21 (ΔE 0.072) / OpenCode 1.23 (IoU 0.69) | OpenCode 1.33, Kiro 2.50 / Qodo 1.31, Kiro 2.59 |
-| G4 | Kiro 1.13 / 1.21 (ΔE 0.068–0.072) | generic 1.22, Qodo 1.24 / Qodo 1.21, generic 1.47 |
-| G5 | generic 1.13 / 1.10 (IoU 0.72–0.73) | Copilot 1.15, Codex 1.76 / Copilot 1.14, Cursor 1.30 |
+**The unpicked options.** G2–G5 stay in `brands.js` `GOOGLE_UNPICKED` as parameter sets for the live page's picker. They aren't rendered, and A4 doesn't measure them. On 2026-11-11 each one passed A4 against every other drone:
+- **G2 · Star antenna:** D-final in white with a big four-colour sparkle on its antenna (an accessory, `starPart` antenna star).
+- **G3 · Sparkle visor:** D-final in light blue with a sparkle-shaped screen in a four-colour bezel (`screenStar`, `quadTint` bezel).
+- **G4 · Compass fins:** a light-blue ball with four fins in the four colours (`fins`).
+- **G5 · Orbiting sparkle:** a blue egg with a sparkle orbiting its crown once per 6 s (`starPart` orbiting star). The orbiting sparkle floats free, like the smoke.
 
-Three of the colour choices were made for A4:
-- **G2 is all white.** With Gemini-blue trim on its rim and bezel it scored 0.39 against the generic drone. It's the same shape, the big dark screen fills most of the front, and the blue trim and white shell averaged out to the generic's mean colour. White trim lifts it clear of the generic drone. Against Qodo, white too, the big sparkle (`starR` 0.06) carries it: their silhouettes share only 73% of their union.
-- **G3 is light blue.** On white with the darker screen it scored 0.94 against Qodo.
-- **G4's core is light blue.** A white core scored 0.91 against Kiro.
-
-G5 started as a round Gemini-blue bubble, which matched Codex's and Copilot's silhouettes and colours (0.82). The taller egg separates by shape. Its orbiting sparkle is free-floating, like the smoke, so A4 measures G5 without it.
-
-**Picking one.** The options live in `brands.js` `GOOGLE_OPTIONS`, not in `BRANDS`, so the lineup, the squads and the asset library still show the current Google drone. To adopt one, move its parameters (or accessory), detail and trims into the Google entry, move its palette into `BRAND_PALETTES.google`, then re-render and re-run A4.
-
+Their parameters stay in the shader, all off by default.

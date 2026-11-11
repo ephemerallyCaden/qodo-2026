@@ -8,13 +8,13 @@ import { readFileSync } from 'node:fs';
 import { PARAMS, PARAM_BY_KEY, DEFAULTS, EYES, DRONE_EYE } from '../params.js';
 import { FINAL } from '../variants.js';
 import { BLK36, BRAND_PALETTES, OPTION_PALETTES, GEMINI_TINTS, PALETTES, SLOTS, TEAL } from '../palette.js';
-import { BRANDS, DISTINCT, PROVIDERS, BRAND_BY_ID, BRAND_COLOURS, ACCESSORIES, FACE_KEYS, SESSION_VARY, SESSION_SPARKLES, GOOGLE_OPTIONS, GEMINI_COLOURS, sessionLook } from '../brands.js';
+import { BRANDS, DISTINCT, PROVIDERS, BRAND_BY_ID, BRAND_COLOURS, ACCESSORIES, FACE_KEYS, SESSION_VARY, SESSION_SPARKLES, GOOGLE_UNPICKED, sessionLook } from '../brands.js';
 import { layout, extents, bodyAt, behaviour, smokeAt, skirtAt, starAt, faceAt, LOOP, MOTION_LOOP, MAX_CROWN, MAX_SKIRT } from '../drone.js';
 import { dist } from '../oklab.js';
 
 const K_HEIGHT = 0.95;
-// The brand drones and the five Google options (2026-11-11), for the family checks every drone passes.
-const ALL = [...BRANDS, ...GOOGLE_OPTIONS];
+// The brand drones and the unpicked Google options (2026-11-11), for the family checks every drone passes.
+const ALL = [...BRANDS, ...GOOGLE_UNPICKED];
 const SEEDS = Array.from({ length: 40 }, (_, i) => `session-${i * 7919}`);
 
 test('the approved providers, plus generic and unknown, each with a palette and a signature', () => {
@@ -61,8 +61,8 @@ test("accessory drones are D-final's exact shape plus one accessory and a face",
   }
 });
 
-test('every brand (and Google option) palette is BLK 36 only, and the eyes glow [OIII] teal', () => {
-  for (const [id, pal, trims] of [...Object.entries(BRAND_PALETTES).map(([id, pal]) => [id, pal, BRAND_BY_ID[id].trims]), ...GOOGLE_OPTIONS.map((o) => [o.id, o.palette, o.trims])]) {
+test('every brand (and unpicked Google option) palette is BLK 36 only, and the eyes glow [OIII] teal', () => {
+  for (const [id, pal, trims] of [...Object.entries(BRAND_PALETTES).map(([id, pal]) => [id, pal, BRAND_BY_ID[id].trims]), ...GOOGLE_UNPICKED.map((o) => [o.id, o.palette, o.trims])]) {
     for (const [slot, n] of Object.entries(SLOTS)) {
       assert.equal(pal[slot].length, n, `${id}.${slot}`);
       for (const h of pal[slot]) {
@@ -80,7 +80,9 @@ test('every brand (and Google option) palette is BLK 36 only, and the eyes glow 
     assert.ok(BRAND_BY_ID[c.brand], c.brand);
     for (const h of c.chosen) {
       assert.ok(BLK36.includes(h), `${c.brand} ${c.part}: ${h} is not BLK 36`);
-      assert.ok(Object.values(SLOTS).length && Object.keys(SLOTS).some((s) => BRAND_PALETTES[c.brand][s].includes(h)), `${c.brand} ${c.part}: ${h} is not in its palette`);
+      const pal = BRAND_PALETTES[c.brand];
+      if (c.quad != null) assert.ok(pal.tints[c.quad].includes(h), `${c.brand} ${c.part}: ${h} is not in its quadrant's tint ramp`);
+      else assert.ok(Object.keys(SLOTS).some((s) => pal[s].includes(h)), `${c.brand} ${c.part}: ${h} is not in its palette`);
     }
     // A pick that isn't the nearest BLK 36 colour must say why.
     const nearest = BLK36.reduce((m, h) => (dist(c.hex, h) < dist(c.hex, m) ? h : m));
@@ -170,7 +172,7 @@ test('brand motion is loop-locked: body, behaviour, smoke, skirt and an orbiting
     }
   }
   // The orbiting star really goes round (and stays clear of the head).
-  const G5 = GOOGLE_OPTIONS.find((o) => o.params.starPart === 2), L5 = layout(G5.params);
+  const G5 = GOOGLE_UNPICKED.find((o) => o.params.starPart === 2), L5 = layout(G5.params);
   const at = [0, 1.5, 3, 4.5].map((t) => starAt(L5, t).c);
   assert.ok(at[0].distanceTo(at[2]) > 2 * G5.params.headW, 'the orbit crosses the head');
   for (let t = 0; t < LOOP; t += 0.25) assert.ok(L5.core(starAt(L5, t).c) > G5.params.starR, `the orbiting star hits the head at ${t} s`);
@@ -217,43 +219,20 @@ test('Qodo (human, 2026-11-11): a purple nose tip, no eyes, just the sunglasses;
   assert.deepEqual(ALL.filter((b) => b.params.noEyes || b.params.snoutTip).map((b) => b.id), ['qodo'], 'only Qodo');
 });
 
-test('Google options G1-G5: five Gemini-inspired drones for the human to pick from, BLK 36 only', () => {
-  assert.deepEqual(GOOGLE_OPTIONS.map((o) => o.id), ['g1', 'g2', 'g3', 'g4', 'g5']);
-  for (const o of GOOGLE_OPTIONS) {
-    assert.equal(o.brand, 'google');
-    assert.ok(o.name && o.look && o.palette === OPTION_PALETTES[o.id], o.id);
-    assert.ok(!BRAND_BY_ID[o.id], `${o.id} isn't a brand drone until the human picks it`);
-    // Every option carries the sparkle somewhere: the head, its tint panels, a small star or fins.
-    const P = o.params;
-    assert.ok(P.headStar || P.screenStar || P.starPart || P.fins, `${o.id}: no sparkle`);
-    assert.deepEqual(o.palette.tints, GEMINI_TINTS, `${o.id}: the four Gemini ramps`); // BLK 36: checked with the palettes
-  }
+test('Google is the Gemini sparkle (the human\'s pick of five options, G1, 2026-11-11)', () => {
+  const G = BRAND_BY_ID.google, P = G.params;
+  // Head-is-body: the head is the sparkle, painted in four quadrant panels, a round screen seen straight on.
+  assert.ok(P.headStar === 1 && P.quadTint === 1 && P.screenFlat === 2 && P.screenRound === 2, 'the sparkle head');
+  assert.ok(P.skirt === 0 && P.rim === 0 && P.antenna === 0, 'no octopus tentacles, saucer rim or antenna');
+  assert.deepEqual(G.palette.tints, GEMINI_TINTS, 'the four Gemini ramps');
+  assert.deepEqual(G.palette.shell, GEMINI_TINTS[3], 'blue in the middle, like the sparkle');
   assert.ok(GEMINI_TINTS.length === 4 && GEMINI_TINTS.every((r) => r.length === 4), 'four ramps of four bands');
-  // The ideas differ: one sparkle head, one antenna star, one sparkle screen, one set of fins, one orbit.
-  const has = (f) => GOOGLE_OPTIONS.filter((o) => f(o.params)).map((o) => o.id);
-  assert.deepEqual([has((P) => P.headStar), has((P) => P.starPart === 1), has((P) => P.screenStar), has((P) => P.fins), has((P) => P.starPart === 2)], [['g1'], ['g2'], ['g3'], ['g4'], ['g5']]);
-  // G2 is an accessory drone and G3 changes only the face: both keep D-final's shape exactly.
-  const D = { ...DEFAULTS, ...FINAL.params };
-  const g3 = GOOGLE_OPTIONS.find((o) => o.id === 'g3');
-  for (const { key } of PARAMS) if (g3.params[key] !== D[key]) assert.ok(PARAM_BY_KEY[key].group === 'face' || key === 'quadTint', `g3: ${key} differs from D-final`);
-  // Each Gemini colour maps to its quadrant's ramp, and a pick that isn't the nearest says why.
-  for (const c of GEMINI_COLOURS) {
-    for (const h of c.chosen) assert.ok(GEMINI_TINTS[c.quad].includes(h), `${c.part}: ${h} is not in its ramp`);
-    const nearest = BLK36.reduce((m, h) => (dist(c.hex, h) < dist(c.hex, m) ? h : m));
-    if (!c.chosen.includes(nearest)) assert.ok(c.why.length > 20, `${c.part}: chose ${c.chosen} over ${nearest} without a reason`);
-  }
-});
-
-test('A5 for the Google options: sessions differ only in seeded details', () => {
-  for (const o of GOOGLE_OPTIONS) {
-    const looks = SEEDS.map((sd) => sessionLook(o.id, sd));
-    for (const look of looks) {
-      for (const [k, v] of Object.entries(look.params)) if (![...Object.keys(SESSION_VARY), 'sparkles', o.detail.key].includes(k)) assert.equal(v, o.params[k], `${o.id}.${k}`);
-      assert.ok(look.params[o.detail.key] >= o.detail.min && look.params[o.detail.key] <= o.detail.max, `${o.id} detail`);
-      assert.equal(look.palette.tints, o.palette.tints, `${o.id}: tints never vary`);
-    }
-    assert.ok(new Set(looks.map((l) => JSON.stringify([l.params[o.detail.key].toFixed(4), l.trim]))).size >= 10, `${o.id}: too few distinct sessions`);
-  }
+  // The green the human kept (#42bc7f), with its note about the event teal; one Gemini colour or more per quadrant.
+  assert.ok(BRAND_COLOURS.some((c) => c.brand === 'google' && c.quad === 2 && c.chosen.includes('#42bc7f') && c.note), 'the green and its teal note');
+  assert.deepEqual([...new Set(BRAND_COLOURS.filter((c) => c.brand === 'google').map((c) => c.quad))], [0, 1, 2, 3]);
+  // The unpicked options stay as parameter sets only: not brand drones, and none of them is G1.
+  assert.deepEqual(GOOGLE_UNPICKED.map((o) => o.id), ['g2', 'g3', 'g4', 'g5']);
+  for (const o of GOOGLE_UNPICKED) assert.ok(o.brand === 'google' && !BRAND_BY_ID[o.id] && o.palette === OPTION_PALETTES[o.id], o.id);
 });
 
 test('A4: the last lab run found every pair distinct at the crew close-up and at system distance', () => {
@@ -267,12 +246,5 @@ test('A4: the last lab run found every pair distinct at the crew close-up and at
   for (const s of gated) {
     assert.equal(s.pairs.length, (n * (n - 1)) / 2, `${s.name}: every pair measured`);
     for (const p of s.pairs) assert.ok(p.score >= 1, `${s.name}: ${p.a}–${p.b} score ${p.score.toFixed(2)}`);
-    // Each Google option, against every drone but the one it would replace.
-    assert.deepEqual(s.options.map((o) => o.id), GOOGLE_OPTIONS.map((o) => o.id));
-    for (const o of s.options) {
-      assert.equal(o.pairs.length, n - 1, `${s.name}: ${o.id} measured against every other drone`);
-      assert.ok(!o.pairs.some((p) => p.b === 'google'));
-      for (const p of o.pairs) assert.ok(p.score >= 1, `${s.name}: ${o.id}–${p.b} score ${p.score.toFixed(2)}`);
-    }
   }
 });

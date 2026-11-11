@@ -48,6 +48,20 @@ export const BLK36 = ['#000000', '#12173d', '#293268', '#464b8c', '#6b74b2', '#9
 // every drone shares one face language. Seeded trims for per-session variety are in brands.js.
 const VISOR = [...CREW.visor, CREW.glint];
 const COPILOT_GOGGLES = ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff']; // the goggle frames' cyan (#5cc8ff -> #5ab9e5)
+// Google's Gemini sparkle (2026-11-11): its soft gradient as four flat BLK 36 ramps, one per quadrant
+// panel (a palette's optional `tints`: top, left, bottom, right; four lit bands each), mapped by OKLab
+// distance (brands.js BRAND_COLOURS). No gradients and no dithering.
+const GEM_RED = ['#66334b', '#872a38', '#cc5250', '#ff6866']; // top: #df525f -> #cc5250
+const GEM_YELLOW = ['#cc5250', '#ff965f', '#ffe091', '#ffe091']; // left: #e2992d -> #ff965f, #d4c02c -> #ffe091
+const GEM_GREEN = ['#14665b', '#22896e', '#42bc7f', '#8cff9b']; // bottom: #2bb67b -> #42bc7f
+const GEM_BLUE = ['#36277f', '#354ab2', '#4185d8', '#5ab9e5']; // right and middle: #3287ff -> #4185d8
+export const GEMINI_TINTS = [GEM_RED, GEM_YELLOW, GEM_GREEN, GEM_BLUE];
+const WHITE_SHELL = ['#6b74b2', '#909edd', '#c1d9f2', '#ffffff'];
+const SKY_SHELL = ['#4185d8', '#5ab9e5', '#a5e6ff', '#ffffff']; // Gemini's light blue, lit to white
+const WHITE_TRIM = ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'];
+const BLUE_TRIM = ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'];
+const DARK_SCREEN = ['#000000', '#12173d', '#ffffff'];
+const WHITE_SMOKE = ['#909edd', '#c1d9f2', '#ffffff'];
 export const BRAND_PALETTES = {
   // Clawd's terracotta (#d77757) sits between BLK 36's reds and its orange: the lit front takes
   // the orange, turned faces the terracotta red, so the shell averages to the brand colour.
@@ -61,8 +75,9 @@ export const BRAND_PALETTES = {
   // Codey's mid blue (#4a6cf0 lit -> #4185d8, in the light band only), its darker shaded rim (-> #354ab2,
   // which also takes the mid band: A4 measured Codex too close to Copilot without it), its navy screen (#232d66 -> #293268).
   codex: { name: 'OpenAI Codex', shell: ['#293268', '#354ab2', '#354ab2', '#4185d8'], trim: ['#293268', '#354ab2', '#4185d8', '#5ab9e5'], screen: ['#12173d', '#293268', '#ffffff'], glow: TEAL, accent: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
-  // Jules's pixel octopus purple (#642cc2 -> #643499), lighter purple tentacles (accent), white trim.
-  google: { name: 'Google (Jules, Gemini CLI, Antigravity)', shell: ['#12173d', '#29174c', '#412866', '#643499'], trim: ['#8c51cc', '#b991f2', '#ffffff', '#ffffff'], screen: VISOR, glow: TEAL, accent: ['#412866', '#643499', '#8c51cc', '#b991f2'], smoke: ['#8c51cc', '#b991f2', '#ffffff'] },
+  // The Gemini sparkle (the human's pick, G1, 2026-11-11): blue in the middle (the shell) and right, the
+  // four tips in the four tints, white bezel and nozzles.
+  google: { name: 'Google (Jules, Gemini CLI, Antigravity)', shell: GEM_BLUE, trim: WHITE_TRIM, screen: DARK_SCREEN, glow: TEAL, accent: GEM_BLUE, smoke: WHITE_SMOKE, tints: GEMINI_TINTS },
   // Devin's near-black (#0e1015 -> #12173d) for the head, its white hexagons for the side pods.
   devin: { name: 'Devin', shell: ['#000000', '#000000', '#12173d', '#293268'], trim: ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff'], screen: ['#000000', '#12173d', '#ffffff'], glow: TEAL, accent: ['#000000', '#12173d', '#293268', '#464b8c'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
   // The white ghost, shaded in Kiro's purple (#9046ff -> #8c51cc).
@@ -79,23 +94,8 @@ export const BRAND_PALETTES = {
   unknown: { ...PALETTES.base, name: 'unknown agent (the generic drone)' },
 };
 
-// The Google options G1-G5 (brands.js GOOGLE_OPTIONS, 2026-11-11): the Gemini sparkle's soft gradient
-// as four flat BLK 36 ramps, one per quadrant panel (`tints`: top, left, bottom, right; four lit bands
-// each), mapped by OKLab distance (brands.js GEMINI_COLOURS). No gradients and no dithering.
-const GEM_RED = ['#66334b', '#872a38', '#cc5250', '#ff6866']; // top: #df525f -> #cc5250
-const GEM_YELLOW = ['#cc5250', '#ff965f', '#ffe091', '#ffe091']; // left: #e2992d -> #ff965f, #d4c02c -> #ffe091
-const GEM_GREEN = ['#14665b', '#22896e', '#42bc7f', '#8cff9b']; // bottom: #2bb67b -> #42bc7f
-const GEM_BLUE = ['#36277f', '#354ab2', '#4185d8', '#5ab9e5']; // right and middle: #3287ff -> #4185d8
-export const GEMINI_TINTS = [GEM_RED, GEM_YELLOW, GEM_GREEN, GEM_BLUE];
-const WHITE_SHELL = ['#6b74b2', '#909edd', '#c1d9f2', '#ffffff'];
-const SKY_SHELL = ['#4185d8', '#5ab9e5', '#a5e6ff', '#ffffff']; // Gemini's light blue, lit to white
-const WHITE_TRIM = ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'];
-const BLUE_TRIM = ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'];
-const DARK_SCREEN = ['#000000', '#12173d', '#ffffff'];
-const WHITE_SMOKE = ['#909edd', '#c1d9f2', '#ffffff'];
+// The unpicked Google options G2-G5 (brands.js GOOGLE_UNPICKED): parameter sets for the live page only.
 export const OPTION_PALETTES = {
-  // The sparkle itself: blue in the middle (the shell) and right, white bezel and nozzles.
-  g1: { name: 'G1 · Sparkle', shell: GEM_BLUE, trim: WHITE_TRIM, screen: DARK_SCREEN, glow: TEAL, accent: GEM_BLUE, smoke: WHITE_SMOKE, tints: GEMINI_TINTS },
   // White like Google's page, white trim, the colour all in the sparkle on the antenna. (With Gemini-blue
   // trim on the rim and bezel A4 measured it at 0.39 against the generic drone: the same shape, and the
   // blue and white averaged out to the generic's mean colour.)

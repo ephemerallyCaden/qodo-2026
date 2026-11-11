@@ -11,7 +11,7 @@ import { makeDrone, extents, intendedPieces } from './drone.js';
 import { PALETTES, BRAND_PALETTES, OPTION_PALETTES, paletteHexes } from './palette.js';
 import { PARAMS, DEFAULTS } from './params.js';
 import { VARIANTS, FINAL } from './variants.js';
-import { BRANDS, BRAND_BY_ID, GOOGLE_OPTIONS, OPTION_BY_ID, sessionLook } from './brands.js';
+import { BRANDS, BRAND_BY_ID, GOOGLE_UNPICKED, OPTION_BY_ID, sessionLook } from './brands.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -271,8 +271,8 @@ function snapLabels(ctx, W, H, rows, { w, h, rowLabelW, gap, top, capH }) {
   ctx.putImageData(img, 0, 0);
 }
 
-/** Direction params by id (variants, D-final, the brand drones and the Google options). */
-const ALL = [...VARIANTS, FINAL, ...BRANDS, ...GOOGLE_OPTIONS];
+/** Direction params by id (variants, D-final, the brand drones and the unpicked Google options). */
+const ALL = [...VARIANTS, FINAL, ...BRANDS, ...GOOGLE_UNPICKED];
 const paramsOf = (id) => ({ ...DEFAULTS, ...ALL.find((v) => v.id === id).params });
 // A cell may name a brand or a Google option (and a session seed): its params, palette and phase come from it.
 function resolveCell(c) {

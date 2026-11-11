@@ -101,20 +101,20 @@ const ENTRIES = [
     trims: [['#293268', '#354ab2', '#4185d8', '#5ab9e5'], ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], ['#293268', '#4185d8', '#5ab9e5', '#a5e6ff']],
   },
   {
+    // The human's pick (2026-11-11) of five Gemini-inspired options: G1 · Sparkle. It replaced the Jules octopus.
     id: 'google', name: 'Google', covers: 'Google: Jules, Gemini CLI, Antigravity (one drone)',
-    mascot: 'the Jules octopus: a domed head, two oval eyes, curled tentacles (the site\'s pixel avatar is purple)',
-    signature: 'a tall purple dome on a ring of six curling tentacles that sway in time with the bob',
+    mascot: 'the Gemini sparkle: a four-point star with deeply concave sides and rounded tips, coral red at the top, yellow on the left, green at the bottom and blue on the right and in the middle',
+    signature: 'head-is-body: a puffy four-point sparkle, thin at the tips and fat in the middle, its tips in the four Gemini colours and a round dark screen in its blue middle',
     params: {
       rim: 0, antenna: 0,
-      headW: 0.104, headH: 0.112, headD: 0.1, headRound: 1, headCorner: 0.6, headTaper: 1, headFlat: 0.42,
-      skirt: 2, skirtN: 6, skirtL: 0.055, skirtR: 0.014, skirtSpread: 0.86, skirtCurl: 0.8, skirtWave: 0.006,
-      screenW: 0.72, screenH: 0.42, screenY: -0.02, screenRound: 3, bezel: 0.14, eyes: 0,
-      thrusters: 1, thrR: 0.026, thrL: 0.018, thrFlare: 0.9,
-      smoke: 0, puffSize: 0.9, puffRate: 0.35, sparkles: 1,
-      bobAmp: 0.036, drift: 0.15, bank: 0.24, lookYaw: 0.4,
+      headStar: 1, headW: 0.15, headH: 0.15, headD: 0.06, headRound: 0, starCurve: 1.15, starTip: 0.08, quadTint: 1,
+      screenW: 0.4, screenH: 0.4, screenY: 0, screenRound: 2, bezel: 0.2, eyes: 0, screenFlat: 2,
+      thrusters: 0, thrR: 0.02, thrL: 0.018, thrSpread: 0.9, thrFlare: 1, // twin pods under the lower sides: the green tip shows between them
+      smoke: 0, puffSize: 0.9, puffRate: 0.4, sparkles: 3,
+      bobAmp: 0.035, drift: 0.16, bank: 0.28, lookYaw: 0.4,
     },
-    detail: { key: 'skirtL', min: 0.042, max: 0.054 },
-    trims: [['#8c51cc', '#b991f2', '#ffffff', '#ffffff'], ['#643499', '#8c51cc', '#b991f2', '#ffffff'], ['#354ab2', '#4185d8', '#b991f2', '#ffffff']],
+    detail: { key: 'starCurve', min: 1.1, max: 1.2 },
+    trims: [['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff']],
   },
   {
     id: 'devin', name: 'Devin', covers: 'Devin (cloud, CLI, Devin Desktop, formerly Windsurf)',
@@ -220,28 +220,11 @@ export const PROVIDERS = BRANDS.filter((b) => b.id !== 'generic' && b.id !== 'un
 /** The drones A4 measures: a `sameAs` drone is its twin (only the label differs), so it isn't measured again. */
 export const DISTINCT = BRANDS.filter((b) => !b.sameAs);
 
-// Google options (human, 2026-11-11): "for the google bot, I want to completely redesign it ... inspired
-// by the google gemini logo ... do 5 variations I can pick from". The Gemini sparkle is a four-point
-// star with deeply concave sides and rounded tips, a soft gradient from red at the top, yellow on the
-// left and green at the bottom to blue on the right and in the middle. Each option maps that gradient
-// to flat quadrant panels of BLK 36 (palette.js OPTION_PALETTES `tints`: top, left, bottom, right) on
-// a different idea. They're normalised like the brand drones but aren't in BRANDS: the current Google
-// drone stays until the human picks, so the asset library's catalogue is unchanged.
+// The unpicked Google options (2026-11-11). The human asked for five Gemini-inspired Google drones
+// and picked G1 · Sparkle, which is now the Google drone above. G2-G5 stay as parameter sets for the
+// live page's picker, normalised like the brand drones but not rendered and not in BRANDS. Each passed
+// A4 on 2026-11-11 (the numbers are in out/params.md at 8aa33ee); they aren't measured since.
 const OPTION_ENTRIES = [
-  {
-    id: 'g1', name: 'G1 · Sparkle', brand: 'google',
-    look: 'head-is-body: the drone is a puffy four-point sparkle, its tips in the four Gemini colours, with a round screen in its blue middle',
-    params: {
-      rim: 0, antenna: 0,
-      headStar: 1, headW: 0.15, headH: 0.15, headD: 0.06, headRound: 0, starCurve: 1.15, starTip: 0.08, quadTint: 1,
-      screenW: 0.4, screenH: 0.4, screenY: 0, screenRound: 2, bezel: 0.2, eyes: 0, screenFlat: 2,
-      thrusters: 0, thrR: 0.02, thrL: 0.018, thrSpread: 0.9, thrFlare: 1,
-      smoke: 0, puffSize: 0.9, puffRate: 0.4, sparkles: 3,
-      bobAmp: 0.035, drift: 0.16, bank: 0.28, lookYaw: 0.4,
-    },
-    detail: { key: 'starCurve', min: 1.1, max: 1.2 },
-    trims: [['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff']],
-  },
   {
     id: 'g2', name: 'G2 · Star antenna', brand: 'google',
     look: "the generic drone's exact shape in white, a big four-colour sparkle on its antenna in place of the tip",
@@ -286,19 +269,8 @@ const OPTION_ENTRIES = [
     trims: [['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff']],
   },
 ];
-export const GOOGLE_OPTIONS = OPTION_ENTRIES.map((o) => normalise(o, OPTION_PALETTES[o.id]));
-export const OPTION_BY_ID = Object.fromEntries(GOOGLE_OPTIONS.map((o) => [o.id, o]));
-
-// The Gemini sparkle's colours, sampled from the human's reference (21 x 21 px means; the soft blends
-// between them aren't mapped: each quadrant is one flat ramp), -> BLK 36 for palette.js GEMINI_TINTS.
-// `note` flags a pick to keep an eye on. lab.mjs adds the nearest entries and the OKLab distances.
-export const GEMINI_COLOURS = [
-  { part: 'top tip (coral red)', quad: 0, hex: '#df525f', chosen: ['#cc5250'], why: '' },
-  { part: 'left side (orange)', quad: 1, hex: '#e2992d', chosen: ['#ff965f'], why: '' },
-  { part: 'left tip (yellow)', quad: 1, hex: '#d4c02c', chosen: ['#ffe091'], why: '', note: 'a loose match (0.129): BLK 36 has no saturated yellow, so the left tip reads cream-yellow over an orange shade' },
-  { part: 'bottom tip (green)', quad: 2, hex: '#2bb67b', chosen: ['#42bc7f'], why: '', note: "0.041 from the [OIII] event teal #00bc9c, and the green ramp's #22896e is 0.043 from #007c66: nearly as close as the teal slate the brand drones avoid (0.037). It's a lit body colour, never emissive, and only the bottom quadrant, beside red, yellow and blue" },
-  { part: 'right tip and middle (blue)', quad: 3, hex: '#3287ff', chosen: ['#4185d8'], why: '' },
-];
+export const GOOGLE_UNPICKED = OPTION_ENTRIES.map((o) => normalise(o, OPTION_PALETTES[o.id]));
+export const OPTION_BY_ID = Object.fromEntries(GOOGLE_UNPICKED.map((o) => [o.id, o]));
 
 // Per-session seeded details: personality ranges every brand shares (applied round the brand's
 // own value, clamped to the parameter's range), plus each brand's one shape detail and trims.
@@ -332,7 +304,8 @@ export function sessionLook(brandId, session) {
 }
 
 // Brand colour -> BLK 36, for the README and params.md (lab.mjs adds the nearest entries and
-// OKLab distances). `chosen` is what the palette uses; `why` explains any pick that isn't the nearest.
+// OKLab distances). `chosen` is what the palette uses; `why` explains any pick that isn't the nearest,
+// and `note` flags a pick to keep an eye on.
 export const BRAND_COLOURS = [
   { brand: 'claude', part: 'Clawd terracotta', hex: '#d77757', chosen: ['#ff965f', '#cc5250'], why: 'The nearest, #ff6866, is a pink-red coral (hue 24° against the brand\'s 39°) and the coral contributor\'s brightest tone. The lit front takes #ff965f (the hue) and turned faces take #cc5250 (the lightness), so the shell averages to a terracotta orange.' },
   { brand: 'cursor', part: 'near-black', hex: '#14120b', chosen: ['#12173d'], why: '' },
@@ -344,7 +317,13 @@ export const BRAND_COLOURS = [
   { brand: 'codex', part: 'Codey blue, lit (human\'s reference, 2026-11-10)', hex: '#4a6cf0', chosen: ['#4185d8'], why: '' },
   { brand: 'codex', part: 'Codey shaded rim (estimated from the reference)', hex: '#3a52c0', chosen: ['#354ab2'], why: '' },
   { brand: 'codex', part: 'Codey screen', hex: '#232d66', chosen: ['#293268'], why: '' },
-  { brand: 'google', part: 'Jules purple', hex: '#642cc2', chosen: ['#643499'], why: '' },
+  // Google's Gemini sparkle, sampled from the human's reference (21 x 21 px means; the soft blends between
+  // the colours aren't mapped): each quadrant is one flat ramp (`quad`: its palette `tints` ramp).
+  { brand: 'google', quad: 0, part: 'top tip (coral red)', hex: '#df525f', chosen: ['#cc5250'], why: '' },
+  { brand: 'google', quad: 1, part: 'left side (orange)', hex: '#e2992d', chosen: ['#ff965f'], why: '' },
+  { brand: 'google', quad: 1, part: 'left tip (yellow)', hex: '#d4c02c', chosen: ['#ffe091'], why: '', note: 'A loose match (0.129): BLK 36 has no saturated yellow, so the left tip reads cream-yellow over an orange shade.' },
+  { brand: 'google', quad: 2, part: 'bottom tip (green)', hex: '#2bb67b', chosen: ['#42bc7f'], why: '', note: "0.041 from the [OIII] event teal #00bc9c, and the ramp's #22896e is 0.043 from #007c66: nearly as close as the teal slate the brand drones avoid (0.037). Kept by the human (2026-11-11): a lit body colour, never emissive, only the bottom quadrant, beside red, yellow and blue." },
+  { brand: 'google', quad: 3, part: 'right tip and middle (blue)', hex: '#3287ff', chosen: ['#4185d8'], why: '' },
   { brand: 'devin', part: 'near-black', hex: '#0e1015', chosen: ['#12173d'], why: '' },
   { brand: 'devin', part: 'hexagons', hex: '#ffffff', chosen: ['#ffffff'], why: '' },
   { brand: 'kiro', part: 'Kiro purple', hex: '#9046ff', chosen: ['#8c51cc'], why: '' },
