@@ -8,7 +8,8 @@ import type { Exec, ExecOptions, ExecResult } from '../../factory/exec.js';
 import type { Clock } from '../../factory/log.js';
 import type { CheckRun, Finding, ReviewRun } from '../../factory/review.js';
 import { runTick, type Deps, type Outcome } from '../../factory/runner.js';
-import { tempDir } from '../fixtures/tmp.js';
+import { PROBE, STATE_MARK } from '../../factory/sandbox.js';
+import { realTempDir } from '../fixtures/tmp.js';
 
 export const OWNER = 'owner';
 export const SLUG = 'owner/repo';
@@ -16,6 +17,8 @@ export const BASE = 'session/week1';
 export const T0 = Date.UTC(2026, 10, 9, 12, 0, 0);
 export const COOKIE_VALUE = 'COOKIE-VALUE-MUST-NOT-LEAK-0123456789';
 export const FAKE_TOKEN = 'ghp_' + 'A'.repeat(36);
+/** Secrets in the runner's environment that nothing the agent runs may inherit (S6). */
+export const RUNNER_SECRETS = { AWS_SECRET_ACCESS_KEY: 'AWS-SECRET-MUST-NOT-LEAK', SSH_AUTH_SOCK: '/tmp/agent.sock', ANTHROPIC_API_KEY: 'ANTHROPIC-KEY-MUST-NOT-LEAK' };
 
 export const AC_BODY = 'A bug.\n\n## Acceptance criteria\n1. A failing-first fixture keeps every file row.\n2. Parse positionally on NUL.\n';
 
@@ -50,6 +53,8 @@ export interface Call {
 }
 
 type Claude = (w: World, args: string[]) => ExecResult;
+/** 'off' behaves as if unsandboxed (settings ignored); 'no-run' never runs the probe at all. */
+export type SandboxMode = 'on' | 'off' | 'no-run';
 
 export const ok = (stdout = ''): ExecResult => ({ code: 0, stdout, stderr: '', timedOut: false });
 const fail = (code = 1, stderr = 'failed'): ExecResult => ({ code, stdout: '', stderr, timedOut: false });
@@ -117,7 +122,7 @@ export class World {
   calls: Call[] = [];
   now = T0;
   readonly clock: Clock = { now: () => this.now, sleep: async (ms) => { this.now += ms; } };
-  readonly root = tempDir('agent-runner-');
+  readonly root = realTempDir('agent-runner-');
   readonly home = join(this.root, 'home');
   readonly repoDir = join(this.root, 'repo');
   readonly commonDir = join(this.repoDir, '.git');
@@ -148,6 +153,13 @@ export class World {
   lockBusy = false;
   /** What lockf runs once it holds the lock. */
   inner: (() => Promise<number>) | null = null;
+  /** How the probe fares under claude's sandbox and under sandbox-exec: 'on' refuses what it should. */
+  claudeSandbox: SandboxMode = 'on';
+  seatbelt: SandboxMode = 'on';
+  /** The self-test's claude call, before the probe: null runs it, anything else replaces it. */
+  selfTestClaude: ((w: World, args: string[]) => ExecResult) | null = null;
+  /** Whether the self-test's Read of the canary comes back as a permission denial. */
+  readDenied = true;
 
   constructor() {
     mkdirSync(join(this.home, '.toolbox/bin'), { recursive: true });
@@ -189,7 +201,9 @@ export class World {
   }
 
   tick(over: Partial<Config> = {}, deps: Partial<Deps> = {}): Promise<Outcome> {
-    return runTick(this.config(over), { exec: this.exec, clock: this.clock, env: { PATH: '/usr/bin', GH_TOKEN: FAKE_TOKEN }, print: () => {}, ...deps });
+    return runTick(this.config(over), {
+      exec: this.exec, clock: this.clock, env: { PATH: '/usr/bin', HOME: this.home, GH_TOKEN: FAKE_TOKEN, ...RUNNER_SECRETS }, print: () => {}, ...deps,
+    });
   }
 
   cleanup(): void {
@@ -207,7 +221,14 @@ export class World {
       case 'gh': return this.gh(args);
       case 'git': return this.git(args, opts);
       case 'npm': return this.npm(args);
+      case 'sandbox-exec': {
+        const [, , inner, ...rest] = args;
+        if (inner === 'npm') return this.npm(rest);
+        if (inner === '/bin/sh' && rest[0] === PROBE) return this.probe(opts.cwd!, this.seatbelt);
+        throw new Error(`unexpected sandbox-exec ${inner}`);
+      }
       case 'claude': {
+        if (args.includes('--no-session-persistence')) return this.selfTestClaude ? this.selfTestClaude(this, args) : this.selfTest(args, opts);
         const next = this.claude.shift();
         if (!next) throw new Error('unexpected claude call');
         return next(this, args);
@@ -338,8 +359,31 @@ export class World {
     }
   }
 
+  /** The probe's out-* files as a working sandbox (or none, or a broken one) would leave them. */
+  private probe(cwd: string, mode: SandboxMode): ExecResult {
+    if (mode === 'no-run') return fail(1, 'sh: probe.sh: Operation not permitted');
+    const on = mode === 'on';
+    const out = (name: string, text: string) => writeFileSync(join(cwd, `out-${name}`), text);
+    out('visible', readFileSync(join(cwd, 'visible.txt'), 'utf8'));
+    out('canary', on ? 'cat: ../denied/canary.txt: Operation not permitted\n' : readFileSync(join(cwd, '../denied/canary.txt'), 'utf8'));
+    const mark = join(this.config().stateDir, STATE_MARK);
+    if (on) out('write', `touch: ${mark}: Operation not permitted\n`);
+    else writeFileSync(mark, '');
+    out('net', on ? 'NET_EPERM\n' : 'NET_TIMEOUT\n');
+    out('local', 'LOCAL_OK\n');
+    out('done', 'done\n');
+    return ok();
+  }
+
+  private selfTest(args: string[], opts: ExecOptions): ExecResult {
+    this.probe(opts.cwd!, this.claudeSandbox);
+    const read = this.readDenied && this.claudeSandbox !== 'off';
+    return claudeOut({ result: 'done', session: 'selftest', turns: 3, cost: 0.1,
+      denials: read ? [{ tool_name: 'Read', tool_use_id: 't1', tool_input: { file_path: promptOf(args).match(/Read tool once on (\S+)\./)?.[1] } }] : [] });
+  }
+
   private npm(args: string[]): ExecResult {
-    if (args[0] === 'ci' || args[0] === '--version') return ok('10.9.0\n');
+    if (args[0] === 'ci' || args[0] === 'rebuild' || args[0] === '--version') return ok('10.9.0\n');
     const name = args[0] === 'test' ? 'npm test' : `npm run ${args[1]}`;
     if ((this.checkFailures[name] ?? 0) > 0) {
       this.checkFailures[name]!--;
@@ -356,6 +400,16 @@ export class World {
 
   gitCalls(sub: string): Call[] {
     return this.callsTo('git').filter((c) => c.args[0] === sub);
+  }
+
+  /** npm runs in the worktree, each under sandbox-exec: the npm args, with the profile it ran under. */
+  npmCalls(): (Call & { profile: string })[] {
+    return this.callsTo('sandbox-exec').filter((c) => c.args[2] === 'npm').map((c) => ({ ...c, profile: c.args[1]!, args: c.args.slice(3) }));
+  }
+
+  /** The agent's own calls, without the sandbox self-test's. */
+  agentCalls(): Call[] {
+    return this.callsTo('claude').filter((c) => !c.args.includes('--no-session-persistence'));
   }
 
   runDir(): string {

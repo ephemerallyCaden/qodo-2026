@@ -2,6 +2,7 @@
 // owner-labelled ticket, refuse it or claim it, run the headless agent in a fresh worktree,
 // publish its branch as a PR, then loop on CI and Qodo with at most two fix rounds.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
   agentEnv, agentRecord, claudeArgs, fixPrompt, fixResult, implementPrompt, implementResult, isPrTitle, readClaude,
@@ -17,6 +18,7 @@ import {
   ciState, isBlocking, parseQodo, qodoMarker, qodoState, shortSha,
   type CheckRun, type CiState, type Finding, type QodoState, type ReviewRun,
 } from './review.js';
+import { claudeSettings, SANDBOX_EXEC, sandboxSelfTest, seatbelt, seatbeltProfile, type SandboxPaths } from './sandbox.js';
 import { acceptanceCriteria, branchStem, ticketHash, ticketMarkdown, type Ticket } from './ticket.js';
 
 export interface Deps {
@@ -87,6 +89,8 @@ class Tick {
   private env: NodeJS.ProcessEnv;
   /** Environment for anything that runs agent-written code: the agent and the checks. */
   private agentEnv: NodeJS.ProcessEnv = {};
+  /** What the agent's sandbox and the runner's own (sandbox-exec) deny. */
+  private sandbox: SandboxPaths;
   private runId = '';
   private runDir = '';
   private ticket: Ticket | null = null;
@@ -111,6 +115,7 @@ class Tick {
   constructor(private cfg: Config, private deps: Deps) {
     this.log = new RunLog(cfg.dryRun ? null : ticksFile(cfg), deps.clock, deps.print, machinePaths(cfg));
     this.env = { ...deps.env, GIT_TERMINAL_PROMPT: '0', GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', NO_COLOR: '1' };
+    this.sandbox = { home: cfg.home, stateDir: cfg.stateDir, env: deps.env };
   }
 
   async run(): Promise<Outcome> {
@@ -200,18 +205,26 @@ class Tick {
     if (cfg.dryRun) {
       const stem = branchStem(ticket);
       return this.preview(n, 'would claim', [
+        'sandbox self-test (sandbox-exec, then one headless call); a failure hands the ticket back with agent-needs-help',
         `claim #${n}: ${LABELS.ready} → ${LABELS.working}, comment`,
-        `worktree .sandboxes/agent-${n} on ${stem} from origin/${cfg.base}, npm ci`,
-        `run ${basename(cfg.claude)} -p (dontAsk, ${cfg.maxTurns} turns, $${cfg.maxBudgetUsd}) on the ticket snapshot`,
-        `verify, push ${stem}, open a PR against ${cfg.base}, wait for CI + Qodo (≤ ${cfg.maxFixRounds} fix rounds)`,
+        `worktree .sandboxes/agent-${n} on ${stem} from origin/${cfg.base}, npm ci --ignore-scripts, npm rebuild (sandboxed)`,
+        `run ${basename(cfg.claude)} -p (dontAsk, sandboxed, ${cfg.maxTurns} turns, $${cfg.maxBudgetUsd}) on the ticket snapshot`,
+        `verify (sandboxed), push ${stem}, open a PR against ${cfg.base}, wait for CI + Qodo (≤ ${cfg.maxFixRounds} fix rounds)`,
       ]);
     }
 
-    // Pre-flight takes seconds; re-read right before the claim so a revoke or an edit in that window wins.
-    const again = await this.viewIssue(n);
-    const late = revoked(again) ?? (ticketHash(again.title, again.body ?? '') !== ticketHash(ticket.title, ticket.body)
-      ? `#${n} changed while it was being checked` : null);
+    // Pre-flight takes seconds and the self-test up to minutes; re-read after each, so a revoke or an
+    // edit in that window wins and nothing is spent on a ticket that's gone.
+    const late = await this.changedSince(ticket);
     if (late) return this.skip(n, late);
+    // S4: no claim, and so no agent, until both sandboxes have proved themselves on this machine.
+    const sandbox = await sandboxSelfTest({
+      exec: (cmd, args, opts) => this.sh(cmd, args, opts), claude: cfg.claude, paths: this.sandbox, agentBaseEnv: this.env, tmpRoot: tmpdir(),
+    });
+    this.log.event('sandbox-selftest', { ...sandbox });
+    const later = await this.changedSince(ticket);
+    if (later) return this.skip(n, later);
+    if (!sandbox.ok) return this.handBack(`sandbox self-test failed: ${sandbox.failures.join('; ')}`);
 
     this.startRunLog();
     try {
@@ -238,6 +251,13 @@ class Tick {
   private async viewIssue(n: number): Promise<IssueView> {
     return this.json<IssueView>(await this.ghOk(['issue', 'view', String(n), '--repo', this.cfg.slug, '--json',
       'number,title,body,author,url,state,labels'], `read #${n}`), `#${n}`);
+  }
+
+  /** Why the ticket may no longer be claimed (revoked, or edited since `ticket` was read), or null. */
+  private async changedSince(ticket: Ticket): Promise<string | null> {
+    const again = await this.viewIssue(ticket.number);
+    return revoked(again) ?? (ticketHash(again.title, again.body ?? '') !== ticketHash(ticket.title, ticket.body)
+      ? `#${ticket.number} changed while it was being checked` : null);
   }
 
   private skip(n: number, reason: string): Outcome {
@@ -274,6 +294,19 @@ class Tick {
       `Fix that and re-apply \`${LABELS.ready}\` to retry.`);
     this.log.event('end', { state: 'refused', reason });
     return { state: 'refused', issue: n, reason };
+  }
+
+  /** S4: the sandbox didn't prove itself, so the ticket goes back to the human unclaimed, with the reason. */
+  private async handBack(reason: string): Promise<Outcome> {
+    const n = this.ticket!.number;
+    this.startRunLog();
+    this.log.event('stop', { reason });
+    await this.relabel(LABELS.ready, LABELS.help);
+    await this.post('issue', String(n), `The agent runner stopped before claiming this ticket: ${reason}. No agent was started, ` +
+      'and the runner never runs one unsandboxed. Its log is in `.git/factory/runs/`. ' +
+      `Fix the sandbox on the runner's machine and re-apply \`${LABELS.ready}\` to retry.`);
+    this.log.event('end', { state: 'needs-help', reason });
+    return { state: 'needs-help', issue: n, reason };
   }
 
   /** Credentials and tools, checked before anything is claimed (R13). Never logs a credential value. */
@@ -320,8 +353,11 @@ class Tick {
     await this.chooseBranch(t);
     await this.git(cfg.repoDir, ['worktree', 'add', '--no-track', '-b', this.branch, this.worktree, `origin/${cfg.base}`]);
     this.log.event('worktree', { branch: this.branch, path: this.worktree });
-    const ci = await this.npm(['ci'], cfg.timeouts.npmCi);
-    if (ci.code !== 0) throw new Stop(`npm ci failed in the worktree${ci.timedOut ? ' (timed out)' : ''}: ${firstLine(tail(ci.stderr, 5))}`);
+    // S5: with the network open no repo code runs (no lifecycle scripts); the install scripts then run offline.
+    for (const [what, args, mode] of [['npm ci', ['ci', '--ignore-scripts'], 'install'], ['npm rebuild', ['rebuild'], 'check']] as const) {
+      const res = await this.npm([...args], cfg.timeouts.npmCi, mode);
+      if (res.code !== 0) throw new Stop(`${what} failed in the worktree${res.timedOut ? ' (timed out)' : ''}: ${firstLine(tail(res.stderr, 5))}`);
+    }
 
     const call = await this.agent(implementPrompt(t, this.criteria), cfg.maxTurns, cfg.maxBudgetUsd, cfg.timeouts.agent);
     const impl = implementResult(call.block, this.criteria.length);
@@ -353,7 +389,10 @@ class Tick {
     const k = ++this.agentCalls;
     const resume = this.sessionId || undefined;
     this.log.event('agent-start', { call: k, resume: resume ?? null, maxTurns, budgetUsd: budget });
-    const args = claudeArgs({ prompt, systemPrompt: systemPrompt(this.branch, cfg.base), maxTurns, maxBudgetUsd: budget, ...(resume ? { resume } : {}) });
+    const args = claudeArgs({
+      prompt, systemPrompt: systemPrompt(this.branch, cfg.base), maxTurns, maxBudgetUsd: budget, ...(resume ? { resume } : {}),
+      settings: JSON.stringify(claudeSettings(this.sandbox)),
+    });
     const t0 = this.deps.clock.now();
     const res = await this.sh(cfg.claude, args, { cwd: this.worktree, timeoutMs, env: this.agentEnv });
     const call = readClaude(res, { timeoutMs, wallMs: this.deps.clock.now() - t0 });
@@ -638,9 +677,10 @@ class Tick {
     return this.sh(this.cfg.qodo, args, { timeoutMs: this.cfg.timeouts.qodo });
   }
 
-  /** npm in the worktree runs agent-written code, so it gets the agent's environment. */
-  private npm(args: string[], timeoutMs: number): Promise<ExecResult> {
-    return this.sh('npm', args, { cwd: this.worktree, timeoutMs, env: this.agentEnv });
+  /** npm in the worktree runs agent-written code, so it gets the agent's environment and limits (S5). */
+  private npm(args: string[], timeoutMs: number, mode: 'install' | 'check' = 'check'): Promise<ExecResult> {
+    const profile = seatbeltProfile(this.sandbox, { worktree: this.worktree, mode });
+    return this.sh(SANDBOX_EXEC, seatbelt(profile, 'npm', args), { cwd: this.worktree, timeoutMs, env: this.agentEnv });
   }
 
   /** git with the human's gh login as the only credential helper (Research: not the keychain). */

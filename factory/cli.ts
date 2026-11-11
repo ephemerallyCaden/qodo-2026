@@ -28,9 +28,10 @@ options:
 const LOCK_BUSY = 75;
 const LOCKED_ENV = 'COMMET_FACTORY_LOCKED';
 /**
- * Outer cap on a whole locked run, above the sum of the inner timers (npm ci 10 min, the agent
- * 90 min, three verifies of up to 60 min, two 30 min fix rounds, three 30 min waits: about 7.2 h;
- * a test pins it). A run killed here is swept to agent-needs-help by the next tick.
+ * Outer cap on a whole locked run, above the sum of the inner timers (the 6 min sandbox self-test,
+ * npm ci and npm rebuild 10 min each, the agent 90 min, three verifies of up to 60 min, two 30 min
+ * fix rounds, three 30 min waits: about 7.4 h; a test pins it). A run killed here is swept to
+ * agent-needs-help by the next tick.
  */
 export const RUN_CAP_MS = 8 * 60 * 60_000;
 

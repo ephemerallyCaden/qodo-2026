@@ -27,6 +27,11 @@ Human decisions (2026-11-09): a launchd schedule on the Mac plus the `ready-for-
 - **Skipped.** A ticket that is closed, unlabelled or edited between the pick and the claim is left untouched (outcome `skipped`). The next tick reads it again.
 - **Orphan sweep.** Ticks hold the lock, so no live run can own an open `agent-working` ticket. The tick's one list call (`label:ready-for-agent,agent-working`) finds such tickets, and each gets `agent-needs-help` and a comment. This covers a killed run, a reboot and the 8 h outer cap.
 
+### Added in PR #93 (Qodo b274f225, the agent's checks could read the login cookie)
+- **Sandbox.** Every headless call passes `--settings` that turn on Claude Code's sandbox (`failIfUnavailable`, no unsandboxed retry, no auto-allow), deny reads of the credential stores to Bash and to the file tools, deny writes to `.git/factory/`, and allow no egress beyond localhost. The runner's own npm calls run under an equivalent `sandbox-exec` profile, with `npm ci --ignore-scripts` and the install scripts run offline after it. The agent's environment is an allowlist. See AGENTS.md "Agent runner" and `factory/sandbox.ts`.
+- **Self-test.** Before a claim, one probe script runs under `sandbox-exec` and then under a real headless call, and the Read tool is asked for the canary. Any failure hands the ticket back with `agent-needs-help`. Verified live on 2026-11-11: probe clean under both, Read denied, model call ok (3 turns, $0.23).
+- **Not covered:** hooks, plugins and Claude Code's own process run outside the sandbox, as before. `blockReadsOutsideWorkingDirectories` would also hide the node toolchain under `~` from sandboxed Bash, so the deny list is explicit instead.
+
 ### Day 4 demo (not runner code)
 - [x] **D1 Happy path.** Label #24 → the scheduled tick runs it end to end → PR with Qodo review → the human decides on the merge.
 - [x] **D2 Stop path shown live.** A deliberately bad ticket (no acceptance criteria) is refused with `agent-needs-help`, with no agent started.

@@ -29,11 +29,14 @@ export interface ClaudeCall {
   maxTurns: number;
   maxBudgetUsd: number;
   resume?: string;
+  /** The sandbox and permission settings as JSON (factory/sandbox.ts `claudeSettings`). */
+  settings: string;
 }
 
 /**
  * Flags per the runner-scout probes: always `dontAsk` (the user default is `auto`), no MCP
- * servers, and never `--no-session-persistence` (attribution needs the transcript, D3).
+ * servers, and never `--no-session-persistence` (attribution needs the transcript, D3). The
+ * settings ride on the command line, where nothing the agent runs can change them.
  */
 export function claudeArgs(c: ClaudeCall): string[] {
   return [
@@ -45,19 +48,29 @@ export function claudeArgs(c: ClaudeCall): string[] {
     '--max-budget-usd', String(c.maxBudgetUsd),
     '--append-system-prompt', c.systemPrompt,
     '--strict-mcp-config',
+    '--settings', c.settings,
     '--allowedTools', ...ALLOWED_TOOLS,
     '--disallowedTools', ...DENIED_TOOLS,
   ];
 }
 
 /**
- * Defence in depth under the tool rules: the agent's checks run arbitrary repo code, so its
- * environment can't push (credential helpers cleared, origin's push URL broken) or reach gh
- * (an empty config dir means no login).
+ * All the agent's process tree inherits from the runner (Qodo PR #93 b274f225): a login session's
+ * basics and Claude Code's config dir. Tokens, keys, agent sockets and everything else stay out.
+ */
+export const PASSED_ENV = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'TZ', 'CLAUDE_CONFIG_DIR'];
+
+/**
+ * Defence in depth under the sandbox and the tool rules: the agent's checks run arbitrary repo
+ * code, so its environment is an allowlist, can't push (credential helpers cleared, origin's
+ * push URL broken) and can't reach gh (an empty config dir means no login).
  */
 export function agentEnv(base: NodeJS.ProcessEnv, emptyGhConfigDir: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const k of PASSED_ENV) if (base[k] !== undefined) env[k] = base[k];
   return {
-    ...base,
+    ...env,
+    NO_COLOR: '1',
     GIT_TERMINAL_PROMPT: '0',
     GIT_CONFIG_COUNT: '2',
     GIT_CONFIG_KEY_0: 'credential.helper',
@@ -77,6 +90,8 @@ export function systemPrompt(branch: string, base: string): string {
     '- Read AGENTS.md and CLAUDE.md before changing anything, and follow them.',
     '- The runner that started you owns publication: it pushes, opens the PR, labels and comments.',
     '  git push, gh, merges, rebases, resets, amends and network tools are denied. Do not try them.',
+    '- Bash runs in a sandbox: no network beyond localhost, writes only in this worktree and temp dirs, and credential',
+    '  directories are unreadable. An "Operation not permitted" there is the sandbox; work within it.',
     '- Dependencies are installed. While iterating, run only the test files you touch: npx vitest run <file>.',
     '- Run the full gate once, at the end: npm run build, npm run typecheck, npm run lint, npm test. The runner re-runs it anyway.',
     '- Run tests in the foreground. Never start them in the background to wait or poll with sleep.',
@@ -190,7 +205,11 @@ export function readClaude(res: ExecResult, time: { timeoutMs: number; wallMs: n
   }
   if (res.error) return { ok: false, reason: `agent call failed to start: ${res.error}` };
   const o = firstJson(res.stdout) as Partial<ClaudeOutput> | null;
-  if (!o || typeof o.subtype !== 'string') return { ok: false, reason: `agent call failed (exit ${res.code}, no JSON result)` };
+  if (!o || typeof o.subtype !== 'string') {
+    // `sandbox.failIfUnavailable`: Claude Code exits at startup rather than run unsandboxed.
+    const why = /sandbox/i.test(res.stderr) ? ', the sandbox could not start' : '';
+    return { ok: false, reason: `agent call failed (exit ${res.code}, no JSON result${why})` };
+  }
   const out = o as ClaudeOutput;
   if (out.subtype === 'error_max_turns') return { ok: false, reason: `agent hit max turns (${out.num_turns ?? '?'})`, out };
   if (out.subtype !== 'success' || out.is_error || res.code !== 0) {

@@ -1,10 +1,11 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DENIED_TOOLS } from '../../factory/agent.js';
 import { LABELS } from '../../factory/config.js';
 import {
-  assertGuardrails, BASE, claudeOut, COOKIE_VALUE, FAKE_TOKEN, finding, firstHeadOnly, fixDone, implementDone, OWNER, promptOf, T0, World,
+  assertGuardrails, BASE, claudeOut, COOKIE_VALUE, FAKE_TOKEN, finding, firstHeadOnly, fixDone, implementDone, OWNER, promptOf,
+  RUNNER_SECRETS, T0, World,
 } from './world.js';
 
 const worlds: World[] = [];
@@ -205,7 +206,7 @@ describe('claim (R2) and work (R4)', () => {
     w.addIssue(24);
     w.claude.push(agentError);
     await w.tick();
-    const writes = w.calls.filter((c) => (c.args[0] === 'issue' && ['edit', 'comment'].includes(c.args[1]!)) || c.cmd.endsWith('claude') || c.args.includes('worktree'));
+    const writes = w.calls.filter((c) => (c.args[0] === 'issue' && ['edit', 'comment'].includes(c.args[1]!)) || (c.cmd.endsWith('claude') && !c.args.includes('--no-session-persistence')) || c.args.includes('worktree'));
     expect(writes[0]!.args).toEqual(['issue', 'edit', '24', '--repo', 'owner/repo', '--remove-label', LABELS.ready, '--add-label', LABELS.working]);
     expect(writes[1]!.args.slice(0, 2)).toEqual(['issue', 'comment']);
     expect(w.issues.get(24)!.comments[0]).toMatch(/^Claimed by the agent runner/);
@@ -220,7 +221,7 @@ describe('claim (R2) and work (R4)', () => {
     const add = w.gitCalls('worktree')[0]!.args;
     expect(add).toEqual(['worktree', 'add', '--no-track', '-b', 'agent/24-scan-windowcommits-splits-numstat-on-u',
       join(w.repoDir, '.sandboxes/agent-24'), `origin/${BASE}`]);
-    const claude = w.callsTo('claude')[0]!;
+    const claude = w.agentCalls()[0]!;
     expect(claude.cwd).toBe(join(w.repoDir, '.sandboxes/agent-24'));
     expect(claude.args).toEqual(expect.arrayContaining(['--permission-mode', 'dontAsk', '--output-format', 'json', '--strict-mcp-config']));
     expect(claude.args).not.toContain('--no-session-persistence');
@@ -332,8 +333,8 @@ describe('publish (R5)', () => {
   it("runs npm ci and its own checks with the agent's no-push environment, since they run agent-written code", async () => {
     const w = world();
     await happy(w);
-    const npm = w.callsTo('npm').filter((c) => c.args[0] !== '--version');
-    expect(npm.map((c) => c.args.join(' '))).toEqual(['ci', 'run build', 'run typecheck', 'run lint', 'test']);
+    const npm = w.npmCalls();
+    expect(npm.map((c) => c.args.join(' '))).toEqual(['ci --ignore-scripts', 'rebuild', 'run build', 'run typecheck', 'run lint', 'test']);
     for (const c of npm) {
       expect(c.cwd).toBe(join(w.repoDir, '.sandboxes/agent-24'));
       expect(c.env).toMatchObject({ GIT_CONFIG_VALUE_0: '', GIT_CONFIG_VALUE_1: expect.stringMatching(/push-disabled/), GH_TOKEN: '' });
@@ -346,7 +347,7 @@ describe('publish (R5)', () => {
     w.checkFailures['npm run lint'] = 1;
     w.claude.push(implementDone(), fixDone());
     expect(await w.tick()).toMatchObject({ state: 'done' });
-    const fix = w.callsTo('claude')[1]!.args;
+    const fix = w.agentCalls()[1]!.args;
     expect(fix).toEqual(expect.arrayContaining(['--resume', 'sess-1']));
     expect(promptOf(fix)).toContain(`The runner's own "npm run lint" failed`);
     expect(w.issues.get(24)!.comments.at(-1)).toContain('| Fix rounds used | 1 of 2 |');
@@ -363,7 +364,7 @@ describe('review loop (R6, R7)', () => {
     expect(await w.tick()).toMatchObject({ state: 'done', issue: 24 });
     expect(labels(w, 24)).toEqual([LABELS.done]);
     expect(w.gitCalls('push')).toHaveLength(2);
-    const fix = w.callsTo('claude')[1]!;
+    const fix = w.agentCalls()[1]!;
     expect(fix.args).toEqual(expect.arrayContaining(['--resume', 'sess-1']));
     expect(fix.cwd).toBe(join(w.repoDir, '.sandboxes/agent-24'));
     const prompt = promptOf(fix.args);
@@ -415,7 +416,7 @@ describe('review loop (R6, R7)', () => {
     w.claude.push(implementDone(), fixDone(), fixDone());
     const out = await w.tick();
     expect(out).toMatchObject({ state: 'needs-help', reason: expect.stringMatching(/^retry limit: 2 fix rounds used and 1 blocking finding/) });
-    expect(w.callsTo('claude')).toHaveLength(3);
+    expect(w.agentCalls()).toHaveLength(3);
     expect(w.gitCalls('push')).toHaveLength(3);
     expect(labels(w, 24)).toEqual([LABELS.help]);
     expect(w.issues.get(24)!.comments.at(-1)).toContain('| Fix rounds used | 2 of 2 |');
@@ -427,7 +428,7 @@ describe('review loop (R6, R7)', () => {
     w.addIssue(24);
     w.claude.push(implementDone(), fixDone());
     expect(await w.tick()).toMatchObject({ state: 'done' });
-    const prompt = promptOf(w.callsTo('claude')[1]!.args);
+    const prompt = promptOf(w.agentCalls()[1]!.args);
     expect(prompt).toContain('CI check "check (20)" ended failure');
     expect(prompt).toContain('Error: test failed');
   });
@@ -595,6 +596,124 @@ describe('agent output stays out of the run files (Qodo PR37 8310c5ac, AGENTS.md
     expect(runLog(w).find((e) => e['event'] === 'agent-end')!['permission_denials']).toEqual([
       { tool: 'Bash', kind: 'gh' }, { tool: 'Bash', kind: 'git push' }, { tool: 'Write' },
     ]);
+  });
+});
+
+describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
+  interface Settings {
+    sandbox: { filesystem: { denyRead: string[]; denyWrite: string[] } } & Record<string, unknown>;
+    permissions: { deny: string[]; blockWritesOutsideWorkingDirectories?: boolean };
+  }
+  const settingsOf = (args: string[]) => JSON.parse(args[args.indexOf('--settings') + 1]!) as Settings;
+  const selfTests = (w: World) => w.callsTo('claude').filter((c) => c.args.includes('--no-session-persistence'));
+  const stateDir = (w: World) => join(w.commonDir, 'factory');
+
+  it('every agent call runs Bash sandboxed, with no fallback, no egress, and credentials denied to Bash and the file tools (S1, S2, S3, S4)', async () => {
+    const w = world();
+    w.findings = firstHeadOnly([finding('f1')], []);
+    w.addIssue(24);
+    w.claude.push(implementDone(), fixDone());
+    expect(await w.tick()).toMatchObject({ state: 'done' });
+    const calls = w.agentCalls();
+    expect(calls).toHaveLength(2);
+    for (const c of calls) {
+      const s = settingsOf(c.args);
+      expect(s.sandbox).toMatchObject({
+        enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false, autoAllowBashIfSandboxed: false,
+        network: { allowedDomains: [], allowLocalBinding: true },
+      });
+      for (const dir of ['.midway', '.aws', '.ssh', '.config/gh']) {
+        expect(s.sandbox.filesystem.denyRead).toContain(join(w.home, dir));
+        expect(s.permissions.deny).toContain(`Read(/${join(w.home, dir)}/**)`);
+      }
+      expect(s.sandbox.filesystem.denyRead).toContain(join(w.home, '.claude/.credentials.json'));
+      expect(s.permissions.deny).toContain(`Read(/${join(w.home, '.claude/.credentials.json')})`);
+      expect(s.sandbox.filesystem.denyWrite).toEqual([stateDir(w)]);
+      expect(s.permissions.deny).toContain(`Edit(/${stateDir(w)}/**)`);
+      expect(s.permissions.blockWritesOutsideWorkingDirectories).toBe(true);
+    }
+  });
+
+  it("nothing the agent runs inherits the runner's secrets: an allowlisted environment (S6)", async () => {
+    const w = world();
+    await happy(w);
+    const runs = [...w.agentCalls(), ...selfTests(w), ...w.npmCalls(), ...w.callsTo('sandbox-exec')];
+    expect(runs.length).toBeGreaterThan(8);
+    for (const c of runs) {
+      for (const k of Object.keys(RUNNER_SECRETS)) expect(c.env?.[k], k).toBeUndefined();
+      expect(c.env).toMatchObject({ PATH: '/usr/bin', HOME: w.home, GH_TOKEN: '', GITHUB_TOKEN: '', GIT_CONFIG_VALUE_1: expect.stringMatching(/push-disabled/) });
+    }
+  });
+
+  it('npm ci runs no repo code while the network is open; install scripts and the checks run offline (S5)', async () => {
+    const w = world();
+    await happy(w);
+    const [ci, ...rest] = w.npmCalls();
+    expect(ci!.args).toEqual(['ci', '--ignore-scripts']);
+    expect(rest.map((c) => c.args[0])).toEqual(['rebuild', 'run', 'run', 'run', 'test']);
+    for (const c of [ci!, ...rest]) {
+      expect(c.profile).toContain(`(deny file-read* (subpath "${join(w.home, '.midway')}")`);
+      expect(c.profile).toContain(`(deny file-write* (subpath "${stateDir(w)}")`);
+    }
+    expect(ci!.profile).not.toContain('network-outbound');
+    for (const c of rest) expect(c.profile).toContain('(deny network-outbound (require-not (remote ip "localhost:*")))');
+  });
+
+  it('proves both sandboxes before the claim with a canary it made itself, then cleans up (S4)', async () => {
+    const w = world();
+    await happy(w);
+    const log = runLog(w);
+    const at = (e: string) => log.findIndex((x) => x['event'] === e);
+    expect(log[at('sandbox-selftest')]).toMatchObject({ ok: true, failures: [] });
+    expect(at('sandbox-selftest')).toBeLessThan(at('claim'));
+    const probe = w.callsTo('sandbox-exec').find((c) => c.args[2] === '/bin/sh')!;
+    const [self] = selfTests(w);
+    expect(w.calls.indexOf(probe)).toBeLessThan(w.calls.indexOf(self!));
+    expect(w.calls.indexOf(self!)).toBeLessThan(w.calls.indexOf(w.agentCalls()[0]!));
+    // The same settings as the agent's, plus only the runner's own canary dir.
+    const agent = settingsOf(w.agentCalls()[0]!.args);
+    const test = settingsOf(self!.args);
+    const canaryDir = test.sandbox.filesystem.denyRead.at(-1)!;
+    expect(canaryDir).toMatch(/factory-selftest-[^/]+\/denied$/);
+    expect(test.sandbox.filesystem.denyRead).toEqual([...agent.sandbox.filesystem.denyRead, canaryDir]);
+    expect(test.permissions.deny).toEqual(expect.arrayContaining(agent.permissions.deny));
+    expect(probe.args[1]).toContain(`(subpath "${canaryDir}")`);
+    expect(promptOf(self!.args)).toContain(`Read tool once on ${canaryDir}/canary.txt`);
+    expect(self!.args).toEqual(expect.arrayContaining(['--allowedTools', 'Read', 'Bash(sh probe.sh)']));
+    expect(existsSync(dirname(canaryDir))).toBe(false);
+    expect(existsSync(join(stateDir(w), '.sandbox-probe'))).toBe(false);
+  });
+
+  const broken: [string, (w: World) => void, string][] = [
+    ['claude ignores the settings', (w) => { w.claudeSandbox = 'off'; }, 'claude: read the denied canary file'],
+    ['claude cannot start the sandbox', (w) => {
+      w.selfTestClaude = () => ({ code: 1, stdout: '', stderr: 'Error: sandbox.failIfUnavailable is set but the sandbox is unavailable', timedOut: false });
+    }, 'claude: no JSON result (exit 1, the sandbox could not start)'],
+    ['the Read tool is not denied the canary', (w) => { w.readDenied = false; }, 'claude: the Read tool was not denied the canary'],
+    ['the probe never runs under claude', (w) => { w.claudeSandbox = 'no-run'; }, 'claude: the probe did not run to the end'],
+    ['sandbox-exec does not confine the probe', (w) => { w.seatbelt = 'off'; }, "sandbox-exec: read the denied canary file; sandbox-exec: wrote into the runner's state dir"],
+  ];
+  it.each(broken)('%s: the ticket goes back unclaimed with agent-needs-help and the reason, and no agent runs', async (_, breakIt, why) => {
+    const w = world();
+    w.addIssue(24);
+    breakIt(w);
+    const out = await w.tick();
+    expect(out).toMatchObject({ state: 'needs-help', issue: 24, reason: expect.stringContaining('sandbox self-test failed: ') });
+    expect((out as { reason: string }).reason).toContain(why);
+    expect(labels(w, 24)).toEqual([LABELS.help]);
+    expect(w.issues.get(24)!.comments).toEqual([expect.stringMatching(/stopped before claiming this ticket: sandbox self-test failed.*never runs one unsandboxed/s)]);
+    expect(w.agentCalls()).toHaveLength(0);
+    expect(w.gitCalls('worktree')).toHaveLength(0);
+    expect(existsSync(join(stateDir(w), '.sandbox-probe'))).toBe(false);
+    expect(runLog(w).at(-1)).toMatchObject({ event: 'end', state: 'needs-help' });
+  });
+
+  it('an agent call that exits because its sandbox cannot start stops the run and says so', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.claude.push(() => ({ code: 1, stdout: '', stderr: 'Error: sandbox required but unavailable', timedOut: false }));
+    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: expect.stringContaining('the sandbox could not start') });
+    expect(w.gitCalls('push')).toHaveLength(0);
   });
 });
 

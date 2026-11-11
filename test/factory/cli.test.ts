@@ -5,6 +5,7 @@ import { main, RUN_CAP_MS, type CliDeps } from '../../factory/cli.js';
 import { defaults } from '../../factory/config.js';
 import { realExec } from '../../factory/exec.js';
 import { JOB_LABEL, LABEL_DEFS, plistPath, renderPlist } from '../../factory/launchd.js';
+import { PROBE_TIMEOUT_MS, SELF_TEST_TIMEOUT_MS } from '../../factory/sandbox.js';
 import { BASE, ok, SLUG, World } from './world.js';
 import { tempDir } from '../fixtures/tmp.js';
 
@@ -192,10 +193,10 @@ describe('timers (R13)', () => {
     const c = defaults('/h', '/r', '/r/.git', 'o/r');
     expect(c.timeouts.agent).toBe(90 * 60_000);
     expect(c.timeouts.fix).toBe(30 * 60_000);
-    // The longest a run can take: npm ci, the implement call, a 4-check verify per agent call,
-    // every fix round and a review wait per push. The outer cap must sit above it.
+    // The longest a run can take: the sandbox self-test, npm ci and npm rebuild, the implement call,
+    // a 4-check verify per agent call, every fix round and a review wait per push. The outer cap must sit above it.
     const verifies = 1 + c.maxFixRounds;
-    const worst = c.timeouts.npmCi + c.timeouts.agent + verifies * 4 * c.timeouts.check + c.maxFixRounds * c.timeouts.fix + verifies * c.reviewTimeoutMs;
+    const worst = PROBE_TIMEOUT_MS + SELF_TEST_TIMEOUT_MS + 2 * c.timeouts.npmCi + c.timeouts.agent + verifies * 4 * c.timeouts.check + c.maxFixRounds * c.timeouts.fix + verifies * c.reviewTimeoutMs;
     expect(worst).toBeLessThan(RUN_CAP_MS);
   });
 });

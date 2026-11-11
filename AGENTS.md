@@ -71,6 +71,13 @@ Dev tooling, not Commet: Rule 2's "no GitHub posts" covers the product, not this
 
 It never merges, pushes `main` or a session branch, force-pushes, or edits repo settings or secrets (runtime guard: `factory/guard.ts`). It keeps Rule 2's local-data rules: no absolute paths in output or posts, an agent's Bash commands kept only as regex categories, logs only under `.git/factory/`.
 
+The agent runs sandboxed (`factory/sandbox.ts`). Its Bash commands, and everything they start, run in Claude Code's sandbox, passed with `--settings`. The runner's own `npm ci`, install scripts and checks get the same limits under `sandbox-exec`. Both deny:
+- reads of `~/.midway`, `~/.aws`, `~/.ssh`, `~/.qodo`, `~/.config/ada`, the gh config dir, and Claude Code's credential and account files;
+- network access except localhost (`npm ci` runs with `--ignore-scripts`, so no repo code runs while the registry is reachable);
+- writes outside the worktree, temp dirs and the shared `.git`, and always to `.git/factory/` (the runner's state and installed copy).
+
+The file tools have Read deny rules for the same paths and can't write outside the worktree. The agent gets an allowlisted environment, with no tokens, keys or agent sockets. Before claiming a ticket, the runner proves both sandboxes with a canary file it creates. If that self-test fails, or an agent call can't start its sandbox, the ticket gets `agent-needs-help` and a reason; nothing ever runs unsandboxed.
+
 Installing it is the lead's job, without asking the human. Whenever a change to `factory/` merges into the session branch, the lead runs `npm run factory -- install --interval 900 --base <current session branch>` from an up-to-date checkout of that branch (with `npm ci` first). The job ticks every 15 minutes, and `--base` is the only week-specific setting: when work moves to a new session branch, reinstall with the new `--base`. The installed copy in `.git/factory/bin` only updates on install, so skipping this leaves an old runner ticking. The human may still uninstall it at any time.
 
 Where it differs from the review loop above:
