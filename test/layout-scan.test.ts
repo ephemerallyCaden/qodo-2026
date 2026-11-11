@@ -262,6 +262,37 @@ describe('#71 content roots through the scan', () => {
     expect(zoned.layout.planets.some((p) => p.path === 'pkg')).toBe(false);
   });
 
+  // Qodo PR #93 r1 905eeef7: dirsAtHead (structure.ts:328-330) counts the root `src` as a top-level
+  // planet, so an outer folder's snapshot partner can be `src`. The snapshot is roots-independent
+  // by design (#18's mapping, as the test above pins), and the layout picks its own partners per
+  // zone (layout/index.ts:178), so what's drawn never names a root.
+  it("an outer folder's snapshot partner may be a root; its layout partner never is (Qodo PR #93 905eeef7)", async () => {
+    const day = (d: number) => `2026-10-0${d}T10:00:00Z`;
+    const r = miniRepo([{ id: 'c1', at: day(1), path: 'src/core/a.ts', lines: ['export const a = 1;'] }]);
+    try {
+      // tools is born in a commit that also touches src, and so is every tools commit after it.
+      const git = (args: string[]) => execFileSync('git', args, { cwd: r.dir, encoding: 'utf8' }).trim();
+      mkdirSync(join(r.dir, 'tools'));
+      for (const v of [2, 3, 4]) {
+        writeFileSync(join(r.dir, 'src/core/a.ts'), `export const a = ${v};\n`);
+        writeFileSync(join(r.dir, 'tools/x.ts'), `export const x = ${v};\n`);
+        git(['add', '-A']);
+        execFileSync('git', ['commit', '-q', '-m', `test: pair ${v}`], { cwd: r.dir, env: { ...process.env, GIT_AUTHOR_DATE: day(v), GIT_COMMITTER_DATE: day(v) } });
+      }
+      const head = git(['rev-parse', 'HEAD']);
+      const plain = await scanStructure({ dir: r.dir, sha: {}, head });
+      const zoned = await scanStructure({ dir: r.dir, sha: {}, head }, { roots: async () => ['src'] });
+      const dirOf = (s: SnapshotV02, p: string) => s.dirs.find((d) => d.path === p)!;
+      expect(zoned.json).toBe(plain.json); // roots never change the snapshot
+      expect(dirOf(zoned.snapshot, 'tools').partner).toBe(dirOf(zoned.snapshot, 'src').id); // names the root
+      expect(planetAt(plain.layout, 'tools').partner).toBe(dirOf(plain.snapshot, 'src').id); // #18: src is a planet
+      expect(zoned.layout.planets.map((p) => [p.path, p.zone])).toEqual([['src/core', 'content'], ['tools', 'outer']]);
+      expect(planetAt(zoned.layout, 'tools').partner).toBeNull(); // no older outer planet
+    } finally {
+      rmSync(r.dir, { recursive: true, force: true });
+    }
+  });
+
   it('a content planet born in a merge looks through to the branch, its odd name (U+0001, newline, tab) read whole', async () => {
     const { dir, head, odd } = oddMergeRepo('src/');
     try {
