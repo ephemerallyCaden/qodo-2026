@@ -52,6 +52,12 @@ const SHOTS = {
   'debris-catalogue': { viewport: { width: 1920, height: 1800 }, open: 'debris-3', act: async (page) => {
     await page.evaluate(() => document.querySelector('[data-id="debris-0"]').scrollIntoView({ block: 'start' }));
   } },
+  // the star (star-art.md): the inspector with moonlets, the star system scene in the composer, and the Star group
+  'inspector-star': { open: 'star-2' },
+  'star-system': { open: 'star-3' },
+  'star-catalogue': { viewport: { width: 1920, height: 1800 }, open: 'star-0', act: async (page) => {
+    await page.evaluate(() => document.querySelector('[data-id="star-0"]').scrollIntoView({ block: 'start' }));
+  } },
   // the dustier-ash trial (health-looks P2): the inspector's look switch, side by side, and the lineup group
   'trial-compare': { open: 'planets-3', extra: { trialCompare: true, render: paused() } },
   'trial-lineup': { viewport: { width: 1920, height: 1800 }, open: 'trials-6', act: async (page) => {

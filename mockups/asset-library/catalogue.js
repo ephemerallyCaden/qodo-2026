@@ -1,5 +1,5 @@
 // The catalogue (R1): every entry is a starting configuration for the inspector (a partial state:
-// focus, framing and asset), or for the palette editor. Seeds are the asset viewer's own (its
+// focus, framing and asset), for the composer (`scene`: a whole scene), or for the palette editor. Seeds are the asset viewer's own (its
 // system shot), so each tile is a look the viewer already shows. `final: false` marks the
 // exploration archive (R6). `t` (optional) is the loop time it opens at. `tag` (optional)
 // replaces the final badge: a library extra, or a look whose meaning is open (R9). Pure data, no DOM.
@@ -18,6 +18,7 @@ const DRONE_TILES = {
 };
 const drone = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'drone', framing: 'drone-close', asset: { kind: 'drone', yaw: -0.5, ...asset } }, ...extra });
 const HOST_HIDDEN = { surface: false, haze: false, clouds: false, ring: false };
+const star = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'star', framing: 'star', asset: { kind: 'star', ...asset } }, ...extra });
 
 // What each planet look means (art direction §6, "What a planet tells you"): its code-health band,
 // worst to best (lava, toxic, ash, healthy; lush, ocean and ice are the healthy band's three
@@ -43,6 +44,9 @@ const MID_POS = HERO_POS.map((x) => Math.round(((x * 12) / Math.hypot(...HERO_PO
 const debrisTile = (title, sub, asset, debris) => focus('debris')(planet(title, sub, { ring: 'off', ...asset, debris: { on: true, ...debris } }));
 const trialTile = (title, sub, asset, camera = null) => planet(title, sub, { ...asset, trial: 'dusty-ash' }, { final: false, tag: TRIAL_TAG, camera });
 
+/** The star's spot in the viewer's system view (viewer.js SYSTEM_STAR; test/star.test.mjs checks): up and back, upper left. */
+export const STAR_SPOT = [-8.4, 7.6, -28];
+
 export const GROUPS = [
   {
     id: 'astronauts', title: 'Astronauts', note: 'crew K (final): any contributor colour, any of the 10 V2 eyes',
@@ -61,6 +65,16 @@ export const GROUPS = [
     items: [
       ...BRANDS.map((b) => drone(DRONE_TILES[b.id]?.[0] ?? b.name, DRONE_TILES[b.id]?.[1] ?? b.covers, { provider: b.id })),
       ...DRONE_VARIANTS.map((v) => drone(`drone ${v}`, variantOf(v).name, { variant: v }, { final: false })),
+    ],
+  },
+  {
+    // the repo at the centre of its system (star-art.md): the Day 1 GIF's sun, one per repo, a constant look
+    id: 'star', title: 'Star', note: 'the repo: one star per system, a constant look (no data in its colour); moonlets are root files and unmatched tests',
+    items: [
+      star('star', 'the Day 1 sun · corona on', {}),
+      star('corona off', 'the disc alone', { corona: false }),
+      star('with moonlets', '5 moonlets, the moon look', { moonlets: 5 }),
+      { title: 'star system', sub: 'star, 3 planets, a debris planet, crew K', final: true, scene: starSystemScene() },
     ],
   },
   {
@@ -153,6 +167,7 @@ export const GROUPS = [
       { title: 'lava', sub: 'crust, glow, ash', palette: 'lava', final: true },
       { title: 'crew', sub: 'BLK 36', palette: 'crew', final: true },
       { title: 'accent', sub: '[OIII] teal', palette: 'accent', final: true },
+      { title: 'star', sub: 'disc, corona', palette: 'star', final: true },
     ],
   },
   {
@@ -185,6 +200,26 @@ export function showcaseScene() {
     kind: 'astronaut', color: 'coral', handle: '@caden', eyes: 'auto', pos, yaw, phase: 0.6 + i * 2.3,
   }));
   return { items: [...planets, ...crew, ...solos], selected: -1, framing: 'depth', camera: null };
+}
+
+/** A small system in the viewer's system view: the star at STAR_SPOT, the lush
+ *  hero, lava and ocean planets (the viewer's system spots), a desert planet with 8 debris pieces, and the crew. */
+export function starSystemScene() {
+  const spot = [-1.35, -0.2, 4.6];
+  const crew = [['coral', '@caden'], ['mint', '@mira'], ['lilac', '@juno']].map(([color, handle], i) => ({
+    kind: 'astronaut', color, handle, eyes: 'auto', pos: [spot[0] + (i - 1) * 0.72, spot[1], spot[2]], yaw: [0.4, 0.05, -0.4][i], phase: i * 1.7,
+  }));
+  return {
+    items: [
+      { kind: 'star', pos: [...STAR_SPOT] },
+      { kind: 'planet', biome: 'lush', seed: 7, ring: 'thin', pos: [0.75, 0.15, 0] },
+      { kind: 'planet', biome: 'lava', seed: 11, size: 0.7, ring: 'off', moons: false, pos: [3.3, -0.9, 0.9] },
+      { kind: 'planet', biome: 'ocean', seed: 42, size: 1.25, ring: 'off', moons: false, pos: [7.2, 3.6, -19] },
+      { kind: 'planet', biome: 'desert', seed: 3, size: 0.85, ring: 'off', moons: false, pos: [-1.0, 3.4, -9], debris: { on: true, count: 8 } },
+      ...crew,
+    ],
+    selected: -1, framing: 'system', camera: null,
+  };
 }
 
 /** A small composition: one planet and three astronauts at chosen positions and depths. */

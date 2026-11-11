@@ -6,7 +6,7 @@ import { EYE_DESIGNS, eyesFor } from '../asset-viewer/faces.js';
 import { BIOMES, WEATHER } from '../asset-viewer/viewer.js';
 import { renderer, camera, controls, frameWidth, Stage, applyRender, retintStage, placeCamera, renderToCanvas, renderToImage, FRAMING_CAMERAS, frameCamera, labVariant } from './engine.js';
 import * as S from './state.js';
-import { GROUPS as CATALOGUE, ITEMS, showcaseScene, crewScene, BIOME_MEANING, EXTRA, RING_TAG } from './catalogue.js';
+import { GROUPS as CATALOGUE, ITEMS, showcaseScene, crewScene, starSystemScene, STAR_SPOT, BIOME_MEANING, EXTRA, RING_TAG } from './catalogue.js';
 import * as P from './palette.js';
 import * as H from './history.js';
 import { TRIALS, trialOf, trialFor } from './trials.js';
@@ -42,17 +42,16 @@ const stage = () => stages[state.mode];
 const isLab = () => state.mode === 'asset' && state.asset.kind === 'lab';
 const now = () => (state.render.play ? playFrom.t + (performance.now() - playFrom.at) / 1000 : state.render.t);
 
+/** A scene's camera: its own, or its framing's. */
+const sceneCamera = (sc) => sc.camera ?? FRAMING_CAMERAS[{ depth: 'depth', crew: 'scene-crew', system: 'system' }[sc.framing]];
 function cameraFor() {
   if (state.mode === 'history') return hv?.live ? state.history.camera ?? hv.camera : null;
-  if (state.mode === 'scene') {
-    const key = { depth: 'depth', crew: 'scene-crew', system: 'system' }[state.scene.framing];
-    return state.scene.camera ?? FRAMING_CAMERAS[key];
-  }
+  if (state.mode === 'scene') return sceneCamera(state.scene);
   return state.camera ?? frameCamera(state.framing, state.asset);
 }
 function minDistance() {
   const solo = state.mode === 'asset' ? state.asset : state.mode === 'history' && hv?.items.length === 1 ? hv.items[0] : null;
-  return solo?.kind === 'planet' ? 1.35 * solo.size : 0.3;
+  return solo?.kind === 'planet' || solo?.kind === 'star' ? 1.35 * solo.size : 0.3;
 }
 
 // ---------------------------------------------------------------- looks
@@ -195,11 +194,12 @@ const paletteCanvases = new Map();
 const ITEM_BY_ID = new Map(ITEMS.map((it) => [it.id, it]));
 const tileNear = new Set(); // tile ids near the catalogue's view
 const tileFresh = new Set(); // tile ids whose thumbnail is current
+const hasThumb = (it) => !!(it?.state || it?.scene); // an asset's tile, or a scene's (palette tiles draw their swatches)
 let tilesSeen = false; // the observer has reported once
 function queueNear() {
   for (const id of tileNear) {
     const it = ITEM_BY_ID.get(id);
-    if (it?.state && !tileFresh.has(id) && !thumbQueue.includes(it)) thumbQueue.push(it);
+    if (hasThumb(it) && !tileFresh.has(id) && !thumbQueue.includes(it)) thumbQueue.push(it);
   }
 }
 const tileObserver = new IntersectionObserver((entries) => {
@@ -208,7 +208,7 @@ const tileObserver = new IntersectionObserver((entries) => {
   queueNear();
 }, { root: $('catalogue'), rootMargin: '400px 0px' });
 /** Every tile near the view is rendered and current (thumbnails further down render when they come into view). */
-const thumbsDone = () => tilesSeen && !thumbTimer && [...tileNear].every((id) => !ITEM_BY_ID.get(id)?.state || tileFresh.has(id));
+const thumbsDone = () => tilesSeen && !thumbTimer && [...tileNear].every((id) => !hasThumb(ITEM_BY_ID.get(id)) || tileFresh.has(id));
 // Palette edits re-render the thumbnails once the edit settles, not on every colour-picker tick.
 let thumbTimer = 0;
 function thumbsSoon() {
@@ -224,6 +224,15 @@ function thumbsDirty() {
 function renderThumbs(n) {
   for (let k = 0; k < n && thumbQueue.length; k++) {
     const it = thumbQueue.shift();
+    if (it.scene) { // a scene tile: its items in the library's look, from its framing's camera
+      const sc = S.normalise({ mode: 'scene', scene: it.scene }).scene;
+      const ts = thumbStage('scene');
+      useLook(ts, { render: S.RENDER_DEFAULTS });
+      ts.sync(sc.items, pal);
+      thumbCanvases.get(it.id)?.getContext('2d').putImageData(renderToImage(ts, it.t ?? 3, S.RENDER_DEFAULTS, THUMB_W, THUMB_H, sceneCamera(sc)), 0, 0);
+      tileFresh.add(it.id);
+      continue;
+    }
     const st = S.normalise({ ...it.state, asset: it.state.asset });
     // each tile in its own look (the library's, or a trial's); a trial tile has its own stage, tinted for it
     const look = itemLook(st.asset);
@@ -260,11 +269,11 @@ function buildCatalogue() {
       b.className = `tile${it.final ? '' : ' explore'}`;
       b.dataset.id = it.id;
       const badge = it.ported === false ? '<span class="badge todo">not yet ported</span>' : it.tag ? `<span class="badge ${it.final ? 'tag' : 'explore'}">${it.tag}</span>` : it.final ? '<span class="badge final">final</span>' : '<span class="badge explore">exploration</span>';
-      if (it.state || it.palette) {
+      if (hasThumb(it) || it.palette) {
         const cv = document.createElement('canvas');
         cv.width = THUMB_W; cv.height = THUMB_H;
         b.append(cv);
-        if (it.state) thumbCanvases.set(it.id, cv);
+        if (hasThumb(it)) thumbCanvases.set(it.id, cv);
         else paletteCanvases.set(it.palette, cv);
       } else {
         b.insertAdjacentHTML('beforeend', `<span class="ph">${it.note}</span>`);
@@ -287,6 +296,11 @@ function openItem(it) {
     if (state.mode === 'history') update((n) => { n.mode = 'asset'; });
     else apply(state);
     document.querySelector(`[data-pal-group="${it.palette}"]`)?.scrollIntoView({ block: 'start' });
+    return;
+  }
+  if (it.scene) { // a scene tile opens in the composer
+    tab = 'scene';
+    update((n) => { n.mode = 'scene'; n.scene = clone(it.scene); n.trialCompare = false; });
     return;
   }
   if (!it.state) {
@@ -355,6 +369,7 @@ function describe(it) {
   if (it.kind === 'planet') return `planet · ${trialOf(it)?.title ?? BIOMES[it.biome].label.replace(' (extra)', '')} ${it.seed}${trialOf(it) ? ' (trial)' : ''}`;
   if (it.kind === 'astronaut') return `astronaut · ${it.handle || 'anon'}`;
   if (it.kind === 'drone') return it.variant ? `drone ${it.variant} (exploration)` : `drone · ${brandName(it.provider)}${it.session === null ? '' : ` #${it.session}`}`;
+  if (it.kind === 'star') return `star${it.moonlets ? ` · ${it.moonlets} moonlets` : ''}`;
   return `exploration ${it.variant}`;
 }
 
@@ -534,6 +549,22 @@ function droneControls(it, patch) {
   ];
 }
 
+/** The star (the viewer's makeStar): size, spin, granulation, corona and moonlets. */
+function starControls(it, patch) {
+  const R = S.STAR_RANGES;
+  return [
+    section('star', true,
+      note('one star per repo, a constant look: its colour carries no data'),
+      slider('size', it.size, { min: R.size[0], max: R.size[1], title: 'the star\'s radius (a hero planet is 1)' }, (v) => patch({ size: v }, live)),
+      slider('spin', it.spin, { min: R.spin[0], max: R.spin[1], step: 1, fmt: String, title: 'whole turns per loop' }, (v) => patch({ spin: v }, live)),
+      slider('granulation', it.granulation, { min: R.granulation[0], max: R.granulation[1], title: 'how far the granulation cells wobble the band edges (1 = the Day 1 sun, 0 = smooth bands)' }, (v) => patch({ granulation: v }, live)),
+      check('corona', it.corona, (v) => patch({ corona: v }), { title: 'a flat-band crown and dark-red halo past the limb; off: the disc alone' })),
+    section('moonlets', true,
+      note('root files and unmatched tests, in the moon look, one orbit per surface turn'),
+      slider('moonlets', it.moonlets, { min: R.moonlets[0], max: R.moonlets[1], step: 1, fmt: String }, (v) => patch({ moonlets: v }, live))),
+  ];
+}
+
 function labControls(it, patch) {
   const v = labVariant(it.variant);
   return [
@@ -584,7 +615,7 @@ function cameraControls() {
   if (isLab()) return null;
   const sceneMode = state.mode === 'scene';
   const opts = sceneMode ? [['depth', 'depth view'], ['crew', 'crew close-up'], ['system', 'system view']]
-    : { planet: [['planet', 'hero close-up'], ['clouds-zoom', 'cloud close-up'], ['top', 'top-down']], drone: [['drone', 'full (the lab\'s tile)'], ['drone-close', 'close-up (×2)']] }[state.asset.kind] ?? null;
+    : { planet: [['planet', 'hero close-up'], ['clouds-zoom', 'cloud close-up'], ['top', 'top-down']], drone: [['drone', 'full (the lab\'s tile)'], ['drone-close', 'close-up (×2)']], star: [['star', 'star close-up']] }[state.asset.kind] ?? null;
   return section('camera', sceneMode,
     opts ? select('framing', sceneMode ? state.scene.framing : state.framing, opts, (v) => update((n) => { if (sceneMode) { n.scene.framing = v; n.scene.camera = null; } else { n.framing = v; n.camera = null; } })) : null,
     buttons(btn('reset camera', () => update((n) => { if (sceneMode) n.scene.camera = null; else n.camera = null; }), { disabled: !(sceneMode ? state.scene.camera : state.camera) })),
@@ -615,13 +646,15 @@ function sceneControls() {
         btn('+ planet', () => add({ kind: 'planet', biome: 'lush', seed: 7, pos: [0, 0, -2] })),
         btn('+ astronaut', () => add({ kind: 'astronaut', color: 'mint', handle: '@mira', pos: [0, -0.4, 4] })),
         btn('+ drone', () => add({ kind: 'drone', provider: 'generic', pos: [0.6, 0.12, 4] })), // beside the crew, hovering at the lab's crew height
-        btn('+ inspected asset', () => add({ ...clone(state.asset), pos: state.asset.kind === 'planet' ? [0, 0, -2] : state.asset.kind === 'drone' ? [0.6, 0.12, 4] : [0, -0.4, 4] }), { disabled: state.asset.kind === 'lab', title: 'the asset open in the inspector' })),
+        btn('+ star', () => add({ kind: 'star', pos: STAR_SPOT })), // the viewer's system spot
+        btn('+ inspected asset', () => add({ ...clone(state.asset), pos: { planet: [0, 0, -2], drone: [0.6, 0.12, 4], star: STAR_SPOT }[state.asset.kind] ?? [0, -0.4, 4] }), { disabled: state.asset.kind === 'lab', title: 'the asset open in the inspector' })),
       buttons(
         btn('preset: viewer depth scene', () => update((n) => { n.scene = showcaseScene(); })),
         btn('preset: planet + 3 crew', () => update((n) => { n.scene = crewScene(); })),
+        btn('preset: star system', () => update((n) => { n.scene = starSystemScene(); })),
         btn('clear', () => update((n) => { n.scene = { items: [], selected: -1, framing: n.scene.framing, camera: n.scene.camera }; }), { disabled: !sc.items.length }))),
     pos,
-    ...(sel ? ({ planet: planetControls, astronaut: astronautControls, drone: droneControls }[sel.it.kind])(sel.it, sel.patch) : [note('select an item (click it on the stage or in the list) to configure it')]),
+    ...(sel ? ({ planet: planetControls, astronaut: astronautControls, drone: droneControls, star: starControls }[sel.it.kind])(sel.it, sel.patch) : [note('select an item (click it on the stage or in the list) to configure it')]),
   ];
 }
 
@@ -993,7 +1026,7 @@ function buildPanel() {
     title = cat?.title ?? describe(it);
     sub = it.kind === 'lab' || (it.kind === 'drone' && it.variant) ? 'exploration, not final' : trialOf(it) ? `${state.focus} · trial look, not final` : `${state.focus} · final asset`;
     const patch = (p, opts) => update((n) => Object.assign(n.asset, p), opts);
-    body = [...({ planet: planetControls, astronaut: astronautControls, drone: droneControls, lab: labControls }[it.kind])(it, patch), cameraControls(), renderControls()];
+    body = [...({ planet: planetControls, astronaut: astronautControls, drone: droneControls, lab: labControls, star: starControls }[it.kind])(it, patch), cameraControls(), renderControls()];
   }
   panel.append(h('h3', {}, title, h('small', {}, sub)), ...body.flat().filter(Boolean));
   panel.scrollTop = top;

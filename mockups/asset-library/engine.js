@@ -1,12 +1,12 @@
 // Rendering for the library. Every asset is built by the asset viewer's own factories
-// (makePlanet, makeAstronaut, makeSky, makeStars from ../asset-viewer/viewer.js) and drawn by its
+// (makePlanet, makeAstronaut, makeStar, makeSky, makeStars from ../asset-viewer/viewer.js) and drawn by its
 // renderer and camera, posed and depth-tinted by its own helpers (poseWorld, depthLevelAt,
 // setDepthLevel, applyDepth), in the order the viewer's frame() uses. Nothing here writes a
 // shader. Exploration variants (A-J) come from the astronaut lab's own renderer, and drones from
 // the drone lab's own drone (makeDrone, posed as its renderTile does: drones.js), read-only.
 import * as THREE from 'three';
 import {
-  makePlanet, makeAstronaut, makeSky, makeStars, setDepthLevel, depthLevelAt, poseWorld, setLoop, applyDepth,
+  makePlanet, makeAstronaut, makeStar, makeSky, makeStars, setDepthLevel, depthLevelAt, poseWorld, setLoop, applyDepth,
   setPixelSize, setViewSize, frameWidth, retint, resolve, renderer, camera, controls, VIEWS, BIOMES, CREW_SPOT,
 } from '../asset-viewer/viewer.js';
 import { eyesFor } from '../asset-viewer/faces.js';
@@ -39,6 +39,7 @@ export const FRAMING_CAMERAS = {
   depth: { pos: VIEWS.depth.pos, target: VIEWS.depth.target },
   'scene-crew': { pos: VIEWS.crew.pos, target: VIEWS.crew.target },
   system: { pos: VIEWS.system.pos, target: VIEWS.system.target },
+  star: { pos: VIEWS.star.pos, target: VIEWS.star.target }, // the viewer's star view
 };
 export const labVariant = (id) => LAB_VARIANTS.find((v) => v.id === id);
 /** A framing's camera: the fixed ones above, or a drone framing (the drone lab's, from the drone's extents). */
@@ -74,6 +75,7 @@ export class Stage {
       if (it.kind === 'planet') this.syncPlanet(s.obj, it);
       else if (it.kind === 'astronaut') this.syncAstronaut(s.obj, it, pal);
       else if (it.kind === 'drone') this.syncDrone(s.obj, it);
+      else if (it.kind === 'star') this.syncStar(s.obj, it);
       else this.syncLab(s.obj, it);
     });
     // The labs render on flat space, without the viewer's sky and stars: an astronaut variant, or
@@ -83,7 +85,7 @@ export class Stage {
   }
 
   make(kind) {
-    const obj = kind === 'planet' ? makePlanet() : kind === 'astronaut' ? makeAstronaut('coral') : kind === 'drone' ? makeDrone() : makeLabAstronaut({ color: 'mint', eyes: 0 });
+    const obj = kind === 'planet' ? makePlanet() : kind === 'astronaut' ? makeAstronaut('coral') : kind === 'drone' ? makeDrone() : kind === 'star' ? makeStar() : makeLabAstronaut({ color: 'mint', eyes: 0 });
     return { kind, obj, group: obj.group };
   }
 
@@ -92,6 +94,11 @@ export class Stage {
     d.setParams(params);
     d.setPalette(palette);
     d.group.position.set(...it.pos);
+  }
+
+  syncStar(st, it) {
+    st.set({ size: it.size, spin: it.spin, granulation: it.granulation, corona: it.corona, moonlets: it.moonlets });
+    st.group.position.set(...it.pos);
   }
 
   syncPlanet(p, it) {
@@ -132,7 +139,7 @@ export class Stage {
   pose(t, render) {
     this.stars.position.copy(camera.position);
     const by = (k) => this.slots.filter((s) => s.kind === k);
-    poseWorld(t, { planets: by('planet').map((s) => s.obj), astronauts: by('astronaut').map((s) => s.obj), spin: render.spin, lavaTime: render.lavaTime });
+    poseWorld(t, { planets: by('planet').map((s) => s.obj), astronauts: by('astronaut').map((s) => s.obj), suns: by('star').map((s) => s.obj), spin: render.spin, lavaTime: render.lavaTime });
     for (const s of by('lab')) s.obj.update(t, { yaw: s.item.yaw, sway: s.item.sway ? 1 : 0 });
     // drones as the drone lab's renderTile poses them (their own shader: no viewer depth fade)
     for (const s of by('drone')) {
@@ -141,7 +148,7 @@ export class Stage {
     }
     setDepthLevel(this.stars, 0);
     setDepthLevel(this.sky, 0);
-    for (const s of this.slots) if (s.kind === 'planet' || s.kind === 'astronaut') setDepthLevel(s.group, depthLevelAt(camera.position.distanceTo(s.group.getWorldPosition(TMP)), render));
+    for (const s of this.slots) if (s.kind === 'planet' || s.kind === 'astronaut' || s.kind === 'star') setDepthLevel(s.group, depthLevelAt(camera.position.distanceTo(s.group.getWorldPosition(TMP)), render));
   }
 
   clearColor() {
@@ -154,7 +161,7 @@ export class Stage {
     if (!s) return null;
     const it = s.item;
     const c = TMP.set(...it.pos);
-    const r = it.kind === 'planet' ? it.size : it.kind === 'drone' ? 0.3 : 0.55;
+    const r = it.kind === 'planet' ? it.size : it.kind === 'star' ? it.size * 1.2 : it.kind === 'drone' ? 0.3 : 0.55; // (a star with its corona)
     if (it.kind === 'astronaut') c.y += 0.5;
     RIGHT.setFromMatrixColumn(camera.matrixWorld, 0);
     const q = TMP2.copy(c).addScaledVector(RIGHT, r).project(camera);

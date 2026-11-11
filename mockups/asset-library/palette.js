@@ -29,6 +29,7 @@ export const GROUPS = [
   { id: 'lava', title: 'Lava ramps', note: 'crust plates, molten glow (rim, body, hot cores), ash smoke', keys: ['crust', 'glow', 'ash'] },
   { id: 'crew', title: 'Crew (BLK 36)', note: 'suit, gear, visor, glint and the three preset contributor ramps', keys: ['suit', 'gear', 'visor', 'glint', 'contributors'] },
   { id: 'accent', title: '[OIII] teal accent', note: 'code-layer events only; the artefacts\' teal garnish uses step 3', keys: ['accent'] },
+  { id: 'star', title: 'Star', note: 'the disc, limb to core (lava glow, sand and cloud tops), and the corona\'s crown and dark-red halo', keys: ['star', 'corona'] },
 ];
 
 /** Every editable colour of a group: [{ path, label, hex }] (depth entries are [tint, amount]: the tint). */
