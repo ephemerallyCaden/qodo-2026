@@ -540,7 +540,7 @@ class Tick {
       const [issue, view, runs, qres] = await Promise.all([
         this.readTicket(),
         this.gh(['pr', 'view', pr.url, '--json', 'headRefOid,state']),
-        this.gh(['api', `repos/${cfg.slug}/commits/${head}/check-runs?per_page=100`]),
+        this.gh(['api', '--paginate', '--slurp', `repos/${cfg.slug}/commits/${head}/check-runs?per_page=100`]),
         this.qodo(['read', 'pr-review-session', 'findings', '--pr-url', pr.url, '--extended', '--json']),
       ]);
       this.assertSnapshot(issue);

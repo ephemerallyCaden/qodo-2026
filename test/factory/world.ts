@@ -147,6 +147,8 @@ export class World {
   qodoDelayMs: number | null = 10_000;
   /** CI completes this long after a push; null = never. */
   ciDelayMs: number | null = 60_000;
+  /** Check runs on each head; GitHub serves them in pages of `per_page` (default 30, at most 100). */
+  ciRunCount = 2;
   ciConclusion: (head: string) => string = () => 'success';
   /** The issue's body changes at this time. */
   editAt: number | null = null;
@@ -300,7 +302,14 @@ export class World {
         return ok(h && this.reviewStarted(h) ? `<h3>Code Review by Qodo</h3>\n<!-- https://github.com/${SLUG}/commit/${h} -->\n` : '');
       }
       const runs = /commits\/([0-9a-f]+)\/check-runs/.exec(path);
-      if (runs) return ok(JSON.stringify({ total_count: 2, check_runs: this.checkRuns(runs[1]!) }));
+      if (runs) {
+        const all = this.checkRuns(runs[1]!);
+        const per = Math.min(100, Number(/per_page=(\d+)/.exec(path)?.[1] ?? 30));
+        const pages = Array.from({ length: Math.ceil(all.length / per) }, (_, i) => ({ total_count: all.length, check_runs: all.slice(i * per, (i + 1) * per) }));
+        if (!args.includes('--paginate')) return ok(JSON.stringify(pages[0]));
+        // gh --paginate alone concatenates the page objects; --slurp wraps them in one array.
+        return ok(args.includes('--slurp') ? JSON.stringify(pages) : pages.map((x) => JSON.stringify(x)).join(''));
+      }
     }
     throw new Error(`unrouted gh ${args.join(' ')}`);
   }
@@ -317,7 +326,8 @@ export class World {
 
   private checkRuns(head: string): CheckRun[] {
     const done = this.since(head, this.ciDelayMs);
-    return ['check (20)', 'check (22)'].map((name, i) => ({
+    const names = Array.from({ length: this.ciRunCount }, (_, i) => (i < 2 ? `check (${20 + 2 * i})` : `extra ${i}`));
+    return names.map((name, i) => ({
       id: 1000 + i, name, status: done ? 'completed' : 'in_progress', conclusion: done ? this.ciConclusion(head) : null,
     }));
   }

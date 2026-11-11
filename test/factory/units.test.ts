@@ -129,6 +129,17 @@ describe('CI state (R6)', () => {
     const page = JSON.stringify({ total_count: 150, check_runs: [{ id: 1, name: 'c', status: 'completed', conclusion: 'success' }] });
     expect(ciState(page)).toEqual({ kind: 'pending', why: 'only 1 of 150 check runs visible' });
   });
+  it('reads every page gh --paginate --slurp returns, and stays pending while any run is unseen (Qodo PR93 34599baa)', () => {
+    const run = (id: number, conclusion = 'success') => ({ id, name: `c${id}`, status: 'completed', conclusion });
+    const page = (total: number, ...ids: number[]) => ({ total_count: total, check_runs: ids.map((i) => run(i)) });
+    expect(ciState(JSON.stringify([page(3, 1, 2), page(3, 3)]))).toMatchObject({ kind: 'complete', runs: [{ id: 1 }, { id: 2 }, { id: 3 }] });
+    expect(ciState(JSON.stringify([page(3, 1, 2), { total_count: 3, check_runs: [run(3, 'failure')] }]))).toMatchObject({ kind: 'complete', failed: [{ id: 3 }] });
+    // A run seen on two pages (the list shifted between requests) counts once.
+    expect(ciState(JSON.stringify([page(3, 1, 2), page(3, 2)]))).toEqual({ kind: 'pending', why: 'only 2 of 3 check runs visible' });
+    expect(ciState(JSON.stringify([page(2, 1, 2), { total_count: 2 }]))).toEqual({ kind: 'pending', why: 'check runs unreadable' });
+    expect(ciState('[]')).toEqual({ kind: 'pending', why: 'no check runs yet' });
+  });
+
   it('fails anything that is not success', () => {
     expect(ciState(runs(['completed', 'success'], ['completed', 'success']))).toMatchObject({ kind: 'complete', failed: [] });
     expect(ciState(runs(['completed', 'success'], ['completed', 'cancelled']))).toMatchObject({ kind: 'complete', failed: [{ name: 'c1' }] });

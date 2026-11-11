@@ -449,6 +449,23 @@ describe('review loop (R6, R7)', () => {
     expect(labels(w, 24)).not.toContain(LABELS.done);
   });
 
+  it('a PR with more than 100 check runs reaches its CI state (Qodo PR93 34599baa)', async () => {
+    const w = world();
+    w.ciRunCount = 150;
+    expect(await happy(w)).toMatchObject({ state: 'done' });
+    expect(w.issues.get(24)!.comments.at(-1)).toContain('extra 149 success');
+  });
+
+  it('a failure on the second page of check runs goes to the agent (Qodo PR93 34599baa)', async () => {
+    const w = world();
+    w.ciRunCount = 150;
+    w.ciConclusion = firstHeadOnly('failure', 'success');
+    w.addIssue(24);
+    w.claude.push(implementDone(), fixDone());
+    expect(await w.tick()).toMatchObject({ state: 'done' });
+    expect(promptOf(w.agentCalls()[1]!.args)).toContain('CI check "extra 149" ended failure');
+  });
+
   it('CI that never finishes stops with "review incomplete"', async () => {
     const w = world();
     w.ciDelayMs = null;

@@ -126,16 +126,34 @@ export type CiState =
 /** Conclusions GitHub's required status checks accept as passing. */
 const PASSING = new Set(['success', 'neutral', 'skipped']);
 
+type CheckRunsPage = { check_runs?: unknown; total_count?: unknown };
+
+/** The pages of `gh api --paginate --slurp` (an array), or one page; null if unreadable. */
+function checkRunPages(text: string): CheckRunsPage[] | null {
+  try {
+    const v = JSON.parse(text) as unknown;
+    const pages = (Array.isArray(v) ? v : [v]) as CheckRunsPage[];
+    return pages.every((p) => !!p && typeof p === 'object' && Array.isArray(p.check_runs)) ? pages : null;
+  } catch {
+    const o = firstJson(text) as CheckRunsPage | null;
+    return o && Array.isArray(o.check_runs) ? [o] : null;
+  }
+}
+
 /**
- * CI is clean when every check run on the head completed and passed. Zero runs, or fewer runs
- * than the API's `total_count` (another page), is pending: an unseen run is not a passing one.
+ * CI is clean when every check run on the head completed and passed, across every page (Qodo
+ * PR #93 34599baa: a PR with over 100 runs never finished). Zero runs, or fewer distinct runs
+ * than the API's `total_count`, is pending: an unseen run is not a passing one.
  */
 export function ciState(checkRunsJson: string): CiState {
-  const o = firstJson(checkRunsJson) as { check_runs?: unknown; total_count?: unknown } | null;
-  if (!o || !Array.isArray(o.check_runs)) return { kind: 'pending', why: 'check runs unreadable' };
-  const runs = o.check_runs as CheckRun[];
+  const pages = checkRunPages(checkRunsJson);
+  if (!pages) return { kind: 'pending', why: 'check runs unreadable' };
+  const byId = new Map<number, CheckRun>();
+  for (const r of pages.flatMap((p) => p.check_runs as CheckRun[])) byId.set(r.id, r);
+  const runs = [...byId.values()];
+  const total = Math.max(0, ...pages.map((p) => (typeof p.total_count === 'number' ? p.total_count : 0)));
   if (!runs.length) return { kind: 'pending', why: 'no check runs yet' };
-  if (typeof o.total_count === 'number' && o.total_count > runs.length) return { kind: 'pending', why: `only ${runs.length} of ${o.total_count} check runs visible` };
+  if (total > runs.length) return { kind: 'pending', why: `only ${runs.length} of ${total} check runs visible` };
   const open = runs.filter((r) => r.status !== 'completed');
   if (open.length) return { kind: 'pending', why: `${open.length} check run(s) ${open[0]!.status}` };
   return { kind: 'complete', runs, failed: runs.filter((r) => !PASSING.has(r.conclusion ?? '')) };
