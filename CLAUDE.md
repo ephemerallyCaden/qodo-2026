@@ -13,13 +13,13 @@
 
 ## Build & Test
 Node ≥ 20.19, npm. From the repo (or worktree) root:
-- `npm ci`: install (lockfile-exact).
+- `npm ci`: install (lockfile-exact). In a new sandbox whose `package-lock.json` matches the session worktree's, clone instead: `cp -cR <session-worktree>/node_modules .` (seconds, no network, no extra disk on APFS).
 - `npm run build`: `tsc` to `dist/` (the bin is `dist/cli.js`), then `vite build --config web/vite.config.ts` to `dist/web/` (the view `commet open` serves).
 - `npx vite --config web/vite.config.ts`: the view's dev server on 127.0.0.1, with fixtures via `?fixture=mini|empty|invalid|missing`. Render test mode is `?test=1` (`window.__commet`).
 - `npm run typecheck`: strict `tsc --noEmit` over `src/`, `test/` and `factory/`.
 - `npm run lint`: ESLint. Bans `Math.random`, `Date.now`, `performance.now`, `crypto.randomUUID`, `new Date()` and `localeCompare` in `src/{core,scan,attrib}`, `web/src` and the render stand-in, Node built-ins in `src/core`, and U+0001 / `%x01` git-output framing in `src/{scan,attrib}` (AGENTS.md Rule 7).
 - `npm run test:render`: Playwright + SwiftShader render tests (R8). A global setup builds `dist/web` first, so the specs always drive the current view. Goldens are authoritative only in CI's pinned container; locally the golden compare is informational (`test/render/README.md`).
-- Parallel agents: run full suites through `lockf -k /tmp/commet-fullsuite.lock <cmd>` so only one runs at a time.
+- While working, run only the tests you touched (`npx vitest run <files>`). Run the full gate (build, typecheck, lint, `npm test`) once, before you report, through `lockf -k /tmp/commet-fullsuite.lock <cmd>` so only one full suite runs at a time. See AGENTS.md Testing.
 - `npm test`: Vitest (unit, golden, privacy canaries, lint rules). Test temp dirs only via `test/fixtures/tmp.ts` (`tempDir()`), cleaned per file and checked per run (#53). Golden snapshots live in `test/golden/`; regenerate only deliberately with `UPDATE_GOLDEN=1 npm test` and a `Golden-Update: <reason>` line in the commit.
 - `node dist/cli.js scan [--window <months>] [--no-ingest] [--out <file>] [--root <dir>]... [--no-root] [--ask]`: run inside a clone. Writes `<git-common-dir>/commet/snapshot.json` and `layout.json` (`--out x.json` writes `x.json` plus `x.layout.json`). Exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error. `CLAUDE_CONFIG_DIR` overrides `~/.claude`.
 - `node dist/cli.js open [--port <n>] [--no-open]`: serves the view, its layout and live fog, and accepts chart writes (`POST /api/chart`, recorded at the head the view saw, #58), on 127.0.0.1 only (R14, `docs/contracts/phase2.md`). It prints `http://127.0.0.1:<port>/#t=<token>` once and needs a snapshot first (exit 5 otherwise). `--no-open` keeps the token out of process lists. Exit 6: server bind failure.
@@ -40,7 +40,7 @@ The design mockups live on `feature/hype-gif` under `mockups/asset-viewer/` (`np
 - **Determinism:** no `Math.random` in pipeline, layout or render code; use the pinned seeded PRNG and hash. No wall-clock time in snapshots.
 - **Privacy:** never copy code, prompt text or absolute paths from agent logs into any output. Never read `originalFile`, `last-prompt`, `history.jsonl`, `file-history/`, `api-request*` or `attachment` records (see `docs/research/agent-attribution.md`).
 - **Golden and property tests** are updated deliberately with a reason, never regenerated just to pass. Render tests must fail on empty output.
-- Run build/test after changes. Fix what you break.
+- Test what you change as you go; run the full gate once at the end. Fix what you break.
 - **Stage explicit paths only.** Never `git add -A` or `git add .`; other sessions write files in this checkout.
 - New dependencies need a one-line justification in the PR description.
 
@@ -60,7 +60,7 @@ The design mockups live on `feature/hype-gif` under `mockups/asset-viewer/` (`np
 - Compact after finishing research, a bug fix or a feature, not during active implementation or debugging.
 
 ## Agent auto-routing
-- After writing code that changes behaviour: run `/verify`.
+- Before you report a finished task: run `/verify` once (not after every edit).
 - When a build or test fails: run `/fix` with the error output.
 - Before committing: review `git diff --cached` for debug code, secrets and stray files.
 - When exploring unfamiliar code: use the `explorer` agent.

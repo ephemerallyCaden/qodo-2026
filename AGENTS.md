@@ -15,16 +15,33 @@ npm ci && npm run build      # CLI entry: dist/cli.js
 ```
 
 ## Testing
-CI runs `npm ci` → build → typecheck → lint → test on Node 20 and 22. Run the same before committing:
+CI runs `npm ci` → build → typecheck → lint → test on Node 20 and 22, plus render and goldens, in about a minute on every PR and session-branch push. Locally, test what you touch while you work and run the full gate once, at the end:
 ```sh
-npm run build && npm run typecheck && npm run lint && npm test
+npx vitest run test/<file>.test.ts     # while iterating: only the tests you touched
+npm run typecheck                      # fast; any time
+# once, just before you report or open a PR:
+npm run build && npm run typecheck && npm run lint && lockf -k /tmp/commet-fullsuite.lock npm test
 node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 ```
+- Not before every commit or after every fix round. Several agents running the whole suite at once overload the machine until fixture suites time out (#49), and then everything runs again.
+- `npm run test:render` only if you changed something the view draws (`web/**`, shaders, the render contract). CI runs it on every PR anyway.
+- If a file times out under load, re-run that file alone, not the suite.
 - One test: `npx vitest run -t "<name>"`.
 - Test temp dirs come only from `tempDir()` / `realTempDir()` in `test/fixtures/tmp.ts` (ESLint bans direct `mkdtemp` under `test/`). Each file's dirs are removed after it, pass or fail; a run fails if any is left (in CI, also on any other new `commet-*` dir). The hook timeout is a 300 s hard cap (`vitest.config.ts`).
 - Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
-- Before a PR, run `qodo review --base "$(git merge-base HEAD "$BASE")" --json`, where `BASE` is the PR's base branch (e.g. `BASE=origin/session/week1`). Resolve `action_required` findings as in the review loop below for **at most 3 local rounds**, then open the PR anyway, listing any still-unresolved findings in its description. The loop continues in the PR review, and the merge gate (no unresolved `action_required`) applies there. (On #16, six local rounds took over 2 hours.)
+- Before a PR, run `qodo review --base "$(git merge-base HEAD "$BASE")" --json` **once**, where `BASE` is the PR's base branch (e.g. `BASE=origin/session/week1`). Fix its `action_required` findings in one batch as in the review loop below, then open the PR, listing anything unresolved in its description. The PR review is the gate. (Was up to 3 local rounds; on #16, six took over 2 hours.)
 - `commet scan` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error.
+
+## Working efficiently
+For the lead and every agent. Each rule replaced a measured cost (triage, 2026-11-11).
+- **No warmup turns.** Put the task in the spawn prompt. Warmups wait for MCP tools to load, and these agents use the `gh` and `qodo` CLIs. On Day 6 each one cost a 2–3 minute round-trip and a duplicate report.
+- **Point, don't paste.** Spawn prompts name files and line ranges. Agents read the last ~40 lines of `JOURNAL.md`, or `grep` it for their ticket, never the whole file. The lead keeps it to the current day and moves older entries to `.archive/journal/`. (It had grown to 196 KB, about 50K tokens a read.)
+- **One report.** Send the final report once with SendMessage, then end the turn with one line: the idle notice repeats your last message.
+- **Sandboxes without the network.** If `package-lock.json` matches the session worktree's, `cp -cR <session-worktree>/node_modules .` (5.6 s, no extra disk on APFS) instead of `npm ci`. Network outages stalled agents mid-install on 11-07, 11-09 and 11-11, and 11 sandboxes left about 5 GB free.
+- **One agent per Qodo finding.** A finding with a file and line goes to one agent, which proves it with a failing test and fixes it in the same sandbox. A separate debugger is for symptoms with no known cause, like a human's bug report or a failure nobody can explain.
+- **The lead trusts CI after a fast-forward.** A `--ff-only` merge publishes the commit CI already tested on the PR, so the lead doesn't re-run the suite locally; the session-branch CI run covers it. Re-run locally only after the lead rebased or resolved a conflict.
+- **Close in one step.** When a completion report says nothing is pending, the lead merges and sends the shutdown in the same turn. Later corrections are a new task.
+- **Journal entries are one or two lines.** 174 entries ran over 400 characters.
 
 ## Dev tips
 - `JOURNAL.md` and `.archive/` are gitignored and missing from worktrees. Use the main checkout: `$(git rev-parse --path-format=absolute --git-common-dir)/..`.
@@ -37,6 +54,8 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 - Qodo can't see images. Report visual results in PRs as text: test output, pixel and colour counts.
 - A skipped review looks like a clean one. Before merging, confirm the head commit was reviewed: `qodo read pr-review-session findings --pr-url <url> --extended` must list a `review_runs[]` entry with `commit_sha` equal to the head, `status: completed` and `review_effort` other than `skip`. `review_complete` is not a signal. PR #9 and PR #27 were merged on `skip` runs.
 - Keep `ignore_bot_pr = false`, or agent PRs go unreviewed.
+- Fix every finding from one review round in one push. Each push starts a new PR review (10–20 minutes), so fixing findings one at a time costs a review each.
+- Don't post `/review` to refresh a finding that's already fixed. Record the evidence and ask the human for a waiver (PR #67: two re-runs repeated the stale text).
 - **Run the review loop after every push to a PR.** Start a background watcher for Qodo's review of the exact head SHA (`gh pr view <N>`, or `get-pr-review-findings` via `qodo read`). Give it a 30-minute timeout. On a timeout or a failed command, report "review incomplete", never "clean". An empty findings list counts only once the review is confirmed complete on that SHA. Then, for each finding:
   1. **Validate it first.** Qodo is sometimes wrong. Confirm it with a failing test or a concrete trace through the code (the `qodo-review-resolver` workflow does this with citations).
   2. **Real:** fix it with a test that fails without the fix, amend the PR's commit, and `git push --force-with-lease` to the same PR.
@@ -68,6 +87,7 @@ Where it differs from the review loop above:
 - Never delete, rename or overwrite a post file without first diffing it against what you keep and carrying the human's edits over. The human edits these files in their editor, and an unsaved editor tab doesn't survive a rename.
 - After each change, add to its `## Notes`: the biggest Qodo lesson, a telling number, anything on the day's theme.
 - Never post it. Posting needs the human.
+- Review: one blind-reader round with at most two readers, then one fix pass. A second round only if the human asks. Charts and images get one brief and one revision. (Day 3 took four text rounds and seven chart versions; Day 6 took five rounds across two attempts.)
 
 ## Coding rules
 
