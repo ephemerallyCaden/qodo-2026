@@ -220,8 +220,8 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
   - **Count:** scales with planet size, from **1 sector on the smallest planets to 5 on the biggest**, deterministic from the seed.
   - **Glyph clamp:** each sector holds a bounded number of glyph cells across it (lower and upper limits). Zooming in makes cells larger instead of multiplying them, and zooming out never shrinks a sector below the lower limit.
   - **Controls:** a viewer toggle, off by default, with teal as a sub-toggle and a manual sector override.
+- **Adopted: fog of war (human, 2026-11-11; `docs/features/fog-of-war-art.md`).** Each uncharted file is a **veiled parcel**: its territory (each file's share of the planet's surface cells, computed when drawing) becomes one flat tone of the band's own ramp, lit in only two steps, with no terrain detail. It carries sparse drifting `\ /` hatching one step darker, a 2 px parcel line in the terrain's own colours (a **fog-only exception** to the no-outlines rule, gone once charted), and an occasional single "?". Charting clears it outward from the parcel's centre with the inverted-lightness wavefront and a 1 px teal core; refog rolls back in with no teal. The health band stays readable through fog up to the 0.72 depth level.
 - **Candidates, not yet adopted:**
-  - fog of war as a glyph field: scene-tile slabs, with an inverted-lightness wavefront where teal helps most;
   - glitch packets whose heads carry their source planet's colour;
   - terminal and drifting-band view modes;
   - a pixel↔glyph mosaic transition;
@@ -250,7 +250,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 | Code layer | Filter-style glyphs; planet artefacts adopted as a toggle |
 | Labels and UI | Bitmap pixel font at native resolution, outside the pixel pass |
 
-**Not designed yet:** per-agent drones (the base drone D-final is picked on `feature/drone-lab`), fog of war (see §9 candidates), captain's log beacons, co-change constellations, the suspicious-silence flag, many moons at a glance, warp transitions, and the label/UI layout.
+**Not designed yet:** per-agent drones (the base drone D-final is picked on `feature/drone-lab`), captain's log beacons, co-change constellations, the suspicious-silence flag, many moons at a glance, warp transitions, and the label/UI layout.
 
 **In progress:** lava and ice open areas, orange lava with yellow accents, and bluer lava rock (§6); the pixel-smooth default switch (§5).
 
