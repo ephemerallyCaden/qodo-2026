@@ -230,7 +230,10 @@ export class World {
         throw new Error(`unexpected sandbox-exec ${inner}`);
       }
       case 'claude': {
-        if (args.includes('--no-session-persistence')) return this.selfTestClaude ? this.selfTestClaude(this, args) : this.selfTest(args, opts);
+        if (args.includes('--no-session-persistence')) {
+          this.selfTestCwd = opts.cwd!;
+          return this.selfTestClaude ? this.selfTestClaude(this, args) : this.selfTest(args, opts);
+        }
         const next = this.claude.shift();
         if (!next) throw new Error('unexpected claude call');
         return next(this, args);
@@ -351,6 +354,7 @@ export class World {
       case 'rev-parse':
         if (rest[0] === '--path-format=absolute') return ok(`${this.commonDir}\n`);
         if (rest[0] === '--verify') return fail();
+        if (rest[0] === '--absolute-git-dir') return ok(`${join(this.commonDir, 'worktrees', opts.cwd!.split('/').at(-1)!)}\n`);
         return ok(`${this.head}\n`);
       case 'remote': return ok(`https://github.com/${SLUG}.git\n`);
       case 'fetch': case 'worktree': return ok();
@@ -384,6 +388,13 @@ export class World {
     out('done', 'done\n');
     return ok();
   }
+
+  /** The self-test call as a working sandbox answers it; tests wrap it to break one part. */
+  runSelfTest(args: string[]): ExecResult {
+    return this.selfTest(args, { cwd: this.selfTestCwd, timeoutMs: 1 });
+  }
+
+  private selfTestCwd = '';
 
   private selfTest(args: string[], opts: ExecOptions): ExecResult {
     this.probe(opts.cwd!, this.claudeSandbox);

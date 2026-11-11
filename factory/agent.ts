@@ -36,7 +36,8 @@ export interface ClaudeCall {
 /**
  * Flags per the runner-scout probes: always `dontAsk` (the user default is `auto`), no MCP
  * servers, and never `--no-session-persistence` (attribution needs the transcript, D3). The
- * settings ride on the command line, where nothing the agent runs can change them.
+ * settings ride on the command line, where nothing the agent runs can change them, and only the
+ * user's own settings load besides: none from the worktree (Qodo PR #93 cf5b7463).
  */
 export function claudeArgs(c: ClaudeCall): string[] {
   return [
@@ -48,6 +49,7 @@ export function claudeArgs(c: ClaudeCall): string[] {
     '--max-budget-usd', String(c.maxBudgetUsd),
     '--append-system-prompt', c.systemPrompt,
     '--strict-mcp-config',
+    '--setting-sources', 'user',
     '--settings', c.settings,
     '--allowedTools', ...ALLOWED_TOOLS,
     '--disallowedTools', ...DENIED_TOOLS,

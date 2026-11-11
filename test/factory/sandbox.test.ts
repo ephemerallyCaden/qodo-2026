@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { agentEnv, PASSED_ENV, readClaude } from '../../factory/agent.js';
 import { realExec } from '../../factory/exec.js';
 import {
-  claudeSettings, deniedReads, PROBE, probeScript, probeVerdict, SANDBOX_EXEC, seatbelt, seatbeltProfile, STATE_MARK,
+  claudeSettings, deniedReads, pinnedGitEnv, PROBE, probeScript, probeVerdict, SANDBOX_EXEC, seatbelt, seatbeltProfile, STATE_MARK,
   type ProbeDirs, type SandboxPaths,
 } from '../../factory/sandbox.js';
 
@@ -47,13 +47,19 @@ describe('what the sandbox denies (S1, S2, S3)', () => {
     expect(deniedReads(p)).toEqual(expect.arrayContaining([
       { path: '/h/.midway', kind: 'dir' }, { path: '/h/.aws', kind: 'dir' }, { path: '/h/.ssh', kind: 'dir' }, { path: '/h/.config/gh', kind: 'dir' },
       { path: '/h/.claude/.credentials.json', kind: 'file' }, { path: '/h/.claude.json', kind: 'prefix' },
+      // Qodo PR93 f9a2cd5a: other tokens a home dir holds.
+      { path: '/h/.npmrc', kind: 'file' }, { path: '/h/.netrc', kind: 'file' }, { path: '/h/.git-credentials', kind: 'file' },
+      { path: '/h/.config/git/credentials', kind: 'file' },
     ]));
-    const s = claudeSettings(p) as { sandbox: { filesystem: { denyRead: string[]; denyWrite: string[] } }; permissions: { deny: string[] } };
+    const s = claudeSettings(p, { worktree: '/r/.sandboxes/agent-1' }) as { sandbox: { filesystem: { denyRead: string[]; denyWrite: string[] } }; permissions: { deny: string[] } };
     expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining(['/h/.midway', '/h/.claude.json*', '/h/.claude/.credentials.json']));
-    expect(s.sandbox.filesystem.denyWrite).toEqual(['/r/.git/factory']);
+    // Qodo PR93 b301674c: the records that tell git where a worktree's config lives.
+    expect(s.sandbox.filesystem.denyWrite).toEqual(['/r/.git/factory', '/r/.sandboxes/agent-1/.git',
+      '/r/.git/worktrees/*/commondir', '/r/.git/worktrees/*/gitdir', '/r/.git/worktrees/*/config.worktree']);
     // `//` is an absolute path in a permission rule; a single `/` would anchor at the settings source.
     expect(s.permissions.deny).toEqual(expect.arrayContaining([
       'Read(//h/.midway)', 'Read(//h/.midway/**)', 'Read(//h/.claude.json*)', 'Read(//h/.claude/.credentials.json)', 'Edit(//r/.git/factory/**)',
+      'Edit(//r/.sandboxes/agent-1/.git)',
     ]));
   });
 
@@ -68,8 +74,9 @@ describe('what the sandbox denies (S1, S2, S3)', () => {
     expect(check).toContain('(deny network-outbound (require-not (remote ip "localhost:*")))');
     expect(check).toContain('(deny file-read* (subpath "/h/.midway") (subpath "/h/.aws") (subpath "/h/.ssh")');
     expect(check).toContain('(regex #"^/h/\\.claude\\.json")');
-    expect(check).toContain('(deny file-write* (subpath "/r/.git/factory") (subpath "/r/.git/hooks") (literal "/r/.git/config"))');
-    expect(check).not.toContain('.npm');
+    expect(check).toContain('(deny file-write* (subpath "/r/.git/factory") (subpath "/r/.git/hooks") (literal "/r/.git/config")\n' +
+      '  (literal "/r/.sandboxes/agent-1/.git") (regex #"^/r/\\.git/worktrees/[^/]+/(commondir|gitdir|config\\.worktree)$"))');
+    expect(check).not.toContain('(subpath "/h/.npm")');
     const install = seatbeltProfile(p, { worktree: '/r/.sandboxes/agent-1', mode: 'install' });
     expect(install).not.toContain('network-outbound');
     expect(install).toContain('(subpath "/h/.npm")');
@@ -154,9 +161,65 @@ describe.skipIf(!canSandbox)('the runner sandbox, for real (S5)', () => {
     expect(cookie.stderr).toMatch(/Operation not permitted/);
   }, 30_000);
 
+  it("refuses rewriting the worktree's .git file and any worktree's commondir, but lets git update the rest (Qodo PR93 b301674c)", async () => {
+    const { d, profile } = setup();
+    const common = join(d.stateDir, '..');
+    for (const x of ['worktrees/agent-1', 'worktrees/other']) mkdirSync(join(common, x), { recursive: true });
+    const targets = [join(d.work, '.git'), join(common, 'worktrees/other/commondir'), join(common, 'worktrees/agent-1/gitdir'), join(common, 'worktrees/agent-1/index')];
+    const script = targets.map((t, i) => `echo x > '${t}' 2> err-${i} || true`).join('\n');
+    const res = await realExec()(SANDBOX_EXEC, seatbelt(profile, '/bin/sh', ['-c', script]), { cwd: d.work, timeoutMs: 10_000, env });
+    expect(res.code).toBe(0);
+    expect(targets.map((t) => existsSync(t))).toEqual([false, false, false, true]);
+  }, 30_000);
+
   it('the same probe unsandboxed fails the verdict, so a pass means something', async () => {
     const { d } = setup();
     await realExec()('/bin/sh', [PROBE], { cwd: d.work, timeoutMs: 20_000, env });
     expect(probeVerdict(d)).toEqual(expect.arrayContaining(['read the denied canary file', "wrote into the runner's state dir"]));
   }, 30_000);
+});
+
+// Real git, offline: the agent can rewrite its worktree's `.git` file and the shared `.git`'s
+// worktree records, so the runner's unsandboxed git must not follow them (Qodo PR93 b301674c).
+describe("the runner's git in the worktree runs nothing the agent planted (Qodo PR93 b301674c)", () => {
+  const git = (cwd: string, args: string[], env: NodeJS.ProcessEnv = {}) => {
+    const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', ...env } });
+    if (r.status !== 0 && args[0] !== 'status') throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
+    return r;
+  };
+  function setup() {
+    const root = temp();
+    const main = join(root, 'main');
+    mkdirSync(main);
+    git(main, ['init', '-q', '-b', 'session/week1']);
+    writeFileSync(join(main, 'a.txt'), 'a\n');
+    git(main, ['add', 'a.txt']);
+    git(main, ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'a']);
+    const worktree = join(main, '.sandboxes/agent-1');
+    git(main, ['worktree', 'add', '-q', '-b', 'agent/1-x', worktree]);
+    const gitDir = git(worktree, ['rev-parse', '--absolute-git-dir']).stdout.trim();
+    const commonDir = join(main, '.git');
+    // A repo the agent controls, whose config runs a command on every git status.
+    const evil = join(root, 'evil');
+    mkdirSync(evil);
+    git(evil, ['init', '-q']);
+    const pwned = join(root, 'pwned');
+    writeFileSync(join(root, 'hook.sh'), `#!/bin/sh\ntouch '${pwned}'\nexit 1\n`, { mode: 0o755 });
+    git(evil, ['config', 'core.fsmonitor', join(root, 'hook.sh')]);
+    return { worktree, gitDir, commonDir, evilGitDir: join(evil, '.git'), pwned };
+  }
+  const status = ['status', '--porcelain', '--ignore-submodules=all'];
+
+  it.each([
+    ['the worktree .git file', (s: ReturnType<typeof setup>) => writeFileSync(join(s.worktree, '.git'), `gitdir: ${s.evilGitDir}\n`)],
+    ['the worktree record commondir', (s: ReturnType<typeof setup>) => writeFileSync(join(s.gitDir, 'commondir'), `${s.evilGitDir}\n`)],
+  ])('a rewritten %s runs the planted command for plain git, but not for the pinned git', (_, hijack) => {
+    const s = setup();
+    hijack(s);
+    git(s.worktree, status);
+    expect(existsSync(s.pwned), 'the vector is real').toBe(true);
+    rmSync(s.pwned);
+    git(s.worktree, status, pinnedGitEnv(s));
+    expect(existsSync(s.pwned)).toBe(false);
+  });
 });

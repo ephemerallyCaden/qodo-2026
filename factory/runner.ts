@@ -3,7 +3,7 @@
 // publish its branch as a PR, then loop on CI and Qodo with at most two fix rounds.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import {
   agentEnv, agentRecord, claudeArgs, fixPrompt, fixResult, implementPrompt, implementResult, isPrTitle, readClaude,
   systemPrompt, type AgentCall, type Disposition, type FixInput, type ImplementResult,
@@ -18,7 +18,7 @@ import {
   ciState, isBlocking, parseQodo, qodoMarker, qodoState, shortSha,
   type CheckRun, type CiState, type Finding, type QodoState, type ReviewRun,
 } from './review.js';
-import { claudeSettings, SANDBOX_EXEC, sandboxSelfTest, seatbelt, seatbeltProfile, type SandboxPaths } from './sandbox.js';
+import { claudeSettings, pinnedGitEnv, SANDBOX_EXEC, sandboxSelfTest, seatbelt, seatbeltProfile, type SandboxPaths } from './sandbox.js';
 import { acceptanceCriteria, branchStem, ticketHash, ticketMarkdown, type Ticket } from './ticket.js';
 
 export interface Deps {
@@ -98,6 +98,8 @@ class Tick {
   private snapshot = '';
   private branch = '';
   private worktree = '';
+  /** The worktree's git dir, recorded before anything agent-written runs in it (b301674c). */
+  private gitDir = '';
   private pr: { url: string; number: number } | null = null;
   /** The last pushed (and verified) commit. */
   private head: string | null = null;
@@ -352,6 +354,7 @@ class Tick {
     await this.git(cfg.repoDir, ['fetch', 'origin', cfg.base]);
     await this.chooseBranch(t);
     await this.git(cfg.repoDir, ['worktree', 'add', '--no-track', '-b', this.branch, this.worktree, `origin/${cfg.base}`]);
+    this.gitDir = (await this.git(this.worktree, ['rev-parse', '--absolute-git-dir'])).trim();
     this.log.event('worktree', { branch: this.branch, path: this.worktree });
     // S5: with the network open no repo code runs (no lifecycle scripts); the install scripts then run offline.
     for (const [what, args, mode] of [['npm ci', ['ci', '--ignore-scripts'], 'install'], ['npm rebuild', ['rebuild'], 'check']] as const) {
@@ -391,7 +394,7 @@ class Tick {
     this.log.event('agent-start', { call: k, resume: resume ?? null, maxTurns, budgetUsd: budget });
     const args = claudeArgs({
       prompt, systemPrompt: systemPrompt(this.branch, cfg.base), maxTurns, maxBudgetUsd: budget, ...(resume ? { resume } : {}),
-      settings: JSON.stringify(claudeSettings(this.sandbox)),
+      settings: JSON.stringify(claudeSettings(this.sandbox, { worktree: this.worktree })),
     });
     const t0 = this.deps.clock.now();
     const res = await this.sh(cfg.claude, args, { cwd: this.worktree, timeoutMs, env: this.agentEnv });
@@ -436,7 +439,8 @@ class Tick {
     const changed = (await this.git(this.worktree, ['diff', '--name-only', `origin/${cfg.base}...HEAD`])).split('\n').filter(Boolean);
     const touched = changed.filter((f) => PROTECTED.some((re) => re.test(f)));
     if (touched.length) throw new Stop(`the agent changed protected paths: ${touched.join(', ')}`);
-    const dirty = (await this.git(this.worktree, ['status', '--porcelain'])).trim();
+    // Never into a nested repo the agent planted: git would run under that repo's config.
+    const dirty = (await this.git(this.worktree, ['status', '--porcelain', '--ignore-submodules=all'])).trim();
     if (dirty) return [{ check: 'git status', output: `Uncommitted changes:\n${dirty}` }];
     this.checks = [];
     for (const [name, args] of CHECKS) {
@@ -685,11 +689,16 @@ class Tick {
     return this.sh(SANDBOX_EXEC, seatbelt(profile, 'npm', args), { cwd: this.worktree, timeoutMs, env: this.agentEnv });
   }
 
-  /** git with the human's gh login as the only credential helper (Research: not the keychain). */
+  /**
+   * git with the human's gh login as the only credential helper (Research: not the keychain). In
+   * the worktree it is pinned to the git dir recorded at creation, never one the agent pointed it at.
+   */
   private gitTry(cwd: string, args: string[]): Promise<ExecResult> {
+    const pin = cwd === this.worktree && this.gitDir
+      ? pinnedGitEnv({ gitDir: this.gitDir, commonDir: dirname(this.cfg.stateDir), worktree: this.worktree }) : {};
     return this.sh('git', args, {
       cwd, timeoutMs: this.cfg.timeouts.git,
-      env: { ...this.env, GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '',
+      env: { ...this.env, ...pin, GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '',
         GIT_CONFIG_KEY_1: 'credential.helper', GIT_CONFIG_VALUE_1: `!${this.cfg.gh} auth git-credential` },
     });
   }

@@ -663,7 +663,11 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
       }
       expect(s.sandbox.filesystem.denyRead).toContain(join(w.home, '.claude/.credentials.json'));
       expect(s.permissions.deny).toContain(`Read(/${join(w.home, '.claude/.credentials.json')})`);
-      expect(s.sandbox.filesystem.denyWrite).toEqual([stateDir(w)]);
+      expect(s.sandbox.filesystem.denyWrite).toEqual([stateDir(w), join(w.repoDir, '.sandboxes/agent-24/.git'),
+        ...['commondir', 'gitdir', 'config.worktree'].map((r) => join(w.commonDir, 'worktrees/*', r))]);
+      expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining([join(w.home, '.npmrc'), join(w.home, '.netrc')]));
+      // Qodo PR93 cf5b7463: no settings from the worktree, so nothing there can loosen these.
+      expect(c.args.slice(c.args.indexOf('--setting-sources'), c.args.indexOf('--setting-sources') + 2)).toEqual(['--setting-sources', 'user']);
       expect(s.permissions.deny).toContain(`Edit(/${stateDir(w)}/**)`);
       expect(s.permissions.blockWritesOutsideWorkingDirectories).toBe(true);
     }
@@ -711,7 +715,8 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
     const canaryDir = test.sandbox.filesystem.denyRead.at(-1)!;
     expect(canaryDir).toMatch(/factory-selftest-[^/]+\/denied$/);
     expect(test.sandbox.filesystem.denyRead).toEqual([...agent.sandbox.filesystem.denyRead, canaryDir]);
-    expect(test.permissions.deny).toEqual(expect.arrayContaining(agent.permissions.deny));
+    expect(test.permissions.deny).toEqual(expect.arrayContaining(agent.permissions.deny.filter((r) => r.startsWith('Read('))));
+    expect(self!.args).toEqual(expect.arrayContaining(['--setting-sources', 'user']));
     expect(probe.args[1]).toContain(`(subpath "${canaryDir}")`);
     expect(promptOf(self!.args)).toContain(`Read tool once on ${canaryDir}/canary.txt`);
     expect(self!.args).toEqual(expect.arrayContaining(['--allowedTools', 'Read', 'Bash(sh probe.sh)']));
@@ -726,6 +731,15 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
     }, 'claude: no JSON result (exit 1, the sandbox could not start)'],
     ['the Read tool is not denied the canary', (w) => { w.readDenied = false; }, 'claude: the Read tool was not denied the canary'],
     ['the probe never runs under claude', (w) => { w.claudeSandbox = 'no-run'; }, 'claude: the probe did not run to the end'],
+    ['claude ran the probe but exited with an error (Qodo PR93 138a8438)', (w) => {
+      w.selfTestClaude = (x, args) => ({ ...x.runSelfTest(args), code: 1 });
+    }, 'claude: ended success, exit 1'],
+    ['claude ran the probe but flagged is_error (Qodo PR93 138a8438)', (w) => {
+      w.selfTestClaude = (x, args) => {
+        const res = x.runSelfTest(args);
+        return { ...res, stdout: res.stdout.replace('"is_error":false', '"is_error":true') };
+      };
+    }, 'claude: ended success (is_error), exit 0'],
     ['sandbox-exec does not confine the probe', (w) => { w.seatbelt = 'off'; }, "sandbox-exec: read the denied canary file; sandbox-exec: wrote into the runner's state dir"],
   ];
   it.each(broken)('%s: the ticket goes back unclaimed with agent-needs-help and the reason, and no agent runs', async (_, breakIt, why) => {
@@ -741,6 +755,26 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
     expect(w.gitCalls('worktree')).toHaveLength(0);
     expect(existsSync(join(stateDir(w), '.sandbox-probe'))).toBe(false);
     expect(runLog(w).at(-1)).toMatchObject({ event: 'end', state: 'needs-help' });
+  });
+
+  it("pins the runner's own git in the worktree to the git dir recorded before anything ran there (Qodo PR93 b301674c)", async () => {
+    const w = world();
+    w.findings = firstHeadOnly([finding('f1')], []);
+    w.addIssue(24);
+    w.claude.push(implementDone(), fixDone());
+    expect(await w.tick()).toMatchObject({ state: 'done' });
+    const tree = join(w.repoDir, '.sandboxes/agent-24');
+    const inTree = w.callsTo('git').filter((c) => c.cwd === tree);
+    const [record, ...rest] = inTree;
+    expect(record!.args).toEqual(['rev-parse', '--absolute-git-dir']);
+    expect(w.calls.indexOf(record!)).toBeLessThan(w.calls.findIndex((c) => c.cmd.endsWith('sandbox-exec') && c.args[2] === 'npm'));
+    expect(rest.length).toBeGreaterThan(10);
+    expect(rest.map((c) => c.args[0])).toEqual(expect.arrayContaining(['rev-list', 'diff', 'status', 'rev-parse', 'log', 'push', 'merge-base']));
+    for (const c of rest) {
+      expect(c.env, c.args.join(' ')).toMatchObject({ GIT_DIR: join(w.commonDir, 'worktrees/agent-24'), GIT_COMMON_DIR: w.commonDir, GIT_WORK_TREE: tree });
+    }
+    for (const c of w.gitCalls('status')) expect(c.args).toContain('--ignore-submodules=all');
+    for (const c of w.callsTo('git').filter((x) => x.cwd === w.repoDir)) expect(c.env?.['GIT_DIR']).toBeUndefined();
   });
 
   it('an agent call that exits because its sandbox cannot start stops the run and says so', async () => {

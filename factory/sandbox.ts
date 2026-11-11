@@ -29,7 +29,8 @@ export interface Denied {
 
 /**
  * Credentials the agent never needs: the Midway, AWS and SSH stores, gh's and qodo's logins, the
- * Midway helper's config, and Claude Code's own credential and account files. The agent's model
+ * Midway helper's config, the npm, netrc and git credential files (Qodo PR #93 f9a2cd5a), and
+ * Claude Code's own credential and account files. npm and git run fine without them. The agent's model
  * calls still work: Claude Code fetches Bedrock credentials in its own process, outside the
  * sandbox and the permission rules (Research, S7).
  */
@@ -41,8 +42,11 @@ export function deniedReads(p: SandboxPaths): Denied[] {
   ].map((d) => join(home, d));
   if (env['XDG_CONFIG_HOME']) dirs.push(join(env['XDG_CONFIG_HOME'], 'gh'));
   if (env['GH_CONFIG_DIR']) dirs.push(env['GH_CONFIG_DIR']);
+  const files = ['.npmrc', '.netrc', '.git-credentials', '.config/git/credentials'].map((f) => join(home, f));
+  if (env['XDG_CONFIG_HOME']) files.push(join(env['XDG_CONFIG_HOME'], 'git/credentials'));
   const list: Denied[] = [
     ...dirs.map((path): Denied => ({ path, kind: 'dir' })),
+    ...files.map((path): Denied => ({ path, kind: 'file' })),
     { path: join(claudeDir, '.credentials.json'), kind: 'file' },
     { path: join(claudeDir, 'daemon'), kind: 'dir' },
     { path: join(claudeDir, 'backups'), kind: 'dir' },
@@ -57,15 +61,27 @@ export function deniedReads(p: SandboxPaths): Denied[] {
 const rulePath = (path: string) => `/${path}`;
 
 /**
+ * Git records an agent could rewrite to hand git a config it wrote (Qodo PR #93 b301674c): its
+ * worktree's `.git` file, and each worktree's `commondir`, `gitdir` and `config.worktree` under
+ * the shared `.git/worktrees/`, the human's own worktrees included. Git still commits through
+ * the rest of that dir.
+ */
+const RECORDS = ['commondir', 'gitdir', 'config.worktree'];
+const worktreesDir = (p: SandboxPaths) => join(dirname(p.stateDir), 'worktrees');
+
+/**
  * The `--settings` for every headless call. Bash runs sandboxed, and nothing falls back to
  * unsandboxed: Claude Code exits if the sandbox can't start, ignores `dangerouslyDisableSandbox`
  * retries, and still asks the allowlist about each command (a sandboxed command would otherwise
  * be auto-allowed). No egress; localhost stays open for tests that bind 127.0.0.1. The Read deny
  * rules hold the file tools to the same list (S2), and the Edit tools stay out of the runner's
- * state and everything else outside the worktree (S3).
+ * state, the worktree's `.git` file and everything else outside the worktree (S3). The agent's
+ * calls load no repo settings at all (`--setting-sources user`), so nothing in the worktree can
+ * loosen this (Qodo PR #93 cf5b7463).
  */
-export function claudeSettings(p: SandboxPaths, extra: Denied[] = []): Record<string, unknown> {
-  const denied = [...deniedReads(p), ...extra];
+export function claudeSettings(p: SandboxPaths, o: { worktree: string; extra?: Denied[] }): Record<string, unknown> {
+  const denied = [...deniedReads(p), ...(o.extra ?? [])];
+  const gitFile = join(o.worktree, '.git');
   const reads = denied.flatMap((d) => d.kind === 'dir' ? [`Read(${rulePath(d.path)})`, `Read(${rulePath(d.path)}/**)`]
     : [`Read(${rulePath(d.path)}${d.kind === 'prefix' ? '*' : ''})`]);
   return {
@@ -74,11 +90,14 @@ export function claudeSettings(p: SandboxPaths, extra: Denied[] = []): Record<st
       failIfUnavailable: true,
       allowUnsandboxedCommands: false,
       autoAllowBashIfSandboxed: false,
-      filesystem: { denyRead: denied.map((d) => (d.kind === 'prefix' ? `${d.path}*` : d.path)), denyWrite: [p.stateDir] },
+      filesystem: {
+        denyRead: denied.map((d) => (d.kind === 'prefix' ? `${d.path}*` : d.path)),
+        denyWrite: [p.stateDir, gitFile, ...RECORDS.map((r) => join(worktreesDir(p), '*', r))],
+      },
       network: { allowedDomains: [], strictAllowlist: true, allowLocalBinding: true },
     },
     permissions: {
-      deny: [...reads, `Edit(${rulePath(p.stateDir)})`, `Edit(${rulePath(p.stateDir)}/**)`],
+      deny: [...reads, `Edit(${rulePath(p.stateDir)})`, `Edit(${rulePath(p.stateDir)}/**)`, `Edit(${rulePath(gitFile)})`],
       blockWritesOutsideWorkingDirectories: true,
     },
   };
@@ -94,7 +113,8 @@ function real(path: string): string {
 }
 
 const sbString = (s: string) => `"${s.replace(/[\\"]/g, '\\$&')}"`;
-const sbRegex = (s: string) => `#"^${s.replace(/[.*+?^${}()|[\]\\"]/g, '\\$&')}"`;
+const reEscape = (s: string) => s.replace(/[.*+?^${}()|[\]\\"]/g, '\\$&');
+const sbRegex = (s: string) => `#"^${reEscape(s)}"`;
 const sbFilter = (d: Denied) => (d.kind === 'dir' ? `(subpath ${sbString(real(d.path))})`
   : d.kind === 'file' ? `(literal ${sbString(real(d.path))})` : `(regex ${sbRegex(real(dirname(d.path)) + d.path.slice(dirname(d.path).length))})`);
 
@@ -111,11 +131,13 @@ export function seatbeltProfile(p: SandboxPaths, o: { worktree: string; mode: 'i
   if (p.env['TMPDIR']) writable.push(p.env['TMPDIR']);
   if (o.mode === 'install') writable.push(p.env['npm_config_cache'] || join(p.home, '.npm'));
   const denied = [...deniedReads(p), ...(o.extra ?? [])];
+  const records = `(regex #"^${reEscape(real(worktreesDir(p)))}/[^/]+/(${RECORDS.map(reEscape).join('|')})$")`;
   return [
     '(version 1)',
     '(allow default)',
     `(deny file-write* (require-not (require-any ${writable.map((w) => `(subpath ${sbString(real(w))})`).join(' ')})))`,
-    `(deny file-write* (subpath ${sbString(real(p.stateDir))}) (subpath ${sbString(real(join(common, 'hooks')))}) (literal ${sbString(real(join(common, 'config')))}))`,
+    `(deny file-write* (subpath ${sbString(real(p.stateDir))}) (subpath ${sbString(real(join(common, 'hooks')))}) (literal ${sbString(real(join(common, 'config')))})`,
+    `  (literal ${sbString(real(join(o.worktree, '.git')))}) ${records})`,
     `(deny file-read* ${denied.map(sbFilter).join(' ')})`,
     ...(o.mode === 'check' ? ['(deny network-outbound (require-not (remote ip "localhost:*")))'] : []),
     '',
@@ -210,6 +232,7 @@ export function selfTestArgs(canary: string, settings: string): string[] {
     '--max-budget-usd', '1',
     '--strict-mcp-config',
     '--no-session-persistence',
+    '--setting-sources', 'user',
     '--settings', settings,
     '--allowedTools', 'Read', `Bash(sh ${PROBE})`,
     '--disallowedTools', ...DENIED_TOOLS,
@@ -259,14 +282,17 @@ export async function sandboxSelfTest(o: {
     failures.push(...sbFail.map((f) => `sandbox-exec: ${f}`));
 
     fresh();
-    const settings = JSON.stringify(claudeSettings(o.paths, extra));
+    const settings = JSON.stringify(claudeSettings(o.paths, { worktree: d.work, extra }));
     const res = await o.exec(o.claude, selfTestArgs(canaryFile, settings), { cwd: d.work, timeoutMs: SELF_TEST_TIMEOUT_MS, env });
-    const out = firstJson(res.stdout) as { subtype?: unknown; permission_denials?: { tool_name?: unknown }[] } | null;
+    const out = firstJson(res.stdout) as { subtype?: unknown; is_error?: unknown; permission_denials?: { tool_name?: unknown }[] } | null;
     const claude: string[] = [];
     if (res.timedOut) claude.push('timed out');
     else if (res.error) claude.push(`could not start (${res.error})`);
     else if (!out || typeof out.subtype !== 'string') claude.push(`no JSON result (exit ${res.code}${/sandbox/i.test(res.stderr) ? ', the sandbox could not start' : ''})`);
-    else if (out.subtype !== 'success') claude.push(`ended ${out.subtype}`);
+    else if (out.subtype !== 'success' || out.is_error || res.code !== 0) {
+      // The same bar readClaude sets an agent call (Qodo PR #93 138a8438).
+      claude.push(`ended ${out.subtype}${out.is_error ? ' (is_error)' : ''}, exit ${res.code}`);
+    }
     if (res.stdout.includes(d.canary)) claude.push('the canary reached the model');
     if (!claude.length) {
       claude.push(...probeVerdict(d));
@@ -278,4 +304,14 @@ export async function sandboxSelfTest(o: {
     rmSync(mark, { force: true });
   }
   return { ok: !failures.length, failures };
+}
+
+/**
+ * The runner's own git in the worktree runs unsandboxed, with its gh login (Qodo PR #93
+ * b301674c). Pinning the git dir it recorded before the agent ran, the shared `.git` and the
+ * work tree means a rewritten `.git` file or `commondir` can't hand it a config the agent wrote;
+ * only the shared config and hooks apply, which neither sandbox lets anything write.
+ */
+export function pinnedGitEnv(g: { gitDir: string; commonDir: string; worktree: string }): NodeJS.ProcessEnv {
+  return { GIT_DIR: g.gitDir, GIT_COMMON_DIR: g.commonDir, GIT_WORK_TREE: g.worktree };
 }
