@@ -126,7 +126,7 @@ describe('commet chart on a real repo', () => {
     const at = (await readFog(r.dir)).head;
     expect(await applyChart(r.dir, { kind: 'chart', fileId: fileIdOf('src/moved.ts'), at, extra: 1 })).toEqual({ ok: false, error: 'not a chart action' });
     expect(await applyChart(r.dir, { kind: 'chart', fileId: fileIdOf('src/moved.ts') })).toEqual({ ok: false, error: 'not a chart action' });
-    expect(await applyChart(r.dir, { kind: 'chart', fileId: fileIdOf('nope.ts'), at })).toEqual({ ok: false, error: 'no such file in the latest snapshot' });
+    expect(await applyChart(r.dir, { kind: 'chart', fileId: fileIdOf('nope.ts'), at })).toEqual({ ok: false, error: 'no such file at that head' });
     const ok = await applyChart(r.dir, { kind: 'chart', fileId: fileIdOf('src/moved.ts'), at });
     expect(ok.ok && ok.fog.files.find((f) => f.fileId === fileIdOf('src/moved.ts'))!.state).toBe('charted');
     // The chart that the new one covers is dropped.
@@ -183,7 +183,7 @@ describe('commet chart on a real repo', () => {
 });
 
 describe('a scan between the fog read and the chart write (#58)', () => {
-  it('refuses the write as stale, writes nothing, and the unseen change stays fogged', async () => {
+  it('records the write at the head the user saw, so the unseen change stays fogged', async () => {
     const r = repo();
     r.commit(SELF, () => r.write('src/a.ts', lines('alpha')));
     r.commit(TEAMMATE, () => r.write('src/a.ts', lines('alpha') + lines('mate')));
@@ -191,41 +191,21 @@ describe('a scan between the fog read and the chart write (#58)', () => {
     // The view fetches fog and shows src/a.ts fogged at this head.
     const shown = await readFog(r.dir);
     expect(shown.files.find((f) => f.fileId === fileIdOf('src/a.ts'))!.state).toBe('fogged');
-    expect((await r.run('chart', 'baseline')).code).toBe(0);
-    const before = readFileSync(r.chartJson(), 'utf8');
     // A new change nobody has seen lands and is scanned before the click.
     const unseen = r.commit(TEAMMATE, () => r.write('src/a.ts', lines('alpha') + lines('mate') + lines('unseen')));
     expect((await r.run('scan')).code).toBe(0);
-    for (const body of [{ kind: 'chart', fileId: fileIdOf('src/a.ts'), at: shown.head }, { kind: 'baseline', at: shown.head },
-      { kind: 'baseline-undo', at: shown.head }]) {
-      expect(await applyChart(r.dir, body)).toEqual({ ok: false, error: 'stale', head: unseen });
+    for (const body of [{ kind: 'chart', fileId: fileIdOf('src/a.ts'), at: shown.head }, { kind: 'baseline', at: shown.head }]) {
+      const res = await applyChart(r.dir, body);
+      expect(res.ok && res.fog.head).toBe(unseen);
+      expect(res.ok && res.fog.files.find((f) => f.fileId === fileIdOf('src/a.ts'))).toMatchObject({ state: 'fogged', since: unseen });
     }
-    expect(readFileSync(r.chartJson(), 'utf8')).toBe(before);
-    const now = await readFog(r.dir);
-    expect(now.files.find((f) => f.fileId === fileIdOf('src/a.ts'))).toMatchObject({ state: 'fogged', since: unseen });
-    // After refetching, the same action at the head now shown goes through.
-    const ok = await applyChart(r.dir, { kind: 'chart', fileId: fileIdOf('src/a.ts'), at: now.head });
-    expect(ok.ok && ok.fog.files.find((f) => f.fileId === fileIdOf('src/a.ts'))!.state).toBe('charted');
-  });
-});
-
-describe('a scan between opening the fog source and taking the lock (#58, Qodo local r1)', () => {
-  it('a delayed undo decided at the old head is stale and never removes a baseline set at the new head', async () => {
-    const r = repo();
-    r.commit(SELF, () => r.write('src/a.ts', lines('alpha')));
-    expect((await r.run('scan')).code).toBe(0);
-    const old = await openFogSource(r.dir);
-    const oldHead = old.base.snapshot.repo.head;
-    const newHead = r.commit(TEAMMATE, () => r.write('src/a.ts', lines('alpha') + lines('mate')));
-    expect((await r.run('scan')).code).toBe(0);
-    expect(await applyChart(r.dir, { kind: 'baseline', at: newHead })).toMatchObject({ ok: true });
+    expect(JSON.parse(readFileSync(r.chartJson(), 'utf8'))).toEqual({ schemaVersion: 'chart.1',
+      charts: [{ fileId: fileIdOf('src/a.ts'), at: shown.head }], baselines: [shown.head] });
+    expect(await applyChart(r.dir, { kind: 'baseline-undo', at: shown.head })).toMatchObject({ ok: true });
+    // An `at` the snapshot doesn't know is refused, with the head to refetch at.
     const before = readFileSync(r.chartJson(), 'utf8');
-    for (const action of [{ kind: 'baseline-undo', at: oldHead }, { kind: 'baseline', at: oldHead },
-      { kind: 'chart', fileId: fileIdOf('src/a.ts'), at: oldHead }] as const) {
-      expect(await writeChart(old, action)).toEqual({ ok: false, error: 'stale', head: newHead });
-    }
+    expect(await applyChart(r.dir, { kind: 'baseline', at: 'c'.repeat(40) })).toEqual({ ok: false, error: 'unknown-head', head: unseen });
     expect(readFileSync(r.chartJson(), 'utf8')).toBe(before);
-    expect(JSON.parse(before).baselines).toEqual([newHead]);
   });
 });
 

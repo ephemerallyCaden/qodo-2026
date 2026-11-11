@@ -1,7 +1,7 @@
 // Phase 2 contract (#29): the local HTTP surface of `commet open` (#32) and the deterministic render
 // hook the view (#30) exposes to the render tests (#31). See docs/contracts/phase2.md.
 import type { Sha } from '../snapshot/types.js';
-import type { ChartStale, FogView } from './fog.js';
+import type { ChartUnknownHead, FogView } from './fog.js';
 import type { LayoutV1 } from './layout.js';
 
 /**
@@ -28,10 +28,10 @@ export const WEB_DIST = 'dist/web';
 export interface LiveEvent { type: 'snapshot' | 'layout' | 'fog'; head: Sha }
 
 /**
- * Write responses. A stale action (#58) gets `ChartStale`, told apart by `head`; any other refusal
- * has no `head`.
+ * Write responses. An action whose `at` the snapshot doesn't know (#58) gets `ChartUnknownHead`, told
+ * apart by `head`; any other refusal has no `head`.
  */
-export type ChartResult = { ok: true; fog: FogView } | ChartStale | { ok: false; error: string; head?: undefined };
+export type ChartResult = { ok: true; fog: FogView } | ChartUnknownHead | { ok: false; error: string; head?: undefined };
 
 // ---- Deterministic render hook (R8) ----
 

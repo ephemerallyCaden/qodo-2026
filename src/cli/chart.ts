@@ -30,8 +30,8 @@ function parse(args: string[]): Job | string {
 }
 
 const short = (sha: string) => sha.slice(0, 7);
-/** A scan replaced the snapshot while the command ran: nothing was written. */
-const stale = (head: string) => new CommetError(`the snapshot changed while charting (now at ${short(head)}); nothing was written, run the command again`, EXIT.state);
+/** A scan replaced the snapshot with one that doesn't know the head the command read: nothing was written. */
+const unknownHead = (head: string) => new CommetError(`the snapshot changed while charting (now at ${short(head)}); nothing was written, run the command again`, EXIT.state);
 /** Paths are shown as git has them; one holding control characters is quoted so it can't drive the terminal. */
 const label = (path: string) => (/\p{Cc}/u.test(path) ? JSON.stringify(path) : path);
 
@@ -143,7 +143,7 @@ async function chartFile(src: FogSource, io: Io, arg: string): Promise<number> {
     return EXIT.usage;
   }
   const r = await writeChart(src, { kind: 'chart', fileId: file.id, at: src.base.snapshot.repo.head });
-  if (!r.ok && r.head !== undefined) throw stale(r.head);
+  if (!r.ok && r.head !== undefined) throw unknownHead(r.head);
   if (!r.ok) throw new CommetError(r.error, EXIT.internal);
   const after = fogFrom(r.base, r.chart);
   const was = fogFrom(r.base, r.prev).files.find((f) => f.fileId === file.id)!;
@@ -158,9 +158,9 @@ async function chartFile(src: FogSource, io: Io, arg: string): Promise<number> {
 }
 
 async function baseline(src: FogSource, io: Io, undo: boolean): Promise<number> {
-  // The CLI has no view that could be stale: it acts on the snapshot it just read (#58).
+  // The CLI has no older view: it acts at the head of the snapshot it just read (#58).
   const r = await writeChart(src, { kind: undo ? 'baseline-undo' : 'baseline', at: src.base.snapshot.repo.head });
-  if (!r.ok && r.head !== undefined) throw stale(r.head);
+  if (!r.ok && r.head !== undefined) throw unknownHead(r.head);
   if (!r.ok) {
     io.stderr(`commet: ${r.error}\n`);
     return EXIT.state;

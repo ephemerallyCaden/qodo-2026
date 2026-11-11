@@ -30,14 +30,14 @@
 - **Coverage:** `files` lists every file in `snapshot.files`, including surface overflow, sorted by `fileId`. Planet and star counts add up to `files.length`. Star counts include root files, unmatched tests and test data.
 - **No wall-clock time anywhere:** `baseline` and `since` are commit SHAs.
 - **Chart state on disk** (`.git/commet/`) is private to #33. Others only see `FogView` and send `ChartAction`.
-- **Every `ChartAction` carries `at`** (#58, amended 2026-11-10): the `FogView.head` the user was looking at, as a full SHA. If a scan lands after the view's last fetch and `at` isn't the current head, the write is refused with `{ ok: false, error: 'stale', head: <current> }` (`ChartStale`) and nothing is written. The view refetches the fog and asks again. Without it, a change that arrived unseen (say, a new agent commit) would be charted at the new head: a false clear (AGENTS.md Rule 1). `commet chart` has no stale view, so it uses the current head.
+- **Every `ChartAction` carries `at`** (#58, amended 2026-11-11): the `FogView.head` the user was looking at, as a full SHA. The write is recorded at `at`: a chart or baseline covers changes up to `at` and no further. So if a scan lands after the view's last fetch, a change that arrived unseen (say, a new agent commit) is newer than `at` and stays fogged, with no false clear (AGENTS.md Rule 1), no refusal and no race. `at` must be a commit the current snapshot knows (in its window, on HEAD's first-parent line). Otherwise (another branch, before the window, a snapshot that went backwards) the write is refused with `{ ok: false, error: 'unknown-head', head: <current> }` (`ChartUnknownHead`) and nothing is written; the view refetches and asks again. For `chart`, `fileId` is the file's id as of `at` and must lead to a file at HEAD. `baseline-undo` pops the last baseline. `commet chart` uses the current head.
 
 ## Local HTTP surface (`commet open`)
 - **Bind and Host:** binds 127.0.0.1 only. `Host` must be `127.0.0.1:<port>` or `localhost:<port>`.
 - **Token:** the opened URL is `http://127.0.0.1:<port>/#t=<token>`. The fragment is never sent to the server. The view reads it and sends `x-commet-token` on every data request.
 - **Static bundle:** served at `/` from `dist/web` without a token, because it holds no repo data. No directory listing and no traversal.
 - **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`.
-- **Write routes:** `POST /api/chart` with a `ChartAction` JSON body (exact keys, `at` a full 40-hex SHA, or 64-hex in a SHA-256 repo) returns a `ChartResult`. A stale `at` gets `ChartStale` with status 409, told apart from other refusals (400) by its `head`. `POST /api/beacon` answers 501 until R10. Every other method or path is refused.
+- **Write routes:** `POST /api/chart` with a `ChartAction` JSON body (exact keys, `at` a full 40-hex SHA, or 64-hex in a SHA-256 repo) returns a `ChartResult`. An unknown `at` gets `ChartUnknownHead` with status 409 Conflict, told apart from other refusals (400) by its `head`. `POST /api/beacon` answers 501 until R10. Every other method or path is refused.
 - **Live updates:** `GET /api/events` is a `text/event-stream` read with `fetch`, so the token stays in a header. Each `data:` line is a `LiveEvent`. The view refetches the named resource.
 - **No CORS headers,** and cross-origin writes are refused.
 

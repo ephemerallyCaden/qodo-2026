@@ -41,14 +41,16 @@ export interface FogView {
 
 /**
  * The only writes the local server accepts for chart state (R14 AC4). `at` is the `FogView.head`
- * the user was looking at (#58). A write whose `at` isn't the current head is refused with
- * `ChartStale` and changes nothing, so a change that arrived after the view's last fetch is never
- * marked reviewed unseen (AGENTS.md Rule 1).
+ * the user was looking at (#58), and the write is recorded at it: a chart or baseline covers changes
+ * up to `at` and no further. A change that arrived after the view's last fetch is newer than `at`, so
+ * it stays fogged and is never marked reviewed unseen (AGENTS.md Rule 1). `at` must be a commit the
+ * current snapshot knows (in its window, on HEAD's first-parent line); otherwise the write gets
+ * `ChartUnknownHead`.
  */
 export type ChartAction =
   | { kind: 'chart'; fileId: FileId; at: Sha }
   | { kind: 'baseline'; at: Sha }
   | { kind: 'baseline-undo'; at: Sha };
 
-/** A refused write: the action's `at` isn't the current head. Refetch the fog (at `head`) and act again. */
-export interface ChartStale { ok: false; error: 'stale'; head: Sha }
+/** A refused write: `at` isn't a commit the current snapshot knows. Refetch the fog (at `head`) and act again. */
+export interface ChartUnknownHead { ok: false; error: 'unknown-head'; head: Sha }

@@ -1,6 +1,6 @@
-// A scan publishing a snapshot while a chart write is under way (#58, Qodo PR66 r2). Scans don't
-// take the chart lock, so writeChart checks for a publication on both sides of its write. Here the
-// "scan" runs from inside writeAtomic, just after chart.json is written.
+// A scan publishing a snapshot while a chart write is under way (#58). Scans don't take the chart
+// lock, because a write is recorded at its own `at` and a later head can't change what it covers.
+// Here the "scan" runs from inside writeAtomic, just after chart.json is written.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,7 +15,7 @@ afterAll(() => {
   for (const dir of made) rmSync(dir, { recursive: true, force: true });
 });
 
-it('a snapshot published during a chart write puts the chart state back, and the stale action is refused', async () => {
+it('a snapshot published during a chart write leaves the write at the head the user saw; the new change stays fogged', async () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-chart-race-')));
   made.push(dir);
   const git = (args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
@@ -51,18 +51,17 @@ it('a snapshot published during a chart write puts the chart state back, and the
     } };
   });
   try {
-    const { openFogSource, writeChart } = await import('../src/state/chart.js');
+    const { openFogSource, readFog, writeChart } = await import('../src/state/chart.js');
     const src = await openFogSource(dir);
     expect(src.base.snapshot.repo.head).toBe(oldHead);
-    expect(await writeChart(src, { kind: 'chart', fileId: fileIdOf('src/a.ts'), at: oldHead })).toMatchObject({ ok: true });
-    const chartFile = join(dir, '.git/commet/chart.json');
-    const before = readFileSync(chartFile, 'utf8');
-
     armed = true;
-    expect(await writeChart(src, { kind: 'baseline', at: oldHead })).toEqual({ ok: false, error: 'stale', head: newHead });
+    expect(await writeChart(src, { kind: 'chart', fileId: fileIdOf('src/a.ts'), at: oldHead })).toMatchObject({ ok: true });
     expect(armed).toBe(false); // the publication really happened mid-write
-    expect(readFileSync(chartFile, 'utf8')).toBe(before);
-    expect(readFileSync(snapshot, 'utf8')).toBe(newSnap);
+    expect(JSON.parse(readFileSync(join(dir, '.git/commet/chart.json'), 'utf8')).charts).toEqual([{ fileId: fileIdOf('src/a.ts'), at: oldHead }]);
+    const fog = await readFog(dir);
+    expect(fog.head).toBe(newHead);
+    // Every change in this repo is unknown (--no-ingest), so the new one fogs the file again.
+    expect(fog.files.find((f) => f.fileId === fileIdOf('src/a.ts'))).toMatchObject({ state: 'fogged', since: newHead });
   } finally {
     vi.doUnmock('../src/state/io.js');
     vi.resetModules();

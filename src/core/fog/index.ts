@@ -4,7 +4,7 @@
 // belongs to. Without it, or where it can't be followed, a file errs to fogged with
 // `lineage-unknown` (Rule 1).
 import { byCodepoint } from '../canonical-json.js';
-import type { ChartAction, ChartStale, FileFog, FogCounts, FogReason, FogView } from '../contract/fog.js';
+import type { ChartAction, ChartUnknownHead, FileFog, FogCounts, FogReason, FogView } from '../contract/fog.js';
 import { sha256Hex } from '../hash.js';
 import type { PathHistory, Unrowed } from '../renames.js';
 import type { Commit, CommitFile, DirId, FileEntry, FileId, PersonId, Sha, SnapshotV02 } from '../snapshot/types.js';
@@ -267,30 +267,30 @@ export function fogFrom(base: FogBase, chart: ChartState): FogView {
 export const fogView = (snapshot: SnapshotV02, chart: ChartState, history: PathHistory | null): FogView =>
   fogFrom(fogBase(snapshot, history), chart);
 
-export type ChartApplied = { ok: true; chart: ChartState } | ChartStale | { ok: false; error: string; head?: undefined };
+export type ChartApplied = { ok: true; chart: ChartState } | ChartUnknownHead | { ok: false; error: string; head?: undefined };
 
 /**
- * Applies one ChartAction (the only write vocabulary) at the snapshot's head. An action whose `at`
- * isn't that head was decided on an older view, so it's refused as stale (#58) and changes nothing.
- * `chart` records the file's id and the head, and drops older charts of the same file, which the new
- * one covers. `baseline` pushes the head; `baseline-undo` pops the last baseline and touches nothing else.
+ * Applies one ChartAction (the only write vocabulary). Everything is recorded at `action.at`, the
+ * head the user saw (#58), so it never covers a change newer than what they were shown: no check
+ * against the current head is needed. `at` must be a commit this snapshot's window knows, else
+ * `unknown-head`. `chart` records the file's id as of `at` (it must lead to a file at HEAD) and drops
+ * older charts of the same file, which the new one covers. `baseline` pushes `at`; `baseline-undo`
+ * pops the last baseline and touches nothing else.
  */
 export function applyChartAction(base: FogBase, chart: ChartState, action: ChartAction): ChartApplied {
-  const head = base.snapshot.repo.head;
-  if (action.at !== head) return { ok: false, error: 'stale', head };
-  // Past the check, everything is recorded at `action.at`, the head the user saw.
+  if (!base.seqOf.has(action.at)) return { ok: false, error: 'unknown-head', head: base.snapshot.repo.head };
   if (action.kind === 'baseline') return { ok: true, chart: { ...chart, baselines: [...chart.baselines, action.at] } };
   if (action.kind === 'baseline-undo') {
     if (chart.baselines.length === 0) return { ok: false, error: 'no baseline to undo' };
     return { ok: true, chart: { ...chart, baselines: chart.baselines.slice(0, -1) } };
   }
-  if (!base.files.some((f) => f.id === action.fileId)) return { ok: false, error: 'no such file in the latest snapshot' };
   const entry: ChartEntry = { fileId: action.fileId, at: action.at };
   const mine = place(base, entry);
+  if (!mine) return { ok: false, error: 'no such file at that head' };
   const kept = chart.charts.filter((e) => {
     if (byEntry(e, entry) === 0) return false;
-    const p = mine && place(base, e);
-    return !p || p.file !== mine!.file || p.seq > mine!.seq;
+    const p = place(base, e);
+    return !p || p.file !== mine.file || p.seq > mine.seq;
   });
   return { ok: true, chart: { ...chart, charts: [...kept, entry].sort(byEntry) } };
 }

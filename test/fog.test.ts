@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/core/canonical-json.js';
 import type { FileFog, FogView } from '../src/core/contract/fog.js';
 import {
-  applyChartAction, emptyChart, fileIdOf, fogBase, fogView, homes, parseChartAction, parseChartState, reasonsOf, unrowedChanges, type ChartState,
+  applyChartAction, emptyChart, fileIdOf, fogBase, fogFrom, fogView, homes, parseChartAction, parseChartState, reasonsOf, unrowedChanges, type ChartState,
 } from '../src/core/fog/index.js';
 import { pathHistory, type PathHistory } from '../src/core/renames.js';
 import type { Commit, FileId } from '../src/core/snapshot/types.js';
@@ -159,25 +159,53 @@ describe('fogView', () => {
     expect(applyChartAction(fogBase(m.snapshot(), m.history()), chart, { kind: 'baseline-undo', at: m.sha(m.head) })).toEqual({ ok: false, error: 'no baseline to undo' });
   });
 
-  it('refuses an action decided at another head as stale, and changes nothing (#58)', () => {
+  it('records a write at the head the user saw, so a change after it stays fogged (#58)', () => {
     const m = new Model();
-    m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }]);
+    m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }, { op: 'add', path: 'lib/e.ts' }]);
+    m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }, { op: 'edit', path: 'lib/e.ts' }]);
     const seen = m.sha(m.head);
-    const before = act(m, emptyChart(), { kind: 'baseline' });
-    m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
+    // A scan lands before the click: an unseen agent edit, and a rename the chart must follow.
+    const unseen = m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
+    m.commit(YOURS, [{ op: 'rename', from: 'lib/e.ts', to: 'lib/f.ts', edit: true }]);
     const base = fogBase(m.snapshot(), m.history());
-    for (const action of [{ kind: 'chart', fileId: fileIdOf('src/a.ts'), at: seen }, { kind: 'baseline', at: seen }, { kind: 'baseline-undo', at: seen },
-      { kind: 'chart', fileId: fileIdOf('src/a.ts'), at: 'c'.repeat(40) }] as const) {
-      expect(applyChartAction(base, before, action)).toEqual({ ok: false, error: 'stale', head: m.sha(m.head) });
+    const charted = applyChartAction(base, emptyChart(), { kind: 'chart', fileId: fileIdOf('src/a.ts'), at: seen });
+    const renamed = applyChartAction(base, emptyChart(), { kind: 'chart', fileId: fileIdOf('lib/e.ts'), at: seen });
+    const baseline = applyChartAction(base, emptyChart(), { kind: 'baseline', at: seen });
+    if (!charted.ok || !renamed.ok || !baseline.ok) throw new Error('refused');
+    expect(charted.chart.charts).toEqual([{ fileId: fileIdOf('src/a.ts'), at: seen }]);
+    expect(baseline.chart.baselines).toEqual([seen]);
+    for (const chart of [charted.chart, baseline.chart]) {
+      expect(fileAt(fogFrom(base, chart), 'src/a.ts')).toMatchObject({ state: 'fogged', since: unseen });
     }
-    expect(fileAt(fogView(m.snapshot(), before, m.history()), 'src/a.ts').state).toBe('fogged');
+    // The pre-rename id as of `at` charts the renamed file; its later change is yours.
+    expect(fileAt(fogFrom(base, renamed.chart), 'lib/f.ts').state).toBe('charted');
+    expect(fileAt(fogFrom(base, baseline.chart), 'lib/f.ts').state).toBe('charted');
+    expect(applyChartAction(base, baseline.chart, { kind: 'baseline-undo', at: seen })).toEqual({ ok: true, chart: emptyChart() });
   });
 
-  it('refuses to chart a file that is not in the snapshot', () => {
+  it('refuses an `at` the snapshot does not know, and changes nothing (#58)', () => {
     const m = new Model();
     m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }]);
-    expect(applyChartAction(fogBase(m.snapshot(), m.history()), emptyChart(), { kind: 'chart', fileId: fileIdOf('src/zz.ts'), at: m.sha(m.head) }))
-      .toEqual({ ok: false, error: 'no such file in the latest snapshot' });
+    m.commit(YOURS, [{ op: 'edit', path: 'src/a.ts' }]);
+    m.commit(YOURS, [{ op: 'edit', path: 'src/a.ts' }]);
+    // Window from seq 1: seq 0 is on HEAD's line but before the window.
+    const base = fogBase(m.snapshot({ from: 1 }), m.history());
+    for (const at of ['c'.repeat(40), m.sha(0)]) {
+      for (const action of [{ kind: 'chart', fileId: fileIdOf('src/a.ts'), at }, { kind: 'baseline', at }, { kind: 'baseline-undo', at }] as const) {
+        expect(applyChartAction(base, { ...emptyChart(), baselines: [m.sha(1)] }, action)).toEqual({ ok: false, error: 'unknown-head', head: m.sha(2) });
+      }
+    }
+  });
+
+  it('refuses to chart a file that does not lead to one at HEAD', () => {
+    const m = new Model();
+    m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }, { op: 'add', path: 'src/b.ts' }]);
+    const before = m.sha(m.head);
+    m.commit(YOURS, [{ op: 'delete', path: 'src/b.ts' }]);
+    const base = fogBase(m.snapshot(), m.history());
+    for (const [fileId, at] of [[fileIdOf('src/zz.ts'), m.sha(m.head)], [fileIdOf('src/b.ts'), before]] as const) {
+      expect(applyChartAction(base, emptyChart(), { kind: 'chart', fileId, at })).toEqual({ ok: false, error: 'no such file at that head' });
+    }
   });
 });
 

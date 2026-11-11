@@ -5,7 +5,7 @@ import { lstatSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJson } from '../core/canonical-json.js';
 import type { ChartResult } from '../core/contract/api.js';
-import type { ChartAction, ChartStale, FogView } from '../core/contract/fog.js';
+import type { ChartAction, ChartUnknownHead, FogView } from '../core/contract/fog.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import {
   applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges, type ChartState, type FogBase,
@@ -162,9 +162,9 @@ export const currentFog = (src: FogSource): FogView => fogFrom(src.base, readCha
 
 /**
  * Serialises chart writes across processes with an exclusive lock file. `fn` is synchronous, so
- * nothing else in this process can interleave while the lock is held. Scans don't take it (writeChart
- * checks for a publication around its write instead), so a lock a killed writer left can only block
- * chart writes, which say how to clear it.
+ * nothing else in this process can interleave while the lock is held. Scans don't take it (a write
+ * is recorded at its own `at`, so a scan can't make it unsafe), so a lock a killed writer left can
+ * only block chart writes, which say how to clear it.
  */
 async function withChartLock<T>(dir: string, fn: () => T): Promise<T> {
   const lock = join(dir, LOCK_FILE);
@@ -189,36 +189,29 @@ async function withChartLock<T>(dir: string, fn: () => T): Promise<T> {
 
 export type ChartWrite =
   | { ok: true; prev: ChartState; chart: ChartState; base: FogBase }
-  | ChartStale
+  | ChartUnknownHead
   | { ok: false; error: string; head?: undefined };
 
 /** Reloads of the fog source before a write gives up, when scans keep landing in between. */
 const WRITE_TRIES = 3;
 
 /**
- * Applies one action to the stored chart state, under the chart lock. `at` is always judged against
- * the snapshot on disk (Qodo local r1–r3, PR66): if snapshot.json changed since `src` was read, the
- * source is reloaded first, so an older `at` is stale and the current one goes through. Scans publish
- * without the lock, so the check brackets the write: a snapshot published during it puts the
- * previous chart state back and the action is judged again. A write that stands therefore happened
- * entirely while the snapshot it was judged against was current. The ok result carries that base.
+ * Applies one action to the stored chart state, under the chart lock. The action is recorded at its
+ * own `at`, so a scan landing at any point around the write can't make it cover a change the user
+ * didn't see (#58). The one thing a scan can do is publish a head that `src` doesn't know yet, so if
+ * snapshot.json changed since `src` was read, the source is reloaded first. The ok result carries the
+ * base it was applied on.
  */
 export async function writeChart(src: FogSource, action: ChartAction): Promise<ChartWrite> {
   for (let tries = 1; ; tries++) {
     const cur = src;
-    const file = join(cur.dir, CHART_FILE);
     const r = await withChartLock(cur.dir, (): ChartWrite | null => {
       if (snapshotKey(cur.dir) !== cur.key) return null;
-      const before = readStateFile(cur.dir, CHART_FILE);
       const prev = readChart(cur.dir);
       const applied = applyChartAction(cur.base, prev, action);
       if (!applied.ok) return applied;
-      writeAtomic(file, canonicalJson(applied.chart));
-      if (snapshotKey(cur.dir) === cur.key) return { ok: true, prev, chart: applied.chart, base: cur.base };
-      // A scan published mid-write: undo it (other chart writes wait on the lock), then judge again.
-      if (before === null) rmSync(file, { force: true });
-      else writeAtomic(file, before);
-      return null;
+      writeAtomic(join(cur.dir, CHART_FILE), canonicalJson(applied.chart));
+      return { ok: true, prev, chart: applied.chart, base: cur.base };
     });
     if (r !== null) return r;
     if (tries >= WRITE_TRIES) throw new CommetError('state error: the snapshot kept changing during the write; try again', EXIT.state);
