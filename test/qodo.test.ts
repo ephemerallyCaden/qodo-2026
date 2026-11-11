@@ -1,8 +1,7 @@
 // Issue #17: opt-in Qodo findings as a code-health input. One describe per acceptance criterion.
 // `gh` and `qodo` are fake binaries on an isolated PATH, so no test touches the network.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { FileQodo, SnapshotV02 } from '../src/core/snapshot/types.js';
@@ -14,10 +13,11 @@ import { BIND_HOST } from '../src/server/guard.js';
 import { cli } from './fixtures/cli.js';
 import { SELF } from './fixtures/build/basic.js';
 import { miniRepo, type MiniRepo } from './fixtures/mini.js';
+import { tempDir } from './fixtures/tmp.js';
 
 /** Directories allowed to import node:http to listen (R14, #32). Pinned in the no-network test below. */
 const LISTENER_DIRS = ['src/server'];
-const NO_LOGS = mkdtempSync(join(tmpdir(), 'commet-qodo-claude-'));
+const NO_LOGS = tempDir('commet-qodo-claude-');
 const REAL_GIT = realpathSync(execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim());
 
 // Finding text Commet must never keep: titles, descriptions, URLs, snippets, error output.
@@ -96,7 +96,7 @@ interface Stubs { bin: string; log: string; calls: () => { tool: string; args: s
  * body with a Node snippet (it may use `log` and `args`).
  */
 function stubs(o: { prs?: unknown; findings?: Record<number, unknown>; views?: Record<number, unknown>; omit?: ('gh' | 'qodo')[]; fail?: Partial<Record<'gh' | 'qodo', string>> } = {}): Stubs {
-  const bin = mkdtempSync(join(tmpdir(), 'commet-qodo-bin-'));
+  const bin = tempDir('commet-qodo-bin-');
   const log = join(bin, 'calls.jsonl');
   symlinkSync(REAL_GIT, join(bin, 'git'));
   const data = join(bin, 'data.json');
@@ -417,7 +417,7 @@ describe('#17 AC4: files[].qodo, and a scan without the flag reads the cache', (
       expect(readSnap(repo).files.every((f) => f.qodo === null), text).toBe(true);
       expect(r.out).toContain('qodo findings: unavailable (cache unreadable)');
     }
-    const target = join(mkdtempSync(join(tmpdir(), 'commet-qodo-target-')), 'x.json');
+    const target = join(tempDir('commet-qodo-target-'), 'x.json');
     writeFileSync(target, cache({}));
     rmSync(CACHE(repo));
     symlinkSync(target, CACHE(repo));
@@ -493,7 +493,7 @@ describe('#17 AC5: a failed fetch exits 0 with qodo null and an "unavailable (<r
   it('a cache that cannot be written still gives the snapshot and says so (Qodo local r1 #3)', async () => {
     await onPath(stubs({ omit: ['gh', 'qodo'] }), () => scanCli(repo));
     mkdirSync(CACHE(repo));
-    const out = join(mkdtempSync(join(tmpdir(), 'commet-qodo-out-')), 'snap.json');
+    const out = join(tempDir('commet-qodo-out-'), 'snap.json');
     const r = await onPath(stubs(), () => scanCli(repo, ['--with-qodo', '--out', out]));
     expect(r.code).toBe(0);
     expect((JSON.parse(readFileSync(out, 'utf8')) as SnapshotV02).qodo).toMatchObject({ status: 'read', prs: 4 });

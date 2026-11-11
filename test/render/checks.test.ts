@@ -2,8 +2,7 @@
 // PNG round trips, the empty-output check, the draw budget, text twins and the golden rules. The
 // last block checks every committed golden against its twin, so the text Qodo reviews always
 // describes the image that is actually committed.
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
@@ -14,6 +13,7 @@ import { checkGolden, GOLDEN_DIR } from './golden.js';
 import { chunk, decodePng, encodePng } from './png.js';
 import { BUDGET } from './thresholds.js';
 import { envJson, paletteProblems, twinRecord, twinText, type RenderEnv } from './twin.js';
+import { tempDir } from '../fixtures/tmp.js';
 
 const rgb = (hex: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
 const SPACE = palette.world.space;
@@ -166,7 +166,7 @@ describe('text twin', () => {
 });
 
 describe('golden rules', () => {
-  const dirs = () => ({ dir: mkdtempSync(join(tmpdir(), 'commet-golden-')) });
+  const dirs = () => ({ dir: tempDir('commet-golden-') });
   const good = frame(W, H, SPACE, planet(54));
 
   it('writes with update, then matches in the same environment', () => {

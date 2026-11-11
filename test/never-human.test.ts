@@ -30,7 +30,7 @@ const attr = (id: string): CommitAttribution => {
 };
 
 beforeAll(async () => {
-  repo = buildNeverHumanRepo();
+  repo = await buildNeverHumanRepo();
   claude = writeNeverHumanClaude(repo);
   ({ snapshot, logs } = await scan({ repoDir: repo.dir, windowMonths: 24, ingest: true,
     claudeProjectsDir: join(claude.claudeDir, 'projects'), keyFor: KEY }));
@@ -174,7 +174,7 @@ describe('Issue #5 case 5: self identity under .mailmap', () => {
   const CANONICAL = 'ada@canonical.example';
   /** Scans the basic fixture with a .mailmap and, optionally, a different raw user.email / user.name. */
   const scanMapped = async (mailmap: string, config: Record<string, string> = {}) => {
-    const basic = buildBasicRepo();
+    const basic = await buildBasicRepo();
     const c = writeClaudeFixture(basic);
     writeFileSync(join(basic.dir, '.mailmap'), mailmap);
     for (const [k, v] of Object.entries(config)) execFileSync('git', ['config', k, v], { cwd: basic.dir });

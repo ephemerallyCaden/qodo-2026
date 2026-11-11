@@ -1,32 +1,23 @@
 // `commet chart` and chart state on disk (#33, R5), end to end on a real git repo: charting, refog,
 // a rename, baseline and undo, re-scans, and the state I/O guarantees (AC 4–6).
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { fileIdOf } from '../src/core/fog/index.js';
 import { relativeRepoPath } from '../src/cli/chart.js';
 import { applyChart, openFogSource, readFog, writeChart } from '../src/state/chart.js';
 import { SELF, TEAMMATE } from './fixtures/build/basic.js';
 import { cli } from './fixtures/cli.js';
 import { miniClaude, session } from './fixtures/mini.js';
+import { realTempDir } from './fixtures/tmp.js';
 
 const DAY = '2026-10-10';
-/** Temp dirs this file made, removed at the end so repeated runs don't fill the disk. */
-const made: string[] = [];
-const tempDir = (prefix: string) => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
-  made.push(dir);
-  return dir;
-};
-afterAll(() => {
-  for (const dir of made) rmSync(dir, { recursive: true, force: true });
-});
 
 /** A repo whose self commits are human: an idle session covers the whole day and logs no edit. */
 function repo() {
-  const dir = tempDir('commet-chart-');
+  const dir = realTempDir('commet-chart-');
   const git = (args: string[], env: Record<string, string> = {}) =>
     execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env } }).trim();
   git(['init', '-q', '-b', 'main']);
@@ -35,7 +26,6 @@ function repo() {
   }
   const s = session('56565656-5656-4565-8565-565656565656', dir);
   const claude = dirname(miniClaude({ idle: [s.user('i1', `${DAY}T08:00:00.000Z`), s.user('i2', `${DAY}T18:00:00.000Z`)] }));
-  made.push(claude);
   let n = 0;
   const write = (path: string, text: string) => {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
@@ -147,7 +137,7 @@ describe('commet chart on a real repo', () => {
   });
 
   it('refuses an absolute path through a dangling symlink (Qodo PR50 r2)', async () => {
-    const outside = join(tempDir('commet-chart-outside-'), 'gone');
+    const outside = join(realTempDir('commet-chart-outside-'), 'gone');
     renameSync(join(r.dir, 'src'), join(r.dir, 'src.moved'));
     symlinkSync(outside, join(r.dir, 'src'));
     try {
@@ -269,7 +259,7 @@ describe('chart state I/O refusals (exit 5)', () => {
 
   it('a symlinked chart.json is never read or written through', async () => {
     const r = await scanned();
-    const target = join(tempDir('commet-chart-target-'), 'victim.json');
+    const target = join(realTempDir('commet-chart-target-'), 'victim.json');
     writeFileSync(target, 'untouched');
     symlinkSync(target, r.chartJson());
     for (const args of [['chart', 'status'], ['chart', 'baseline']]) {
@@ -282,7 +272,7 @@ describe('chart state I/O refusals (exit 5)', () => {
 
   it('a dangling symlinked chart.json is refused, not replaced (Qodo #32 local r1)', async () => {
     const r = await scanned();
-    symlinkSync(join(tempDir('commet-chart-gone-'), 'missing.json'), r.chartJson());
+    symlinkSync(join(realTempDir('commet-chart-gone-'), 'missing.json'), r.chartJson());
     const res = await r.run('chart', 'baseline');
     expect(res.code).toBe(5);
     expect(res.err).toContain('.git/commet/chart.json is or sits behind a symlink');
@@ -303,7 +293,7 @@ describe('chart state I/O refusals (exit 5)', () => {
     const r = await scanned();
     const file = join(r.dir, '.git/commet/snapshot.json');
     const snap = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
-    const canary = join(tempDir('commet-chart-canary-'), 'written-by-git');
+    const canary = join(realTempDir('commet-chart-canary-'), 'written-by-git');
     const repo = snap['repo'] as Record<string, unknown>;
     const commits = snap['commits'] as Record<string, unknown>[];
     // A head that git would read as an option must never reach git (Qodo local r3).

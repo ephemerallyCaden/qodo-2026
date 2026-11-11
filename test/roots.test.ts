@@ -1,10 +1,10 @@
 // Issue #71: content roots. The planet rule shared by layout and fog, the guess, roots as typed,
 // choosing them (flags, the saved answer, the prompt with the terminal injected) and the scan's output.
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { chooseRoots, terminalAsk, type Ask, type RootFlags } from '../src/cli/roots.js';
 import type { LayoutV1 } from '../src/core/contract/layout.js';
 import { CommetError, EXIT } from '../src/core/errors.js';
@@ -13,16 +13,8 @@ import { folderHome, planetHome } from '../src/core/structure.js';
 import { readFog, readLayoutRoots } from '../src/state/chart.js';
 import { cli, scripted } from './fixtures/cli.js';
 import { miniRepo, type MiniRepo } from './fixtures/mini.js';
+import { realTempDir } from './fixtures/tmp.js';
 
-const temps: string[] = [];
-const temp = (prefix: string) => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
-  temps.push(dir);
-  return dir;
-};
-afterAll(() => {
-  for (const d of temps) rmSync(d, { recursive: true, force: true });
-});
 
 describe('#71 C6 and A1: which planet a file is on', () => {
   const content = (path: string, depth: number) => ({ path, depth, zone: 'content' });
@@ -102,7 +94,7 @@ const head = (files: { path: string; loc: number }[], commonDir: string) => ({ c
 
 /** chooseRoots on FILES in a fresh state dir: what it returned, printed and saved. */
 async function choose(flags: RootFlags, ask?: Ask, saved?: string) {
-  const common = temp('commet-roots-');
+  const common = realTempDir('commet-roots-');
   if (saved !== undefined) {
     mkdirSync(join(common, 'commet'), { mode: 0o700 });
     writeFileSync(join(common, 'commet/config.json'), saved, { mode: 0o600 });
@@ -168,7 +160,7 @@ describe('#71 C2: the prompt (terminal injected)', () => {
   });
 
   it('with no folder to suggest, nothing is asked unless --ask', async () => {
-    const common = temp('commet-roots-');
+    const common = realTempDir('commet-roots-');
     const files = [{ path: 'src/a/x.ts', loc: 1 }, { path: 'web/w.ts', loc: 1 }];
     const quiet = scripted(['web']);
     let out = '';
@@ -228,7 +220,7 @@ describe('#71 C4 and C5: flags and the saved file', () => {
 
   it('an unknown or invalid --root is a usage error (exit 2) that never echoes an absolute path', async () => {
     for (const bad of ['nope', `${homedir()}/src`, 'src/../web']) {
-      const err = await chooseRoots({ kind: 'set', roots: [bad] }, head(FILES, temp('commet-roots-')), () => undefined, undefined).catch((e: unknown) => e);
+      const err = await chooseRoots({ kind: 'set', roots: [bad] }, head(FILES, realTempDir('commet-roots-')), () => undefined, undefined).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(CommetError);
       expect((err as CommetError).exitCode).toBe(EXIT.usage);
       if (bad.startsWith('/')) expect((err as CommetError).message).not.toContain(homedir());
@@ -244,7 +236,7 @@ describe('#71 C4 and C5: flags and the saved file', () => {
     expect((await choose({ kind: 'none' }, undefined, 'not json')).config).toEqual({ roots: [] });
     // --ask still refuses it: the saved answer would be its fallback, so it is never silently reset.
     expect(((await choose({ kind: 'ask' }, scripted(['y']), 'not json').catch((e: unknown) => e)) as CommetError).exitCode).toBe(EXIT.state);
-    const common = temp('commet-roots-');
+    const common = realTempDir('commet-roots-');
     mkdirSync(join(common, 'commet'), { mode: 0o700 });
     writeFileSync(join(common, 'target.json'), 'not json');
     symlinkSync(join(common, 'target.json'), join(common, 'commet/config.json'));
@@ -265,7 +257,7 @@ describe('#71 C4 and C5: flags and the saved file', () => {
       const err = await choose(DEFAULT, undefined, bad).catch((e: unknown) => e);
       expect((err as CommetError).exitCode, bad).toBe(EXIT.state);
     }
-    const common = temp('commet-roots-');
+    const common = realTempDir('commet-roots-');
     mkdirSync(join(common, 'commet'), { mode: 0o700 });
     writeFileSync(join(common, 'elsewhere.json'), '{"roots":["web"]}');
     symlinkSync(join(common, 'elsewhere.json'), join(common, 'commet/config.json'));
@@ -277,7 +269,7 @@ describe('#71 C4 and C5: flags and the saved file', () => {
 
 describe('#71 through commet scan', () => {
   let repo: MiniRepo;
-  const NO_LOGS = { CLAUDE_CONFIG_DIR: temp('commet-roots-claude-') };
+  const NO_LOGS = { CLAUDE_CONFIG_DIR: realTempDir('commet-roots-claude-') };
   const at = (n: number) => `2026-01-0${n}T00:00:00Z`;
   const layoutOf = () => JSON.parse(readFileSync(join(repo.dir, '.git/commet/layout.json'), 'utf8')) as LayoutV1;
   const config = () => {
@@ -296,7 +288,6 @@ describe('#71 through commet scan', () => {
       { id: 'd', at: at(4), path: 'web/w.ts', lines: ['a', 'b'] },
       { id: 'e', at: at(5), path: 'test/a.test.ts', lines: ['t'] },
     ]);
-    temps.push(repo.dir);
   });
 
   it('without a terminal, the first scan uses the guess, says so once, saves nothing and never blocks', async () => {
@@ -344,7 +335,7 @@ describe('#71 through commet scan', () => {
   });
 
   it('fog reads the layout\'s roots: none without a layout or from before roots; a damaged one is a state error', async () => {
-    const dir = temp('commet-roots-state-');
+    const dir = realTempDir('commet-roots-state-');
     expect(await readLayoutRoots(dir)).toEqual([]);
     const write = (text: string) => writeFileSync(join(dir, 'layout.json'), text, { mode: 0o600 });
     write('{"schemaVersion":"layout.1","source":{"repoId":"r","head":"h"}}');

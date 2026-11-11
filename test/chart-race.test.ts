@@ -2,22 +2,16 @@
 // lock, because a write is recorded at its own `at` and a later head can't change what it covers.
 // Here the "scan" runs from inside writeAtomic, just after chart.json is written.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, expect, it, vi } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { fileIdOf } from '../src/core/fog/index.js';
 import { SELF } from './fixtures/build/basic.js';
 import { cli } from './fixtures/cli.js';
-
-const made: string[] = [];
-afterAll(() => {
-  for (const dir of made) rmSync(dir, { recursive: true, force: true });
-});
+import { realTempDir } from './fixtures/tmp.js';
 
 it('a snapshot published during a chart write leaves the write at the head the user saw; the new change stays fogged', async () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-chart-race-')));
-  made.push(dir);
+  const dir = realTempDir('commet-chart-race-');
   const git = (args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
   git(['init', '-q', '-b', 'main']);
   for (const [k, v] of [['user.name', SELF.name], ['user.email', SELF.email], ['commit.gpgsign', 'false']]) git(['config', k!, v!]);
@@ -69,8 +63,7 @@ it('a snapshot published during a chart write leaves the write at the head the u
 });
 
 it('`commet chart` reports a file a scan renamed while it charted, at the head it read (Qodo PR66 r3)', async () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-chart-race-')));
-  made.push(dir);
+  const dir = realTempDir('commet-chart-race-');
   const git = (args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
   git(['init', '-q', '-b', 'main']);
   for (const [k, v] of [['user.name', SELF.name], ['user.email', SELF.email], ['commit.gpgsign', 'false']]) git(['config', k!, v!]);

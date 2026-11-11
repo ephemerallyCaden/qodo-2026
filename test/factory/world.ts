@@ -1,7 +1,6 @@
 // An offline stand-in for everything the agent runner talks to: gh, git, npm, claude, qodo,
 // lockf and launchctl, plus a clock that jumps instead of sleeping. No network, no real agent.
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect } from 'vitest';
 import { defaults, LABELS, type Config } from '../../factory/config.js';
@@ -9,6 +8,7 @@ import type { Exec, ExecOptions, ExecResult } from '../../factory/exec.js';
 import type { Clock } from '../../factory/log.js';
 import type { CheckRun, Finding, ReviewRun } from '../../factory/review.js';
 import { runTick, type Deps, type Outcome } from '../../factory/runner.js';
+import { tempDir } from '../fixtures/tmp.js';
 
 export const OWNER = 'owner';
 export const SLUG = 'owner/repo';
@@ -117,7 +117,7 @@ export class World {
   calls: Call[] = [];
   now = T0;
   readonly clock: Clock = { now: () => this.now, sleep: async (ms) => { this.now += ms; } };
-  readonly root = mkdtempSync(join(tmpdir(), 'agent-runner-'));
+  readonly root = tempDir('agent-runner-');
   readonly home = join(this.root, 'home');
   readonly repoDir = join(this.root, 'repo');
   readonly commonDir = join(this.repoDir, '.git');

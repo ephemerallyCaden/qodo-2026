@@ -78,4 +78,14 @@ export default tseslint.config(
       ] }],
     },
   },
+  {
+    // #53: a test's temp dirs come from tempDir() (test/fixtures/tmp.ts), which removes them after
+    // the file and lets the run check none is left. The run's own manifest dir is the one exception.
+    files: ['test/**'],
+    ignores: ['test/fixtures/tmp.ts', 'test/setup/temp-check.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: ['fs', 'node:fs', 'fs/promises', 'node:fs/promises'].map((name) => ({ name,
+        importNames: ['mkdtemp', 'mkdtempSync'], message: 'Make test temp dirs with tempDir() from test/fixtures/tmp.ts, which removes them (#53).' })) }],
+    },
+  },
 );

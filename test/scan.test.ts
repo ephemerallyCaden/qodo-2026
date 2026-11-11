@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { sessionKey } from '../src/core/hash.js';
@@ -11,13 +10,14 @@ import { buildBasicRepo, CONTROL, SPACED, type FixtureRepo } from './fixtures/bu
 import { cli } from './fixtures/cli.js';
 import { miniRepo } from './fixtures/mini.js';
 import { MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
+import { tempDir } from './fixtures/tmp.js';
 
 const GOLDEN = join(import.meta.dirname, 'golden/basic.snapshot.json');
 let repo: FixtureRepo;
 let claude: ClaudeFixture;
 
-beforeAll(() => {
-  repo = buildBasicRepo();
+beforeAll(async () => {
+  repo = await buildBasicRepo();
   claude = writeClaudeFixture(repo);
 });
 
@@ -119,7 +119,7 @@ describe('commet scan CLI', () => {
   });
 
   it('refuses a shallow clone with exit 3 and an unshallow hint', async () => {
-    const dir = join(mkdtempSync(join(tmpdir(), 'commet-shallow-')), 'clone');
+    const dir = join(tempDir('commet-shallow-'), 'clone');
     execFileSync('git', ['clone', '-q', '--depth', '1', `file://${repo.dir}`, dir]);
     const r = await cli(['scan'], dir, { CLAUDE_CONFIG_DIR: claude.claudeDir });
     expect(r.code).toBe(3);
@@ -129,7 +129,7 @@ describe('commet scan CLI', () => {
   it('maps a failing git log to the normal internal-error exit, with no unhandled rejection (Qodo PR10 #8)', async () => {
     const broken = miniRepo([{ id: 'root', at: '2026-10-10T08:00:00Z', path: 'README.md', lines: ['# Broken fixture', 'git log fails here.'] }]);
     // A git shim on PATH fails only `git log`, so readRepo succeeds and windowCommits rejects.
-    const shim = mkdtempSync(join(tmpdir(), 'commet-git-shim-'));
+    const shim = tempDir('commet-git-shim-');
     const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
     writeFileSync(join(shim, 'git'), `#!/bin/sh\nfor a in "$@"; do [ "$a" = log ] && { echo "fatal: synthetic log failure" >&2; exit 128; }; done\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
     const path = process.env['PATH'];
@@ -138,7 +138,7 @@ describe('commet scan CLI', () => {
     const onUnhandled = (e: unknown) => unhandled.push(e);
     process.on('unhandledRejection', onUnhandled);
     try {
-      const r = await cli(['scan'], broken.dir, { CLAUDE_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'commet-broken-claude-')) });
+      const r = await cli(['scan'], broken.dir, { CLAUDE_CONFIG_DIR: tempDir('commet-broken-claude-') });
       await new Promise((done) => setTimeout(done, 50));
       expect(r).toMatchObject({ code: 1 });
       expect(r.err).toContain('commet: internal error');
@@ -150,7 +150,7 @@ describe('commet scan CLI', () => {
   });
 
   it('exits 4 outside a repo and 2 on usage errors', async () => {
-    expect((await cli(['scan'], mkdtempSync(join(tmpdir(), 'commet-norepo-')), {})).code).toBe(4);
+    expect((await cli(['scan'], tempDir('commet-norepo-'), {})).code).toBe(4);
     expect((await cli(['scan', '--window', 'x'], repo.dir, {})).code).toBe(2);
     expect((await cli(['frobnicate'], repo.dir, {})).code).toBe(2);
   });
@@ -181,7 +181,7 @@ describe('#24: window numstat is parsed by position on NUL (AGENTS.md Rule 7)', 
     (args.includes('--numstat') ? stat : shas.map((s) => [s, '100', '100', 'N', 'n@example.com', '', 's'].join('\0')).join('\0'));
 
   it('a path holding U+0001, a newline and a tab neither splits its commit nor drops its rows (real git)', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'commet-numstat-'));
+    const dir = tempDir('commet-numstat-');
     let n = 0;
     const git = (...args: string[]) => {
       const at = `2026-07-${String(++n).padStart(2, '0')}T10:00:00Z`;

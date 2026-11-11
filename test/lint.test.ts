@@ -62,6 +62,15 @@ it('bans U+0001 framing of git output in the scanner and attribution (AGENTS.md 
   expect(await errors("export const s = '\\x01';\n", 'src/cli/x.ts')).toEqual([]);
 });
 
+it('makes tests take temp dirs from tempDir(), which removes them (#53)', async () => {
+  for (const code of ["import { mkdtempSync } from 'node:fs';\nexport const d = mkdtempSync('x');\n",
+    "import { mkdtemp } from 'fs/promises';\nexport const d = mkdtemp('x');\n"]) {
+    for (const file of ['test/x.test.ts', 'test/fixtures/x.ts', 'test/factory/x.ts']) expect(await errors(code, file), `${file}: ${code}`).toContain('no-restricted-imports');
+  }
+  expect(await errors("import { mkdtempSync } from 'node:fs';\nexport const d = mkdtempSync('x');\n", 'test/fixtures/tmp.ts')).toEqual([]);
+  expect(await errors("import { mkdirSync } from 'node:fs';\nexport const d = mkdirSync('x');\n", 'test/x.test.ts')).toEqual([]);
+});
+
 it('passes the fixed windowCommits (#24)', async () => {
   const file = 'src/scan/repo.ts';
   expect(await errors(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), file)).toEqual([]);

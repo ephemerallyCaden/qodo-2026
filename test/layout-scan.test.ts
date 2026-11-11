@@ -1,8 +1,7 @@
 // Issue #18 through the scan: `commet scan` writes layout.json, the golden on the structure fixture
 // (test/fixtures/build/structure.ts), and AC3, AC8 and AC9 on real git history.
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/core/canonical-json.js';
@@ -20,9 +19,10 @@ import { buildStructureRepo, scanStructure, type StructureRepo } from './fixture
 import { cli } from './fixtures/cli.js';
 import { planetAt } from './fixtures/layout.js';
 import { miniRepo } from './fixtures/mini.js';
+import { realTempDir, tempDir } from './fixtures/tmp.js';
 
 const GOLDEN = join(import.meta.dirname, 'golden/structure.layout.json');
-const NO_LOGS = mkdtempSync(join(tmpdir(), 'commet-layout-claude-'));
+const NO_LOGS = tempDir('commet-layout-claude-');
 let repo: StructureRepo;
 let snap: SnapshotV02;
 let lay: LayoutV1;
@@ -35,7 +35,7 @@ const fileId = (path: string) => snap.files.find((f) => f.path === path)!.id;
 const dirPath = (id: string | null | undefined) => snap.dirs.find((d) => d.id === id)?.path ?? null;
 
 beforeAll(async () => {
-  repo = buildStructureRepo();
+  repo = await buildStructureRepo();
   ({ snapshot: snap, layout: lay, layoutJson, layoutNotes: notes } = await run());
 });
 
@@ -53,7 +53,7 @@ describe('#18 AC6: commet scan writes layout.json', () => {
   });
 
   it('with --out, writes the layout beside the snapshot', async () => {
-    const out = join(mkdtempSync(join(tmpdir(), 'commet-layout-out-')), 'snap.json');
+    const out = join(tempDir('commet-layout-out-'), 'snap.json');
     const r = await cli(['scan', '--no-ingest', '--out', out], repo.dir, { CLAUDE_CONFIG_DIR: NO_LOGS });
     expect(r.code).toBe(0);
     expect(readFileSync(join(dirname(out), 'snap.layout.json'), 'utf8')).toBe(layoutJson);
@@ -198,7 +198,7 @@ describe('Qodo PR51 r1', () => {
  */
 function oddMergeRepo(prefix: string): { dir: string; head: string; odd: string } {
   const odd = 'a\u0001b\nc\td';
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-layout-rule7-')));
+  const dir = realTempDir('commet-layout-rule7-');
   let n = 0;
   const git = (...args: string[]) => {
     const at = `2026-10-${String(++n).padStart(2, '0')}T10:00:00Z`;
@@ -237,7 +237,7 @@ describe('#18 AC8 under Rule 7', () => {
 
 describe('#18 edge cases through the scan', () => {
   it('a repo whose HEAD holds no files has a star and nothing else', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-layout-empty-')));
+    const dir = realTempDir('commet-layout-empty-');
     const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8',
       env: { ...process.env, GIT_AUTHOR_NAME: SELF.name, GIT_AUTHOR_EMAIL: SELF.email, GIT_COMMITTER_NAME: SELF.name,
         GIT_COMMITTER_EMAIL: SELF.email, GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' } });

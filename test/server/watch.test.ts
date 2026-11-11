@@ -1,12 +1,12 @@
 // Qodo #32 r1: a state file whose read fails once (a transient I/O error) must be read again on the
 // next check, not skipped because its metadata hasn't changed since. #32 AC 8: one unreadable at the
 // start is unknown, so its first good read is announced, exactly once.
-import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { writeAtomic } from '../../src/state/io.js';
 import { waitFor } from '../fixtures/http.js';
+import { realTempDir } from '../fixtures/tmp.js';
 
 const failing = vi.hoisted(() => ({ reads: 0 }));
 vi.mock('../../src/state/io.js', async (orig) => {
@@ -25,7 +25,7 @@ vi.mock('../../src/state/io.js', async (orig) => {
 
 it('retries a state file whose read failed, and reports its new content', async () => {
   const { watchState } = await import('../../src/server/watch.js');
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-watch-')));
+  const dir = realTempDir('commet-watch-');
   writeFileSync(join(dir, 'snapshot.json'), 'v1');
   const seen: string[] = [];
   const w = await watchState(dir, ['snapshot.json'], (_name, body, change) => seen.push(`${change}:${String(body)}`), 50);
@@ -42,7 +42,7 @@ it('retries a state file whose read failed, and reports its new content', async 
 
 it('announces a file unreadable at the start once it reads, exactly once, even with the same bytes (#32 AC 8)', async () => {
   const { watchState } = await import('../../src/server/watch.js');
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-watch-')));
+  const dir = realTempDir('commet-watch-');
   writeFileSync(join(dir, 'snapshot.json'), 'same bytes');
   const seen: string[] = [];
   failing.reads = 1;
@@ -60,7 +60,7 @@ it('announces a file unreadable at the start once it reads, exactly once, even w
 
 it('reports a file that turns unreadable once, then that it reads again unchanged, never as new content', async () => {
   const { watchState } = await import('../../src/server/watch.js');
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-watch-')));
+  const dir = realTempDir('commet-watch-');
   writeFileSync(join(dir, 'snapshot.json'), 'v1');
   const seen: string[] = [];
   const w = await watchState(dir, ['snapshot.json'], (_name, body, change) => seen.push(`${change}:${String(body)}`), 50);

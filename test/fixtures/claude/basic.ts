@@ -1,9 +1,10 @@
 // Synthetic Claude Code transcripts in the v2.1.31x shape (probed key names only), planted with
 // privacy canaries. Generated at test time because `cwd` and file paths must be absolute.
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { AGENT_FILE, CONTROL, CORE_AGENT, HELPER, LATE, NOTES, SPACED, SPACED_LINES, type FixtureRepo } from '../build/basic.js';
+import { realTempDir } from '../tmp.js';
 
 export const CANARIES = {
   prompt: 'CANARY_PROMPT_7f3a',
@@ -31,7 +32,7 @@ const OTHER_SESSION = '22222222-2222-4222-8222-222222222222';
 export interface ClaudeFixture { claudeDir: string; transcripts: string[] }
 
 export function writeClaudeFixture(repo: FixtureRepo, o: { fileSymlink?: boolean } = {}): ClaudeFixture {
-  const claudeDir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-claude-')));
+  const claudeDir = realTempDir('commet-claude-');
   const at = (p: string) => join(repo.dir, p);
   const base = { sessionId: MAIN_SESSION, cwd: repo.dir, gitBranch: 'main', version: '2.1.31', userType: 'external', isSidechain: false };
   const call = (uuid: string, timestamp: string, name: string, input: object) => ({ ...base, type: 'assistant', uuid, timestamp,

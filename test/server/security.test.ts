@@ -1,7 +1,7 @@
 // R14 server security suite (#32): every case is a real round trip on a 127.0.0.1 socket.
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
-import { networkInterfaces, tmpdir } from 'node:os';
+import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API, TOKEN_HEADER, type ChartResult } from '../../src/core/contract/api.js';
@@ -12,6 +12,7 @@ import { startServer, type CommetServer } from '../../src/server/server.js';
 import { writeAtomic } from '../../src/state/io.js';
 import { miniFog } from '../fixtures/contract/mini.js';
 import { liveEvents, openStream, rawHttp, req, waitFor } from '../fixtures/http.js';
+import { realTempDir } from '../fixtures/tmp.js';
 
 /** A head the view was showing; every chart action carries one (#58). */
 const AT = 'a'.repeat(40);
@@ -24,7 +25,7 @@ const snapshotJson = (head: string) => JSON.stringify({ schemaVersion: '0.2', re
 interface Fixture { root: string; state: string; web: string; token: string; server: CommetServer; port: number }
 
 async function fixture(opts: { web?: boolean; chart?: (a: ChartAction) => Promise<ChartResult>; fog?: boolean } = {}): Promise<Fixture> {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'commet-server-')));
+  const root = realTempDir('commet-server-');
   const state = join(root, 'state');
   const web = join(root, 'web');
   mkdirSync(state, { mode: 0o700 });
@@ -481,7 +482,7 @@ describe('R14 server: missing bundle, missing snapshot, and the R5 seams', () =>
 
   it('gives onError only the error and the route, never the request or its token (Qodo PR #47 r1)', async () => {
     const seen: unknown[][] = [];
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'commet-server-')));
+    const root = realTempDir('commet-server-');
     const token = newToken();
     const server = await startServer({ stateDir: root, webRoot: join(root, 'web'), port: 0, token, onError: (...a) => seen.push(a),
       fog: async () => Promise.reject(new Error('fog failed')),

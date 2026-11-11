@@ -1,8 +1,7 @@
 // Issue #16: folders, birth partner, test moons, branches and debt markers. One describe per
 // acceptance criterion; the fixture is test/fixtures/build/structure.ts.
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { appendFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { sha256Hex } from '../src/core/hash.js';
@@ -14,9 +13,10 @@ import { lineageLog } from '../src/scan/structure.js';
 import { cli } from './fixtures/cli.js';
 import { buildStructureRepo, DEBT_CANARY, scanStructure, type StructureRepo } from './fixtures/build/structure.js';
 import { miniRepo } from './fixtures/mini.js';
+import { tempDir } from './fixtures/tmp.js';
 
 const GOLDEN = join(import.meta.dirname, 'golden/structure.snapshot.json');
-const NO_LOGS = mkdtempSync(join(tmpdir(), 'commet-structure-claude-'));
+const NO_LOGS = tempDir('commet-structure-claude-');
 let repo: StructureRepo;
 let snap: SnapshotV02;
 let json: string;
@@ -36,7 +36,7 @@ const birthId = (path: string, ordinal = 0) => `d_${sha256Hex(`${path}#${ordinal
 
 /** Runs `fn` with a `git` shim first on PATH; `script` runs before the real git (`$@` = git args). */
 async function withGitShim<T>(script: string, fn: () => Promise<T>): Promise<T> {
-  const shim = mkdtempSync(join(tmpdir(), 'commet-git-shim-'));
+  const shim = tempDir('commet-git-shim-');
   const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
   writeFileSync(join(shim, 'git'), `#!/bin/sh\n${script}\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
   const path = process.env['PATH'];
@@ -49,7 +49,7 @@ async function withGitShim<T>(script: string, fn: () => Promise<T>): Promise<T> 
 }
 
 beforeAll(async () => {
-  repo = buildStructureRepo();
+  repo = await buildStructureRepo();
   ({ snapshot: snap, json } = await run());
 });
 
@@ -146,7 +146,7 @@ describe('#16 AC3: debt markers from HEAD blobs', () => {
 
   it('marker comment text never reaches the snapshot, stdout or stderr (privacy canary)', async () => {
     expect(readFileSync(join(repo.dir, 'core/a.ts'), 'utf8')).toContain(DEBT_CANARY);
-    const out = join(mkdtempSync(join(tmpdir(), 'commet-structure-out-')), 'snap.json');
+    const out = join(tempDir('commet-structure-out-'), 'snap.json');
     const r = await cli(['scan', '--no-ingest', '--out', out], repo.dir, { CLAUDE_CONFIG_DIR: NO_LOGS });
     expect(r.code).toBe(0);
     expect(r.out).toContain('debt markers: todo 1 · fixme 1 · hack 2 · xxx 1');
@@ -289,7 +289,7 @@ describe('#16 AC5: unmerged branches', () => {
   });
 
   it('makes no network call', async () => {
-    const log = join(mkdtempSync(join(tmpdir(), 'commet-git-log-')), 'argv');
+    const log = join(tempDir('commet-git-log-'), 'argv');
     await withGitShim(`echo "$@" >> '${log}'`, () => run());
     const calls = readFileSync(log, 'utf8');
     expect(calls).toContain('for-each-ref');
@@ -381,7 +381,7 @@ describe('scan from a subdirectory', () => {
 
 /** A throwaway repo whose commits run in order at fixed dates. */
 function scratch() {
-  const d = mkdtempSync(join(tmpdir(), 'commet-scratch-'));
+  const d = tempDir('commet-scratch-');
   let n = 0;
   const env = { ...process.env, GIT_AUTHOR_NAME: 'Ada Self', GIT_AUTHOR_EMAIL: 'self@example.com',
     GIT_COMMITTER_NAME: 'Ada Self', GIT_COMMITTER_EMAIL: 'self@example.com' };

@@ -1,7 +1,7 @@
 // `commet open` end to end (#32): exit codes, the printed URL, the token's single appearance, and a
 // live push after a real `commet scan`, all on a real 127.0.0.1 socket.
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,6 +14,7 @@ import { EXIT } from '../../src/core/errors.js';
 import { cli } from '../fixtures/cli.js';
 import { liveEvents, openStream, req, waitFor } from '../fixtures/http.js';
 import { miniRepo } from '../fixtures/mini.js';
+import { realTempDir } from '../fixtures/tmp.js';
 
 const env = { ...process.env, CLAUDE_CONFIG_DIR: join(tmpdir(), 'commet-no-claude') };
 const URL_LINE = /^Commet is open at http:\/\/127\.0\.0\.1:(\d+)\/#t=([A-Za-z0-9_-]{43})$/m;
@@ -35,7 +36,7 @@ async function launch(cwd: string, args: string[], webRoot: string, launchEnv: N
 
 describe('commet open', () => {
   it('outside a repository exits 4', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-norepo-')));
+    const dir = realTempDir('commet-norepo-');
     const r = await cli(['open', '--no-open'], dir, { ...env, GIT_CEILING_DIRECTORIES: tmpdir() });
     expect(r.code).toBe(EXIT.noRepo);
     expect(r.err).toContain('not inside a git repository');
@@ -75,7 +76,7 @@ describe('commet open', () => {
     const repo = oneCommitRepo();
     expect((await cli(['scan', '--no-ingest'], repo.dir, env)).code).toBe(0);
     const snap = join(repo.dir, '.git', 'commet', 'snapshot.json');
-    const web = realpathSync(mkdtempSync(join(tmpdir(), 'commet-web-')));
+    const web = realTempDir('commet-web-');
     writeFileSync(join(web, 'index.html'), '<!doctype html>');
     for (const debug of [false, true]) {
       const s = await launch(repo.dir, ['--no-open'], web, debug ? { ...env, COMMET_DEBUG: '1' } : env);
@@ -111,7 +112,7 @@ describe('commet open', () => {
     // What the server reads is private: state dir 0700, snapshot 0600 (system design §9, check 10).
     expect(statSync(join(repo.dir, '.git', 'commet')).mode & 0o777).toBe(0o700);
     expect(statSync(join(repo.dir, '.git', 'commet', 'snapshot.json')).mode & 0o777).toBe(0o600);
-    const web = realpathSync(mkdtempSync(join(tmpdir(), 'commet-web-')));
+    const web = realTempDir('commet-web-');
     writeFileSync(join(web, 'index.html'), '<!doctype html><title>commet view</title>');
     const s = await launch(repo.dir, ['--no-open'], web);
     try {
@@ -154,7 +155,7 @@ describe('commet open', () => {
   it('serves real fog and takes chart writes through R5, with live fog events from any writer (#32 AC 8)', async () => {
     const repo = oneCommitRepo();
     expect((await cli(['scan', '--no-ingest'], repo.dir, env)).code).toBe(0);
-    const web = realpathSync(mkdtempSync(join(tmpdir(), 'commet-web-')));
+    const web = realTempDir('commet-web-');
     writeFileSync(join(web, 'index.html'), '<!doctype html><title>commet view</title>');
     const s = await launch(repo.dir, ['--no-open'], web);
     const head = () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo.dir, encoding: 'utf8' }).trim();
