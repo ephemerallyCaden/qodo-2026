@@ -69,8 +69,8 @@ async function notes(src: FogSource, cwd: string): Promise<string> {
   return out;
 }
 
-function status(src: FogSource, io: Io): number {
-  const fog = currentFog(src);
+async function status(src: FogSource, io: Io): Promise<number> {
+  const fog = await currentFog(src);
   const { planets, star, total } = tally(src, fog);
   const width = Math.max(6, ...[...planets, star].map((r) => r.name.length));
   const line = (r: Row | Record<keyof Row, string>) =>
@@ -193,7 +193,7 @@ export async function chartCommand(args: string[], io: Io): Promise<number> {
   }
   try {
     const src = await openFogSource(io.cwd);
-    const code = job.kind === 'status' ? status(src, io) : job.kind === 'baseline' ? await baseline(src, io, job.undo) : await chartFile(src, io, job.arg);
+    const code = job.kind === 'status' ? await status(src, io) : job.kind === 'baseline' ? await baseline(src, io, job.undo) : await chartFile(src, io, job.arg);
     io.stderr(await notes(src, io.cwd));
     return code;
   } catch (e) {

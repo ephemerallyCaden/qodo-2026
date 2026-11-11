@@ -190,18 +190,24 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
   }
   port = addr.port;
 
+  // The head fog events name when the fog itself can't be computed.
+  const initial = await readStateBytes(o.stateDir, STATE_FILES.snapshot).catch(() => null);
+  let lastHead = (initial && liveEvent(STATE_FILES.snapshot, initial)?.head) || null;
+
   let watcher: StateWatcher;
   try {
-    watcher = await watchState(o.stateDir, [...Object.values(STATE_FILES), CHART_FILE], (name, body) => {
-      // New or removed chart state, from this server, a `commet chart` run or by hand: the fog changed.
+    watcher = await watchState(o.stateDir, [...Object.values(STATE_FILES), CHART_FILE], (name, body, change) => {
+      // Chart state changed, went away, or turned unreadable or readable again, from this server, a
+      // `commet chart` run or by hand: the fog changed, or now fails. Either way the view refetches;
+      // a failed fog read still announces, at the last head, so the view can show the state error.
       if (name === CHART_FILE) {
-        // A fog read that fails sends nothing; GET /api/fog reports the problem when the view asks.
-        if (o.fog) o.fog().then((f) => broadcast({ type: 'fog', head: f.head }), () => {});
+        if (o.fog) o.fog().then((f) => broadcast({ type: 'fog', head: f.head }), () => lastHead && broadcast({ type: 'fog', head: lastHead }));
         return;
       }
-      // A snapshot or layout that vanished has nothing to announce: its GET route reports it.
-      const ev = body && liveEvent(name, body);
+      // A snapshot or layout that vanished or can't be read has nothing to announce: its GET route reports it.
+      const ev = change === 'changed' && body && liveEvent(name, body);
       if (!ev) return;
+      if (ev.type === 'snapshot') lastHead = ev.head;
       broadcast(ev);
       // The fog view is derived from the snapshot, so it changed too.
       if (ev.type === 'snapshot' && o.fog) broadcast({ type: 'fog', head: ev.head });

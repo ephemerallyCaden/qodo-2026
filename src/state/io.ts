@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, constants, lstatSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { lstat, open, realpath, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CommetError, EXIT } from '../core/errors.js';
@@ -66,45 +66,18 @@ function openFailed(name: string, e: unknown, present: boolean): null {
   throw e;
 }
 
-const presentSync = (file: string) => {
-  try {
-    lstatSync(file);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 function checkOpened(name: string, st: { isFile(): boolean; size: number }): void {
   if (!st.isFile()) throw notFile(name);
   if (st.size > MAX_STATE_BYTES) throw tooBig(name);
 }
 
 /**
- * Reads `<state dir>/<name>`, or null when it's absent (the one set of rules for every state read,
- * Rule 2, #54). `dir` is canonical (stateDir and `commet open` build it from a real path), so a file
- * whose real path isn't itself sits behind a symlink, the file or a folder swapped for one, and is
- * refused. So is anything but a regular file, or one over MAX_STATE_BYTES (exit 5). Messages name the
- * file, never its absolute path.
+ * Reads `<state dir>/<name>`, or null when it's absent: the one state reader (Rule 2, #54), async so
+ * the server isn't blocked by a large snapshot. `dir` is canonical (stateDir and `commet open` build
+ * it from a real path), so a file whose real path isn't itself sits behind a symlink, the file or a
+ * folder swapped for one, and is refused; so is a dangling link, anything but a regular file, or one
+ * over MAX_STATE_BYTES (exit 5). Messages name the file, never its absolute path.
  */
-export function readStateFile(dir: string, name: string): string | null {
-  const file = join(dir, name);
-  let fd: number;
-  try {
-    if (realpathSync.native(file) !== file) throw symlinked(name);
-    fd = openSync(file, openFlags());
-  } catch (e) {
-    return openFailed(name, e, presentSync(file));
-  }
-  try {
-    checkOpened(name, fstatSync(fd));
-    return readFileSync(fd, 'utf8');
-  } finally {
-    closeSync(fd);
-  }
-}
-
-/** readStateFile for the server: the same rules, async (a large snapshot doesn't block other requests) and as bytes. */
 export async function readStateBytes(dir: string, name: string): Promise<Buffer | null> {
   const file = join(dir, name);
   let handle: FileHandle;

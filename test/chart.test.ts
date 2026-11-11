@@ -321,6 +321,18 @@ describe('chart state I/O refusals (exit 5)', () => {
     expect((await r.run('chart', 'status')).code).toBe(0);
   });
 
+  it('two writes in one process at once both land: the lock file serialises them (PR70: the write may await)', async () => {
+    const r = await scanned();
+    r.write('src/b.ts', lines('beta'));
+    r.commit(SELF, () => r.write('src/b.ts', lines('beta')));
+    expect((await r.run('scan')).code).toBe(0);
+    const at = (await readFog(r.dir)).head;
+    const results = await Promise.all(['src/a.ts', 'src/b.ts'].map((p) => applyChart(r.dir, { kind: 'chart', fileId: fileIdOf(p), at })));
+    expect(results.map((x) => x.ok)).toEqual([true, true]);
+    expect(JSON.parse(readFileSync(r.chartJson(), 'utf8')).charts.map((e: { fileId: string }) => e.fileId).sort())
+      .toEqual([fileIdOf('src/a.ts'), fileIdOf('src/b.ts')].sort());
+  });
+
   it('a held lock makes a write wait, then refuse', async () => {
     const r = await scanned();
     const lock = join(r.dir, '.git/commet/chart.lock');

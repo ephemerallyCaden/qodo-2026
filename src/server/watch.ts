@@ -17,13 +17,20 @@ const UNKNOWN = 'unknown';
  * poll backs it up where watch events are lost or unsupported. Content hashes decide, so rewriting
  * identical bytes is not an update. A file that vanishes is reported with a null body (chart state
  * going away changes the fog; the snapshot's GET route reports its absence). One that can't be read
- * sends nothing, and is retried on every check. One
+ * is reported once as `unreadable`, retried on every check, and reported as `readable` if it comes
+ * back unchanged. One
  * that was unreadable at the start counts as unknown, so its first good read is announced (#32 AC 8);
  * one that turns unreadable keeps its last known content, so reading the same bytes again isn't.
  */
-export async function watchState(dir: string, names: readonly string[], onChange: (name: string, body: Buffer | null) => void,
-  pollMs = 1000): Promise<StateWatcher> {
-  const seen = new Map<string, { sig: string; hash: string }>();
+/**
+ * What happened to a watched file: new content (`body` null when it went away), it turned unreadable,
+ * or it reads again with the same content as before it turned unreadable.
+ */
+export type StateChange = 'changed' | 'unreadable' | 'readable';
+
+export async function watchState(dir: string, names: readonly string[],
+  onChange: (name: string, body: Buffer | null, change: StateChange) => void, pollMs = 1000): Promise<StateWatcher> {
+  const seen = new Map<string, { sig: string; hash: string; unreadable?: true }>();
   let closed = false;
 
   const scanOnce = async (): Promise<void> => {
@@ -35,13 +42,16 @@ export async function watchState(dir: string, names: readonly string[], onChange
       try {
         body = await readStateBytes(dir, name);
       } catch {
-        // Unreadable right now: an empty signature makes the next check read it again.
-        seen.set(name, { sig: '', hash: prev?.hash ?? UNKNOWN });
+        // Unreadable right now: an empty signature makes the next check read it again. Said once.
+        if (prev && !prev.unreadable && !closed) onChange(name, null, 'unreadable');
+        seen.set(name, { sig: '', hash: prev?.hash ?? UNKNOWN, unreadable: true });
         continue;
       }
       const hash = body ? createHash('sha256').update(body).digest('hex') : '';
       seen.set(name, { sig, hash });
-      if (prev && prev.hash !== hash && !closed) onChange(name, body);
+      if (!prev || closed) continue;
+      if (prev.hash !== hash) onChange(name, body, 'changed');
+      else if (prev.unreadable) onChange(name, body, 'readable');
     }
   };
   // One check at a time, in order. scanOnce catches its own I/O errors; the next poll retries anything else.

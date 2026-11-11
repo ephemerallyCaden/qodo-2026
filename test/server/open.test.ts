@@ -202,7 +202,8 @@ describe('commet open', () => {
       expect((await fogNow()).baseline).toBe(h1);
 
       // Chart state deleted while the view is open: fog changed back, so the view hears (Qodo #32 local r1).
-      const saved = readFileSync(join(repo.dir, '.git/commet/chart.json'));
+      const chartJson = join(repo.dir, '.git/commet/chart.json');
+      const saved = readFileSync(chartJson);
       const beforeDelete = fogEvents();
       rmSync(join(repo.dir, '.git/commet/chart.json'));
       await waitFor(() => fogEvents() > beforeDelete, 10_000, 'fog event after chart.json is deleted');
@@ -210,6 +211,23 @@ describe('commet open', () => {
       const afterDelete = fogEvents();
       writeFileSync(join(repo.dir, '.git/commet/chart.json'), saved, { mode: 0o600 });
       await waitFor(() => fogEvents() > afterDelete, 10_000, 'fog event after chart.json is back');
+      expect((await fogNow()).baseline).toBe(h1);
+
+      // Chart state turned invalid, then a symlink, while the view is open: the view still hears, and
+      // its refetch shows the state error (Qodo PR70 r1).
+      for (const plant of [() => writeFileSync(chartJson, '{"not":"chart state"}'), () => {
+        rmSync(chartJson);
+        symlinkSync(join(repo.dir, 'README.md'), chartJson);
+      }]) {
+        const n = fogEvents();
+        plant();
+        await waitFor(() => fogEvents() > n, 10_000, 'fog event for bad chart state');
+        const bad = await req(s.port, { path: API.fog, headers: auth });
+        expect(bad.status).toBe(500);
+        expect(JSON.parse(bad.body).error).toMatch(/^state error: \.git\/commet\/chart\.json /);
+      }
+      rmSync(chartJson);
+      writeFileSync(chartJson, saved, { mode: 0o600 });
       expect((await fogNow()).baseline).toBe(h1);
 
       // A rescan after a new commit: the chart at h1 still stands and the new change is fogged.

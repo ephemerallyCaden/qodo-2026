@@ -15,7 +15,7 @@ import type { SnapshotV02 } from '../core/snapshot/types.js';
 import { exclusionOf } from '../scan/exclusions.js';
 import { gitRunner, tryGit } from '../scan/git.js';
 import { lineageLog } from '../scan/structure.js';
-import { readStateFile, stateDir, writeAtomic } from './io.js';
+import { readStateBytes, stateDir, writeAtomic } from './io.js';
 
 /** Chart state in the state dir. */
 export const CHART_FILE = 'chart.json';
@@ -65,8 +65,8 @@ function isSnapshot(v: unknown): v is SnapshotV02 {
 }
 
 /** The snapshot `commet scan` last wrote. */
-export function readSnapshot(dir: string): SnapshotV02 {
-  const text = readStateFile(dir, SNAPSHOT_FILE);
+export async function readSnapshot(dir: string): Promise<SnapshotV02> {
+  const text = (await readStateBytes(dir, SNAPSHOT_FILE))?.toString('utf8') ?? null;
   if (text === null) throw new CommetError('no snapshot yet: run `commet scan` first', EXIT.state);
   let v: unknown = null;
   try {
@@ -79,8 +79,8 @@ export function readSnapshot(dir: string): SnapshotV02 {
 }
 
 /** Chart state, or the empty state when there is none yet. A damaged file is refused, never reset. */
-export function readChart(dir: string): ChartState {
-  const text = readStateFile(dir, CHART_FILE);
+export async function readChart(dir: string): Promise<ChartState> {
+  const text = (await readStateBytes(dir, CHART_FILE))?.toString('utf8') ?? null;
   if (text === null) return emptyChart();
   try {
     return parseChartState(text);
@@ -145,7 +145,7 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
   const dir = stateDir(common);
   const key = snapshotKey(dir);
   if (key !== null && loaded?.key === key) return { repoDir, dir, base: await loaded.base, key };
-  const snapshot = readSnapshot(dir);
+  const snapshot = await readSnapshot(dir);
   const base = historyFor(repoDir, dir, snapshot).then((h) => fogBase(snapshot, h));
   // Stat before read: the cached content is never older than its key.
   const entry = key === null ? null : { key, base };
@@ -159,15 +159,15 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
   return { repoDir, dir, base: ready, key };
 }
 
-export const currentFog = (src: FogSource): FogView => fogFrom(src.base, readChart(src.dir));
+export const currentFog = async (src: FogSource): Promise<FogView> => fogFrom(src.base, await readChart(src.dir));
 
 /**
- * Serialises chart writes across processes with an exclusive lock file. `fn` is synchronous, so
- * nothing else in this process can interleave while the lock is held. Scans don't take it (a write
+ * Serialises chart writes with an exclusive lock file. That holds within this process too (a second
+ * write waits on the file like any other), so `fn` may await. Scans don't take it (a write
  * is recorded at its own `at`, so a scan can't make it unsafe), so a lock a killed writer left can
  * only block chart writes, which say how to clear it.
  */
-async function withChartLock<T>(dir: string, fn: () => T): Promise<T> {
+async function withChartLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
   const lock = join(dir, LOCK_FILE);
   for (let tries = 1; ; tries++) {
     try {
@@ -182,7 +182,7 @@ async function withChartLock<T>(dir: string, fn: () => T): Promise<T> {
     }
   }
   try {
-    return fn();
+    return await fn();
   } finally {
     rmSync(lock, { force: true });
   }
@@ -206,9 +206,9 @@ const WRITE_TRIES = 3;
 export async function writeChart(src: FogSource, action: ChartAction): Promise<ChartWrite> {
   for (let tries = 1; ; tries++) {
     const cur = src;
-    const r = await withChartLock(cur.dir, (): ChartWrite | null => {
+    const r = await withChartLock(cur.dir, async (): Promise<ChartWrite | null> => {
       if (snapshotKey(cur.dir) !== cur.key) return null;
-      const prev = readChart(cur.dir);
+      const prev = await readChart(cur.dir);
       const applied = applyChartAction(cur.base, prev, action);
       if (!applied.ok) return applied;
       writeAtomic(join(cur.dir, CHART_FILE), canonicalJson(applied.chart));
@@ -222,7 +222,7 @@ export async function writeChart(src: FogSource, action: ChartAction): Promise<C
 
 /** GET /api/fog (#32): the fog view for the latest snapshot. State errors throw CommetError. */
 export async function readFog(repoDir: string): Promise<FogView> {
-  return currentFog(await openFogSource(repoDir));
+  return await currentFog(await openFogSource(repoDir));
 }
 
 /**
