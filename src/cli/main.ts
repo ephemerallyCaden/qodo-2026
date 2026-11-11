@@ -72,8 +72,10 @@ function saveQodoCache(commonDir: string, text: string): boolean {
  * to their targets first, under names only this process uses (PR51 8e924d0b), so a failed write (a
  * full disk) or another scan changes nothing. If a target then can't be replaced, the targets
  * already replaced get their last contents back (or go, if they were new), so the last pair stays
- * published together. One that existed but couldn't be read is left as it is (PR51 d0357f0b). The
- * layout's `source.head` names its snapshot, so a pair a killed scan left mixed can still be told apart.
+ * published together. One that existed but couldn't be read is left as it is (PR51 d0357f0b). A
+ * killed or overlapping scan can still leave a mixed pair: the layout's `source.head` and
+ * `source.repoId` name its snapshot, and readScanPair (src/state/chart.ts), the one reader of both,
+ * refuses a pair they don't match (#64), so fog and chart writes wait for the next scan.
  */
 function writePair(files: [file: string, text: string][]): void {
   const staged = (file: string) => `${file}.next-${process.pid}`;
@@ -100,7 +102,7 @@ function writePair(files: [file: string, text: string][]): void {
         if (was === null) rmSync(file, { force: true });
         else if (was !== undefined) writeAtomic(file, was);
       } catch {
-        // Keep the first error; the layout's source.head still tells the pair apart.
+        // Keep the first error; readScanPair refuses a pair this leaves mixed (#64).
       }
     }
     for (const [file] of files) rmSync(staged(file), { force: true });

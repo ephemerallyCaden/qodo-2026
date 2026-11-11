@@ -335,6 +335,46 @@ describe('chart state I/O refusals (exit 5)', () => {
   });
 });
 
+describe('a snapshot and a layout from different scans (#64)', () => {
+  it('every `commet chart` command refuses the pair with exit 5 and writes nothing; a scan heals it', async () => {
+    // The Day 6 probe's state: the snapshot of a scan without roots beside the layout of a later scan with `src` as a root.
+    const r = repo();
+    const a = r.commit(SELF, () => {
+      r.write('src/core/a.ts', lines('alpha'));
+      r.write('src/cli/b.ts', lines('beta'));
+      r.write('docs/guide.md', '# Guide\n');
+    });
+    expect((await r.run('scan', '--no-root')).code).toBe(0);
+    expect((await r.run('chart', 'src/core/a.ts')).code).toBe(0);
+    expect((await r.run('chart', 'baseline')).code).toBe(0); // so `baseline --undo` has one to remove
+    const state = join(r.dir, '.git/commet');
+    const snapshotA = readFileSync(join(state, 'snapshot.json'));
+    const b = r.commit(TEAMMATE, () => r.write('src/cli/b.ts', lines('beta') + lines('mate')));
+    expect((await r.run('scan', '--root', 'src')).code).toBe(0);
+    writeFileSync(join(state, 'snapshot.json'), snapshotA, { mode: 0o600 });
+    const files = ['snapshot.json', 'layout.json', 'chart.json'];
+    const before = files.map((f) => readFileSync(join(state, f)));
+
+    for (const args of [['status'], ['src/cli/b.ts'], ['--', 'src/core/a.ts'], ['baseline'], ['baseline', '--undo']]) {
+      const res = await r.run('chart', ...args);
+      expect([res.code, res.out], args.join(' ')).toEqual([5, '']);
+      expect(res.err, args.join(' ')).toMatch(new RegExp(`^commet: state error: .*snapshot \\(of ${a.slice(0, 7)}\\).*layout \\(of ${b.slice(0, 7)}\\).*`
+        + 'different scans.*interrupted or overlapping.*run `commet scan`.*\\n$'));
+      // Short heads only, never a path (Rule 2).
+      expect(res.err).not.toContain(a);
+      expect(res.err).not.toContain(b);
+      expect(res.err.slice('commet: '.length)).not.toContain('/');
+      expect(files.map((f) => readFileSync(join(state, f))), args.join(' ')).toEqual(before);
+    }
+    expect(existsSync(join(state, 'chart.lock'))).toBe(false);
+
+    expect((await r.run('scan', '--root', 'src')).code).toBe(0);
+    const healed = await r.run('chart', 'status');
+    expect(healed.code).toBe(0);
+    expect(healed.out).toContain(`fog at ${b.slice(0, 7)}`);
+  });
+});
+
 describe('relativeRepoPath', () => {
   it('joins the prefix, normalises, and converts Windows separators only on Windows (Qodo PR50 r2)', () => {
     expect(relativeRepoPath('src/', 'b.ts', '/')).toBe('src/b.ts');

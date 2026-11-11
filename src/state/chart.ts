@@ -38,8 +38,8 @@ export interface FogSource {
 }
 
 /**
- * Identity of the snapshot file and the layout beside it, whose roots fog uses (#71): an atomic
- * write gives a file a new inode. Null when the snapshot is absent.
+ * Identity of the snapshot file and the layout beside it, whose roots fog uses (#71) and whose
+ * source pairs with it (#64): an atomic write gives a file a new inode. Null when the snapshot is absent.
  */
 function snapshotKey(dir: string): string | null {
   const id = (name: string) => {
@@ -56,7 +56,7 @@ function snapshotKey(dir: string): string | null {
   try {
     layout = id(LAYOUT_FILE);
   } catch {
-    // No layout yet: readLayoutRoots gives [].
+    // No layout yet: readScanPair gives no roots.
   }
   return `${dir}\0${snapshot}\0${layout}`;
 }
@@ -64,15 +64,15 @@ function snapshotKey(dir: string): string | null {
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
 const all = (v: unknown, ok: (x: Record<string, unknown>) => boolean) => Array.isArray(v) && v.every((x) => isObject(x) && ok(x));
-const str = (v: unknown) => typeof v === 'string';
+const str = (v: unknown): v is string => typeof v === 'string';
 /** A full commit SHA. Anything else (an option such as `--output=…`, a rev like `HEAD~1`) never reaches git. */
-const sha = (v: unknown) => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(v);
+const sha = (v: unknown): v is string => typeof v === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(v);
 
 /** The fields fog reads, checked so a damaged snapshot is a state error, never an internal one. */
 function isSnapshot(v: unknown): v is SnapshotV02 {
   if (!isObject(v) || v['schemaVersion'] !== '0.2' || !isObject(v['repo'])) return false;
   const repo = v['repo'];
-  return sha(repo['head']) && Array.isArray(repo['selfPersonIds']) && repo['selfPersonIds'].every(str)
+  return sha(repo['head']) && str(repo['repoId']) && Array.isArray(repo['selfPersonIds']) && repo['selfPersonIds'].every(str)
     && all(v['files'], (f) => str(f['id']) && str(f['path']) && typeof f['isTest'] === 'boolean' && (f['testOf'] === null || str(f['testOf'])))
     && all(v['dirs'], (d) => str(d['id']) && str(d['path']) && Number.isInteger(d['depth']))
     && all(v['commits'], (c) => Number.isInteger(c['seq']) && sha(c['sha']) && str(c['author']) && isObject(c['attribution'])
@@ -94,32 +94,62 @@ export async function readSnapshot(dir: string): Promise<SnapshotV02> {
   return v;
 }
 
-/**
- * The content roots of the layout `commet scan` wrote beside the snapshot (#71), so fog counts the
- * planets the view draws (C8). No layout yet, or one from before roots, is #18's mapping ([]).
- */
-export async function readLayoutRoots(dir: string): Promise<string[]> {
+/** What fog reads from layout.json: the scan it came from and its content roots (#71). */
+interface LayoutSource { head: string; repoId: string; roots: string[] }
+
+/** The layout's `source`, or null when there is no layout yet. A layout from before roots has none. */
+async function readLayoutSource(dir: string): Promise<LayoutSource | null> {
   const text = (await readStateBytes(dir, LAYOUT_FILE))?.toString('utf8') ?? null;
-  if (text === null) return [];
+  if (text === null) return null;
   let v: unknown = null;
   try {
     v = JSON.parse(text);
   } catch {
     // Falls through to the refusal below.
   }
-  const source = isObject(v) && v['schemaVersion'] === 'layout.1' && isObject(v['source']) ? v['source'] : null;
-  const roots = source?.['roots'];
-  if (source !== null && roots === undefined) return [];
+  const source = isObject(v) && v['schemaVersion'] === 'layout.1' && isObject(v['source']) ? v['source'] : {};
+  const { head, repoId, roots = [] } = source;
   // As the contract records them: sorted, no repeats, none inside another (as config.json, Qodo local r1 #2).
   const canonical = (rs: unknown[]): rs is string[] => {
     if (!rs.every(isCanonicalRoot)) return false;
     const set = parseRoots(rs, new Set(rs));
     return 'roots' in set && set.roots.join('\0') === rs.join('\0');
   };
-  if (!Array.isArray(roots) || !canonical(roots)) {
+  if (!sha(head) || !str(repoId) || !Array.isArray(roots) || !canonical(roots)) {
     throw new CommetError(`state error: .git/commet/${LAYOUT_FILE} is damaged or from another commet version; run \`commet scan\``, EXIT.state);
   }
-  return roots;
+  return { head, repoId, roots };
+}
+
+/** A snapshot and the content roots of the layout from the same scan. */
+export interface ScanPair { snapshot: SnapshotV02; roots: string[] }
+
+/** Reads of the pair before a mismatch is believed, while scans keep replacing the files mid-read. */
+const PAIR_TRIES = 3;
+
+const short = (head: string) => head.slice(0, 7);
+
+/**
+ * snapshot.json and layout.json as one scan's pair (#64): the one reader of both, so fog counts
+ * the planets the view draws (#71 C8). `commet scan` publishes them as two renames, so an
+ * interrupted or overlapping scan can leave one scan's layout beside another's snapshot. They pair
+ * only when the layout's source.head and source.repoId are the snapshot's; anything else is a state
+ * error, so no fog, count or chart write comes from a mix, and nothing is reset. No layout yet is
+ * #18's mapping (no roots). A scan that replaced a file while it was read gets a fresh read.
+ */
+export async function readScanPair(dir: string): Promise<ScanPair> {
+  for (let tries = 1; ; tries++) {
+    const key = snapshotKey(dir);
+    const snapshot = await readSnapshot(dir);
+    const layout = await readLayoutSource(dir);
+    if (layout === null) return { snapshot, roots: [] };
+    const { head, repoId } = snapshot.repo;
+    if (layout.head === head && layout.repoId === repoId) return { snapshot, roots: layout.roots };
+    if (tries < PAIR_TRIES && snapshotKey(dir) !== key) continue;
+    const other = layout.head === head ? ", another repository's" : '';
+    throw new CommetError(`state error: the snapshot (of ${short(head)}) and the layout (of ${short(layout.head)}${other}) come from different `
+      + 'scans (an interrupted or overlapping `commet scan`); run `commet scan` to write a matching pair', EXIT.state);
+  }
 }
 
 /** Chart state, or the empty state when there is none yet. A damaged file is refused, never reset. */
@@ -189,11 +219,8 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
   const dir = stateDir(common);
   const key = snapshotKey(dir);
   if (key !== null && loaded?.key === key) return { repoDir, dir, base: await loaded.base, key };
-  const roots = readLayoutRoots(dir);
-  // Surfaced through `base` below; this keeps a refusal from going unhandled if the snapshot fails first.
-  roots.catch(() => undefined);
-  const snapshot = await readSnapshot(dir);
-  const base = Promise.all([historyFor(repoDir, dir, snapshot), roots]).then(([h, r]) => fogBase(snapshot, h, r));
+  const { snapshot, roots } = await readScanPair(dir);
+  const base = historyFor(repoDir, dir, snapshot).then((h) => fogBase(snapshot, h, roots));
   // Stat before read: the cached content is never older than its key.
   const entry = key === null ? null : { key, base };
   loaded = entry;

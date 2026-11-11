@@ -11,6 +11,7 @@ import { API, TOKEN_HEADER } from '../../src/core/contract/api.js';
 import type { FogView } from '../../src/core/contract/fog.js';
 import { fileIdOf } from '../../src/core/fog/index.js';
 import { EXIT } from '../../src/core/errors.js';
+import { writeAtomic } from '../../src/state/io.js';
 import { cli } from '../fixtures/cli.js';
 import { liveEvents, openStream, req, waitFor } from '../fixtures/http.js';
 import { miniRepo } from '../fixtures/mini.js';
@@ -247,6 +248,74 @@ describe('commet open', () => {
       expect(await s.stop()).toBe(0);
     }
     expect(s.out().split(s.token).length - 1).toBe(1);
+    expect(s.err()).toBe('');
+  });
+
+  it('refuses fog and chart writes over a snapshot and a layout from different scans, and still serves and announces both (#64)', async () => {
+    // The Day 6 probe's state: the snapshot of a scan without roots beside the layout of a later scan with `src` as a root.
+    const repo = miniRepo([{ id: 'a', at: '2026-10-01T09:00:00Z', path: 'src/core/a.ts', lines: ['export const a = 1;'] },
+      { id: 'b', at: '2026-10-01T10:00:00Z', path: 'docs/guide.md', lines: ['# Guide'] }]);
+    const state = join(repo.dir, '.git', 'commet');
+    const read = (name: string) => readFileSync(join(state, name), 'utf8');
+    expect((await cli(['scan', '--no-ingest', '--no-root'], repo.dir, env)).code).toBe(0);
+    const [snapA, layoutA, headA] = [read('snapshot.json'), read('layout.json'), repo.sha['b']!];
+    mkdirSync(join(repo.dir, 'src', 'cli'));
+    writeFileSync(join(repo.dir, 'src', 'cli', 'b.ts'), 'export const b = 2;\n');
+    execFileSync('git', ['add', '-A'], { cwd: repo.dir });
+    execFileSync('git', ['commit', '-q', '-m', 'feat: b'], { cwd: repo.dir, env: { ...process.env, GIT_AUTHOR_DATE: '2026-10-02T09:00:00Z',
+      GIT_COMMITTER_DATE: '2026-10-02T09:00:00Z' } });
+    const headB = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo.dir, encoding: 'utf8' }).trim();
+    expect((await cli(['scan', '--no-ingest', '--root', 'src'], repo.dir, env)).code).toBe(0);
+    const [snapB, layoutB] = [read('snapshot.json'), read('layout.json')];
+    writeAtomic(join(state, 'snapshot.json'), snapA);
+
+    const web = realTempDir('commet-web-');
+    writeFileSync(join(web, 'index.html'), '<!doctype html><title>commet view</title>');
+    const s = await launch(repo.dir, ['--no-open'], web);
+    try {
+      const auth = { [TOKEN_HEADER]: s.token };
+      const get = (path: string) => req(s.port, { path, headers: auth });
+      const refused = (r: { status: number; headers: Record<string, string>; body: string }, snap: string, layout: string) => {
+        expect(r.status).toBe(500);
+        const error = (JSON.parse(r.body) as { error: string }).error;
+        expect(error).toMatch(new RegExp(`^state error: .*snapshot \\(of ${snap.slice(0, 7)}\\).*layout \\(of ${layout.slice(0, 7)}\\).*different scans.*run \`commet scan\``));
+        expect(r.body).not.toContain(repo.dir);
+        expect(r.body).not.toContain(snap);
+        expect(r.body).not.toContain(s.token);
+        expect(r.headers['content-security-policy']).toContain("default-src 'self'");
+        expect(r.headers['access-control-allow-origin']).toBeUndefined();
+      };
+      refused(await get(API.fog), headA, headB);
+      const post = await req(s.port, { method: 'POST', path: API.chart, headers: { ...auth, 'content-type': 'application/json' },
+        body: JSON.stringify({ kind: 'chart', fileId: fileIdOf('src/core/a.ts'), at: headA }) });
+      refused(post, headA, headB);
+      expect(existsSync(join(state, 'chart.json'))).toBe(false);
+      // Both files are still served as they are, so the view can draw the layout and say why there's no fog.
+      expect([(await get(API.layout)).body, (await get(API.snapshot)).body]).toEqual([layoutB, snapA]);
+      // The gates come before the refusal.
+      expect((await req(s.port, { path: API.fog })).status).toBe(401);
+
+      // Every file change is still announced at that file's head, and the fog follows the pair.
+      const stream = openStream(s.port, API.events, auth);
+      expect(await stream.status).toBe(200);
+      await waitFor(() => stream.text().includes(': commet live updates'), 10_000, 'stream open');
+      const events = () => liveEvents(stream.text());
+      writeAtomic(join(state, 'snapshot.json'), snapB);
+      await waitFor(() => events().length >= 2, 10_000, 'snapshot B events');
+      expect((JSON.parse((await get(API.fog)).body) as FogView).head).toBe(headB);
+      writeAtomic(join(state, 'snapshot.json'), snapA);
+      await waitFor(() => events().length >= 4, 10_000, 'snapshot A events');
+      refused(await get(API.fog), headA, headB);
+      writeAtomic(join(state, 'layout.json'), layoutA);
+      await waitFor(() => events().length >= 5, 10_000, 'layout A event');
+      expect(events()).toEqual([{ type: 'snapshot', head: headB }, { type: 'fog', head: headB }, { type: 'snapshot', head: headA },
+        { type: 'fog', head: headA }, { type: 'layout', head: headA }]);
+      const fog = await get(API.fog);
+      expect([fog.status, (JSON.parse(fog.body) as FogView).head]).toEqual([200, headA]);
+      stream.close();
+    } finally {
+      expect(await s.stop()).toBe(0);
+    }
     expect(s.err()).toBe('');
   });
 

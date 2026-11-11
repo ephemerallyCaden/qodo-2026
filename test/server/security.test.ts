@@ -20,7 +20,9 @@ const AT = 'a'.repeat(40);
 const HEAD_A = 'a'.repeat(40);
 const HEAD_B = 'b'.repeat(40);
 const SECRET = 'TOP-SECRET-CANARY-outside-the-bundle';
-const snapshotJson = (head: string) => JSON.stringify({ schemaVersion: '0.2', repo: { head } });
+const snapshotJson = (head: string) => JSON.stringify({ schemaVersion: '0.2', repo: { repoId: 'r', head } });
+/** The layout of the same scan as `snapshotJson(head)` (#64 pairs them by head and repoId). */
+const layoutJson = (head: string, roots: string[] = []) => JSON.stringify({ schemaVersion: 'layout.1', source: { repoId: 'r', head, roots } });
 
 interface Fixture { root: string; state: string; web: string; token: string; server: CommetServer; port: number }
 
@@ -342,17 +344,18 @@ describe('R14 server on a real socket', () => {
         writeAtomic(join(f.state, 'snapshot.json'), snapshotJson(HEAD_B));
         await waitFor(() => liveEvents(stream.text()).length >= 1, 10_000, 'snapshot event');
         expect(liveEvents(stream.text())).toEqual([{ type: 'snapshot', head: HEAD_B }]);
-        writeAtomic(join(f.state, 'layout.json'), JSON.stringify({ schemaVersion: 'layout.1', source: { repoId: 'r', head: HEAD_B } }));
+        writeAtomic(join(f.state, 'layout.json'), layoutJson(HEAD_B));
         await waitFor(() => liveEvents(stream.text()).length >= 2, 10_000, 'layout event');
         expect(liveEvents(stream.text())[1]).toEqual({ type: 'layout', head: HEAD_B });
         // The layout now exists, so its route serves it.
         expect(JSON.parse((await api(API.layout)).body).source.head).toBe(HEAD_B);
         // Same bytes again (a new inode): no event. Every check reads snapshot before layout, so a
         // spurious snapshot event would arrive before the sentinel layout change that follows.
+        // The sentinel is the same scan's layout with other bytes, so the pair stays matched.
         writeAtomic(join(f.state, 'snapshot.json'), snapshotJson(HEAD_B));
-        writeAtomic(join(f.state, 'layout.json'), JSON.stringify({ schemaVersion: 'layout.1', source: { repoId: 'r', head: HEAD_A } }));
+        writeAtomic(join(f.state, 'layout.json'), layoutJson(HEAD_B, ['src']));
         await waitFor(() => liveEvents(stream.text()).length >= 3, 10_000, 'sentinel layout event');
-        expect(liveEvents(stream.text())).toEqual([{ type: 'snapshot', head: HEAD_B }, { type: 'layout', head: HEAD_B }, { type: 'layout', head: HEAD_A }]);
+        expect(liveEvents(stream.text())).toEqual([{ type: 'snapshot', head: HEAD_B }, { type: 'layout', head: HEAD_B }, { type: 'layout', head: HEAD_B }]);
       } finally {
         stream.close();
       }

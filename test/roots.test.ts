@@ -10,7 +10,7 @@ import type { LayoutV1 } from '../src/core/contract/layout.js';
 import { CommetError, EXIT } from '../src/core/errors.js';
 import { foldersOf, guessRoot, normalizeRoot, parseRoots } from '../src/core/roots.js';
 import { folderHome, planetHome } from '../src/core/structure.js';
-import { readFog, readLayoutRoots } from '../src/state/chart.js';
+import { readFog, readScanPair } from '../src/state/chart.js';
 import { cli, scripted } from './fixtures/cli.js';
 import { miniRepo, type MiniRepo } from './fixtures/mini.js';
 import { realTempDir } from './fixtures/tmp.js';
@@ -334,18 +334,34 @@ describe('#71 through commet scan', () => {
     expect((await readFog(repo.dir)).planets).toHaveLength(2);
   });
 
-  it('fog reads the layout\'s roots: none without a layout or from before roots; a damaged one is a state error', async () => {
+  it('fog reads the roots of the layout from the snapshot\'s own scan: none without a layout or from before roots (#64 AC 3)', async () => {
     const dir = realTempDir('commet-roots-state-');
-    expect(await readLayoutRoots(dir)).toEqual([]);
-    const write = (text: string) => writeFileSync(join(dir, 'layout.json'), text, { mode: 0o600 });
-    write('{"schemaVersion":"layout.1","source":{"repoId":"r","head":"h"}}');
-    expect(await readLayoutRoots(dir)).toEqual([]);
-    write('{"schemaVersion":"layout.1","source":{"repoId":"r","head":"h","roots":["src"]}}');
-    expect(await readLayoutRoots(dir)).toEqual(['src']);
-    for (const bad of ['{', '{"schemaVersion":"layout.1","source":{"roots":["/etc"]}}', '{"schemaVersion":"layout.1","source":{"roots":"src"}}', '[]',
-      '{"schemaVersion":"layout.1","source":{"roots":["src","src/core"]}}', '{"schemaVersion":"layout.1","source":{"roots":["web","src"]}}']) {
+    const head = 'a'.repeat(40);
+    const snapshot = { schemaVersion: '0.2', repo: { head, repoId: 'r', selfPersonIds: [] }, files: [], dirs: [], commits: [] };
+    writeFileSync(join(dir, 'snapshot.json'), JSON.stringify(snapshot), { mode: 0o600 });
+    const roots = async () => (await readScanPair(dir)).roots;
+    const refusal = async () => ((await readScanPair(dir).catch((e: unknown) => e)) as CommetError);
+    expect(await roots()).toEqual([]);
+    const write = (source: object | string) =>
+      writeFileSync(join(dir, 'layout.json'), typeof source === 'string' ? source : JSON.stringify({ schemaVersion: 'layout.1', source }), { mode: 0o600 });
+    write({ repoId: 'r', head }); // before #71
+    expect(await roots()).toEqual([]);
+    write({ repoId: 'r', head, roots: ['src'] });
+    expect(await roots()).toEqual(['src']);
+    for (const bad of ['{', '[]', { repoId: 'r', head, roots: ['/etc'] }, { repoId: 'r', head, roots: 'src' }, { repoId: 'r', head, roots: null },
+      { repoId: 'r', head, roots: ['src', 'src/core'] }, { repoId: 'r', head, roots: ['web', 'src'] }, { roots: ['src'] },
+      { repoId: 'r', head: 'h' }, { repoId: 'r', head: `--output=${head}` }, { head }, { repoId: 7, head }]) {
       write(bad);
-      expect(((await readLayoutRoots(dir).catch((e: unknown) => e)) as CommetError).exitCode, bad).toBe(EXIT.state);
+      const e = await refusal();
+      expect([e.exitCode, e.message], JSON.stringify(bad)).toEqual([EXIT.state,
+        'state error: .git/commet/layout.json is damaged or from another commet version; run `commet scan`']);
+    }
+    // Another scan's layout, from before roots or not, is refused rather than read for its roots.
+    for (const other of [{ repoId: 'r', head: 'b'.repeat(40) }, { repoId: 'r', head: 'b'.repeat(40), roots: ['src'] }, { repoId: 'r2', head, roots: [] }]) {
+      write(other);
+      const e = await refusal();
+      expect(e.exitCode, JSON.stringify(other)).toBe(EXIT.state);
+      expect(e.message).toMatch(/^state error: the snapshot \(of aaaaaaa\) and the layout \(of (bbbbbbb|aaaaaaa, another repository's)\) come from different scans/);
     }
   });
 
