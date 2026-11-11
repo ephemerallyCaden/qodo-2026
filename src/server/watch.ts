@@ -12,7 +12,7 @@ const UNKNOWN = 'unknown';
 
 /**
  * What happened to a watched file: new content (`body` null when it went away), it turned unreadable,
- * or it reads again with the same content as before it turned unreadable.
+ * or it's readable again with what it held before it turned unreadable (the same bytes, or still absent).
  */
 export type StateChange = 'changed' | 'unreadable' | 'readable';
 
@@ -26,7 +26,8 @@ export type StateChange = 'changed' | 'unreadable' | 'readable';
  *   the fog; the snapshot's GET route reports its absence). A file unreadable at the start counts as
  *   unknown, so its first good read is `changed` (#32 AC 8).
  * - `unreadable`: it can't be read now. Said once, and retried on every check.
- * - `readable`: it reads again with the content it had before it turned unreadable, so not `changed`.
+ * - `readable`: it's readable again and holds what it held before it turned unreadable: the same
+ *   bytes, or (`body` null) still absent. Not `changed`, but whatever saw `unreadable` should look again.
  */
 export async function watchState(dir: string, names: readonly string[],
   onChange: (name: string, body: Buffer | null, change: StateChange) => void, pollMs = 1000): Promise<StateWatcher> {
