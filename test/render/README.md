@@ -24,6 +24,18 @@ on both:
 
 Every threshold lives in `thresholds.ts`, with the values from `docs/design/system-design.md` §10.
 
+## Overview readability
+`overview.spec.ts` (#59) renders the real view on two self-like layouts (`test/fixtures/overview.ts`:
+the shape of Commet's own scan without and with a content root) from their start poses. It takes the
+farthest planet on screen, draws it in each health look (lava, toxic, ash, lush, ocean, ice) in its
+own slot, and measures it against the same frame without it (`legibility.ts`, the health-looks lab's
+OKLab look vector). It fails when that planet fades past `OVERVIEW.maxFarFade` (0.72), when a
+neighbouring band step is under `OVERVIEW.minBandStep` (0.05), or when the planet is too small to
+measure. It has no goldens. The 5% anti-empty floor applies to the golden fixtures only, not to these
+overviews (system-design §10), so their frames pass `OVERVIEW.minNonSpaceFraction` (0.5%) instead, and
+still need 12 colours. `legibility.test.ts` checks the pure parts in Vitest, including the
+start-pose fade on `mini` and both self-like layouts.
+
 ## Commands
 ```sh
 npm run test:render                 # Playwright specs: test/render/*.spec.ts (builds dist/web first)

@@ -82,6 +82,10 @@ describe('empty-output check', () => {
     expect(frameProblems(frame(W, H, SPACE, planet(53)))).toEqual([`blank frame: 2809 of 57600 px aren't space ${SPACE} ${NEED}`]);
     expect(frameProblems(frame(W, H, SPACE, planet(54, TWELVE.slice(0, 10))))).toEqual(['blank frame: 11 colours (need 12)']);
     expect(frameProblems(frame(W, H, SPACE, planet(54, TWELVE.slice(0, 11))))).toEqual([]); // 11 + space
+    // An overview passes its own, lower floor (system-design §10: 5% is for the golden fixtures); colours still count.
+    expect(frameProblems(frame(W, H, SPACE, planet(17)), LOW_RES, 0.005)).toEqual([]);
+    expect(frameProblems(frame(W, H, SPACE, planet(16)), LOW_RES, 0.005)).toEqual([`blank frame: 256 of 57600 px aren't space ${SPACE} (need 288)`]);
+    expect(frameProblems(frame(W, H, SPACE, stars), LOW_RES, 0)).toEqual(['blank frame: 2 colours (need 12)']);
   });
 
   it('fails a frame with any pixel that is not opaque', () => {

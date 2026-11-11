@@ -1,6 +1,7 @@
 // Every render-test threshold in one file (#31 AC 2-4), taken from docs/design/system-design.md §10.
 // Change one only on purpose, with the reason in the commit message; a threshold loosened to make a
 // test pass hides a regression.
+import { palette } from '../../src/core/palette.js';
 
 /** Per-frame draw budget, read from renderer.info (never FPS). Applies to the whole frame: scene pass plus upscale. */
 export const BUDGET = {
@@ -29,4 +30,21 @@ export const PIXELS = {
 export const BLANK = {
   minColours: 12,
   minNonSpaceFraction: 0.05,
+} as const;
+
+/**
+ * Overview readability (system-design §10, #59; human, 2026-11-11). At a system's start pose the
+ * farthest planet on screen fades by at most the palette's 0.72 step, and its health band still
+ * separates from the next band by at least `minBandStep` (OKLab, the health-looks lab's glance floor).
+ */
+export const OVERVIEW = {
+  maxFarFade: palette.world.depth[2]!.strength,
+  minBandStep: 0.05,
+  /** Fewer planet pixels than this and the band measure would be noise. */
+  minPlanetPx: 16,
+  /**
+   * The overview's own anti-empty floor, in place of BLANK's 5% (fixtures only). The widest
+   * self-like overview is about 1% off space; space and the 1 px stars alone are under 0.1%.
+   */
+  minNonSpaceFraction: 0.005,
 } as const;

@@ -29,8 +29,12 @@ export function coverage(f: Frame): { colours: number; nonSpace: number } {
   return { colours: seen.size, nonSpace };
 }
 
-/** Everything wrong with a frame's shape and content; empty means it rendered. */
-export function frameProblems(f: Frame, expected?: { width: number; height: number }): string[] {
+/**
+ * Everything wrong with a frame's shape and content; empty means it rendered. `minNonSpaceFraction`
+ * is the anti-empty floor, BLANK's for the golden fixtures; a whole-system overview passes its own
+ * (OVERVIEW, system-design §10: the 5% floor is for fixtures only).
+ */
+export function frameProblems(f: Frame, expected?: { width: number; height: number }, minNonSpaceFraction: number = BLANK.minNonSpaceFraction): string[] {
   const { width: w, height: h } = f;
   if (!Number.isInteger(w) || !Number.isInteger(h) || w <= 0 || h <= 0) return [`no frame: size ${w}x${h}`];
   if (f.rgba.length !== w * h * 4) return [`rgba has ${f.rgba.length} bytes, expected ${w * h * 4} for ${w}x${h}`];
@@ -41,7 +45,7 @@ export function frameProblems(f: Frame, expected?: { width: number; height: numb
   // The target is opaque, so every colour check (palette, twin) can read RGB alone.
   if (translucent) out.push(`${translucent} px aren't opaque (alpha 255)`);
   const { colours, nonSpace } = coverage(f);
-  const need = Math.ceil(BLANK.minNonSpaceFraction * w * h);
+  const need = Math.ceil(minNonSpaceFraction * w * h);
   if (colours < BLANK.minColours) out.push(`blank frame: ${colours} colour${colours === 1 ? '' : 's'} (need ${BLANK.minColours})`);
   if (nonSpace < need) out.push(`blank frame: ${nonSpace} of ${w * h} px aren't space ${palette.world.space} (need ${need})`);
   return out;
@@ -62,8 +66,8 @@ export function statsProblems(s: RenderStats, f?: Pick<Frame, 'width' | 'height'
 }
 
 /** Throws with every problem if the frame is empty, misshapen or over budget. */
-export function assertRendered(f: Frame, s: RenderStats, expected?: { width: number; height: number }): void {
-  const problems = [...frameProblems(f, expected), ...statsProblems(s, f)];
+export function assertRendered(f: Frame, s: RenderStats, expected?: { width: number; height: number }, minNonSpaceFraction?: number): void {
+  const problems = [...frameProblems(f, expected, minNonSpaceFraction), ...statsProblems(s, f)];
   if (problems.length) throw new Error(`render check failed:\n  ${problems.join('\n  ')}`);
 }
 
