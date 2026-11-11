@@ -1,8 +1,10 @@
 import { readFileSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { Readable } from 'node:stream';
 import { beforeAll, expect, it } from 'vitest';
 import { DENIED_PATH, discoverClaude, metaToken, parseClaude, redactPaths } from '../src/attrib/parsers/claude.js';
+import { main } from '../src/cli/main.js';
 import type { SnapshotV02 } from '../src/core/snapshot/types.js';
 import { formatSummary } from '../src/core/summary.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
@@ -156,4 +158,41 @@ it('named-user home paths (~alice/…) are redacted in subjects and names (Qodo 
   ];
   for (const [text, want] of cases) expect(redactPaths(text), text).toBe(want);
   for (const keep of ['about ~5% faster', 'a~b/c']) expect(redactPaths(keep), keep).toBe(keep);
+});
+
+it('a hook event keeps no prompt, code, command, cwd or absolute path: only hashes and allowlisted tokens reach events.jsonl (#77)', async () => {
+  const repo = miniRepo([{ id: 'root', at: '2026-10-10T08:00:00Z', path: 'src/hooked.ts', lines: ['export const hookedValue = 1;'] }]);
+  try {
+    const sid = '5a5a5a5a-5a5a-45a5-85a5-5a5a5a5a5a5a';
+    const file = join(repo.dir, 'src/hooked.ts');
+    const payload = {
+      session_id: sid, transcript_path: `${CANARIES.home}/.claude/projects/-slug/${sid}.jsonl`, cwd: repo.dir, permission_mode: 'default',
+      hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_use_id: 'toolu_01Canary', prompt: CANARIES.prompt, last_prompt: CANARIES.lastPrompt,
+      agent_id: 'a1b2', agent_type: `${CANARIES.home}/${CANARIES.metaAgentType}`,
+      tool_input: { file_path: file, old_string: CANARIES.originalFile, new_string: CANARIES.code, command: CANARIES.command, description: CANARIES.description },
+      tool_response: { filePath: file, oldString: CANARIES.originalFile, newString: CANARIES.code, originalFile: `${CANARIES.originalFile}\n${CANARIES.code}`,
+        userModified: false, replaceAll: false, attachment: CANARIES.attachment,
+        structuredPatch: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, lines: [`-${CANARIES.prompt} old line`, `+${CANARIES.code}`, '+export const hookedValue = 2;'] }] },
+    };
+    let out = '';
+    let err = '';
+    const code = await main(['hook', 'event'], { stdout: (t) => (out += t), stderr: (t) => (err += t), cwd: repo.dir,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: repo.dir }, stdin: Readable.from([JSON.stringify(payload)]) });
+    expect(code).toBe(0);
+    const events = readFileSync(join(repo.dir, '.git/commet/events.jsonl'), 'utf8');
+    // Not vacuous: the edit was recorded, with its added and removed lines as hashes.
+    const [event] = events.trim().split('\n').map((l) => JSON.parse(l) as { path: string; hunks: { addedHashes: string[]; removedHashes: string[] }[] });
+    expect(event!.path).toBe('src/hooked.ts');
+    expect(event!.hunks[0]!.addedHashes).toHaveLength(2);
+    expect(event!.hunks[0]!.removedHashes).toHaveLength(1);
+    const forbidden = [...Object.values(CANARIES), repo.dir, homedir(), tmpdir(), sid, 'toolu_01Canary', 'hookedValue', 'a1b2'];
+    for (const [name, text] of Object.entries({ events, out, err })) {
+      for (const f of forbidden) expect(text.includes(f), `${name} contains ${f}`).toBe(false);
+    }
+    const strings: string[] = [];
+    JSON.parse(events, (_k, v: unknown) => (typeof v === 'string' && strings.push(v), v));
+    expect(strings.filter((s) => /^([A-Za-z]:\\|\/|~)/.test(s))).toEqual([]);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
 });

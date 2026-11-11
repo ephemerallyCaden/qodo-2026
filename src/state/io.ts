@@ -1,4 +1,4 @@
-import { chmodSync, constants, lstatSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 import { lstat, open, realpath, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CommetError, EXIT } from '../core/errors.js';
@@ -30,16 +30,40 @@ export function stateDir(commonDir: string): string {
 }
 
 /**
- * Atomic write (tmp + rename) with mode 0600. Any stale entry at the temp path is unlinked (a
- * symlink itself, not its target) and the temp file is created exclusively (`wx`), so a planted
- * file or symlink is never written through.
+ * Atomic write (tmp + rename) with mode 0600 (or `mode`). Any stale entry at the temp path is
+ * unlinked (a symlink itself, not its target) and the temp file is created exclusively (`wx`), so
+ * a planted file or symlink is never written through.
  */
-export function writeAtomic(file: string, data: string | Uint8Array): void {
+export function writeAtomic(file: string, data: string | Uint8Array, mode = 0o600): void {
   const tmp = `${file}.tmp-${process.pid}`;
   rmSync(tmp, { force: true });
-  writeFileSync(tmp, data, { mode: 0o600, flag: 'wx' });
-  chmodSync(tmp, 0o600);
+  writeFileSync(tmp, data, { mode, flag: 'wx' });
+  chmodSync(tmp, mode);
   renameSync(tmp, file);
+}
+
+/**
+ * Appends `text` to `<state dir>/<name>` (created 0600) in one write, so concurrent appenders never
+ * interleave a record. A link planted at the file is refused by O_NOFOLLOW (the state dir itself
+ * is checked by stateDir), and anything but a regular file is refused before writing (exit 5).
+ */
+export function appendState(dir: string, name: string, text: string): void {
+  const flags = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+  let fd: number;
+  try {
+    fd = openSync(join(dir, name), flags, 0o600);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ELOOP') throw symlinked(name);
+    throw e;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) throw notFile(name);
+    const bytes = Buffer.from(text, 'utf8');
+    // A short write (a full disk) leaves a cut-off line, which the reader counts as dropped.
+    if (writeSync(fd, bytes) !== bytes.length) throw new CommetError(`state error: .git/commet/${name}: short write`, EXIT.state);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Largest state file read into memory (snapshot.json is the big one). */

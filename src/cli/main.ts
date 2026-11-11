@@ -10,6 +10,7 @@ import { QODO_CACHE_FILE } from '../scan/qodo.js';
 import { CHART_USAGE, chartCommand } from './chart.js';
 import { loadOrCreateKey } from '../state/key.js';
 import { stateDir, writeAtomic } from '../state/io.js';
+import { HOOK_USAGE, hookCommand } from './hook.js';
 import { runOpen } from './open.js';
 import { chooseRoots, type Ask, type RootFlags } from './roots.js';
 
@@ -20,11 +21,14 @@ export interface Io {
   env: NodeJS.ProcessEnv;
   /** Asks the user a question (#71): present only at a terminal (terminalAsk), so nothing else is ever asked. */
   ask?: Ask | undefined;
+  /** Standard input, read only by `commet hook event` (Claude Code's hook payload). */
+  stdin?: NodeJS.ReadableStream | undefined;
 }
 
 const USAGE = 'usage: commet scan [--window <months>] [--no-ingest] [--with-qodo] [--out <file>] [--root <dir>]... [--no-root] [--ask]\n'
   + '       commet open [--port <n>] [--no-open (keeps the token out of process lists)]\n'
   + CHART_USAGE
+  + HOOK_USAGE
   + '  --with-qodo  opt in to reading this repo\'s Qodo review findings (read-only, over the network via gh and qodo)\n'
   + '  --root <dir> a main folder whose subfolders become planets (repeatable; saved), --no-root: none (saved),\n'
   + '               --ask: ask again (at a terminal; the first scan there asks too)\n';
@@ -119,10 +123,16 @@ export async function main(argv: string[], io: Io): Promise<number> {
   }
   if (cmd === 'open') return runOpen(rest, io);
   if (cmd === 'chart') return chartCommand(rest, io);
+  if (cmd === 'hook') return hookCommand(rest, io, (quiet) => runScan([], quiet));
   if (cmd !== 'scan') {
     io.stderr(`commet: ${cmd ? `unknown command ${JSON.stringify(cmd)}` : 'missing command'}\n${USAGE}`);
     return EXIT.usage;
   }
+  return runScan(rest, io);
+}
+
+/** `commet scan` (also what `commet hook refresh` runs, quietly). */
+async function runScan(rest: string[], io: Io): Promise<number> {
   const args = parseScanArgs(rest);
   if (typeof args === 'string') {
     io.stderr(`commet: ${args}\n${USAGE}`);

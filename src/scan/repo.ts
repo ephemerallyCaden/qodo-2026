@@ -19,6 +19,13 @@ export interface RepoInfo {
   worktreeRoots: string[];
 }
 
+/** A repo's id: the hash of its root commits (`rev-list --max-parents=0` output), so every clone agrees. */
+export const repoIdOf = (rootCommits: string) => sha256Hex(rootCommits.split('\n').filter(Boolean).sort().join('\n')).slice(0, 16);
+
+/** Worktree paths from `git worktree list --porcelain -z`. */
+export const worktreePaths = (porcelainZ: string) =>
+  porcelainZ.split('\0').filter((t) => t.startsWith('worktree ')).map((t) => t.slice('worktree '.length));
+
 export async function readRepo(git: Git): Promise<RepoInfo> {
   const first = await tryGit(git, ['rev-parse', '--is-shallow-repository', '--show-object-format',
     '--path-format=absolute', '--git-common-dir', 'HEAD', '--symbolic-full-name', 'HEAD']);
@@ -46,9 +53,9 @@ export async function readRepo(git: Git): Promise<RepoInfo> {
     emptyTree,
     headMs: Number(ct.trim()) * 1000,
     branch: ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : 'HEAD',
-    repoId: sha256Hex(roots.split('\n').filter(Boolean).sort().join('\n')).slice(0, 16),
+    repoId: repoIdOf(roots),
     selfEmail: await selfEmail(git, name?.trim() ?? '', email?.trim() ?? ''),
-    worktreeRoots: worktrees.split('\0').filter((t) => t.startsWith('worktree ')).map((t) => t.slice('worktree '.length)),
+    worktreeRoots: worktreePaths(worktrees),
   };
 }
 

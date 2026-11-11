@@ -8,4 +8,5 @@ process.exitCode = await main(process.argv.slice(2), {
   cwd: process.cwd(),
   env: process.env,
   ask: terminalAsk(process.stdin, process.stdout),
+  stdin: process.stdin,
 });
