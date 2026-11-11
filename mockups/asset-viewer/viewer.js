@@ -16,6 +16,8 @@ import { debrisFactory, DEBRIS_STYLE } from './debris.js';
 import { starFactory, bindPalettes as bindStarPalettes, STAR, STAR_DEFAULTS } from './star.js';
 import { bindPalettes } from './debris-palette.js';
 import { demoItems, ranked, AGE_MIXES } from './debris-layout.js';
+import { fogSpec, driveFog } from './fog.js';
+import { demoLayout, stateAt as fogStateAt, nextToChart, lastCharted, allFogged, COVERAGES as FOG_COVERAGES } from './fog-layout.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -667,6 +669,22 @@ const SHADOW_FRAG = PLANET_FRAG.replace(/void main\(\) \{[\s\S]*\}\s*$/, `in vec
   }
 `);
 
+// Fog hook (the fog lab, mockups/fog-lab/; off by default). A fog spec's GLSL is spliced in before a
+// shader's main() and wraps the body's colour: it defines vec3 fog(vec3 p, int b, vec3 c), with p
+// the point on the unit sphere in the body's own frame, b its light band and c its colour before the
+// depth fade. The planet surface and its cloud shadow get spec.glsl, each moon spec.moon.glsl.
+// Without a spec, makePlanet() builds the shipped shaders byte for byte.
+const FOG_SPLICE = {
+  surface: ['vec4(artefacts(p, b, surface(p, b)), 1.0)', 'vec4(fog(p, b, artefacts(p, b, surface(p, b))), 1.0)'],
+  shadow: ['depthFade(surface(p, b - 1), vPosW, 1.0)', 'depthFade(fog(p, b - 1, surface(p, b - 1)), vPosW, 1.0)'],
+  moon: ['depthFade(uRamp[band(normalize(vNormalW))], vPosW, 1.0)', 'depthFade(fog(normalize(vLocal), band(normalize(vNormalW)), uRamp[band(normalize(vNormalW))]), vPosW, 1.0)'],
+};
+function withFog(frag, glsl, [from, to]) {
+  const at = frag.lastIndexOf('void main()');
+  if (at < 0 || frag.split(from).length !== 2) throw new Error(`fog hook: no single "${from}" in the shader`);
+  return `${frag.slice(0, at)}${glsl}\n  ${frag.slice(at).replace(from, to)}`;
+}
+
 // Atmosphere haze: a slightly larger shell drawn only near the lit limb, so it rims
 // the planet and breaks the silhouette without reading as an outline.
 const HAZE_FRAG = /* glsl */ `
@@ -893,6 +911,10 @@ const VIEW_SIZE = { value: new THREE.Vector2(320, 180) }; // drawing-buffer size
 // Space debris (R13; debris.js): stale work near the planet it touches, a planet modifier like the
 // ring. The factory shares the viewer's depth fade, key light and drawing-buffer size.
 export const { makeDebris } = debrisFactory({ depthGlsl: DEPTH_GLSL, depthUniforms, light: LIGHT_DIR, viewSize: VIEW_SIZE });
+// Fog of war (fog.js, fog-layout.js; the fog lab's pick, D2d): a planet carries it through
+// makePlanet({ fog: fogSpec() }) and driveFog() sets it each frame. Re-exported for the asset library.
+export { fogSpec, driveFog, registerFogLook, fogLookIds } from './fog.js';
+export { FOG_COVERAGES };
 export { DEBRIS_STYLE, demoItems, AGE_MIXES };
 export const DEBRIS_COUNTS = [0, 1, 3, 8, 24];
 
@@ -901,16 +923,18 @@ export const DEBRIS_COUNTS = [0, 1, 3, 8, 24];
 export const { makeStar } = starFactory({ vert: VERT, noise: NOISE, depthGlsl: DEPTH_GLSL, depthUniforms, loop: LOOP, moonMaterial, moonGeo: MOON_GEO });
 export { STAR, STAR_DEFAULTS };
 
-export function makePlanet() {
+/** fog: null (the default) or the fog lab's spec { glsl, uniforms, moon: { glsl, uniforms: [one per moon] } } (FOG_SPLICE). */
+export function makePlanet({ fog = null } = {}) {
   const group = new THREE.Group();
   group.userData.depthFamily = 'planet'; // planet tint slot of the per-pixel depth fade
-  const surfaceMat = paletteMaterial(PLANET_FRAG, {}, {
+  const surfaceMat = paletteMaterial(fog ? withFog(PLANET_FRAG, fog.glsl, FOG_SPLICE.surface) : PLANET_FRAG, {}, {
     uBiome: { value: 0 }, uA: ramp5(), uB: ramp5(), uC: ramp5(), uG: { value: [0, 1, 2].map(() => new THREE.Color()) },
     uSeedOff: { value: new THREE.Vector3() }, uSea: { value: 0.5 }, uPoolCut: { value: 9 }, uRegions: { value: 0 }, uCrackLift: { value: 0 },
     uBands: { value: new THREE.Vector3(0.2, 0.58, 0.86) }, // lit directional terminator, crescent bands
     // artefacts (artefacts.js): off while uArtN = 0
     uArtN: { value: 0 }, uArtTick: { value: 0 }, uArtTeal: { value: 0 }, uArtDebug: { value: 0 }, uLavaMode: { value: 0 }, uLavaTime: { value: new THREE.Vector2(1, 0) }, uArtTealC: { value: new THREE.Color(ACCENTS.reveal[3]) }, // [OIII] teal, garnish only
     uArtSec: { value: Array.from({ length: MAX_ART }, () => new THREE.Vector4(0, 0, 1, 4)) }, uViewSize: VIEW_SIZE,
+    ...fog?.uniforms,
   });
   const spin = new THREE.Group(); // the surface turns surfaceTurns per loop
   const surface = new THREE.Mesh(PLANET_GEO, surfaceMat);
@@ -945,7 +969,7 @@ export function makePlanet() {
   group.add(sky);
   // Cloud shadow: same instances, projected onto the surface (shares its uniforms and ramps).
   const shadowMat = new THREE.ShaderMaterial({
-    vertexShader: SHADOW_VERT, fragmentShader: SHADOW_FRAG, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    vertexShader: SHADOW_VERT, fragmentShader: fog ? withFog(SHADOW_FRAG, fog.glsl, FOG_SPLICE.shadow) : SHADOW_FRAG, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     uniforms: { ...surfaceMat.uniforms, uCenter: { value: new THREE.Vector3() }, uRadius: { value: 1 }, uToSurface: { value: new THREE.Matrix4() } },
   });
   const shadow = new THREE.InstancedMesh(puffGeo, shadowMat, MAX_PUFFS);
@@ -971,7 +995,8 @@ export function makePlanet() {
   // Moons: a big (~9 px) and a small (~5 px) warm sphere on inclined orbits that pass
   // in front at the bottom and fully behind the disc (depth-sorted by the z-buffer).
   const moonMat = moonMaterial();
-  const MOONS = MOON_ORBITS.map((m) => ({ ...m, mesh: Object.assign(new THREE.Mesh(MOON_GEO, moonMat), { visible: false }) }));
+  const moonFor = (i) => (fog?.moon ? paletteMaterial(withFog(TOON_FRAG, fog.moon.glsl, FOG_SPLICE.moon), { uRamp: 'moonBody' }, { uBands: moonMat.uniforms.uBands, ...fog.moon.uniforms[i] }) : moonMat);
+  const MOONS = MOON_ORBITS.map((m, i) => ({ ...m, mesh: Object.assign(new THREE.Mesh(MOON_GEO, moonFor(i)), { visible: false }) }));
   for (const m of MOONS) {
     m.mesh.scale.setScalar(m.size);
     group.add(m.mesh);
@@ -1500,6 +1525,20 @@ const planets = LIBRARY ? [] : [
   scene.add(p.group);
   return p;
 });
+// The hero's fog: the first time the fog control is turned on, the hero is remade with a fog spec
+// (makePlanet({ fog })), so until then every shader is byte-identical to the shipped ones. Off
+// again, the fogged hero draws every pixel as before (test/fog.test.mjs).
+let heroFog = null;
+function ensureHeroFog() {
+  if (heroFog || LIBRARY) return;
+  heroFog = fogSpec();
+  const old = planets[0];
+  const p = makePlanet({ fog: heroFog });
+  p.group.position.copy(old.group.position);
+  scene.remove(old.group);
+  scene.add(p.group);
+  planets[0] = p;
+}
 
 // Crew line-up for the close-up, off to the side of the hero planet.
 export const CREW_SPOT = new THREE.Vector3(-1.35, -0.2, 4.6); // in front of the hero planet, so one shot shows crew + planet + depth
@@ -1581,6 +1620,8 @@ const state = {
   debrisSwept: [], // [{ id, at }]: items swept at time `at` (s); the "sweep one" button takes the biggest left
   star: false, // the star in the system view (the star view always shows it)
   starSize: STAR_DEFAULTS.size, starSpin: STAR_DEFAULTS.spin, starGranulation: STAR_DEFAULTS.granulation, starCorona: STAR_DEFAULTS.corona, starMoonlets: STAR_DEFAULTS.moonlets, // star.js STAR
+  fog: false, fogCharted: 0.5, // fog of war on the hero planet (fog.js D2d): the demo planet's charted share (FOG_COVERAGES)
+  fogEvents: [], fogMoonEvents: [], // [{ file, kind: 'clear' | 'refog', at }], [{ moon, kind, at }]: the chart buttons, on their own clock
 };
 
 // Keep the orbit camera out of the cloud layer in planet views (clouds reach ~1.1 R).
@@ -1676,6 +1717,7 @@ function heroDebris() {
 }
 
 function applyState() {
+  if (state.fog) ensureHeroFog();
   setLoop(state);
   const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow, regions: state.regions, artDebug: state.artDebug, lavaMode: state.lavaMode };
   document.getElementById('art-auto').checked = state.artAuto;
@@ -1698,6 +1740,10 @@ function applyState() {
   // Per-pixel depth: the same thresholds and per-level tints/strengths as the object fade.
   if (applyDepth(state)) retint(scene); // re-tint: pixel modes keep level-0 ramps
   document.body.style.background = resolve('space');
+  if (heroFog) { // the veil mixes toward this palette's space; the fogged limb is its halo colour
+    heroFog.uniforms.uFogSpace.value.set(resolve('space'));
+    heroFog.uniforms.uFogRim.value.set(resolve('halo'));
+  }
   solos.forEach((s) => s.setColor(state.color));
   // Faces: hashed from each contributor's handle unless the UI overrides the eye design.
   for (const a of [...crew, ...solos]) {
@@ -1720,8 +1766,15 @@ function applyState() {
 
 const clock = new THREE.Clock();
 const tmp = new THREE.Vector3();
+/** The hero's fog at time t: the demo planet (seeded with the planet), its charted share and events. */
+function heroFogAt(t) {
+  heroFog.view.value.copy(VIEW_SIZE.value);
+  return driveFog(heroFog, { layout: demoLayout('src', state.seed), coverage: state.fogCharted, events: state.fogEvents, moonEvents: state.fogMoonEvents, t, period: LOOP.period, look: 'D2d', on: state.fog });
+}
+
 function frame() {
   const t = state.time ?? clock.getElapsedTime();
+  if (heroFog) heroFogAt(t);
   controls.update();
   stars.position.copy(camera.position);
   poseWorld(t, { planets: [...planets, ...SYSTEM], astronauts: [...crew, ...solos], suns: [star], spin: state.spin, lavaTime: state.lavaTime });
@@ -1737,7 +1790,7 @@ function frame() {
 function bindUi() {
   const $ = (id) => document.getElementById(id);
   for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => { state.view = b.dataset.view; applyView(state.view); applyState(); });
-  $('seed').addEventListener('input', (e) => { state.seed = +e.target.value; $('seed-readout').textContent = state.seed; applyState(); });
+  $('seed').addEventListener('input', (e) => { state.seed = +e.target.value; $('seed-readout').textContent = state.seed; state.fogEvents = []; state.fogMoonEvents = []; applyState(); });
   $('reseed').addEventListener('click', () => { state.seed = 1 + Math.floor(Math.random() * 999); $('seed').value = state.seed; $('seed-readout').textContent = state.seed; applyState(); });
   $('ring').addEventListener('change', (e) => { state.ringMode = e.target.value; ringPreset(); applyState(); });
   for (const [id, key] of [['ring-width', 'ringWidth'], ['ring-inner', 'ringInner']]) {
@@ -1789,6 +1842,33 @@ function bindUi() {
   $('debris').addEventListener('change', (e) => { state.debris = e.target.checked; state.debrisSwept = []; applyState(); });
   $('debris-count').addEventListener('change', (e) => { state.debrisCount = DEBRIS_COUNTS[+e.target.value]; state.debrisSwept = []; applyState(); });
   $('debris-age').addEventListener('change', (e) => { state.debrisAge = AGE_MIXES[+e.target.value]; state.debrisSwept = []; applyState(); });
+  for (const c of FOG_COVERAGES) $('fog-charted').add(new Option(`${c * 100}%`, String(c)));
+  $('fog-charted').value = String(state.fogCharted);
+  $('fog').addEventListener('change', (e) => { state.fog = e.target.checked; applyState(); });
+  $('fog-charted').addEventListener('change', (e) => { state.fogCharted = +e.target.value; state.fogEvents = []; state.fogMoonEvents = []; applyState(); });
+  // the chart buttons, on their own clock (like the sweep): the next file in charting order clears
+  // with the front; the last charted refogs; "chart all" clears every fogged file and moon, 0.12 s
+  // apart, and ends in the planet-clear pulse
+  const fogNow = () => {
+    const at = state.time ?? clock.getElapsedTime();
+    const { planet } = demoLayout('src', state.seed);
+    return { at, planet, st: fogStateAt(planet, { coverage: state.fogCharted, events: state.fogEvents, t: at }) };
+  };
+  $('fog-chart').addEventListener('click', () => {
+    const { at, planet, st } = fogNow();
+    const f = nextToChart(planet, st);
+    if (f) state.fogEvents = [...state.fogEvents, { file: f.id, kind: 'clear', at }];
+  });
+  $('fog-refog').addEventListener('click', () => {
+    const { at, planet, st } = fogNow();
+    const f = lastCharted(planet, st);
+    if (f) state.fogEvents = [...state.fogEvents, { file: f.id, kind: 'refog', at }];
+  });
+  $('fog-chart-all').addEventListener('click', () => {
+    const { at, planet, st } = fogNow();
+    state.fogEvents = [...state.fogEvents, ...allFogged(planet, st).map((f, k) => ({ file: f.id, kind: 'clear', at: at + k * 0.12 }))];
+    heroFog?.moon.uniforms.forEach((u, i) => { if (u.uMoonFog.value.x > 0.5) state.fogMoonEvents = [...state.fogMoonEvents, { moon: i, kind: 'clear', at }]; });
+  });
   $('debris-sweep').addEventListener('click', () => { // the biggest piece not yet swept breaks apart now
     const gone = new Set(state.debrisSwept.map((s) => s.id));
     const next = ranked(demoItems(state.debrisCount, { mix: state.debrisAge })).find((it) => !gone.has(it.id));
