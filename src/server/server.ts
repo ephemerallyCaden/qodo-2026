@@ -1,13 +1,13 @@
 // The hardened local server behind `commet open` (R14). The only listener Commet has: 127.0.0.1,
 // Host-checked, token-gated data routes, no CORS. Surface: docs/contracts/phase2.md.
 import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from 'node:http';
-import { API, TOKEN_HEADER, type ChartResult, type LiveEvent } from '../core/contract/api.js';
+import { API, TOKEN_HEADER, type ChartResult, type DiffQuery, type DiffResult, type LiveEvent, type UnseenQuery, type UnseenResult } from '../core/contract/api.js';
 import type { ChartAction, FogView } from '../core/contract/fog.js';
 import { CommetError } from '../core/errors.js';
 import { CHART_FILE } from '../state/chart.js';
 import { readStateBytes } from '../state/io.js';
 import { bundleKey, contentType, loadBundle, NO_SNAPSHOT, readBundleFile, STATE_FILES } from './files.js';
-import { BIND_HOST, hostAllowed, parseChartAction, sameOrigin, tokenMatches } from './guard.js';
+import { BIND_HOST, hostAllowed, parseChartAction, parseDiffQuery, parseUnseenQuery, sameOrigin, tokenMatches } from './guard.js';
 import { watchState, type StateWatcher } from './watch.js';
 
 export interface ServerOptions {
@@ -26,6 +26,15 @@ export interface ServerOptions {
    * state error is a 500 with its user-facing message only.
    */
   chart?: (action: ChartAction) => Promise<ChartResult>;
+  /** #75: a planet's or the star's fogged files. Without it, `GET /api/unseen` answers 501. */
+  unseen?: (q: UnseenQuery) => Promise<UnseenResult>;
+  /**
+   * #75: one file's unseen diff. Without it, `GET /api/diff` answers 501. `signal` aborts when the
+   * client goes away or DIFF_TIMEOUT_MS passes, and must stop git.
+   */
+  diff?: (q: DiffQuery, signal: AbortSignal) => Promise<DiffResult>;
+  /** Test seam: how long one diff may take (default DIFF_TIMEOUT_MS). */
+  diffTimeoutMs?: number;
   /** Fallback poll for state changes, in ms (fs.watch is the fast path). */
   pollMs?: number;
   /**
@@ -48,6 +57,10 @@ const NO_LAYOUT = 'layout not available yet: run `commet scan` to write it';
 const MAX_BODY = 4096;
 const MAX_STREAMS = 32;
 const SHA = /^[0-9a-f]{40,64}$/;
+/** At most this many diffs run at once (#75); past it, 503. */
+const MAX_DIFFS = 4;
+/** One diff gets this long before git is stopped and the answer is 503. */
+export const DIFF_TIMEOUT_MS = 10_000;
 
 /**
  * System design §9's policy plus three hardening directives: only the bundle's own scripts, and
@@ -71,6 +84,7 @@ type Handler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 
 export async function startServer(o: ServerOptions): Promise<CommetServer> {
   const streams = new Set<ServerResponse>();
+  let diffs = 0;
   let port = 0;
   let bundle = await loadBundle(o.webRoot);
   const webMissing = bundle === null;
@@ -95,7 +109,44 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
       handle: async (_req, res) => sendJson(res, 501, { ok: false, error: 'beacons are not implemented yet (R10)' }),
     }],
     [API.events, { method: 'GET', handle: async (req, res) => events(req, res) }],
+    [API.unseen, { method: 'GET', handle: (req, res) => unseen(req, res) }],
+    [API.diff, { method: 'GET', handle: (req, res) => diff(req, res) }],
   ]);
+
+  /** 200, 409 for a head that isn't the current one (refetch the fog), 404 for an id it doesn't have. */
+  const readStatus = (r: UnseenResult | DiffResult) => (r.ok ? 200 : r.head !== undefined ? 409 : 404);
+
+  async function unseen(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const q = parseUnseenQuery(req.url ?? '');
+    if (!q) return sendJson(res, 400, { ok: false, error: 'expected exactly home=<planet id>|star and at=<full commit id>' });
+    if (!o.unseen) return sendJson(res, 501, { ok: false, error: 'not available' });
+    const r = await o.unseen(q);
+    sendJson(res, readStatus(r), r);
+  }
+
+  async function diff(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const q = parseDiffQuery(req.url ?? '');
+    if (!q) return sendJson(res, 400, { ok: false, error: 'expected exactly fileId=<file id> and at=<full commit id>' });
+    if (!o.diff) return sendJson(res, 501, { ok: false, error: 'not available' });
+    if (diffs >= MAX_DIFFS) return sendJson(res, 503, { ok: false, error: 'too many diffs at once; try again' });
+    diffs++;
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(new Error('diff timed out')), o.diffTimeoutMs ?? DIFF_TIMEOUT_MS);
+    // The client went away before the answer: stop git.
+    const gone = () => abort.abort(new Error('client went away'));
+    res.on('close', gone);
+    try {
+      const r = await o.diff(q, abort.signal);
+      sendJson(res, readStatus(r), r);
+    } catch (e) {
+      if (!abort.signal.aborted) throw e;
+      if (!res.destroyed) sendJson(res, 503, { ok: false, error: 'the diff took too long' });
+    } finally {
+      diffs--;
+      clearTimeout(timer);
+      res.off('close', gone);
+    }
+  }
 
   async function sendState(res: ServerResponse, name: string, missing: string): Promise<void> {
     const body = await readStateBytes(o.stateDir, name);

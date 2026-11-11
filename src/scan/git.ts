@@ -19,9 +19,10 @@ export const LOG_OPTS = ['--first-parent', '-m', '--use-mailmap', ...DIFF_OPTS];
 /**
  * Runs git and resolves with its stdout. `stream`, when present, hands stdout over chunk by chunk
  * (UTF-8 decoded across chunk boundaries) for output too large to buffer, such as full history.
+ * Throwing from `onData`, or aborting `signal`, stops git and rejects with that error.
  */
 export type Git = ((args: string[]) => Promise<string>) & {
-  stream?: (args: string[], onData: (chunk: string) => void) => Promise<void>;
+  stream?: (args: string[], onData: (chunk: string) => void, signal?: AbortSignal) => Promise<void>;
 };
 
 /** Async runner so independent git queries can run in parallel. */
@@ -32,8 +33,8 @@ export function gitRunner(cwd: string): Git {
       (err, stdout) => (err ? reject(err) : resolve(stdout)));
     child.stdin?.end();
   });
-  const stream = (args: string[], onData: (chunk: string) => void) => new Promise<void>((resolve, reject) => {
-    const child = spawn('git', [...CONFIG, ...args], { cwd, env, stdio: ['ignore', 'pipe', 'ignore'] });
+  const stream = (args: string[], onData: (chunk: string) => void, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+    const child = spawn('git', [...CONFIG, ...args], { cwd, env, stdio: ['ignore', 'pipe', 'ignore'], ...(signal ? { signal } : {}) });
     let failed: unknown;
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => {
@@ -45,7 +46,9 @@ export function gitRunner(cwd: string): Git {
         child.kill();
       }
     });
-    child.on('error', reject);
+    // An abort rejects with its reason; a failure to start keeps only its code (spawnargs would carry paths).
+    child.on('error', (e: NodeJS.ErrnoException) => reject(signal?.aborted
+      ? signal.reason : Object.assign(new Error(`git ${args[0] ?? ''} could not start`), { code: e.code })));
     child.on('close', (code) => {
       if (failed !== undefined) reject(failed);
       else if (code === 0) resolve();

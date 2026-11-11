@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runOpen } from '../../src/cli/open.js';
-import { API, TOKEN_HEADER } from '../../src/core/contract/api.js';
+import { API, TOKEN_HEADER, type DiffView } from '../../src/core/contract/api.js';
 import type { FogView } from '../../src/core/contract/fog.js';
 import { fileIdOf } from '../../src/core/fog/index.js';
 import { EXIT } from '../../src/core/errors.js';
@@ -52,6 +52,19 @@ describe('commet open', () => {
     // State dir present (e.g. from an older run) but no snapshot: same answer.
     mkdirSync(join(repo.dir, '.git', 'commet'), { mode: 0o700 });
     expect((await cli(['open', '--no-open'], repo.dir, env)).err).toContain('run `commet scan` first');
+  });
+
+  it('serves the unseen list and the diff of the repo it was opened in (#75)', async () => {
+    const repo = oneCommitRepo();
+    expect((await cli(['scan', '--no-ingest', '--no-root'], repo.dir, env)).code).toBe(0);
+    const s = await launch(repo.dir, ['--no-open'], join(repo.dir, 'no-web'));
+    const get = (path: string) => req(s.port, { path, headers: { [TOKEN_HEADER]: s.token } });
+    const head = (JSON.parse((await get(API.fog)).body) as FogView).head;
+    expect((await get(`${API.unseen}?home=star&at=${head}`)).status).toBe(200);
+    const d = await get(`${API.diff}?fileId=${fileIdOf('src/a.ts')}&at=${head}`);
+    expect(d.status).toBe(200);
+    expect((JSON.parse(d.body) as DiffView).sections[0]!.hunks[0]!.lines).toContain('+export const a = 1;');
+    expect(await s.stop()).toBe(0);
   });
 
   it('only reads state: never creates, chmods or follows .git/commet (Qodo #32 r1)', async () => {

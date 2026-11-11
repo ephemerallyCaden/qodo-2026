@@ -8,6 +8,7 @@ import { NO_SNAPSHOT, packageWebRoot, STATE_FILES } from '../server/files.js';
 import { newToken } from '../server/guard.js';
 import { startServer, type ServerOptions } from '../server/server.js';
 import { applyChart, readFog } from '../state/chart.js';
+import { readDiff, readUnseen } from '../state/diff.js';
 import { readStateBytes } from '../state/io.js';
 import type { Io } from './main.js';
 
@@ -47,7 +48,9 @@ export async function runOpen(argv: string[], io: Io, ctl: OpenControl = {}): Pr
     const dir = await scannedStateDir(io.cwd);
     const opts: ServerOptions = { stateDir: dir, webRoot: ctl.webRoot ?? packageWebRoot(), port: args.port, token: newToken(),
       // R5 (#33, #58): the fog view and chart writes, through the same module `commet chart` uses.
-      fog: () => readFog(io.cwd), chart: (action) => applyChart(io.cwd, action) };
+      fog: () => readFog(io.cwd), chart: (action) => applyChart(io.cwd, action),
+      // #75: reviewing from the view. Diffs come from local git on demand and are never stored.
+      unseen: (q) => readUnseen(io.cwd, q), diff: (q, signal) => readDiff(io.cwd, q, signal) };
     if (ctl.pollMs !== undefined) opts.pollMs = ctl.pollMs;
     // Like startup errors, a failed request's details (which can hold absolute paths) only show on
     // request: the route, the error's message, code and stack. Nothing from the request itself.

@@ -4,6 +4,7 @@
 // belongs to. Without it, or where it can't be followed, a file errs to fogged with
 // `lineage-unknown` (Rule 1).
 import { byCodepoint } from '../canonical-json.js';
+import type { UnseenFile } from '../contract/api.js';
 import type { ChartAction, ChartUnknownHead, FileFog, FogCounts, FogReason, FogView } from '../contract/fog.js';
 import { sha256Hex } from '../hash.js';
 import type { PathHistory, Unrowed } from '../renames.js';
@@ -70,8 +71,11 @@ export function unrowedChanges(s: SnapshotV02, commits: LineageCommit[], firstSe
 
 /** One commit that touched a file under one of its names. `content`: false for a pure rename or mode change (0 lines either way). */
 interface Touch { seq: number; reasons: FogReason[]; content: boolean }
-/** File `file` had id `id` in the state after each commit `from`..`to`. */
-interface Name { file: number; from: number; to: number }
+/**
+ * File `file` had id `id`, at `path`, in the state after each commit `from`..`to`. A name the file
+ * already had before the window starts at the window's first seq minus one.
+ */
+interface Name { file: number; from: number; to: number; path: string }
 
 /**
  * Everything fog needs that doesn't depend on chart state, so a chart write only re-runs fogFrom.
@@ -130,10 +134,11 @@ export function fogBase(snapshot: SnapshotV02, history: PathHistory | null, root
   const names = new Map<FileId, Name[]>();
   const byPath = new Map(files.map((f, i) => [f.path, i]));
   const curId = files.map((f) => f.id);
+  const curPath = files.map((f) => f.path);
   const nameTo = files.map(() => headSeq);
   const endName = (i: number, from: number) => {
     const list = names.get(curId[i]!) ?? [];
-    list.push({ file: i, from, to: nameTo[i]! });
+    list.push({ file: i, from, to: nameTo[i]!, path: curPath[i]! });
     names.set(curId[i]!, list);
   };
 
@@ -188,10 +193,12 @@ export function fogBase(snapshot: SnapshotV02, history: PathHistory | null, root
       }
       byPath.set(from, i);
       curId[i] = fileIdOf(from);
+      curPath[i] = from;
       nameTo[i] = seq - 1;
     }
   }
-  for (const i of byPath.values()) endName(i, minSeq);
+  // Still here after undoing the window's first commit: the file had this name before the window too.
+  for (const i of byPath.values()) endName(i, minSeq - 1);
   return { snapshot, files, home: homes(snapshot, roots), degraded: !usable, seqOf, shaAt, touches, unknownAt, names };
 }
 
@@ -231,8 +238,8 @@ function fileFog(base: FogBase, i: number, through: number): FileFog {
   return { fileId, state: 'fogged', reasons: [...why].sort(byCodepoint), since: base.shaAt.get(since)! };
 }
 
-/** The fog view for `chart` on a prepared base. */
-export function fogFrom(base: FogBase, chart: ChartState): FogView {
+/** The latest baseline in the window, and per file the seq it's reviewed through (-1: nothing yet). */
+function reviewedThrough(base: FogBase, chart: ChartState): { baseline: { sha: Sha; seq: number } | null; reviewed: number[] } {
   let baseline: { sha: Sha; seq: number } | null = null;
   for (const sha of chart.baselines) {
     const seq = base.seqOf.get(sha);
@@ -243,6 +250,12 @@ export function fogFrom(base: FogBase, chart: ChartState): FogView {
     const p = place(base, e);
     if (p) reviewed[p.file] = Math.max(reviewed[p.file]!, p.seq);
   }
+  return { baseline, reviewed };
+}
+
+/** The fog view for `chart` on a prepared base. */
+export function fogFrom(base: FogBase, chart: ChartState): FogView {
+  const { baseline, reviewed } = reviewedThrough(base, chart);
   const files = base.files.map((_, i) => fileFog(base, i, reviewed[i]!));
   const planets = new Map<DirId, FogCounts>();
   for (const id of base.home.values()) if (id !== null && !planets.has(id)) planets.set(id, { total: 0, fogged: 0 });
@@ -271,6 +284,61 @@ export function fogFrom(base: FogBase, chart: ChartState): FogView {
  */
 export const fogView = (snapshot: SnapshotV02, chart: ChartState, history: PathHistory | null, roots: readonly string[] = []): FogView =>
   fogFrom(fogBase(snapshot, history, roots), chart);
+
+/**
+ * Where a file's unseen diff starts (#75): the first-parent parent of its oldest unseen change. That
+ * is the snapshot's commit just below the change (`{ sha }`), or, below the window's first commit,
+ * that commit's parent, which the snapshot doesn't hold (`{ parentOf }`; there is none at the root).
+ * Never `since^`: for a window gap `since` is the commit after the gap, so its parent would leave the
+ * gap's own change out.
+ */
+export type RangeStart = { sha: Sha } | { parentOf: Sha };
+
+/**
+ * One file's unseen range, from the server's own fog (never the client's): GET /api/diff diffs
+ * `start..head` over `path`, plus `oldPath`, the path the file had at `start` when that differs (a
+ * rename inside the range; null when it's the same or the file didn't exist yet). `since` and
+ * `start` are null when nothing is unseen.
+ */
+export interface UnseenRange { path: string; oldPath: string | null; since: Sha | null; start: RangeStart | null }
+
+/** The unseen range of the file `fileId` names at HEAD, or null when no file at HEAD has that id. */
+export function unseenRange(base: FogBase, chart: ChartState, fileId: FileId): UnseenRange | null {
+  const i = base.files.findIndex((f) => f.id === fileId);
+  if (i < 0) return null;
+  const path = base.files[i]!.path;
+  const { since } = fileFog(base, i, reviewedThrough(base, chart).reviewed[i]!);
+  if (since === null) return { path, oldPath: null, since: null, start: null };
+  // For a gap, `since` is the commit just above it (shaAt), with only gaps between: the latest commit
+  // below `since` is the latest below the gap too.
+  const sinceSeq = base.seqOf.get(since)!;
+  let below: Commit | null = null;
+  let first: Commit | null = null;
+  for (const c of base.snapshot.commits) {
+    if (c.seq < sinceSeq && c.seq > (below?.seq ?? -Infinity)) below = c;
+    if (c.seq < (first?.seq ?? Infinity)) first = c;
+  }
+  // A fogged file has a change in the window, so the window has a first commit.
+  const [start, startSeq]: [RangeStart, number] = below ? [{ sha: below.sha }, below.seq] : [{ parentOf: first!.sha }, first!.seq - 1];
+  const n = [...base.names.values()].flat().find((x) => x.file === i && x.from <= startSeq && startSeq <= x.to);
+  return { path, oldPath: n && n.path !== path ? n.path : null, since, start };
+}
+
+/**
+ * GET /api/unseen (#75): every fogged file counted on planet `home` (null: the star), surface overflow
+ * included, with its path, sorted by path. Null when the base has no such planet.
+ */
+export function unseenFiles(base: FogBase, chart: ChartState, home: DirId | null): UnseenFile[] | null {
+  if (home !== null && ![...base.home.values()].includes(home)) return null;
+  const { reviewed } = reviewedThrough(base, chart);
+  const out: UnseenFile[] = [];
+  base.files.forEach((f, i) => {
+    if ((base.home.get(f.id) ?? null) !== home) return;
+    const fog = fileFog(base, i, reviewed[i]!);
+    if (fog.state === 'fogged') out.push({ fileId: f.id, path: f.path, since: fog.since!, reasons: fog.reasons });
+  });
+  return out.sort((a, b) => byCodepoint(a.path, b.path));
+}
 
 export type ChartApplied = { ok: true; chart: ChartState } | ChartUnknownHead | { ok: false; error: string; head?: undefined };
 

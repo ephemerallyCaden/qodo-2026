@@ -190,7 +190,8 @@ describe('R14 server on a real socket', () => {
     it('refuses a missing, wrong, or URL-borne token on every API route', async () => {
       const wrong = `${f.token.slice(0, -1)}${f.token.endsWith('A') ? 'B' : 'A'}`;
       const routes: [string, string][] = [[API.snapshot, 'GET'], [API.layout, 'GET'], [API.fog, 'GET'], [API.events, 'GET'],
-        [API.chart, 'POST'], [API.beacon, 'POST'], ['/api/nope', 'GET']];
+        [API.chart, 'POST'], [API.beacon, 'POST'], [`${API.unseen}?home=star&at=${AT}`, 'GET'],
+        [`${API.diff}?fileId=f_000000000001&at=${AT}`, 'GET'], ['/api/nope', 'GET']];
       for (const [path, method] of routes) {
         for (const headers of [{}, { [TOKEN_HEADER]: wrong }, { [TOKEN_HEADER]: '' }, { [TOKEN_HEADER]: 'x' }]) {
           const r = await req(f.port, { method, path, headers });
@@ -199,7 +200,7 @@ describe('R14 server on a real socket', () => {
           expect(r.raw).not.toContain(wrong);
         }
         // The token belongs in the header; the query string never counts.
-        expect((await req(f.port, { method, path: `${path}?t=${f.token}` })).status).toBe(401);
+        expect((await req(f.port, { method, path: `${path}${path.includes('?') ? '&' : '?'}t=${f.token}` })).status).toBe(401);
       }
     });
 
@@ -227,6 +228,8 @@ describe('R14 server on a real socket', () => {
         expect((await api(API.chart, { ...headers, 'content-type': 'application/json' }, 'POST', body)).status).toBe(403);
         expect((await api(API.beacon, headers, 'POST', '{}')).status).toBe(403);
         expect((await api(API.snapshot, headers)).status).toBe(403);
+        expect((await api(`${API.diff}?fileId=f_000000000001&at=${AT}`, headers)).status).toBe(403);
+        expect((await api(`${API.unseen}?home=star&at=${AT}`, headers)).status).toBe(403);
       }
       // Our own origin reaches the route (501 until R5 is wired).
       expect((await api(API.chart, { origin: `http://127.0.0.1:${f.port}`, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' },
@@ -238,6 +241,7 @@ describe('R14 server on a real socket', () => {
         ['POST', API.snapshot, 405], ['PUT', API.layout, 405], ['DELETE', API.fog, 405], ['GET', API.chart, 405], ['PUT', API.chart, 405],
         ['GET', API.beacon, 405], ['POST', API.events, 405], ['PATCH', API.snapshot, 405], ['HEAD', API.snapshot, 405],
         ['OPTIONS', API.snapshot, 405], ['GET', '/api', 404], ['GET', '/api/state', 404], ['GET', '/api/snapshot/', 404],
+        ['POST', API.diff, 405], ['PUT', API.diff, 405], ['DELETE', API.unseen, 405], ['POST', API.unseen, 405], ['GET', `${API.diff}/`, 404],
       ];
       for (const [method, path, status] of cases) expect((await api(path, {}, method)).status, `${method} ${path}`).toBe(status);
       for (const method of ['POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'TRACE']) {
@@ -250,6 +254,29 @@ describe('R14 server on a real socket', () => {
       expect(tunnel.status).toBe(0);
       const ws = await req(f.port, { path: '/', headers: { upgrade: 'websocket', connection: 'Upgrade' } });
       expect(ws.status).not.toBe(101);
+    });
+
+    it('validates diff and unseen queries, then reports not available until wired (#75)', async () => {
+      const ok = [`${API.diff}?fileId=f_000000000001&at=${AT}`, `${API.diff}?at=${AT}&fileId=f_000000000001`,
+        `${API.unseen}?home=star&at=${AT}`, `${API.unseen}?home=d_0123456789ab&at=${AT}`];
+      for (const path of ok) expect((await api(path)).status, path).toBe(501);
+      const bad = [
+        API.diff, `${API.diff}?fileId=f_000000000001`, `${API.diff}?at=${AT}`,
+        `${API.diff}?fileId=f_000000000001&at=${AT}&at=${AT}`, `${API.diff}?fileId=f_000000000001&fileId=f_000000000002&at=${AT}`,
+        `${API.diff}?fileId=f_000000000001&at=${AT}&path=src/a.ts`, `${API.diff}?fileId=f_000000000001&at=${AT}&since=${AT}`,
+        `${API.diff}?fileId=--output=x&at=${AT}`, `${API.diff}?fileId=-p&at=${AT}`, `${API.diff}?fileId=../../etc/passwd&at=${AT}`,
+        `${API.diff}?fileId=f_000000000001&at=HEAD`, `${API.diff}?fileId=f_000000000001&at=${AT.slice(1)}`,
+        `${API.diff}?fileId=f_000000000001&at=--output%3D%2Ftmp%2Fx`, `${API.diff}?fileId=f_000000000001&at=${AT}%5E`,
+        `${API.diff}?fileId=f_000000000001&at=${AT}&pad=${'x'.repeat(300)}`, `${API.diff}?fileId=:(glob)*&at=${AT}`,
+        `${API.unseen}?home=src&at=${AT}`, `${API.unseen}?home=star`, `${API.unseen}?home=star&home=star&at=${AT}`,
+        `${API.unseen}?home=d_0123456789ab&at=${AT}&fileId=f_000000000001`,
+      ];
+      for (const path of bad) {
+        const r = await api(path);
+        expect(r.status, path).toBe(400);
+        // Errors are fixed text: nothing the request sent comes back.
+        expect(r.body, path).not.toMatch(/output|passwd|glob|src\/a|HEAD|pad|xxx/);
+      }
     });
 
     it('answers 501 for beacons until R10', async () => {
