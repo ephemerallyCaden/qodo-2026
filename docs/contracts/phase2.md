@@ -1,12 +1,12 @@
 # Phase 2 contract (#29)
 
-**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch) and 2026-11-11 (content roots, #71).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
+**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch) and 2026-11-11 (content roots, #71; the unseen and diff routes, #75).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
 
 | Shape | Types | Produced by | Consumed by |
 |---|---|---|---|
 | `layout.json` | `src/core/contract/layout.ts` (`LayoutV1`) | #18 `layout()` | #30 view, #32 server, #34 later |
 | Fog view | `src/core/contract/fog.ts` (`FogView`, `ChartAction`) | #33 R5 | #32 server, #30 view |
-| Local HTTP surface | `src/core/contract/api.ts` (`API`, `TOKEN_HEADER`, `WEB_DIST`, `LiveEvent`) | #32 R14 | #30 view |
+| Local HTTP surface | `src/core/contract/api.ts` (`API`, `TOKEN_HEADER`, `WEB_DIST`, `LiveEvent`; #75: `UnseenList`, `DiffView`) | #32 R14, #75 | #30 view |
 | Render hook | `src/core/contract/api.ts` (`RenderHook`, `RenderInput`, `RenderStats`, `TEST_MODE_PARAM`) | #30 view | #31 render tests |
 
 **Fixtures:** `test/fixtures/contract/mini.ts` (typed source) and its JSON twins `mini.layout.json` and `mini.fog.json`. They describe 3 planets, moonlets, a moon overflow, a surface overflow, unknown debt and one charted file. `test/contract.test.ts` keeps the twins byte-equal and checks the invariants. Regenerate the twins only with `UPDATE_GOLDEN=1` and a `Golden-Update:` line.
@@ -37,8 +37,17 @@
 - **Bind and Host:** binds 127.0.0.1 only. `Host` must be `127.0.0.1:<port>` or `localhost:<port>`.
 - **Token:** the opened URL is `http://127.0.0.1:<port>/#t=<token>`. The fragment is never sent to the server. The view reads it and sends `x-commet-token` on every data request.
 - **Static bundle:** served at `/` from `dist/web` without a token, because it holds no repo data. No directory listing and no traversal.
-- **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`.
+- **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`, `/api/unseen`, `/api/diff`.
 - **Write routes:** `POST /api/chart` with a `ChartAction` JSON body (exact keys, `at` a full 40-hex SHA, or 64-hex in a SHA-256 repo) returns a `ChartResult`. An unknown `at` gets `ChartUnknownHead` with status 409 Conflict, told apart from other refusals (400) by its `head`. `POST /api/beacon` answers 501 until R10. Every other method or path is refused.
+- **Reviewing from the view (amended 2026-11-11, #75):** two more read routes, so a file can be charted where its diff is read (R5).
+  - `GET /api/unseen?home=<DirId>|star&at=<Sha>` (`UnseenQuery`, `UnseenList`) lists the fogged files of one planet, or of the star, with their paths. Layout has no file paths and leaves out surface overflow, and fog.1 has no file-to-planet map, so the view can't name them otherwise. fog.1 is unchanged.
+  - `GET /api/diff?fileId=<FileId>&at=<Sha>` (`DiffQuery`, `DiffView`) is one file's unseen diff, as parsed hunks.
+  - Both take exactly their two keys, each once. `at` is the `FogView.head` the view shows and must be the current head, else `ChartUnknownHead` (409) and the view refetches. Unknown ids get 404 with a fixed error naming neither the id nor a path.
+  - **The client sends `at`, never `since` or a path.** The server takes the path from the snapshot and the range from its own fog: `base..at`, where `base` is the first-parent parent of the file's oldest unseen change (the empty tree at the root commit). So a stale or forged request can't narrow the diff (Rule 1), and the range ends at the same `at` the Chart action posts. `FileFog.since` minus one isn't the base: for a window gap, `since` is the commit after the gap, so `since^` would leave the gap's own change out.
+  - A rename inside the range is followed: the path the file had at `base` is diffed too, so git shows the rename and its edits. When git doesn't pair them there are two sections, the old half `deleted`.
+  - git runs argv-only (system design §9 check 8): `diff-tree` between the two commits (never the work tree or index), `--literal-pathspecs` (a file named `*.ts` or `:(glob)x` means only itself), `--no-ext-diff --no-textconv --no-color`, the scan's pinned config, revisions as full hex from the snapshot and paths only after `--`.
+  - Past `DIFF_LIMITS` (1 Mi characters or 20,000 lines) the rest is cut and `truncated` set; the view says so beside Chart and offers the `git diff` command. At most 4 diffs run at once and each gets 10 s; past either the answer is 503.
+  - Diffs are served on demand and never stored, cached or logged, on either side.
 - **Live updates:** `GET /api/events` is a `text/event-stream` read with `fetch`, so the token stays in a header. Each `data:` line is a `LiveEvent`. The view refetches the named resource.
 - **No CORS headers,** and cross-origin writes are refused.
 
