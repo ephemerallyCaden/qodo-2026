@@ -23,11 +23,16 @@ Today every top-level folder is one planet (#18). In most repos one folder (`src
 - [ ] C6. **Layout:** each root's direct subfolders with surface files are **content planets**, on the inner orbits. Every other top-level folder with surface files is an **outer planet**, on orbits beyond them. Placement rules within each group are unchanged (#18: birth order, partner, append-only). The roots themselves are not planets.
 - [ ] C7. **Determinism and record:** roots are an input to `layout()`. `layout.json` records `source.roots`, and identical (history, roots) gives byte-identical output. Changing the roots is an explicit user action and may re-place planets. Adding files and commits still never moves a body (#18 properties hold per group).
 - [ ] C8. **Fog** counts planets exactly as the layout does. `FogView.planets` covers content and outer planets.
-- [ ] C9. **Contract amendment** (team lead): `LayoutV1.source.roots: string[]`, and `Planet.zone: 'content' | 'outer'`. The view may style or space the zones, but nothing else is required of it here.
+- [ ] C9. **Contract amendment (spec by the team lead; the feature agent applies it with the code):**
+  - `LayoutV1.source.roots: string[]`: repo-relative, sorted, no trailing slash; `[]` means today's mapping.
+  - `Planet.zone: 'content' | 'outer'`: always `'outer'` when `roots` is `[]`.
+  - Moonlet `kind: 'root-file'` also covers files directly inside a root.
+  - `docs/contracts/phase2.md` is amended with the reason; the mini fixtures gain `roots: []` and `zone: 'outer'`.
+  - The view's layout validator accepts the new fields. The view needn't style zones yet.
 - [ ] C10. **Privacy:** config.json, the prompt and the output never contain absolute paths.
 
 ## Assumptions
-- [ ] A1 (load-bearing, decide before building): **files directly inside a root** (e.g. `src/cli.ts`) become moonlets of the star, like repo root files. They're usually entry points. The alternative is a "core" planet named after the root.
+- [x] A1. **Decided (human, 2026-11-11):** files directly inside a root (e.g. `src/cli.ts`) become **moonlets of the star**, like repo root files (`kind: 'root-file'`). Every planet is a real subfolder.
 - [ ] A2. Tests stay moons of the planet that holds their `testOf` target, which may now be a content planet such as `src/core`.
 - [ ] A3. With no root (today's mapping), output is byte-identical to the current layout, so existing goldens don't change.
 - [ ] A4. The outer ring starts one slot spacing beyond the outermost content slot that could be needed. Exact spacing is a layout constant.
