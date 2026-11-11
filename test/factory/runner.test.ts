@@ -466,6 +466,24 @@ describe('review loop (R6, R7)', () => {
     expect(promptOf(w.agentCalls()[1]!.args)).toContain('CI check "extra 149" ended failure');
   });
 
+  it('a clean review from a poll that returns after the deadline is not accepted (Qodo PR93 ff427862)', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.claude.push(implementDone());
+    // Each Qodo read takes 15 min: the second poll starts at 17 min, inside the 30 min deadline,
+    // and returns the first clean, settled review at 32 min.
+    const exec: typeof w.exec = async (cmd, args, opts) => {
+      const res = await w.exec(cmd, args, opts);
+      if (cmd.endsWith('qodo') && args[1] === 'pr-review-session') w.now += 15 * 60_000;
+      return res;
+    };
+    const out = await w.tick({}, { exec });
+    expect(out).toMatchObject({ state: 'needs-help', reason: expect.stringMatching(/^review incomplete: .*within 30 min/) });
+    expect(labels(w, 24)).not.toContain(LABELS.done);
+    const polls = runLog(w).filter((e) => e['event'] === 'poll');
+    expect(polls.at(-1)).toMatchObject({ qodo: 'complete' });
+  });
+
   it('CI that never finishes stops with "review incomplete"', async () => {
     const w = world();
     w.ciDelayMs = null;

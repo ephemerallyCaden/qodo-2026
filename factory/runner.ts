@@ -567,6 +567,8 @@ class Tick {
         findings: q?.findings.length ?? null, qodoExit: qres.code,
       });
       if (qs.kind === 'skipped') throw new Stop(`review skipped: Qodo's run on ${shortSha(head)} has review_effort=skip, which is not a clean review`);
+      // A poll admitted before the deadline can return after it (Qodo PR #93 ff427862): that's a timeout, not a review.
+      if (deps.clock.now() > deadline) break;
       if (prOk && ci.kind === 'complete' && qs.kind === 'complete') return { ci: ci.runs, failed: ci.failed, run: qs.run, findings: qs.findings };
     }
     const ciWhy = ci.kind === 'pending' ? ci.why : `done, ${ci.failed.length} failed`;
