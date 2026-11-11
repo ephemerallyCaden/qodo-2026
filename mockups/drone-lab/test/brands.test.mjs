@@ -28,7 +28,7 @@ test('the approved providers, plus generic and unknown, each with a palette and 
 });
 
 test('brand params are known, inside their ranges, and laid over D-final', () => {
-  for (const b of BRANDS) {
+  for (const b of ALL) {
     for (const [k, v] of Object.entries(b.params)) {
       const p = PARAM_BY_KEY[k];
       assert.ok(p, `${b.id}: unknown parameter ${k}`);
@@ -61,8 +61,8 @@ test("accessory drones are D-final's exact shape plus one accessory and a face",
   }
 });
 
-test('every brand palette is BLK 36 only, and the eyes glow [OIII] teal', () => {
-  for (const [id, pal] of Object.entries(BRAND_PALETTES)) {
+test('every brand (and Google option) palette is BLK 36 only, and the eyes glow [OIII] teal', () => {
+  for (const [id, pal, trims] of [...Object.entries(BRAND_PALETTES).map(([id, pal]) => [id, pal, BRAND_BY_ID[id].trims]), ...GOOGLE_OPTIONS.map((o) => [o.id, o.palette, o.trims])]) {
     for (const [slot, n] of Object.entries(SLOTS)) {
       assert.equal(pal[slot].length, n, `${id}.${slot}`);
       for (const h of pal[slot]) {
@@ -70,7 +70,8 @@ test('every brand palette is BLK 36 only, and the eyes glow [OIII] teal', () => 
         else assert.ok(BLK36.includes(h), `${id}.${slot} ${h} is not BLK 36`);
       }
     }
-    for (const trim of BRAND_BY_ID[id].trims) {
+    for (const ramp of pal.tints ?? []) for (const h of ramp) assert.ok(BLK36.includes(h), `${id} tint ${h} is not BLK 36`);
+    for (const trim of trims) {
       assert.equal(trim.length, SLOTS.trim, `${id} seeded trim`);
       for (const h of trim) assert.ok(BLK36.includes(h), `${id} seeded trim ${h} is not BLK 36`);
     }
@@ -222,24 +223,12 @@ test('Google options G1-G5: five Gemini-inspired drones for the human to pick fr
     assert.equal(o.brand, 'google');
     assert.ok(o.name && o.look && o.palette === OPTION_PALETTES[o.id], o.id);
     assert.ok(!BRAND_BY_ID[o.id], `${o.id} isn't a brand drone until the human picks it`);
-    for (const [k, v] of Object.entries(o.params)) {
-      const p = PARAM_BY_KEY[k];
-      assert.ok(p, `${o.id}: unknown parameter ${k}`);
-      if (p.type === 'select') assert.ok(Number.isInteger(v) && v >= 0 && v < p.options.length, `${o.id}.${k}`);
-      else assert.ok(v >= p.min && v <= p.max, `${o.id}.${k} = ${v} outside ${p.min}..${p.max}`);
-    }
     // Every option carries the sparkle somewhere: the head, its tint panels, a small star or fins.
     const P = o.params;
     assert.ok(P.headStar || P.screenStar || P.starPart || P.fins, `${o.id}: no sparkle`);
-    const pal = o.palette;
-    for (const [slot, n] of Object.entries(SLOTS)) {
-      assert.equal(pal[slot].length, n, `${o.id}.${slot}`);
-      for (const h of pal[slot]) assert.ok(slot === 'glow' ? TEAL.includes(h) : BLK36.includes(h), `${o.id}.${slot} ${h}`);
-    }
-    assert.deepEqual(pal.tints, GEMINI_TINTS, `${o.id}: the four Gemini ramps`);
-    for (const trim of o.trims) for (const h of trim) assert.ok(BLK36.includes(h), `${o.id} seeded trim ${h}`);
+    assert.deepEqual(o.palette.tints, GEMINI_TINTS, `${o.id}: the four Gemini ramps`); // BLK 36: checked with the palettes
   }
-  for (const ramp of GEMINI_TINTS) { assert.equal(ramp.length, 4); for (const h of ramp) assert.ok(BLK36.includes(h), `tint ${h} is not BLK 36`); }
+  assert.ok(GEMINI_TINTS.length === 4 && GEMINI_TINTS.every((r) => r.length === 4), 'four ramps of four bands');
   // The ideas differ: one sparkle head, one antenna star, one sparkle screen, one set of fins, one orbit.
   const has = (f) => GOOGLE_OPTIONS.filter((o) => f(o.params)).map((o) => o.id);
   assert.deepEqual([has((P) => P.headStar), has((P) => P.starPart === 1), has((P) => P.screenStar), has((P) => P.fins), has((P) => P.starPart === 2)], [['g1'], ['g2'], ['g3'], ['g4'], ['g5']]);

@@ -201,16 +201,17 @@ const ENTRIES = [
 ];
 const ENTRY_BY_ID = Object.fromEntries(ENTRIES.map((e) => [e.id, e]));
 
-// One normaliser: D-final, then the accessory, the face and the brand's own parameters. A `sameAs`
+// One normaliser: D-final, then the accessory, the face and the drone's own parameters. A `sameAs`
 // drone takes its twin's parameters, seeded details and palette (only its label differs).
+const normalise = (b, palette) => ({
+  ...b,
+  params: { ...DEFAULTS, ...FINAL.params, ...ACCESSORIES[b.accessory]?.params, ...b.face, ...b.params },
+  detail: b.detail ?? ACCESSORIES[b.accessory].detail,
+  palette,
+});
 export const BRANDS = ENTRIES.map((e) => {
   const b = e.sameAs ? { ...ENTRY_BY_ID[e.sameAs], ...e } : e;
-  return {
-    ...b,
-    params: { ...DEFAULTS, ...FINAL.params, ...ACCESSORIES[b.accessory]?.params, ...b.face, ...b.params },
-    detail: b.detail ?? ACCESSORIES[b.accessory].detail,
-    palette: BRAND_PALETTES[b.sameAs ?? b.id],
-  };
+  return normalise(b, BRAND_PALETTES[b.sameAs ?? b.id]);
 });
 
 export const BRAND_BY_ID = Object.fromEntries(BRANDS.map((b) => [b.id, b]));
@@ -233,7 +234,7 @@ const OPTION_ENTRIES = [
     params: {
       rim: 0, antenna: 0,
       headStar: 1, headW: 0.15, headH: 0.15, headD: 0.06, headRound: 0, starCurve: 1.15, starTip: 0.08, quadTint: 1,
-      screenW: 0.4, screenH: 0.4, screenY: 0, screenRound: 2, bezel: 0.2, eyes: 0,
+      screenW: 0.4, screenH: 0.4, screenY: 0, screenRound: 2, bezel: 0.2, eyes: 0, screenFlat: 2,
       thrusters: 0, thrR: 0.02, thrL: 0.018, thrSpread: 0.9, thrFlare: 1,
       smoke: 0, puffSize: 0.9, puffRate: 0.4, sparkles: 3,
       bobAmp: 0.035, drift: 0.16, bank: 0.28, lookYaw: 0.4,
@@ -285,12 +286,7 @@ const OPTION_ENTRIES = [
     trims: [['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff']],
   },
 ];
-export const GOOGLE_OPTIONS = OPTION_ENTRIES.map((o) => ({
-  ...o,
-  params: { ...DEFAULTS, ...FINAL.params, ...ACCESSORIES[o.accessory]?.params, ...o.face, ...o.params },
-  detail: o.detail ?? ACCESSORIES[o.accessory].detail,
-  palette: OPTION_PALETTES[o.id],
-}));
+export const GOOGLE_OPTIONS = OPTION_ENTRIES.map((o) => normalise(o, OPTION_PALETTES[o.id]));
 export const OPTION_BY_ID = Object.fromEntries(GOOGLE_OPTIONS.map((o) => [o.id, o]));
 
 // The Gemini sparkle's colours, sampled from the human's reference (21 x 21 px means; the soft blends
@@ -300,7 +296,7 @@ export const GEMINI_COLOURS = [
   { part: 'top tip (coral red)', quad: 0, hex: '#df525f', chosen: ['#cc5250'], why: '' },
   { part: 'left side (orange)', quad: 1, hex: '#e2992d', chosen: ['#ff965f'], why: '' },
   { part: 'left tip (yellow)', quad: 1, hex: '#d4c02c', chosen: ['#ffe091'], why: '', note: 'a loose match (0.129): BLK 36 has no saturated yellow, so the left tip reads cream-yellow over an orange shade' },
-  { part: 'bottom tip (green)', quad: 2, hex: '#2bb67b', chosen: ['#42bc7f'], why: '', note: "0.041 from the [OIII] event teal #00bc9c, and the green ramp's #22896e is 0.043 from #007c66: closer than the teal slate the brand drones avoid (0.037). It's a lit body colour, never emissive, and only the bottom quadrant, beside red, yellow and blue" },
+  { part: 'bottom tip (green)', quad: 2, hex: '#2bb67b', chosen: ['#42bc7f'], why: '', note: "0.041 from the [OIII] event teal #00bc9c, and the green ramp's #22896e is 0.043 from #007c66: nearly as close as the teal slate the brand drones avoid (0.037). It's a lit body colour, never emissive, and only the bottom quadrant, beside red, yellow and blue" },
   { part: 'right tip and middle (blue)', quad: 3, hex: '#3287ff', chosen: ['#4185d8'], why: '' },
 ];
 

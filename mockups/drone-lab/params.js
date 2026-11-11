@@ -99,7 +99,7 @@ export const PARAMS = [
   { key: 'gaze', group: 'face', min: -5, max: 5, step: 0.1, def: 0, words: 'Resting eye height on the screen, in eye-box pixels (+ up; a shy drone looks down)' },
   { key: 'glance', group: 'face', min: 0, max: 8, step: 0.1, def: 4.5, words: 'How far the eyes glance side to side when looking around (eye-box pixels)' },
   { key: 'glyphRate', group: 'face', min: 1, max: 10, step: 0.5, def: 4, words: 'Working face: glyph flips per second in each cell (typing speed)' },
-  { key: 'screenFlat', group: 'face', type: 'select', options: ['off', 'on'], def: 0, words: 'A flat (planar) screen with straight edges, for flat-fronted heads; off = wrapped round the head' },
+  { key: 'screenFlat', group: 'face', type: 'select', options: ['off', 'on', 'straight on'], def: 0, words: 'A flat (planar) screen with straight edges, for flat-fronted heads; straight on = projected flat from the front, for a thin puffy head (the sparkle); off = wrapped round the head' },
   { key: 'screenShades', group: 'face', type: 'select', options: ['off', 'on'], def: 0, words: 'The screen is a pair of sunglasses: two rounded-trapezoid lenses under a straight brow bar, no bezel (sized by the eye box)' },
   { key: 'screenStar', group: 'face', type: 'select', options: ['off', 'on'], def: 0, words: 'The screen is a four-point sparkle (its tips touch the edges of the screen box), the bezel round it' },
   { key: 'noEyes', group: 'face', type: 'select', options: ['off', 'on'], def: 0, words: 'No eyes at rest: the screen alone (Qodo: just the sunglasses)' },

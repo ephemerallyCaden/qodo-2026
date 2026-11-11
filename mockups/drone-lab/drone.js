@@ -289,7 +289,7 @@ const FRAG = /* glsl */ `
     vec3 n = p / uHeadB;
     vec2 q = vec2(atan(n.x, n.z) / atan(uScreen.x), (atan(n.y, length(n.xz)) - atan(uScreen.z)) / atan(uScreen.y));
     if (uScrFlat == 1) q = n.z > 0.2 ? vec2(n.x / n.z / uScreen.x, (n.y / n.z - uScreen.z) / uScreen.y) : vec2(9.0);
-    if (uHeadStar > 0.5) q = p.z > 0.0 ? vec2(n.x / uScreen.x, (n.y - uScreen.z) / uScreen.y) : vec2(9.0); // the sparkle head: straight on, so a round screen stays round
+    if (uScrFlat == 2) q = p.z > 0.0 ? vec2(n.x / uScreen.x, (n.y - uScreen.z) / uScreen.y) : vec2(9.0); // straight on: a round screen stays round on a thin, puffy head
     return vec3(q, pow(abs(q.x), uScreen.w) + pow(abs(q.y), uScreen.w));
   }
   // Screen coords -> the V2 32 x 24 eye box, fitted inside the screen at its real aspect.
@@ -378,11 +378,11 @@ const FRAG = /* glsl */ `
     if (uGlyphSet == 2) tone = ci.y == scan ? 3 : 1;
     return ((GLYPHS[g * 7 + b.y] >> (4 - b.x)) & 1) == 1;
   }
-  // The glint sweep (glyphSet 4), the working face without glyphs: a diagonal shine about 4 eye-box
-  // px wide sweeps across the screen, left to right, once per 0.8 s (a line read), while the glyphs
-  // would show. P is in eye-box px.
+  // The glint sweep (glyphSet 4), the working face without glyphs: while the glyphs would show, a
+  // diagonal shine about 4 eye-box px wide sweeps across the screen, left to right, once per 0.8 s
+  // (a line read), in place of the resting glint. P is in eye-box px.
+  bool sweeping() { return uGlyphSet == 4 && uGlyph.x > 0.0; }
   bool sweepLit(vec2 P) {
-    if (uGlyphSet != 4 || uGlyph.x <= 0.0) return false;
     float x = P.x - 0.5 * (P.y - 12.0) - mix(-3.0, 35.0, fract(uGlyph.y / 0.8));
     return x >= 0.0 && x < 4.0;
   }
@@ -502,8 +502,7 @@ const FRAG = /* glsl */ `
               int tone;
               if (glyphLit(sq, tone)) c = uFaceDebug == 1 ? vec3(0.0, 1.0, 0.0) : uGlow[tone];
               else if (uEyesOn == 1 && eyesLit(boxP(sq))) c = uFaceDebug == 1 ? vec3(1.0, 0.0, 0.0) : uGlow[3];
-              if (sweepLit(boxP(sq))) c = uFaceDebug == 1 ? vec3(0.0, 1.0, 0.0) : uScr[2]; // the debug render counts it as the working face
-              else if (uGlyphSet == 4 && uGlyph.x > 0.0) {} // the sweep replaces the resting glint
+              if (sweeping()) { if (sweepLit(boxP(sq))) c = uFaceDebug == 1 ? vec3(0.0, 1.0, 0.0) : uScr[2]; } // the debug render counts it as the working face
               else if (uShades == 1 ? shadesGlint(boxP(sq)) : glint(sq)) c = uScr[2];
             } else if (sq.x < -0.35 && sq.y > 0.2 && sq.y < 0.62 && sq.x > -0.7) c = uScr[2];
           } else if (r >= 10) c = uTint[(r - 10) * 4 + b];
@@ -1025,7 +1024,7 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     U.uHeadStar.value = P.headStar; U.uStarK.value.set(P.starCurve, P.starTip);
     U.uStarPart.value = P.starPart === 2 || Lay.star ? P.starPart : 0; U.uStarS.value = P.starR; U.uStarH.value = P.starT * P.starR;
     placeStar(0);
-    U.uFinN.value = Lay.fins.length; Lay.fins.forEach((f, i) => { U.uFinA.value[i].copy(f.a); U.uFinB.value[i].copy(f.b); }); if (Lay.fins.length) U.uFinR.value.set(...Lay.fins[0].r);
+    U.uFinN.value = Lay.fins.length; Lay.fins.forEach((f, i) => { U.uFinA.value[i].copy(f.a); U.uFinB.value[i].copy(f.b); }); U.uFinR.value.set(P.finR, P.finR * P.finTip);
     U.uQuad.value = P.quadTint; U.uScrStar.value = P.screenStar;
   }
   function placeStar(t) {
