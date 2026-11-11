@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && vite build --config web/vite.config.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/render/tsconfig.json --noEmit && tsc -p web/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/render/tsconfig.json --noEmit && tsc -p test/web/dom/tsconfig.json --noEmit && tsc -p web/tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
     "test:render": "playwright test",

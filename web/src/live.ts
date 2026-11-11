@@ -1,6 +1,7 @@
 // Live mode: data from the local server (or a dev fixture), the animation loop, free-flight input,
 // planet focus, the HUD and live updates. Reduced motion freezes the frame, draws only on input and
 // cuts instead of gliding (AC7).
+import type { FogView } from '../../src/core/contract/fog.js';
 import { PARKED_POSE, startPose } from './camera/pose.js';
 import { FreeFlightRig } from './camera/rig.js';
 import { ViewError, type DataClient } from './data/client.js';
@@ -16,8 +17,25 @@ const REDUCE = '(prefers-reduced-motion: reduce)';
 
 const describeError = (e: unknown): ViewError =>
   e instanceof ViewError ? e : new ViewError('The view hit an internal error.', [e instanceof Error ? e.message : String(e)]);
-/** The fog isn't drawn yet, so a fog failure is announced, not fatal (Rule 1: never silent). */
-const fogFailed = (hud: Hud) => (e: unknown) => hud.announce(`fog view unavailable: ${describeError(e).message}`);
+const short = (head: string) => head.slice(0, 7);
+
+/** A fog fetch's outcome: it never rejects, so a fetch running beside the layout's is never unhandled. */
+type Fetched = { fog: FogView } | { error: unknown };
+
+/**
+ * The fog to keep over a layout of `head` (#64): the fetched one when it's of that scan, else the
+ * one the view had when it is, else none, so one scan's fog is never applied over another's
+ * layout (a scan can land between the layout and fog fetches). A refused or failed fog is said in
+ * the HUD status line, not fatal (Rule 1: never silent), and `held` stays set until a fog of the
+ * drawn layout is applied again, which is said too. The next fog event fetches again.
+ */
+function pairFog(head: string, got: Fetched, had: FogView | null, held: boolean): { fog: FogView | null; notice: string | null; held: boolean } {
+  if ('fog' in got && got.fog.head === head) return { fog: got.fog, notice: held ? `fog view updated (${short(head)})` : null, held: false };
+  const notice = 'fog' in got
+    ? `fog not applied: the fog is of ${short(got.fog.head)} but the layout of ${short(head)} (different scans); waiting for the next update`
+    : `fog view unavailable: ${describeError(got.error).message}`;
+  return { fog: had?.head === head ? had : null, notice, held: true };
+}
 
 export async function runLive(view: View, hud: Hud, client: DataClient): Promise<void> {
   const media = matchMedia(REDUCE);
@@ -33,6 +51,10 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   let loaded = false;
   /** Whether the start pose was framed on planets (false: on a star alone). */
   let framedPlanets = false;
+  /** The drawn layout's head: the only head a fog may be applied at (#64). */
+  let drawnHead: string | null = null;
+  /** A fog was refused or failed and the HUD said so (pairFog). */
+  let fogHeld = false;
   const rig = new FreeFlightRig(PARKED_POSE); // replaced by the start pose once a layout loads
 
   /** Something changed that needs a redraw: mark it and wake the loop. */
@@ -59,11 +81,15 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     dirty = true;
   };
 
+  const fetchFog = (): Promise<Fetched> => client.fog().then((fog) => ({ fog }), (error: unknown) => ({ error }));
   const loadOnce = async () => {
     try {
-      const fog = client.fog().catch((e: unknown) => { fogFailed(hud)(e); return null; }); // in parallel with the layout
+      const fog = fetchFog(); // in parallel with the layout
       const layout = await client.layout();
-      await view.load(layout, await fog);
+      const paired = pairFog(layout.source.head, await fog, view.fog, fogHeld);
+      await view.load(layout, paired.fog);
+      drawnHead = layout.source.head;
+      fogHeld = paired.held;
       hud.clearError();
       const model = view.model!;
       // Later reloads keep the camera (planets never move: append-only slots), except that a system
@@ -80,21 +106,39 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
         if (t) rig.track(t);
       } else if (focus !== null) setFocus(null);
       say();
+      if (paired.notice) hud.announce(paired.notice); // after say(), so the status line keeps it
       redraw();
     } catch (e) {
       const err = describeError(e);
       hud.error(err.title, err.detail);
     }
   };
-  // One load at a time: a burst of live events while one runs collapses into a single reload after it.
-  let loading: Promise<void> | null = null, rerun = false;
-  const loadLayout = (): Promise<void> => {
-    if (loading) { rerun = true; return loading; }
-    loading = (async () => {
-      do { rerun = false; await loadOnce(); } while (rerun);
-      loading = null;
+  /** A fog event: the fog, paired with the drawn layout. Before any is drawn, the first load fetches its own. */
+  const refreshOnce = async () => {
+    if (drawnHead === null) return;
+    const paired = pairFog(drawnHead, await fetchFog(), view.fog, fogHeld);
+    view.fog = paired.fog;
+    fogHeld = paired.held;
+    if (paired.notice) hud.announce(paired.notice);
+  };
+  // One update at a time: live events that arrive while one runs collapse into a single run after
+  // it, and a layout reload (which fetches its own fog) covers a fog refresh. Run in turn, a fog is
+  // always paired with the layout drawn while it was fetched (#64), and an older answer never lands
+  // after a newer one (Qodo local r1 03ea87ee, 43250c53).
+  let running: Promise<void> | null = null;
+  let pending: 'layout' | 'fog' | null = null;
+  const update = (kind: 'layout' | 'fog'): Promise<void> => {
+    if (pending !== 'layout') pending = kind;
+    if (running) return running;
+    running = (async () => {
+      while (pending !== null) {
+        const next = pending;
+        pending = null;
+        await (next === 'layout' ? loadOnce() : refreshOnce());
+      }
+      running = null;
     })();
-    return loading;
+    return running;
   };
 
   const input = new Input(view.pass.canvas, {
@@ -138,16 +182,15 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   addEventListener('resize', fit);
   fit();
 
-  await loadLayout();
+  await update('layout');
   let paused = false;
   client.follow((ev) => {
-    if (ev.type === 'layout') void loadLayout();
-    else if (ev.type === 'fog') void client.fog().then((f) => { view.fog = f; }, fogFailed(hud));
+    if (ev.type === 'layout' || ev.type === 'fog') void update(ev.type);
   }, (status) => {
     // The server keeps no backlog, so a change made while the stream was down (or before it first
     // connected) would be lost: every (re)connect reloads. A resumed stream is announced once.
     if (status === 'live') {
-      void loadLayout();
+      void update('layout');
       if (paused) hud.announce('live updates resumed');
       paused = false;
       return;

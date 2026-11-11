@@ -27,9 +27,22 @@ const HINTS: Record<number, string> = {
   404: 'Nothing there yet. Run `commet scan` in the repository, then reload.',
 };
 
-/** The error for a non-OK answer, with the hint for its status when there is one. */
-export const httpError = (path: string, status: number): ViewError =>
-  new ViewError(`${path} answered ${status}.`, HINTS[status] ? [HINTS[status]!] : []);
+/** The longest server message shown; the server's own are one short line. */
+const MAX_MESSAGE = 300;
+
+/**
+ * The error for a non-OK answer: the hint for its status when there is one, else the server's own
+ * message for users (a state error says what to run, #64). Only a short single-line string
+ * `error` field is shown.
+ */
+export const httpError = (path: string, status: number, body = ''): ViewError => {
+  const hint = HINTS[status];
+  if (hint) return new ViewError(`${path} answered ${status}.`, [hint]);
+  let message: unknown = null;
+  try { message = (JSON.parse(body) as { error?: unknown } | null)?.error; } catch { /* not JSON: the status alone */ }
+  const ok = typeof message === 'string' && message.length > 0 && message.length <= MAX_MESSAGE && !/\p{Cc}/u.test(message);
+  return new ViewError(`${path} answered ${status}.`, ok ? [message as string] : []);
+};
 
 /** Parses and checks a document; throws a ViewError that lists what is wrong. */
 function parseChecked<T>(text: string, what: string, source: string, check: (v: unknown) => Checked<T>): T {
@@ -54,7 +67,7 @@ export function serverClient(token: string): DataClient {
     } catch {
       throw new ViewError(`Couldn't reach the Commet server for ${path}.`, ['Is `commet open` still running?']);
     }
-    if (!res.ok) throw httpError(path, res.status);
+    if (!res.ok) throw httpError(path, res.status, await res.text().catch(() => ''));
     return res.text();
   };
   return {

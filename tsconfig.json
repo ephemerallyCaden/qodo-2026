@@ -15,6 +15,6 @@
     "rootDir": "."
   },
   "include": ["src", "test", "factory", "eslint.config.js", "vitest.config.ts", "web/vite.config.ts"],
-  // Render tests run browser code too: test/render/tsconfig.json adds the DOM lib for them.
-  "exclude": ["test/render"]
+  // Render tests and test/web/dom run browser code too: their own tsconfig.json adds the DOM lib.
+  "exclude": ["test/render", "test/web/dom"]
 }
