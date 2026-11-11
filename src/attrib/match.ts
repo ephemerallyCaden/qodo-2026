@@ -17,6 +17,8 @@ export interface MatchCommit {
   partial: boolean;
   /** Countable added-line hashes per non-excluded path (empty before the logs begin). */
   added: Map<string, string[]>;
+  /** Its patch couldn't be read completely (#38), so `added` may be missing lines: never human. */
+  patchIncomplete: boolean;
   /** Sessions whose `git commit` output named this commit. */
   ranBy: Set<SessionKey>;
   /** Sessions running a commit-creating git command when this commit was made (Qodo PR6 #2). */
@@ -70,7 +72,7 @@ export function matchCommits(commits: MatchCommit[], events: EditEvent[]): Map<s
     const share = counted > 0 ? Math.floor((matched * 1000) / counted) : 0;
     // Matched lines are evidence wherever they fall; only "human" needs the logs to have been watching.
     const cls = classify({ counted, shareMilli: share, matched, ranCommit, isMerge: c.isMerge,
-      isSelf: c.isSelf, covered: c.covered, partial: c.partial });
+      isSelf: c.isSelf, covered: c.covered, partial: c.partial, patchIncomplete: c.patchIncomplete });
     const evidence: CommitAttribution['evidence'] = [];
     if (matched > 0) evidence.push({ kind: 'transcript_match', detail: 'verbatim' });
     // One agent_ran_commit entry: the SHA in the command's output when there is one, else the command's window.

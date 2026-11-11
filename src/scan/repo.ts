@@ -215,40 +215,81 @@ export function headerPath(raw: string): string {
   return Buffer.from(bytes).toString('utf8');
 }
 
-/** Raw added lines per path for first-parent commits since `sinceIso`, from `-U0` patches. */
-export async function addedLines(git: Git, head: string, sinceIso: string): Promise<Map<string, Map<string, string[]>>> {
-  const out = new Map<string, Map<string, string[]>>();
-  // NUL separates records: text patches can't contain it (git treats such files as binary).
+/** Raw added lines per commit and path; `incomplete` holds the commits whose patch couldn't be read completely (#38). */
+export class PatchLines extends Map<string, Map<string, string[]>> {
+  readonly incomplete = new Set<string>();
+}
+
+const HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
+
+/**
+ * Raw added lines per path for first-parent commits since `sinceIso`, from `-U0` patches. Patch text
+ * can hold NUL (past git's 8,000-byte binary check, or under a `diff` attribute) and U+0001, so the
+ * log is read line by line (AGENTS.md Rule 7, #38): a record starts only at a line that begins with
+ * NUL while no hunk is open, and the `@@` counts tell content from headers, so no content line can
+ * start, end or re-key a record. A commit is `incomplete`, its readable lines kept but never human,
+ * when a hunk line isn't one its counts allow (the hunk then ends there), a hunk is still open when
+ * the output ends, an `@@` line doesn't parse, a `+` or `-` line other than the `---`/`+++` headers
+ * sits outside a hunk, an added line has no path, or the last line is cut off. `window`, when given,
+ * holds the commits a header may name. Output that can't be split into records is refused: a
+ * non-empty line before the first header, or a header that isn't the full SHA of a window commit.
+ * A repeated header keeps only the first record, as numstatLog does.
+ */
+export async function addedLines(git: Git, head: string, sinceIso: string, window?: ReadonlySet<string>): Promise<PatchLines> {
+  const out = new PatchLines();
   const log = await git(['log', ...LOG_OPTS, '-p', '-U0', '--format=%x00%H', `--since=${sinceIso}`, head]);
-  for (const chunk of log.split('\0')) {
-    const lines = chunk.split('\n');
-    if (!lines[0]) continue;
-    const files = new Map<string, string[]>();
-    out.set(lines[0], files);
-    let cur: string[] | null = null;
-    let plus = 0;
-    let minus = 0;
-    for (let i = 1; i < lines.length; i++) {
-      const l = lines[i]!;
-      if (plus > 0 || minus > 0) {
-        // Count hunk lines exactly so content such as "+++ x" is never read as a header.
-        if (l.startsWith('+')) {
-          plus--;
-          cur?.push(l.slice(1));
-        } else if (l.startsWith('-')) minus--;
-        continue;
+  const bad = () => new Error('patch log holds a misframed record');
+  // The record being read: its SHA (null after a repeated header, whose lines go to a scratch map
+  // that is thrown away), its paths, and the lines of the path its last `+++` header named.
+  let sha: string | null = null;
+  let files: Map<string, string[]> | undefined;
+  let cur: string[] | null = null;
+  let plus = 0;
+  let minus = 0;
+  const unread = () => {
+    if (sha !== null) out.incomplete.add(sha);
+  };
+  const read = (l: string) => {
+    if (plus > 0 || minus > 0) {
+      if (l.startsWith('+') && plus > 0) {
+        plus--;
+        if (cur) cur.push(l.slice(1));
+        else unread();
+      } else if (l.startsWith('-') && minus > 0) minus--;
+      else if (!l.startsWith('\\')) {
+        // A line the counts don't allow: they can't be trusted past it. It never starts a record.
+        unread();
+        plus = minus = 0;
       }
-      if (l.startsWith('+++ ')) {
-        const p = headerPath(l.slice(4));
-        cur = p === '/dev/null' ? null : (files.get(p.slice(2)) ?? []);
-        if (cur) files.set(p.slice(2), cur);
-      } else if (l.startsWith('@@ ')) {
-        const m = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(l);
-        if (!m) continue;
+    } else if (l.startsWith('\0')) {
+      const key = l.slice(1);
+      if (!SHA.test(key) || (window && !window.has(key))) throw bad();
+      sha = out.has(key) ? null : key;
+      files = sha === null ? new Map() : out.set(key, new Map()).get(key)!;
+      cur = null;
+    } else if (!files) {
+      if (l !== '') throw bad();
+    } else if (l.startsWith('+++ ')) {
+      const p = headerPath(l.slice(4));
+      cur = p === '/dev/null' ? null : (files.get(p.slice(2)) ?? []);
+      if (cur) files.set(p.slice(2), cur);
+    } else if (l.startsWith('@@')) {
+      const m = HUNK.exec(l);
+      if (!m) unread();
+      else {
         minus = m[1] === undefined ? 1 : Number(m[1]);
         plus = m[2] === undefined ? 1 : Number(m[2]);
       }
-    }
-  }
+    } else if (l.startsWith('diff --git ')) cur = null;
+    else if ((l.startsWith('+') || l.startsWith('-')) && !l.startsWith('--- ')) unread();
+  };
+  const lines = log.split('\n');
+  // The text after the last newline: empty unless the output ends inside a line.
+  const tail = lines.pop()!;
+  for (const l of lines) read(l);
+  if (tail !== '') read(tail);
+  // Only a header may end the output without its newline (an empty last commit); a hunk still open,
+  // or any other last line, was cut off.
+  if (plus > 0 || minus > 0 || (tail !== '' && !tail.startsWith('\0'))) unread();
   return out;
 }

@@ -9,8 +9,11 @@ const day = (iso: string) => iso.slice(0, 10);
 // Subjects come from the repo; strip control characters so they can't drive the terminal.
 export const printable = (t: string) => t.replace(/\p{Cc}/gu, '?');
 
-/** Aggregate log-reading counts: skipped transcripts, dropped records, unattributed transcripts. */
-export interface LogCounts { tooLarge: number; unavailable: number; dropped: number; unattributed: number }
+/**
+ * Aggregate log-reading counts: skipped transcripts, dropped records, unattributed transcripts, and
+ * commits whose patch couldn't be read completely (#38).
+ */
+export interface LogCounts { tooLarge: number; unavailable: number; dropped: number; unattributed: number; incompletePatches: number }
 
 /** Human-readable scan summary. Contains repo-relative data only: no absolute paths or code. */
 /** `logs` holds aggregate log-reading counts, or null when logs weren't read (--no-ingest). */
@@ -58,6 +61,7 @@ export function formatSummary(s: SnapshotV02, logs: LogCounts | null, qodoCached
   if (logs?.unattributed) {
     lines.push(`${logs.unattributed} transcript(s) could not be placed in a repo (no usable cwd); commits during them are never classed human`);
   }
+  if (logs?.incompletePatches) lines.push(`${logs.incompletePatches} commit(s) had a patch Commet couldn't fully read; they are never classed human`);
   const agentWritten = s.commits.filter((c) => c.attribution.class === 'agent' || c.attribution.class === 'mixed').reverse();
   if (agentWritten.length > 0) {
     lines.push('', 'agent-written commits (newest first):');

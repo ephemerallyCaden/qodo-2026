@@ -19,7 +19,7 @@ import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
 import { gitRunner, tryGit, type Git } from './git.js';
 import { fetchQodo, readQodoCache } from './qodo.js';
-import { addedLines, headFiles, readRepo, windowCommits, type NumstatRow, type RawCommit } from './repo.js';
+import { addedLines, headFiles, PatchLines, readRepo, windowCommits, type NumstatRow, type RawCommit } from './repo.js';
 import { debtCounts, lineageLog, mergeSides, unmergedBranches } from './structure.js';
 
 export interface ScanOptions {
@@ -150,10 +150,11 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   const fromMs = found?.coverage[0]?.from;
   const knownPaths = new Set([...head.keys(), ...raw.flatMap((c) => [...c.files.keys()])]);
   // The patch log runs while the transcripts parse (and any Qodo fetch finishes); it starts no
-  // earlier than the window.
+  // earlier than the window, so every record it holds is a window commit's.
   const [patches, ingest, qodo] = await Promise.all([
-    fromMs !== undefined && fromMs <= repo.headMs ? addedLines(git, repo.head, isoUtc(Math.max(sinceMs, fromMs - DAY_MS)))
-      : new Map<string, Map<string, string[]>>(),
+    fromMs !== undefined && fromMs <= repo.headMs
+      ? addedLines(git, repo.head, isoUtc(Math.max(sinceMs, fromMs - DAY_MS)), new Set(raw.map((c) => c.sha)))
+      : new PatchLines(),
     found ? parseClaude(found, knownPaths, hash) : null,
     readQodo(o, git, repo.commonDir, repo.head, headPaths, qodoP),
   ]);
@@ -190,7 +191,7 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
       }
       return { sha: c.sha, dateMs: c.dateMs, isSelf: isSelf(c), isMerge: c.isMerge,
         covered: within(coverage, c.dateMs) && !within(blind, c.dateMs), partial: within(partial, c.dateMs), added,
-        ranBy: ranBy.get(c.sha) ?? new Set(), ranByCommand: ranByCommand.get(c.sha) ?? new Set() };
+        patchIncomplete: patches.incomplete.has(c.sha), ranBy: ranBy.get(c.sha) ?? new Set(), ranByCommand: ranByCommand.get(c.sha) ?? new Set() };
     });
     return matchCommits(matchInput, ingest?.events ?? []);
   };
@@ -240,7 +241,8 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   };
   const unreadable = ingest?.unreadable.length ?? 0;
   const logs = found && { transcripts: found.transcripts.length - unreadable, tooLarge: found.stats.tooLarge,
-    unavailable: found.stats.unavailable + unreadable, dropped: ingest?.dropped ?? 0, unattributed: found.stats.unattributed };
+    unavailable: found.stats.unavailable + unreadable, dropped: ingest?.dropped ?? 0, unattributed: found.stats.unattributed,
+    incompletePatches: patches.incomplete.size };
   const placed = layoutReport(snapshot, structureHistory(lineage, births, pathHistory(history, 0, lineageExcluded),
     rootBirthInfo(lineage, sides.children)));
   return { snapshot, json: canonicalJson(snapshot), layout: placed.layout, layoutJson: canonicalJson(placed.layout), layoutNotes: placed.notes,

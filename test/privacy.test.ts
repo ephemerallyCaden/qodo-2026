@@ -76,7 +76,8 @@ it('skips and counts a transcript deleted between discovery and parsing (Qodo #7
   const ingest = await parseClaude(found, new Set(), (l) => l);
   expect(ingest.unreadable).toEqual([victim.span]);
   expect(ingest.events.length).toBeGreaterThan(0);
-  const summary = formatSummary(JSON.parse(outputs['snapshot']!) as SnapshotV02, { tooLarge: 0, unavailable: 1, dropped: 0, unattributed: 0 });
+  const summary = formatSummary(JSON.parse(outputs['snapshot']!) as SnapshotV02, { tooLarge: 0, unavailable: 1, dropped: 0, unattributed: 0,
+    incompletePatches: 0 });
   expect(summary).toContain('1 transcript(s) skipped (too large 0, unavailable 1); commits during them are never classed human');
 });
 
