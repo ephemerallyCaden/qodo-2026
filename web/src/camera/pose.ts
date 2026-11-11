@@ -2,6 +2,7 @@
 // projection and tests can check it. Internally a pose is an orbit pose { target, yaw, pitch, dist };
 // the contract's CameraPose (position, target, fovDeg) is what crosses the render hook.
 import type { CameraPose } from '../../../src/core/contract/api.js';
+import { depthStretch, type DepthStretch } from '../model/depth.js';
 import { TURNS } from '../model/motion.js';
 import { planetCentre, planetReach, type SystemModel } from '../model/system.js';
 import { add, cross, dot, lerp, length, scale, sub, type Sphere, type Vec3 } from '../model/vec.js';
@@ -104,6 +105,16 @@ export function startPose(model: SystemModel): OrbitPose {
     pose = { ...pose, target: add(pose.target, add(scale(b.right, centre('x') * tanV * ASPECT), scale(b.up, centre('y') * tanV))) };
   }
   return fit(pose);
+}
+
+/**
+ * The depth fade for a system (#59): its later steps scaled to the extent, and reaching at least the
+ * farthest planet seen from the start pose, so that planet fades no further than the 0.72 step
+ * (system-design §10, overview readability).
+ */
+export function systemDepth(model: SystemModel, start: OrbitPose = startPose(model)): DepthStretch {
+  const eye = eyeOf(start);
+  return depthStretch(model.extent, Math.max(0, ...model.planets.map((p) => length(sub(planetCentre(p, 0), eye)))));
 }
 
 /** The pose that frames a body of `radius` at `centre`, seen from the current eye's direction. */

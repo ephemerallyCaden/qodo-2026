@@ -6,7 +6,6 @@
 // (principle 4; contract: append-only slots). No rings: they have no meaning yet (contract amendment
 // 2026-11-10), so the view draws none.
 import type { HealthBand, LayoutV1, Planet } from '../../../src/core/contract/layout.js';
-import { depthStretch, type DepthStretch } from './depth.js';
 import { TURNS, turnAngle } from './motion.js';
 import { INV_PHI, R2, fract } from './prng.js';
 import type { Vec3 } from './vec.js';
@@ -70,8 +69,6 @@ export interface SystemModel {
   planets: PlanetModel[];
   /** Radius of the smallest sphere around the star that holds every body, moons included. */
   extent: number;
-  /** The depth fade's later steps, scaled to the extent (#59). */
-  depth: DepthStretch;
 }
 
 /** Moons are all one size: a test file's moon carries no size data, so none may look bigger (principle 4). */
@@ -151,7 +148,6 @@ export function systemModel(layout: LayoutV1): SystemModel {
     star: { radius: starRadius, moonlets, moonletOverflow: layout.star.moonletOverflow, testData: layout.star.testData },
     planets,
     extent,
-    depth: depthStretch(extent),
   };
 }
 

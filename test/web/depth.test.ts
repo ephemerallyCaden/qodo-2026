@@ -1,7 +1,8 @@
 // The depth fade scaled to the system (#59): pure maths, checked against the tuned curve and the layouts.
 import { describe, expect, it } from 'vitest';
 import { palette } from '../../src/core/palette.js';
-import { DEPTH_RANGE, DEPTH_REF_EXTENT, TUNED_DEPTH, depthStretch, fadeStrength } from '../../web/src/model/depth.js';
+import { systemDepth } from '../../web/src/camera/pose.js';
+import { DEPTH_RANGE, DEPTH_REF_EXTENT, SECOND_STEP, TUNED_DEPTH, depthStretch, fadeStrength } from '../../web/src/model/depth.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
 
@@ -22,7 +23,21 @@ describe('depthStretch', () => {
   });
 
   it('keeps the mini fixture (the goldens) on the tuned fade', () => {
-    expect(systemModel(miniLayout).depth).toEqual(TUNED_DEPTH);
+    expect(systemDepth(systemModel(miniLayout))).toEqual(TUNED_DEPTH);
+  });
+
+  it('moves the 0.72 step out to the farthest planet when that is beyond the extent\'s reach', () => {
+    expect(SECOND_STEP).toBeCloseTo(step(2), 12);
+    expect(depthStretch(DEPTH_REF_EXTENT, SECOND_STEP)).toEqual(TUNED_DEPTH);
+    const close = (a: { squeeze: number; shift: number }, b: { squeeze: number; shift: number }) => {
+      expect(a.squeeze).toBeCloseTo(b.squeeze, 12);
+      expect(a.shift).toBeCloseTo(b.shift, 12);
+    };
+    const st = depthStretch(DEPTH_REF_EXTENT * 2, SECOND_STEP * 3); // the farthest planet asks for more than the extent
+    close(st, depthStretch(DEPTH_REF_EXTENT * 3));
+    expect(fadeStrength(SECOND_STEP * 3, st)).toBeCloseTo(STRENGTHS[2]!, 9);
+    close(depthStretch(DEPTH_REF_EXTENT * 4, SECOND_STEP * 3), depthStretch(DEPTH_REF_EXTENT * 4)); // and never less than the extent's
+    expect(depthStretch(DEPTH_REF_EXTENT, Number.POSITIVE_INFINITY)).toEqual(TUNED_DEPTH);
   });
 
   it('moves the 0.72 and 0.88 steps out in proportion to the extent', () => {

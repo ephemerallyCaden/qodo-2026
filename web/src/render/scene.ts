@@ -3,7 +3,8 @@
 // between frames, so any frame can be drawn in any order (principle 3).
 import * as THREE from 'three';
 import { palette } from '../../../src/core/palette.js';
-import { ASPECT, FAR, FOV_DEG, NEAR, basis, eyeOf, fovOf, project, projectedRadius, type OrbitPose } from '../camera/pose.js';
+import { ASPECT, FAR, FOV_DEG, NEAR, basis, eyeOf, fovOf, project, projectedRadius, systemDepth, type OrbitPose } from '../camera/pose.js';
+import type { DepthStretch } from '../model/depth.js';
 import { mulberry32 } from '../model/prng.js';
 import { MOONLET_RADIUS, moonletPosition, planetCentre, type SystemModel } from '../model/system.js';
 import { add, scale, type Sphere, type Vec3 } from '../model/vec.js';
@@ -45,8 +46,11 @@ export class SystemScene {
   private readonly starfield = makeStarfield();
   private readonly moonlets: THREE.InstancedMesh | null;
   private readonly disposables: { dispose(): void }[] = [];
+  /** The depth fade's later steps, scaled to this system (#59). */
+  private readonly depth: DepthStretch;
 
   constructor(readonly model: SystemModel) {
+    this.depth = systemDepth(model);
     this.scene.add(this.starfield);
     this.disposables.push(this.starfield.geometry, this.starfield.material as THREE.Material);
 
@@ -91,7 +95,7 @@ export class SystemScene {
     this.camera.lookAt(view.target[0], view.target[1], view.target[2]);
     this.camera.updateMatrixWorld(true);
     SHARED.uEye.value.set(eye[0], eye[1], eye[2]);
-    SHARED.uDepthStretch.value.set(this.model.depth.squeeze, this.model.depth.shift); // shared by every scene: set per draw, like the eye
+    SHARED.uDepthStretch.value.set(this.depth.squeeze, this.depth.shift); // shared by every scene: set per draw, like the eye
     // The key light is view-relative, so every planet keeps its top-left crescent from any angle.
     const b = basis(view.yaw, view.pitch);
     SHARED.uLight.value.set(...add(add(scale(b.right, LIGHT_VIEW.x), scale(b.up, LIGHT_VIEW.y)), scale(b.back, LIGHT_VIEW.z))).normalize();

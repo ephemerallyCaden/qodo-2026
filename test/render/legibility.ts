@@ -2,7 +2,7 @@
 // parts, unit-tested in legibility.test.ts and used by overview.spec.ts. The measure follows the
 // health-looks lab (feature/asset-library, mockups/health-looks/): colours in OKLab (Ottosson 2020),
 // where a step of about 0.02 is just noticeable, and a look summed up as one vector over the disc.
-import { eyeOf, fovOf, project, projectedRadius, type OrbitPose } from '../../web/src/camera/pose.js';
+import { eyeOf, fovOf, project, projectedRadius, systemDepth, type OrbitPose } from '../../web/src/camera/pose.js';
 import { fadeStrength } from '../../web/src/model/depth.js';
 import { HEALTHY_LOOKS, planetCentre, type Look, type SystemModel } from '../../web/src/model/system.js';
 import { length, sub } from '../../web/src/model/vec.js';
@@ -22,9 +22,9 @@ export function oklab(r8: number, g8: number, b8: number): [number, number, numb
 /** A planet as the frame shows it: its index, eye distance, fade, and disc centre and radius in internal px. */
 export interface Far { i: number; d: number; fade: number; x: number; y: number; r: number }
 
-/** The farthest planet whose centre is on screen at a pose (frame 0). */
+/** The farthest planet whose centre is on screen at a pose (frame 0), faded as the view fades it. */
 export function farthestOnScreen(model: SystemModel, pose: OrbitPose, frame: { width: number; height: number }): Far {
-  const eye = eyeOf(pose);
+  const eye = eyeOf(pose), depth = systemDepth(model);
   let best: Far | null = null;
   for (const [i, p] of model.planets.entries()) {
     const c = planetCentre(p, 0), q = project(pose, c);
@@ -32,7 +32,7 @@ export function farthestOnScreen(model: SystemModel, pose: OrbitPose, frame: { w
     const d = length(sub(c, eye));
     if (best && d <= best.d) continue;
     const r = projectedRadius(p.radius, q.depth, fovOf(pose)) * (frame.height / 2);
-    best = { i, d, fade: fadeStrength(d, model.depth), x: ((q.x + 1) / 2) * frame.width, y: ((1 - q.y) / 2) * frame.height, r };
+    best = { i, d, fade: fadeStrength(d, depth), x: ((q.x + 1) / 2) * frame.width, y: ((1 - q.y) / 2) * frame.height, r };
   }
   if (!best) throw new Error('no planet on screen');
   return best;

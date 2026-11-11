@@ -5,6 +5,7 @@ import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { palette } from '../../src/core/palette.js';
 import { startPose } from '../../web/src/camera/pose.js';
 import { TUNED_DEPTH, fadeStrength } from '../../web/src/model/depth.js';
+import { mulberry32 } from '../../web/src/model/prng.js';
 import { systemModel, type Look } from '../../web/src/model/system.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
 import { selfLike, selfLikeRoots } from '../fixtures/overview.js';
@@ -30,6 +31,28 @@ describe('the overview fade rule: the farthest planet on screen at the start pos
       const far = farthestOnScreen(model, startPose(model), LOW_RES);
       expect(fadeStrength(far.d, TUNED_DEPTH)).toBeGreaterThan(OVERVIEW.maxFarFade + 0.05);
     }
+  });
+
+  it('holds on any layout: 600 seeded layouts, and the one Qodo local r1 reported (0.744 on the extent alone)', () => {
+    const rnd = mulberry32(59);
+    const planetsAt = (slots: number[], phases: number[], radii: number[]) => slots.map((index, i) => ({
+      ...selfLike.planets[i % selfLike.planets.length]!,
+      slot: { index, radiusMilli: 30000 + 24000 * index, phaseMilliturn: phases[i]! },
+      radiusMilli: radii[i]!,
+    }));
+    const farthestFade = (planets: LayoutV1['planets']) => {
+      const model = systemModel({ ...selfLike, planets });
+      return farthestOnScreen(model, startPose(model), LOW_RES).fade;
+    };
+    // Planets on both sides of a wide orbit along the view: fitting the near ones pushes the far one past 2.5 extents.
+    const reported = planetsAt([1, 9, 12, 13, 17, 18, 19], [811, 24, 492, 712, 288, 990, 686], [9000, 9000, 9000, 9000, 9000, 9000, 9000]);
+    expect(farthestFade(reported)).toBeLessThanOrEqual(OVERVIEW.maxFarFade + 1e-9);
+    let worst = 0;
+    for (let t = 0; t < 600; t++) {
+      const slots = [...new Set(Array.from({ length: 1 + Math.floor(rnd() * 8) }, () => Math.floor(rnd() * 20)))].sort((a, b) => a - b);
+      worst = Math.max(worst, farthestFade(planetsAt(slots, slots.map(() => Math.floor(rnd() * 1000)), slots.map(() => 3000 + Math.floor(rnd() * 9000)))));
+    }
+    expect(worst).toBeLessThanOrEqual(OVERVIEW.maxFarFade + 1e-9);
   });
 
   it('the self-like fixtures span the overviews #59 measured (extents about 16.5 and 35.7)', () => {
