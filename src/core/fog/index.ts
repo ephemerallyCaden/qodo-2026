@@ -278,13 +278,14 @@ export type ChartApplied = { ok: true; chart: ChartState } | ChartStale | { ok: 
 export function applyChartAction(base: FogBase, chart: ChartState, action: ChartAction): ChartApplied {
   const head = base.snapshot.repo.head;
   if (action.at !== head) return { ok: false, error: 'stale', head };
-  if (action.kind === 'baseline') return { ok: true, chart: { ...chart, baselines: [...chart.baselines, head] } };
+  // Past the check, everything is recorded at `action.at`, the head the user saw.
+  if (action.kind === 'baseline') return { ok: true, chart: { ...chart, baselines: [...chart.baselines, action.at] } };
   if (action.kind === 'baseline-undo') {
     if (chart.baselines.length === 0) return { ok: false, error: 'no baseline to undo' };
     return { ok: true, chart: { ...chart, baselines: chart.baselines.slice(0, -1) } };
   }
   if (!base.files.some((f) => f.id === action.fileId)) return { ok: false, error: 'no such file in the latest snapshot' };
-  const entry: ChartEntry = { fileId: action.fileId, at: head };
+  const entry: ChartEntry = { fileId: action.fileId, at: action.at };
   const mine = place(base, entry);
   const kept = chart.charts.filter((e) => {
     if (byEntry(e, entry) === 0) return false;

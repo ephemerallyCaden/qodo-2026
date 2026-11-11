@@ -194,6 +194,10 @@ export function writeChart(src: FogSource, action: ChartAction): Promise<ChartWr
       const head = readSnapshot(src.dir).repo.head;
       if (head !== action.at) return { ok: false, error: 'stale', head };
     }
+    // A scan publishing after this check can't make the write unsafe, which is why scans don't take
+    // this lock (Qodo local r2). What's written is recorded at `action.at`, the head the user saw, so
+    // it never covers a newer change. And only chart writes change chart state, all under this lock,
+    // so no baseline from a newer head can be on the stack for an undo to remove.
     const prev = readChart(src.dir);
     const r = applyChartAction(src.base, prev, action);
     if (!r.ok) return r;
