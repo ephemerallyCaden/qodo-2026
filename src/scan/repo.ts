@@ -109,19 +109,83 @@ export interface RawCommit {
   files: Map<string, NumstatRow>;
 }
 
+const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const NUMSTAT_ROW = /^(\d+|-)\t(\d+|-)\t/;
+
+/**
+ * Numstat rows per commit from `log --numstat -z --format=%x00%H`, parsed token by token on NUL as
+ * lineageLog parses its log (AGENTS.md Rule 7, #24): a commit starts with an empty token where a
+ * row would be, then its SHA; a row is `<added>\t<removed>\t<path>`, or `<added>\t<removed>\t`
+ * followed by the old and new paths for a rename. No byte inside a path can split or start a
+ * record, as U+0001 did when commits were framed by it. Only the one newline git writes after a
+ * header, before its first row, is dropped. A repeated header (a git that lists a merge once per
+ * parent) keeps only the first, first-parent, diff. A cut-off or misframed record is refused.
+ */
+function numstatLog(out: string): Map<string, Map<string, NumstatRow>> {
+  const stats = new Map<string, Map<string, NumstatRow>>();
+  const bad = () => new Error('numstat log holds an incomplete or misframed record');
+  // Rows go here; a repeated header points it at a scratch map that is thrown away.
+  let into: Map<string, NumstatRow> | undefined;
+  // `first` is a row right after a header. Widened so TS sees what header() sets.
+  let want = 'row' as 'row' | 'first' | 'sha' | 'from' | 'to';
+  let renamed: NumstatRow = { added: 0, removed: 0, binary: false };
+  const header = (t: string) => {
+    if (!SHA.test(t)) throw bad();
+    into = stats.has(t) ? new Map() : stats.set(t, new Map()).get(t)!;
+    want = 'first';
+  };
+  const tokens = out.split('\0');
+  // The token after the last NUL: empty unless the output ends inside a record.
+  const tail = tokens.pop()!;
+  for (const t of tokens) {
+    switch (want) {
+      case 'sha':
+        header(t);
+        break;
+      case 'from':
+        want = 'to';
+        break;
+      case 'to':
+        into!.set(t, renamed);
+        want = 'row';
+        break;
+      case 'row':
+      case 'first': {
+        if (t === '') {
+          want = 'sha';
+          break;
+        }
+        const r = want === 'first' && t.startsWith('\n') ? t.slice(1) : t;
+        const m = into && NUMSTAT_ROW.exec(r);
+        if (!m) throw bad();
+        const binary = m[1] === '-';
+        const row = { added: binary ? 0 : Number(m[1]), removed: Number(m[2]) || 0, binary };
+        const path = r.slice(m[0].length);
+        if (path === '') {
+          renamed = row;
+          want = 'from';
+        } else {
+          into!.set(path, row);
+          want = 'row';
+        }
+      }
+    }
+  }
+  // Only a final header's SHA may end the output without its closing NUL (an empty last commit).
+  if (want === 'sha' && tail !== '') header(tail);
+  else if (tail !== '' || (want !== 'row' && want !== 'first')) throw bad();
+  return stats;
+}
+
 /** First-parent commits since `sinceIso` (committer date), oldest first, with numstat. */
 export async function windowCommits(git: Git, head: string, sinceIso: string): Promise<RawCommit[]> {
   const since = `--since=${sinceIso}`;
   const [metaOut, statOut] = await Promise.all([
     git(['log', '--first-parent', '--use-mailmap', '-z', '--format=%H%x00%ct%x00%at%x00%aN%x00%aE%x00%P%x00%s', since, head]),
-    git(['log', ...LOG_OPTS, '--numstat', '-z', '--format=%x01%H', since, head]),
+    git(['log', ...LOG_OPTS, '--numstat', '-z', '--format=%x00%H', since, head]),
   ]);
   const meta = metaOut.split('\0');
-  const stats = new Map<string, Map<string, NumstatRow>>();
-  for (const chunk of statOut.split('\x01')) {
-    const tokens = chunk.split('\0');
-    if (tokens[0]) stats.set(tokens[0], parseNumstat(tokens.slice(1)));
-  }
+  const stats = numstatLog(statOut);
   const out: RawCommit[] = [];
   for (let i = 0; i + 7 <= meta.length; i += 7) {
     const [sha, ct, at, name, email, parents, subject] = meta.slice(i, i + 7) as [string, string, string, string, string, string, string];

@@ -21,6 +21,7 @@ npm run build && npm run typecheck && npm run lint && npm test
 node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 ```
 - One test: `npx vitest run -t "<name>"`.
+- Test temp dirs come only from `tempDir()` / `realTempDir()` in `test/fixtures/tmp.ts` (ESLint bans direct `mkdtemp` under `test/`). Each file's dirs are removed after it, pass or fail; a run fails if any is left (in CI, also on any other new `commet-*` dir). The hook timeout is a 300 s hard cap (`vitest.config.ts`).
 - Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
 - Before a PR, run `qodo review --base "$(git merge-base HEAD "$BASE")" --json`, where `BASE` is the PR's base branch (e.g. `BASE=origin/session/week1`). Resolve `action_required` findings as in the review loop below for **at most 3 local rounds**, then open the PR anyway, listing any still-unresolved findings in its description. The loop continues in the PR review, and the merge gate (no unresolved `action_required`) applies there. (On #16, six local rounds took over 2 hours.)
 - `commet scan` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error.
@@ -52,6 +53,8 @@ Dev tooling, not Commet: Rule 2's "no GitHub posts" covers the product, not this
 
 It never merges, pushes `main` or a session branch, force-pushes, or edits repo settings or secrets (runtime guard: `factory/guard.ts`). It keeps Rule 2's local-data rules: no absolute paths in output or posts, an agent's Bash commands kept only as regex categories, logs only under `.git/factory/`.
 
+Installing it is the lead's job, without asking the human. Whenever a change to `factory/` merges into the session branch, the lead runs `npm run factory -- install --interval 900 --base <current session branch>` from an up-to-date checkout of that branch (with `npm ci` first). The job ticks every 15 minutes, and `--base` is the only week-specific setting: when work moves to a new session branch, reinstall with the new `--base`. The installed copy in `.git/factory/bin` only updates on install, so skipping this leaves an old runner ticking. The human may still uninstall it at any time.
+
 Where it differs from the review loop above:
 - Fix rounds add new commits and never force-push.
 - No local `qodo review` before the PR: the PR review is the gate.
@@ -59,7 +62,10 @@ Where it differs from the review loop above:
 - An `action_required` finding the agent rejects stops the run with `agent-needs-help` for the human's decision.
 
 ## Daily Discussion posts
-- Draft each day's post at `.archive/docs/hackathon/day<N>-discussion-post.md`, following that day's template. Create it if missing.
+- Each day has one post file, `.archive/docs/hackathon/day<N>-discussion-post.md`, following that day's template. Create it if missing.
+- The file has a `#` title, a `>` note on what to paste and what's still pending, the post between two `----` lines, then `## Notes`.
+- When asked to write the post or change it, edit that file in place. Never start a second copy (`-paste`, `-short`, `-v2`): copies drift, and Day 4 ended up with several. Supporting files (a GIF's on-screen text, a draft ticket) can sit beside it as `day<N>-<what>.md`.
+- Never delete, rename or overwrite a post file without first diffing it against what you keep and carrying the human's edits over. The human edits these files in their editor, and an unsaved editor tab doesn't survive a rename.
 - After each change, add to its `## Notes`: the biggest Qodo lesson, a telling number, anything on the day's theme.
 - Never post it. Posting needs the human.
 
@@ -96,7 +102,7 @@ Where it differs from the review loop above:
   - No `Math.random`, `Date.now`, `new Date()`, `performance.now` or `localeCompare`. Use the seeded PRNG; sort by codepoint.
   - Same repo and logs → byte-identical snapshot. Same snapshot, camera and frame → identical pixels.
 - **Why:** the factory verifies the product with goldens, and a planet that moves between runs breaks the user's mental map.
-- **Checked by:** ESLint bans in `src/core`, `src/scan` and `src/attrib` (render and layout code is review-only until lint covers it), golden byte compares, a scan-twice SHA-256 test.
+- **Checked by:** ESLint bans in `src/core`, `src/scan`, `src/attrib`, `web/src` and the render stand-in, golden byte compares, render goldens (`npm run test:render`), and a scan-twice SHA-256 test.
 
 ### Rule 7: NUL-framed git output
 *A repository path can hold any byte except NUL, so git output that lists paths is read with `-z` and parsed by position on `\0`, never framed by another byte; patch text, which can hold NUL too, is parsed by its hunk counts.*
@@ -108,8 +114,8 @@ Where it differs from the review loop above:
   - Only a final header field may lack its closing NUL (an empty last commit has no paths after it), and only when it is complete and well-formed (e.g. a full 40-hex SHA); a malformed final header or any other unterminated token is a cut-off record, refused or counted under Rule 1, never half-read.
   - Patch text (`-p`) can't be NUL-framed, because a text diff can itself hold NUL (past git's 8,000-byte binary check, or under a `diff` attribute) and U+0001: it is read line by line, the `@@` hunk counts tell content from headers, and paths come from the C-quoted `+++ b/…` header via `headerPath`, or from the `--- a/…` header when `+++` is `/dev/null` (a deleted file).
   - Each new parser of path-bearing output gets a failing-first test whose filename contains U+0001, a newline and a tab.
-- **Why:** git-output framing broke parsing 5 times in 3 days, all caught by Qodo: three U+0001 splits (PR #3, #16 local r2 and r4), a stripped leading newline (#16 local r1) and a dropped final record (PR #20 r2). The first fix missed its sibling in the same file (#24, still open), and two new parsers copied the `%x01` pattern two days later.
-- **Checked by:** the U+0001 fixtures in the scan tests; in review, any path-listing git call without `-z`, or `%x01` / `'\x01'` framing. Not yet in lint: once #24 lands, `npm run lint` will also ban `\x01` and `%x01` in `src/scan` and `src/attrib`.
+- **Why:** git-output framing broke parsing 5 times in 3 days, all caught by Qodo: three U+0001 splits (PR #3, #16 local r2 and r4), a stripped leading newline (#16 local r1) and a dropped final record (PR #20 r2). The first fix missed its sibling in the same file (#24), and two new parsers copied the `%x01` pattern two days later.
+- **Checked by:** the U+0001 fixtures in the scan tests; `npm run lint`, which bans a U+0001 string, template or regex (`'\x01'`, `'\u0001'`, the raw byte) and a `%x01` format in `src/scan` and `src/attrib` (`test/lint.test.ts`); in review, any path-listing git call without `-z`.
 
 ## Art rules
 These cover the main 3D view; the 2D map, terminal mode and status card have their own specs.

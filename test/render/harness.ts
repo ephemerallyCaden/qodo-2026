@@ -6,7 +6,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import type { Browser, Page } from '@playwright/test';
 import ts from 'typescript';
-import { TEST_MODE_PARAM, type RenderInput, type RenderStats } from '../../src/core/contract/api.js';
+import { TEST_MODE_PARAM, WEB_DIST, type RenderInput, type RenderStats } from '../../src/core/contract/api.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import type { Frame } from './frame.js';
 import type { GoldenOptions } from './golden.js';
@@ -39,6 +39,14 @@ export function standin(patch?: Target['patch']): Target {
     mounts: ['test/render/standin', 'src/core', 'node_modules/three/build'].map((d) => ({ url: `/${d}/`, dir: d })),
     ...(patch ? { patch } : {}),
   };
+}
+
+/**
+ * The real system view (web/, #30) as `vite build` writes it to dist/web, the bundle `commet open`
+ * serves. global-setup.ts builds it before the render tests run.
+ */
+export function systemView(): Target {
+  return { name: 'view', entry: '/index.html', mounts: [{ url: '/', dir: WEB_DIST }] };
 }
 
 /** The contract's `mini` fixture (test/fixtures/contract). */

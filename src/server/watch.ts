@@ -3,21 +3,35 @@ import { createHash } from 'node:crypto';
 import { watch, type FSWatcher } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { readStateFile } from './files.js';
+import { readStateBytes } from '../state/io.js';
 
 export interface StateWatcher { close(): void }
 
+/** The hash of a file whose content has never been read: any content read later is news. */
+const UNKNOWN = 'unknown';
+
 /**
- * Calls `onChange(name, body)` whenever one of `names` in `dir` gets new content. Resolves once the
+ * What happened to a watched file: new content (`body` null when it went away), it turned unreadable,
+ * or it's readable again with what it held before it turned unreadable (the same bytes, or still absent).
+ */
+export type StateChange = 'changed' | 'unreadable' | 'readable';
+
+/**
+ * Calls `onChange(name, body, change)` whenever one of `names` in `dir` changes. Resolves once the
  * current contents are recorded, so nothing that exists at start counts as a change. fs.watch on the
  * directory (writeAtomic renames, so a file watch would lose the inode) gives low latency; a stat
  * poll backs it up where watch events are lost or unsupported. Content hashes decide, so rewriting
- * identical bytes is not an update. A file that vanishes or can't be read sends nothing (its GET
- * route reports the problem when the view asks); an unreadable one is retried on every check.
+ * identical bytes is not an update.
+ * - `changed`: new content, or a null `body` when the file went away (chart state going away changes
+ *   the fog; the snapshot's GET route reports its absence). A file unreadable at the start counts as
+ *   unknown, so its first good read is `changed` (#32 AC 8).
+ * - `unreadable`: it can't be read now. Said once, and retried on every check.
+ * - `readable`: it's readable again and holds what it held before it turned unreadable: the same
+ *   bytes, or (`body` null) still absent. Not `changed`, but whatever saw `unreadable` should look again.
  */
-export async function watchState(dir: string, names: readonly string[], onChange: (name: string, body: Buffer) => void,
-  pollMs = 1000): Promise<StateWatcher> {
-  const seen = new Map<string, { sig: string; hash: string }>();
+export async function watchState(dir: string, names: readonly string[],
+  onChange: (name: string, body: Buffer | null, change: StateChange) => void, pollMs = 1000): Promise<StateWatcher> {
+  const seen = new Map<string, { sig: string; hash: string; unreadable?: true }>();
   let closed = false;
 
   const scanOnce = async (): Promise<void> => {
@@ -27,13 +41,18 @@ export async function watchState(dir: string, names: readonly string[], onChange
       if (prev?.sig === sig) continue;
       let body: Buffer | null;
       try {
-        body = await readStateFile(dir, name);
+        body = await readStateBytes(dir, name);
       } catch {
-        continue; // Unreadable right now: nothing is recorded, so the next check reads it again.
+        // Unreadable right now: an empty signature makes the next check read it again. Said once.
+        if (prev && !prev.unreadable && !closed) onChange(name, null, 'unreadable');
+        seen.set(name, { sig: '', hash: prev?.hash ?? UNKNOWN, unreadable: true });
+        continue;
       }
       const hash = body ? createHash('sha256').update(body).digest('hex') : '';
       seen.set(name, { sig, hash });
-      if (prev && prev.hash !== hash && body && !closed) onChange(name, body);
+      if (!prev || closed) continue;
+      if (prev.hash !== hash) onChange(name, body, 'changed');
+      else if (prev.unreadable) onChange(name, body, 'readable');
     }
   };
   // One check at a time, in order. scanOnce catches its own I/O errors; the next poll retries anything else.

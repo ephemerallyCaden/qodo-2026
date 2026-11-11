@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>commet</title>
+  <script type="module" src="./src/main.ts"></script>
+</head>
+<body>
+  <main id="stage" aria-label="Commet star system view">
+    <canvas id="view" tabindex="0" aria-describedby="summary help"></canvas>
+    <canvas id="labels" aria-hidden="true"></canvas>
+  </main>
+  <div id="hud" hidden>
+    <label id="pixel-control"><span class="sr">internal resolution height</span><input id="pixel" type="range" min="120" max="480" step="1" value="180"></label>
+    <label id="motion-control"><input id="motion" type="checkbox"><span class="sr">reduce motion</span></label>
+  </div>
+  <p id="summary" class="sr"></p>
+  <p id="help" class="sr">Drag to look around. W A S D to fly, R and F to rise and fall, the mouse wheel to move. Click a planet, or press the bracket keys, to focus it; Escape returns to free flight.</p>
+  <p id="status" class="sr" role="status" aria-live="polite"></p>
+  <div id="error" role="alert" hidden></div>
+</body>
+</html>

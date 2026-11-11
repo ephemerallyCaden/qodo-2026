@@ -40,7 +40,7 @@ const NAMES = paletteNames();
 interface Tally { px: number; x0: number; y0: number; x1: number; y1: number }
 
 /** Basis points as a percentage with two decimals, in integer maths so the text never depends on float formatting. */
-const share = (px: number, total: number) => {
+export const share = (px: number, total: number) => {
   const bp = Math.floor((px * 10000) / total);
   return `${Math.floor(bp / 100)}.${String(bp % 100).padStart(2, '0')}%`;
 };

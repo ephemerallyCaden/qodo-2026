@@ -973,6 +973,60 @@
       "seq": 26,
       "sha": "c321a067de14ea76a1cf9e9abb11d1548d8ba9e3",
       "subject": "test: s26"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_391d66efc87e",
+      "authorDate": "2026-06-30T12:00:00Z",
+      "date": "2026-06-30T12:00:00Z",
+      "files": [
+        [
+          "api/handler.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "core/a.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "core/b.ts",
+          1,
+          1,
+          0
+        ],
+        [
+          "ext/e.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "pkg/p.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "svc/s.ts",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 27,
+      "sha": "e4715837c36a0015db2c712874d8d03fa401934a",
+      "subject": "test: s27 merge pr"
     }
   ],
   "coverage": [],
@@ -1029,6 +1083,15 @@
       "path": "core/sub/x"
     },
     {
+      "bornDate": "2026-06-30T12:00:00Z",
+      "bornSeq": 27,
+      "depth": 1,
+      "id": "d_96e356b5fee9",
+      "parent": null,
+      "partner": "d_773282016171",
+      "path": "ext"
+    },
+    {
       "bornDate": "2026-01-05T10:00:00Z",
       "bornSeq": 0,
       "depth": 1,
@@ -1072,6 +1135,24 @@
       "parent": null,
       "partner": null,
       "path": "new"
+    },
+    {
+      "bornDate": "2026-06-30T12:00:00Z",
+      "bornSeq": 27,
+      "depth": 1,
+      "id": "d_773282016171",
+      "parent": null,
+      "partner": "d_bf972d1ca4de",
+      "path": "pkg"
+    },
+    {
+      "bornDate": "2026-06-30T12:00:00Z",
+      "bornSeq": 27,
+      "depth": 1,
+      "id": "d_ccf404dc8ab7",
+      "parent": null,
+      "partner": "d_d92ac1171106",
+      "path": "svc"
     },
     {
       "bornDate": "2026-06-19T10:00:00Z",
@@ -1387,6 +1468,20 @@
         "todo": 0,
         "xxx": 0
       },
+      "id": "f_73a5caae41d0",
+      "isTest": false,
+      "loc": 3,
+      "path": "ext/e.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
       "id": "f_e7a163e48f98",
       "isTest": false,
       "loc": 7,
@@ -1475,6 +1570,34 @@
       "isTest": false,
       "loc": 7,
       "path": "new/o2.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_bcaa84d1eec8",
+      "isTest": false,
+      "loc": 3,
+      "path": "pkg/p.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_0fc40530c310",
+      "isTest": false,
+      "loc": 3,
+      "path": "svc/s.ts",
       "qodo": null,
       "testOf": null
     },
@@ -1705,8 +1828,8 @@
   },
   "repo": {
     "branch": "main",
-    "head": "c321a067de14ea76a1cf9e9abb11d1548d8ba9e3",
-    "headDate": "2026-06-26T10:00:00Z",
+    "head": "e4715837c36a0015db2c712874d8d03fa401934a",
+    "headDate": "2026-06-30T12:00:00Z",
     "repoId": "da5108882d5685b8",
     "selfPersonIds": [
       "p_391d66efc87e"
@@ -1723,7 +1846,7 @@
   "window": {
     "firstParent": true,
     "months": 24,
-    "since": "2024-06-26T10:00:00Z",
-    "until": "2026-06-26T10:00:00Z"
+    "since": "2024-06-30T12:00:00Z",
+    "until": "2026-06-30T12:00:00Z"
   }
 }

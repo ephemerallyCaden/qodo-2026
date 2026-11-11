@@ -1,17 +1,20 @@
 // `commet open` end to end (#32): exit codes, the printed URL, the token's single appearance, and a
 // live push after a real `commet scan`, all on a real 127.0.0.1 socket.
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runOpen } from '../../src/cli/open.js';
 import { API, TOKEN_HEADER } from '../../src/core/contract/api.js';
+import type { FogView } from '../../src/core/contract/fog.js';
+import { fileIdOf } from '../../src/core/fog/index.js';
 import { EXIT } from '../../src/core/errors.js';
 import { cli } from '../fixtures/cli.js';
 import { liveEvents, openStream, req, waitFor } from '../fixtures/http.js';
 import { miniRepo } from '../fixtures/mini.js';
+import { realTempDir } from '../fixtures/tmp.js';
 
 const env = { ...process.env, CLAUDE_CONFIG_DIR: join(tmpdir(), 'commet-no-claude') };
 const URL_LINE = /^Commet is open at http:\/\/127\.0\.0\.1:(\d+)\/#t=([A-Za-z0-9_-]{43})$/m;
@@ -33,7 +36,7 @@ async function launch(cwd: string, args: string[], webRoot: string, launchEnv: N
 
 describe('commet open', () => {
   it('outside a repository exits 4', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-norepo-')));
+    const dir = realTempDir('commet-norepo-');
     const r = await cli(['open', '--no-open'], dir, { ...env, GIT_CEILING_DIRECTORIES: tmpdir() });
     expect(r.code).toBe(EXIT.noRepo);
     expect(r.err).toContain('not inside a git repository');
@@ -73,7 +76,7 @@ describe('commet open', () => {
     const repo = oneCommitRepo();
     expect((await cli(['scan', '--no-ingest'], repo.dir, env)).code).toBe(0);
     const snap = join(repo.dir, '.git', 'commet', 'snapshot.json');
-    const web = realpathSync(mkdtempSync(join(tmpdir(), 'commet-web-')));
+    const web = realTempDir('commet-web-');
     writeFileSync(join(web, 'index.html'), '<!doctype html>');
     for (const debug of [false, true]) {
       const s = await launch(repo.dir, ['--no-open'], web, debug ? { ...env, COMMET_DEBUG: '1' } : env);
@@ -109,7 +112,7 @@ describe('commet open', () => {
     // What the server reads is private: state dir 0700, snapshot 0600 (system design §9, check 10).
     expect(statSync(join(repo.dir, '.git', 'commet')).mode & 0o777).toBe(0o700);
     expect(statSync(join(repo.dir, '.git', 'commet', 'snapshot.json')).mode & 0o777).toBe(0o600);
-    const web = realpathSync(mkdtempSync(join(tmpdir(), 'commet-web-')));
+    const web = realTempDir('commet-web-');
     writeFileSync(join(web, 'index.html'), '<!doctype html><title>commet view</title>');
     const s = await launch(repo.dir, ['--no-open'], web);
     try {
@@ -147,6 +150,104 @@ describe('commet open', () => {
     expect(s.err()).toBe('');
     // Stopped means stopped: the port no longer answers.
     await expect(req(s.port, { path: '/' })).rejects.toMatchObject({ code: 'ECONNREFUSED' });
+  });
+
+  it('serves real fog and takes chart writes through R5, with live fog events from any writer (#32 AC 8)', async () => {
+    const repo = oneCommitRepo();
+    expect((await cli(['scan', '--no-ingest'], repo.dir, env)).code).toBe(0);
+    const web = realTempDir('commet-web-');
+    writeFileSync(join(web, 'index.html'), '<!doctype html><title>commet view</title>');
+    const s = await launch(repo.dir, ['--no-open'], web);
+    const head = () => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo.dir, encoding: 'utf8' }).trim();
+    const fileId = fileIdOf('src/a.ts');
+    try {
+      const auth = { [TOKEN_HEADER]: s.token };
+      const json = { ...auth, 'content-type': 'application/json' };
+      const fogNow = async () => JSON.parse((await req(s.port, { path: API.fog, headers: auth })).body) as FogView;
+      const first = await fogNow();
+      const h1 = head();
+      expect(first).toMatchObject({ schemaVersion: 'fog.1', head: h1, baseline: null });
+      expect(first.files.find((f) => f.fileId === fileId)).toMatchObject({ state: 'fogged', reasons: ['unknown'] });
+
+      const stream = openStream(s.port, API.events, auth);
+      expect(await stream.status).toBe(200);
+      await waitFor(() => stream.text().includes(': commet live updates'), 10_000, 'stream open');
+      const fogEvents = () => liveEvents(stream.text()).filter((e) => (e as { type: string }).type === 'fog').length;
+      const post = (body: object, headers: Record<string, string> = json) =>
+        req(s.port, { method: 'POST', path: API.chart, headers, body: JSON.stringify(body) });
+
+      // The gates come first: no token, a foreign Origin, a body that isn't exactly a ChartAction.
+      expect((await post({ kind: 'chart', fileId, at: h1 }, { 'content-type': 'application/json' })).status).toBe(401);
+      expect((await post({ kind: 'chart', fileId, at: h1 }, { ...json, origin: 'http://evil.example' })).status).toBe(403);
+      expect((await post({ kind: 'chart', fileId })).status).toBe(400);
+      // An `at` the snapshot doesn't know: 409 with the head to refetch at, and nothing written.
+      const unknown = await post({ kind: 'chart', fileId, at: 'c'.repeat(40) });
+      expect([unknown.status, JSON.parse(unknown.body)]).toEqual([409, { ok: false, error: 'unknown-head', head: h1 }]);
+      expect(existsSync(join(repo.dir, '.git/commet/chart.json'))).toBe(false);
+
+      // A good write: 200 with the new fog, and one fog event for every open view.
+      const ok = await post({ kind: 'chart', fileId, at: h1 });
+      expect(ok.status).toBe(200);
+      const okBody = JSON.parse(ok.body) as { ok: true; fog: FogView };
+      expect(okBody.ok).toBe(true);
+      expect(okBody.fog.files.find((f) => f.fileId === fileId)!.state).toBe('charted');
+      await waitFor(() => fogEvents() >= 1, 10_000, 'fog event after the write');
+      expect((await fogNow()).files.find((f) => f.fileId === fileId)!.state).toBe('charted');
+      const status = await cli(['chart', 'status'], repo.dir, env);
+      expect(status.out).toMatch(/^src\s+1\s+0\s+1\s+0$/m);
+
+      // `commet chart` run while the view is open: the view hears about it too.
+      const before = fogEvents();
+      expect((await cli(['chart', 'baseline'], repo.dir, env)).code).toBe(0);
+      await waitFor(() => fogEvents() > before, 10_000, 'fog event after commet chart');
+      expect((await fogNow()).baseline).toBe(h1);
+
+      // Chart state deleted while the view is open: fog changed back, so the view hears (Qodo #32 local r1).
+      const chartJson = join(repo.dir, '.git/commet/chart.json');
+      const saved = readFileSync(chartJson);
+      const beforeDelete = fogEvents();
+      rmSync(join(repo.dir, '.git/commet/chart.json'));
+      await waitFor(() => fogEvents() > beforeDelete, 10_000, 'fog event after chart.json is deleted');
+      expect((await fogNow()).baseline).toBeNull();
+      const afterDelete = fogEvents();
+      writeFileSync(join(repo.dir, '.git/commet/chart.json'), saved, { mode: 0o600 });
+      await waitFor(() => fogEvents() > afterDelete, 10_000, 'fog event after chart.json is back');
+      expect((await fogNow()).baseline).toBe(h1);
+
+      // Chart state turned invalid, then a symlink, while the view is open: the view still hears, and
+      // its refetch shows the state error (Qodo PR70 r1).
+      for (const plant of [() => writeFileSync(chartJson, '{"not":"chart state"}'), () => {
+        rmSync(chartJson);
+        symlinkSync(join(repo.dir, 'README.md'), chartJson);
+      }]) {
+        const n = fogEvents();
+        plant();
+        await waitFor(() => fogEvents() > n, 10_000, 'fog event for bad chart state');
+        const bad = await req(s.port, { path: API.fog, headers: auth });
+        expect(bad.status).toBe(500);
+        expect(JSON.parse(bad.body).error).toMatch(/^state error: \.git\/commet\/chart\.json /);
+      }
+      rmSync(chartJson);
+      writeFileSync(chartJson, saved, { mode: 0o600 });
+      expect((await fogNow()).baseline).toBe(h1);
+
+      // A rescan after a new commit: the chart at h1 still stands and the new change is fogged.
+      writeFileSync(join(repo.dir, 'src', 'a.ts'), 'export const a = 2;\n');
+      execFileSync('git', ['commit', '-qam', 'feat: a2'], { cwd: repo.dir, env: { ...process.env, GIT_AUTHOR_DATE: '2026-10-02T09:00:00Z',
+        GIT_COMMITTER_DATE: '2026-10-02T09:00:00Z' } });
+      const h2 = head();
+      expect((await cli(['scan', '--no-ingest'], repo.dir, env)).code).toBe(0);
+      await waitFor(() => liveEvents(stream.text()).some((e) => JSON.stringify(e) === JSON.stringify({ type: 'fog', head: h2 })), 15_000, 'fog event after rescan');
+      expect((await fogNow()).files.find((f) => f.fileId === fileId)).toMatchObject({ state: 'fogged', since: h2 });
+      // A view still showing h1 charts at h1: recorded there, so the unseen change stays fogged (#58).
+      const late = JSON.parse((await post({ kind: 'chart', fileId, at: h1 })).body) as { ok: true; fog: FogView };
+      expect(late.fog.files.find((f) => f.fileId === fileId)).toMatchObject({ state: 'fogged', since: h2 });
+      stream.close();
+    } finally {
+      expect(await s.stop()).toBe(0);
+    }
+    expect(s.out().split(s.token).length - 1).toBe(1);
+    expect(s.err()).toBe('');
   });
 
   it('uses --port when given, and gives each launch a fresh token', async () => {

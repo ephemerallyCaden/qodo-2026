@@ -47,17 +47,24 @@ export function tokenMatches(given: string | string[] | undefined, token: string
 }
 
 const FILE_ID = /^f_[0-9a-f]{12,64}$/;
+/** A full commit SHA: 40 hex, or 64 in a SHA-256 repo. */
+const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
-/** A `ChartAction` with exactly the contract's keys, or null. Anything else is refused, not coerced. */
+/**
+ * A `ChartAction` with exactly the contract's keys, or null. Anything else is refused, not coerced.
+ * Every kind carries `at`, the head the view was showing (#58).
+ */
 export function parseChartAction(value: unknown): ChartAction | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const o = value as Record<string, unknown>;
   const keys = Object.keys(o).sort().join(',');
+  const at = o['at'];
+  if (typeof at !== 'string' || !SHA.test(at)) return null;
   if (o['kind'] === 'chart') {
     const fileId = o['fileId'];
-    return keys === 'fileId,kind' && typeof fileId === 'string' && FILE_ID.test(fileId)
-      ? { kind: 'chart', fileId: fileId as FileId } : null;
+    return keys === 'at,fileId,kind' && typeof fileId === 'string' && FILE_ID.test(fileId)
+      ? { kind: 'chart', fileId: fileId as FileId, at } : null;
   }
-  if (o['kind'] === 'baseline' || o['kind'] === 'baseline-undo') return keys === 'kind' ? { kind: o['kind'] } : null;
+  if (o['kind'] === 'baseline' || o['kind'] === 'baseline-undo') return keys === 'at,kind' ? { kind: o['kind'], at } : null;
   return null;
 }

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { readFileSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { beforeAll, expect, it } from 'vitest';
@@ -9,17 +9,19 @@ import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
 import { CANARIES, MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
 import { cli } from './fixtures/cli.js';
 import { createResult, miniClaude, miniRepo, session } from './fixtures/mini.js';
+import { tempDir } from './fixtures/tmp.js';
 
 let repo: FixtureRepo;
 let claude: ClaudeFixture;
 let outputs: Record<string, string>;
 
 beforeAll(async () => {
-  repo = buildBasicRepo();
+  repo = await buildBasicRepo();
   claude = writeClaudeFixture(repo, { fileSymlink: true });
   const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: claude.claudeDir });
   expect(r.code).toBe(0);
-  outputs = { snapshot: readFileSync(join(repo.dir, '.git/commet/snapshot.json'), 'utf8'), stdout: r.out, stderr: r.err };
+  outputs = { snapshot: readFileSync(join(repo.dir, '.git/commet/snapshot.json'), 'utf8'),
+    layout: readFileSync(join(repo.dir, '.git/commet/layout.json'), 'utf8'), stdout: r.out, stderr: r.err };
 });
 
 it('fixture still plants every canary (guards against a vacuous pass)', () => {
@@ -28,7 +30,7 @@ it('fixture still plants every canary (guards against a vacuous pass)', () => {
   expect(planted).toContain(`"cwd":"${repo.dir}"`);
 });
 
-it('no canary, cwd or absolute path reaches the snapshot, stdout or stderr', () => {
+it('no canary, cwd or absolute path reaches the snapshot, the layout, stdout or stderr', () => {
   const forbidden = [...Object.values(CANARIES), repo.dir, claude.claudeDir, homedir(), tmpdir()];
   for (const [name, text] of Object.entries(outputs)) {
     for (const f of forbidden) expect(text.includes(f), `${name} contains ${f}`).toBe(false);
@@ -124,7 +126,7 @@ it('an absolute path starting anywhere inside a subject word is redacted, only i
 it('author names carrying private paths are redacted in people[].displayName (Qodo local #3)', async () => {
   const repo = miniRepo([{ id: 'root', at: '2026-10-10T08:00:00Z', path: 'README.md', lines: ['# Author fixture', 'An odd author name.'],
     author: { name: 'Eve C:\\Users\\canary-eve (/home/canary-eve/bin)', email: 'eve@example.com' } }]);
-  const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: mkdtempSync(join(tmpdir(), 'commet-author-claude-')) });
+  const r = await cli(['scan'], repo.dir, { CLAUDE_CONFIG_DIR: tempDir('commet-author-claude-') });
   expect(r.code).toBe(0);
   const snapshot = readFileSync(join(repo.dir, '.git/commet/snapshot.json'), 'utf8');
   for (const text of [snapshot, r.out, r.err]) expect(text.includes('canary-eve'), 'canary-eve').toBe(false);

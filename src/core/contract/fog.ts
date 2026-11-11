@@ -33,14 +33,24 @@ export interface FogView {
   baseline: Sha | null;
   /** Every file in snapshot.files, sorted by fileId. */
   files: FileFog[];
-  /** One entry per planet (top-level folder that is a planet in the layout), sorted by dirId. */
+  /** One entry per planet in the layout, content and outer (#71), sorted by dirId. */
   planets: ({ dirId: DirId } & FogCounts)[];
   /** Root files and unmatched tests (the star's moonlets). */
   star: FogCounts;
 }
 
-/** The only writes the local server accepts for chart state (R14 AC4). */
+/**
+ * The only writes the local server accepts for chart state (R14 AC4). `at` is the `FogView.head`
+ * the user was looking at (#58), and the write is recorded at it: a chart or baseline covers changes
+ * up to `at` and no further. A change that arrived after the view's last fetch is newer than `at`, so
+ * it stays fogged and is never marked reviewed unseen (AGENTS.md Rule 1). `at` must be a commit the
+ * current snapshot knows (in its window, on HEAD's first-parent line); otherwise the write gets
+ * `ChartUnknownHead`.
+ */
 export type ChartAction =
-  | { kind: 'chart'; fileId: FileId }
-  | { kind: 'baseline' }
-  | { kind: 'baseline-undo' };
+  | { kind: 'chart'; fileId: FileId; at: Sha }
+  | { kind: 'baseline'; at: Sha }
+  | { kind: 'baseline-undo'; at: Sha };
+
+/** A refused write: `at` isn't a commit the current snapshot knows. Refetch the fog (at `head`) and act again. */
+export interface ChartUnknownHead { ok: false; error: 'unknown-head'; head: Sha }

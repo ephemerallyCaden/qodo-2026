@@ -1,7 +1,7 @@
 # Feature: Agent runner (the factory's first automated job)
 
 ## Status
-Ready
+Complete (the fix-round path is verified offline only; a live finding is still to come)
 
 ## Trigger
 Day 4 challenge, "Automate your factory's first job": a trigger (a schedule or a `ready-for-agent` tag) starts the agent with no session open. The agent reads the ticket and project rules, implements, runs checks against the acceptance criteria, opens a PR for Qodo review, investigates findings and fixes confirmed ones, then repeats the checks and review. It has a retry limit, stops for help when stuck, and never merges.
@@ -9,28 +9,28 @@ Day 4 challenge, "Automate your factory's first job": a trigger (a schedule or a
 Human decisions (2026-11-09): a launchd schedule on the Mac plus the `ready-for-agent` label; first ticket is #24; Day 4 extras are "Commet sees the factory" and "stop path shown live".
 
 ## Requirements
-- [ ] **R1 Trigger.** A launchd job on the human's Mac runs the runner every few minutes with no Claude session open. Each tick takes at most one ticket: the oldest open issue labelled `ready-for-agent`. Only one run happens at a time, and a tick with nothing labelled exits quietly.
-- [ ] **R2 Claim.** Before any work the runner swaps the label to `agent-working` and comments on the ticket, so a second tick can't take it.
-- [ ] **R3 Refuse.** A ticket without an `Acceptance criteria` section is refused before any agent starts: label `agent-needs-help` and a comment saying why.
-- [ ] **R4 Work.** The agent runs headless in a fresh worktree under `.sandboxes/` on its own `agent/<N>-<slug>` branch, cut from the session branch. It reads the ticket, AGENTS.md and CLAUDE.md, implements the change, runs build, typecheck, lint and test, and commits following the house rules.
-- [ ] **R5 PR.** The branch is pushed and a PR opened against the session branch (never `main`), with the ticket link and an acceptance-criteria table with evidence. Pushes use the human's own gh login so Qodo and CI fire as they do on the human's pushes.
-- [ ] **R6 Review loop.** The runner waits for CI and for a completed Qodo review of the exact head commit, with a timeout. Open findings and failed checks go back to the agent, which validates each one (confirmed or rejected, with a reason), fixes the confirmed ones with a failing-first test, re-runs the checks, pushes and replies to the finding. A missing or timed-out review is never treated as clean (AGENTS.md "Working with Qodo").
-- [ ] **R7 Retry limit.** At most 2 fix rounds. A third would-be round, a review or CI timeout, a failed agent call or expired credentials all stop the run with `agent-needs-help` and a comment naming the reason.
-- [ ] **R8 Guardrails.** The runner never merges, never pushes `main` or the session branch, never force-pushes another branch, and never edits repo settings or secrets. The agent's tools are limited to what the job needs.
-- [ ] **R9 End state.** A successful run ends with `agent-done` and a ticket comment summarising checks, review rounds, findings (confirmed or rejected) and retries used. Every run leaves a local log (gitignored) with timestamps for the Day 4 post.
-- [ ] **R10 Offline tests.** The runner's decisions (pick, claim, refuse, retry limit, stop reasons, never-merge) are covered by tests that stub `gh`, `git`, `claude` and `qodo`, with no network.
-- [ ] **R11 Install and uninstall.** One command loads the launchd job and one removes it. The human decides when it is loaded.
-- [ ] **R12 Trust boundary.** The repo is public, so anyone can open an issue. The runner acts only on an issue the repo owner both opened and labelled; anything else is refused without starting an agent. The ticket text is snapshotted at claim time and the agent works from the snapshot. An edit to the issue during the run stops it.
-- [ ] **R13 Pre-flight and timers.** Before claiming, the runner checks that Claude credentials (Midway), `gh` and `qodo` all work. If they don't, it logs the reason and leaves the ticket unclaimed. Every agent call and every wait has a wall-clock kill timer, so a hung login prompt can't stall the job.
+- [x] **R1 Trigger.** A launchd job on the human's Mac runs the runner every few minutes with no Claude session open. Each tick takes at most one ticket: the oldest open issue labelled `ready-for-agent`. Only one run happens at a time, and a tick with nothing labelled exits quietly.
+- [x] **R2 Claim.** Before any work the runner swaps the label to `agent-working` and comments on the ticket, so a second tick can't take it.
+- [x] **R3 Refuse.** A ticket without an `Acceptance criteria` section is refused before any agent starts: label `agent-needs-help` and a comment saying why.
+- [x] **R4 Work.** The agent runs headless in a fresh worktree under `.sandboxes/` on its own `agent/<N>-<slug>` branch, cut from the session branch. It reads the ticket, AGENTS.md and CLAUDE.md, implements the change, runs build, typecheck, lint and test, and commits following the house rules.
+- [x] **R5 PR.** The branch is pushed and a PR opened against the session branch (never `main`), with the ticket link and an acceptance-criteria table with evidence. Pushes use the human's own gh login so Qodo and CI fire as they do on the human's pushes.
+- [x] **R6 Review loop.** The runner waits for CI and for a completed Qodo review of the exact head commit, with a timeout. Open findings and failed checks go back to the agent, which validates each one (confirmed or rejected, with a reason), fixes the confirmed ones with a failing-first test, re-runs the checks, pushes and replies to the finding. A missing or timed-out review is never treated as clean (AGENTS.md "Working with Qodo").
+- [x] **R7 Retry limit.** At most 2 fix rounds. A third would-be round, a review or CI timeout, a failed agent call or expired credentials all stop the run with `agent-needs-help` and a comment naming the reason.
+- [x] **R8 Guardrails.** The runner never merges, never pushes `main` or the session branch, never force-pushes another branch, and never edits repo settings or secrets. The agent's tools are limited to what the job needs.
+- [x] **R9 End state.** A successful run ends with `agent-done` and a ticket comment summarising checks, review rounds, findings (confirmed or rejected) and retries used. Every run leaves a local log (gitignored) with timestamps for the Day 4 post.
+- [x] **R10 Offline tests.** The runner's decisions (pick, claim, refuse, retry limit, stop reasons, never-merge) are covered by tests that stub `gh`, `git`, `claude` and `qodo`, with no network.
+- [x] **R11 Install and uninstall.** One command loads the launchd job and one removes it. The lead reinstalls it after any `factory/` change merges (AGENTS.md "Agent runner"), and the human may uninstall it at any time.
+- [x] **R12 Trust boundary.** The repo is public, so anyone can open an issue. The runner acts only on an issue the repo owner both opened and labelled; anything else is refused without starting an agent. The ticket text is snapshotted at claim time and the agent works from the snapshot. An edit to the issue during the run stops it.
+- [x] **R13 Pre-flight and timers.** Before claiming, the runner checks that Claude credentials (Midway), `gh` and `qodo` all work. If they don't, it logs the reason and leaves the ticket unclaimed. Every agent call and every wait has a wall-clock kill timer, so a hung login prompt can't stall the job.
 
 ### Added in PR #37 (Qodo r1)
 - **Skipped.** A ticket that is closed, unlabelled or edited between the pick and the claim is left untouched (outcome `skipped`). The next tick reads it again.
 - **Orphan sweep.** Ticks hold the lock, so no live run can own an open `agent-working` ticket. The tick's one list call (`label:ready-for-agent,agent-working`) finds such tickets, and each gets `agent-needs-help` and a comment. This covers a killed run, a reboot and the 8 h outer cap.
 
 ### Day 4 demo (not runner code)
-- [ ] **D1 Happy path.** Label #24 → the scheduled tick runs it end to end → PR with Qodo review → the human decides on the merge.
-- [ ] **D2 Stop path shown live.** A deliberately bad ticket (no acceptance criteria) is refused with `agent-needs-help`, with no agent started.
-- [ ] **D3 Commet sees the factory.** After the run, `commet scan` on this repo attributes the runner's commits to the headless agent session.
+- [x] **D1 Happy path.** Label #24 → the scheduled tick runs it end to end → PR with Qodo review → the human decides on the merge.
+- [x] **D2 Stop path shown live.** A deliberately bad ticket (no acceptance criteria) is refused with `agent-needs-help`, with no agent started.
+- [x] **D3 Commet sees the factory.** After the run, `commet scan` on this repo attributes the runner's commits to the headless agent session.
 
 ## Assumptions
 - [x] **A1 Verified.** Headless `claude -p` works in a launchd-like minimal env (exit 0, 7 s, Bedrock). Midway expiry is a risk → R13.
@@ -65,4 +65,18 @@ runner-scout, 2026-11-09 (tags as reported):
 
 ## Tasks
 - Runner (R1–R13) → feature agent `runner`, `.sandboxes/runner`, `feature/agent-runner` — PR #37, Qodo r1 resolved
-- Demo D1–D3 → lead + human, after the runner merges
+- Timer fix → PR #56 (after run 1 hit the 45-min timer)
+- Demo D1–D3 → lead + human: done (see Completion)
+
+## Completion
+- Merged: PR #37 (runner), PR #56 (90-min timer, targeted tests, both clocks on a timeout), PR #69 (#24, delivered by the runner).
+- Dates: 2026-11-10 (run 1) and 2026-11-11 (run 2, D2, D3).
+- **Verification:**
+  - **Run 1, #24:** the stop path. The 45-min awake timer fired, so the run ended `agent-needs-help` with a comment and nothing was pushed.
+  - **Run 2, #24 (D1):** tick 06:08:52, PR #69 at 06:39, Qodo standard review with 0 findings, CI green, `agent-done` at 06:43:21. 0 of 2 fix rounds used, 54 turns, $2.85.
+  - **Lead check before merging:** the 3 #24 tests fail on the old code and pass on the fix, a planted `'\x01'` fails lint, and no golden output changed.
+  - **D2, #43 (no acceptance criteria):** refused on the 07:33:35 tick, `agent-needs-help`, no agent started.
+  - **D3:** `commet scan` classes feb5d3f and 4c82e93 as `agent 100%, 1 session(s)`, on the evidence `transcript_match` (verbatim) and `agent_ran_commit`. Repo total: "committed by you, written by an agent: 36".
+  - **Offline tests:** 142 factory tests.
+- Open: the fix-round loop hasn't run live yet; #38 is the candidate.
+

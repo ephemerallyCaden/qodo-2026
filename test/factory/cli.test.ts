@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { main, RUN_CAP_MS, type CliDeps } from '../../factory/cli.js';
@@ -7,6 +6,7 @@ import { defaults } from '../../factory/config.js';
 import { realExec } from '../../factory/exec.js';
 import { JOB_LABEL, LABEL_DEFS, plistPath, renderPlist } from '../../factory/launchd.js';
 import { BASE, ok, SLUG, World } from './world.js';
+import { tempDir } from '../fixtures/tmp.js';
 
 function deps(w: World, over: Partial<CliDeps> = {}) {
   const out: string[] = [];
@@ -208,7 +208,7 @@ describe('kill timers (R13)', () => {
       timers.push(fn);
       return () => {};
     });
-    const dir = mkdtempSync(join(tmpdir(), 'kill-'));
+    const dir = tempDir('kill-');
     const pidFile = join(dir, 'pid');
     // Ignores SIGTERM like a stuck login prompt (the ignore is inherited), and leaves a grandchild behind.
     const run = exec('/bin/sh', ['-c', `trap "" TERM; sleep 30 & echo $! > "${pidFile}"; wait`], { timeoutMs: 60_000 });

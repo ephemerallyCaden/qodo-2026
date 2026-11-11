@@ -4,7 +4,9 @@ import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type Serv
 import { API, TOKEN_HEADER, type ChartResult, type LiveEvent } from '../core/contract/api.js';
 import type { ChartAction, FogView } from '../core/contract/fog.js';
 import { CommetError } from '../core/errors.js';
-import { bundleKey, contentType, loadBundle, NO_SNAPSHOT, readBundleFile, readStateFile, STATE_FILES } from './files.js';
+import { CHART_FILE } from '../state/chart.js';
+import { readStateBytes } from '../state/io.js';
+import { bundleKey, contentType, loadBundle, NO_SNAPSHOT, readBundleFile, STATE_FILES } from './files.js';
 import { BIND_HOST, hostAllowed, parseChartAction, sameOrigin, tokenMatches } from './guard.js';
 import { watchState, type StateWatcher } from './watch.js';
 
@@ -16,9 +18,13 @@ export interface ServerOptions {
   /** 0 picks a free port. */
   port: number;
   token: string;
-  /** R5 (#33) fog view. Until it is wired, `GET /api/fog` answers 501. */
+  /** R5 (#33) fog view. Without it, `GET /api/fog` answers 501. */
   fog?: () => Promise<FogView>;
-  /** R5 (#33) chart-state writes. Until they are wired, `POST /api/chart` answers 501. */
+  /**
+   * R5 (#33, #58) chart-state writes. Without it, `POST /api/chart` answers 501. Its result maps to
+   * 200 (ok), 409 (an `at` the snapshot doesn't know: refetch) or 400 (any other refusal); a thrown
+   * state error is a 500 with its user-facing message only.
+   */
   chart?: (action: ChartAction) => Promise<ChartResult>;
   /** Fallback poll for state changes, in ms (fs.watch is the fast path). */
   pollMs?: number;
@@ -92,7 +98,7 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
   ]);
 
   async function sendState(res: ServerResponse, name: string, missing: string): Promise<void> {
-    const body = await readStateFile(o.stateDir, name);
+    const body = await readStateBytes(o.stateDir, name);
     if (body === null) return sendJson(res, 404, { error: missing });
     send(res, 200, body, 'application/json; charset=utf-8');
   }
@@ -112,8 +118,10 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
     if (!action) return sendJson(res, 400, { ok: false, error: 'not a chart action' });
     if (!o.chart) return sendJson(res, 501, { ok: false, error: 'chart writes are not implemented yet (R5)' } satisfies ChartResult);
     const result = await o.chart(action);
-    if (result.ok) broadcast({ type: 'fog', head: result.fog.head });
-    sendJson(res, result.ok ? 200 : 400, result);
+    // No event here: the write changes chart.json, which the watcher announces to every view, the
+    // same as a `commet chart` run while the view is open.
+    // 409 Conflict: the action names a head this snapshot doesn't know (#58); the view refetches and asks again.
+    sendJson(res, result.ok ? 200 : result.head !== undefined ? 409 : 400, result);
   }
 
   async function events(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -182,13 +190,26 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
   }
   port = addr.port;
 
+  // The head fog events name when the fog itself can't be computed.
+  const initial = await readStateBytes(o.stateDir, STATE_FILES.snapshot).catch(() => null);
+  let lastHead = (initial && liveEvent(STATE_FILES.snapshot, initial)?.head) || null;
+
   let watcher: StateWatcher;
   try {
-    watcher = await watchState(o.stateDir, Object.values(STATE_FILES), (name, body) => {
-      const ev = liveEvent(name, body);
+    watcher = await watchState(o.stateDir, [...Object.values(STATE_FILES), CHART_FILE], (name, body, change) => {
+      // Chart state changed, went away, or turned unreadable or readable again, from this server, a
+      // `commet chart` run or by hand: the fog changed, or now fails. Either way the view refetches;
+      // a failed fog read still announces, at the last head, so the view can show the state error.
+      if (name === CHART_FILE) {
+        if (o.fog) o.fog().then((f) => broadcast({ type: 'fog', head: f.head }), () => lastHead && broadcast({ type: 'fog', head: lastHead }));
+        return;
+      }
+      // A snapshot or layout that vanished or can't be read has nothing to announce: its GET route reports it.
+      const ev = change === 'changed' && body && liveEvent(name, body);
       if (!ev) return;
+      if (ev.type === 'snapshot') lastHead = ev.head;
       broadcast(ev);
-      // The fog view is derived from the snapshot, so it is stale too once fog is wired.
+      // The fog view is derived from the snapshot, so it changed too.
       if (ev.type === 'snapshot' && o.fog) broadcast({ type: 'fog', head: ev.head });
     }, o.pollMs);
   } catch (e) {

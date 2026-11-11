@@ -38,6 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm ci
+      # Builds dist/web first (test/render/global-setup.ts): view.spec.ts drives the built view.
       - run: npm run test:render
       # On a failure, rerun with UPDATE_GOLDEN=1 in this image and upload what it wrote, so a deliberate
       # update needs no Docker (test/render/README.md). A blank or over-budget frame fails this step too.

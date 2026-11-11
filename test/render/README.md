@@ -1,14 +1,24 @@
 # Render tests (R8, #31)
 
-Playwright drives the view through the contract's render hook (`window.__commet`, see
+Playwright drives a view through the contract's render hook (`window.__commet`, see
 `docs/contracts/phase2.md`, Render hook) in Chromium on SwiftShader. It reads the **low-res internal
-target** with `lowResPixels()`, never the upscaled canvas, and checks it four ways:
+target** with `lowResPixels()`, never the upscaled canvas. `suite.ts` registers the same checks for
+each view:
+
+| View | Spec | Goldens |
+|---|---|---|
+| The real system view (`web/`, #30), built into `dist/web` | `view.spec.ts` | `view-mini-f0`, `view-mini-f0-reduced`, `view-mini-f180`, `view-mini-f180-reduced` |
+| The stand-in (`standin/`, below) | `standin.spec.ts` | `standin-mini-f0`, `standin-mini-f180`, `standin-mini-f180-reduced` |
+
+Both render the contract's `mini` fixture from the view's own start pose, and every check below runs
+on both:
 
 | Check | Where | Fails when |
 |---|---|---|
 | Empty output | `frame.ts` `frameProblems`, `harness.ts` `openView` | no hook, no canvas, a pixel that isn't opaque, fewer than 12 colours, or under 5% of the frame off space |
 | Palette | `twin.ts` `paletteProblems` | with `depthFade: false`, even one pixel isn't a `src/core/palette.ts` colour |
-| Determinism | `standin.spec.ts` | frame *n* differs between renders in any order, or in a fresh browser |
+| Determinism | `suite.ts` | frame *n* differs between renders in any order, or in a fresh browser |
+| Reduced motion | `suite.ts` | with `reducedMotion`, frame 180 differs from frame 0 (system-design §7: *n* is fixed at 0) |
 | Draw budget | `frame.ts` `statsProblems` | `renderer.info` draw calls or triangles are 0 or over `BUDGET` (never FPS) |
 | Goldens | `golden.ts` `checkGolden` | the frame differs from `test/golden/render/<name>.png` by more than `PIXELS` |
 
@@ -16,7 +26,7 @@ Every threshold lives in `thresholds.ts`, with the values from `docs/design/syst
 
 ## Commands
 ```sh
-npm run test:render                 # Playwright specs: test/render/*.spec.ts
+npm run test:render                 # Playwright specs: test/render/*.spec.ts (builds dist/web first)
 npx playwright test -g "<name>"     # one render test
 npm test                            # Vitest, which includes test/render/checks.test.ts (no browser)
 UPDATE_GOLDEN=1 npm run test:render # rewrite goldens, on purpose only (below)
@@ -26,8 +36,10 @@ Vitest only runs `*.test.ts` and Playwright only runs `*.spec.ts`, so neither pi
 ## How a page is served
 `harness.ts` answers every request by interception at `http://render.commet.test`, from an
 allowlist of repo directories. No socket is opened, and requests to any other origin are refused,
-so a render can't depend on the network or send anything to it. The stand-in's TypeScript is
-transpiled per request.
+so a render can't depend on the network or send anything to it. The real view is served from
+`dist/web` only, the bundle `commet open` serves, so the build is under test too.
+`global-setup.ts` rebuilds it with the same `vite build` as `npm run build` before every run, so it
+is never stale. The stand-in's TypeScript is transpiled per request.
 
 ## Empty output
 A render test once passed after a shader compile error. Here a frame fails with fewer than
@@ -92,6 +104,10 @@ its image.
 ## The stand-in
 `standin/` is the smallest three.js scene that implements the render hook: sun, planets by health
 band, moons as one InstancedMesh, and 1 px stars, at 320×180, upscaled with nearest filtering. A
-stepped depth fade is its one off-palette output, and it honours `depthFade: false`. It
-proves the harness before the real view (#30) lands, and gives the negative tests something to
-break. It is not a design reference.
+stepped depth fade is its one off-palette output, and it honours `depthFade: false`. It proved
+the harness before the real view (#30) landed, and gives the negative tests something to break. It
+is not a design reference.
+
+Its goldens stay beside the real view's. They pin the scene the negative tests break, and they
+tell the two kinds of golden change apart: a change to `web/` moves only the `view-*` goldens, while
+a Playwright, browser or three.js bump (or a harness change) moves the stand-in's too.

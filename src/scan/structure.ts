@@ -1,11 +1,11 @@
-// Git reads for #16: the lineage pass, debt markers and unmerged branches. The pure logic is in
-// src/core/structure.ts.
+// Git reads for #16 and #18 AC8: the lineage pass, merge sides, debt markers and unmerged branches.
+// The pure logic is in src/core/structure.ts.
 import { byCodepoint } from '../core/canonical-json.js';
 import type { Branch, DebtCounts } from '../core/snapshot/types.js';
-import { DEBT_KEYS, zeroDebt, type Change, type LineageCommit } from '../core/structure.js';
+import { DEBT_KEYS, fileHome, zeroDebt, type Change, type Lineage, type LineageCommit, type MergeSides } from '../core/structure.js';
 import { isoUtc } from '../core/time.js';
 import { exclusionOf } from './exclusions.js';
-import { LOG_OPTS, tryGit, type Git } from './git.js';
+import { DIFF_OPTS, LOG_OPTS, tryGit, type Git } from './git.js';
 
 /**
  * Full first-parent history, oldest first, with renames (design §5.1.3). Never windowed, so it is
@@ -15,8 +15,12 @@ import { LOG_OPTS, tryGit, type Git } from './git.js';
  * r2 #2). A git that lists a merge once per parent repeats its header; only the first
  * (first-parent) diff is kept (Qodo local r3 #1).
  */
-export async function lineageLog(git: Git, head: string): Promise<LineageCommit[]> {
-  const args = ['log', ...LOG_OPTS, '--reverse', '--name-status', '-z', '--format=%x00%H%x00%ct', head];
+export function lineageLog(git: Git, head: string): Promise<LineageCommit[]> {
+  return logChanges(git, ['log', ...LOG_OPTS, '--reverse', '--name-status', '-z', '--format=%x00%H%x00%ct', head]);
+}
+
+/** Runs a `log --name-status -z --format=%x00%H%x00%ct` and parses it as lineageLog describes. */
+async function logChanges(git: Git, args: string[]): Promise<LineageCommit[]> {
   const commits: LineageCommit[] = [];
   let cur: LineageCommit | undefined;
   // Changes go here; a repeated header points it at a scratch list that is thrown away.
@@ -81,6 +85,78 @@ export async function lineageLog(git: Git, head: string): Promise<LineageCommit[
   if (pending !== '' && want === 'ct') token(pending);
   else if (pending !== '' || (want !== 'status' && want !== 'sha')) throw new Error('lineage log ended inside an incomplete record');
   return commits;
+}
+
+/**
+ * The merged-in side of every first-parent merge that gives birth to a top-level folder (#18 AC8),
+ * so partner detection can look through the merge to the branch's own commits: `M^1..M` (not
+ * merges), oldest first, each as the top-level folder names it touches (`tops`). The same for every
+ * merge that gives birth to a content root's subfolder (#71), as the root subfolders it touches
+ * (`children`), from the same read. Excluded paths touch nothing, as in the lineage. A git failure
+ * fails the scan rather than quietly falling back to the merge.
+ */
+export async function mergeSides(git: Git, commits: LineageCommit[], lineage: Lineage, excluded: (path: string) => boolean):
+  Promise<{ tops: MergeSides; children: MergeSides }> {
+  const tops: MergeSides = new Map();
+  const children: MergeSides = new Map();
+  const seqs = [...new Set([...lineage.topBirths, ...lineage.rootBirths].map((b) => b.seq))].filter((s) => s > 0);
+  if (seqs.length === 0) return { tops, children };
+  const seqOf = new Map(seqs.map((s) => [commits[s]!.sha, s]));
+  const out = await git(['rev-list', '--no-walk', '--parents', ...seqOf.keys()]);
+  const merges = out.split('\n').map((l) => l.split(' ')).filter((l) => l.length > 2).map((l) => l[0]!);
+  for (let i = 0; i < merges.length; i += BRANCH_READS) {
+    const batch = merges.slice(i, i + BRANCH_READS);
+    const logs = await Promise.all(batch.map((m) => logChanges(git,
+      ['log', '--no-merges', '--topo-order', '--reverse', ...DIFF_OPTS, '--name-status', '-z', '--format=%x00%H%x00%ct', `${m}^1..${m}`])));
+    batch.forEach((m, j) => {
+      const seq = seqOf.get(m)!;
+      const topsAt = lineage.topsAt.get(seq);
+      if (topsAt) tops.set(seq, sideGroups(logs[j]!, new Set(topsAt.keys()), excluded, topOf));
+      const childrenAt = lineage.childrenAt.get(seq);
+      if (childrenAt) children.set(seq, sideGroups(logs[j]!, new Set(childrenAt.keys()), excluded, childOf));
+    });
+  }
+  return { tops, children };
+
+  /** The root subfolder holding a path, or null outside the roots and directly inside one. */
+  function childOf(p: string): string | null {
+    const home = fileHome(p, lineage.roots);
+    return home?.zone === 'content' ? home.path : null;
+  }
+}
+
+const topOf = (p: string) => (p.includes('/') ? p.slice(0, p.indexOf('/')) : null);
+
+/**
+ * Each side commit's folders of one kind (`groupOf`: top-level folders, or root subfolders), by
+ * their names at the merge: a folder the branch renamed later is counted under its new name (the
+ * one most of its moved files went to), so its earlier commits still count for it (Qodo local r1
+ * #1). Only a folder gone by the merge was renamed; one still there (`atMergeNames`) only had files
+ * moved out of it, so it keeps its commits (r2 #2).
+ */
+function sideGroups(side: LineageCommit[], atMergeNames: Set<string>, excluded: (path: string) => boolean,
+  groupOf: (path: string) => string | null): Set<string>[] {
+  const atMerge = new Map<string, string>();
+  const name = (top: string) => atMerge.get(top) ?? top;
+  const out: Set<string>[] = [];
+  for (let i = side.length - 1; i >= 0; i--) {
+    const changes = side[i]!.changes;
+    const paths = changes.flatMap((ch) => (ch.from === undefined ? [ch.path] : [ch.path, ch.from])).filter((p) => !excluded(p));
+    out[i] = new Set(paths.flatMap((p) => groupOf(p) ?? []).map(name));
+    const moved = new Map<string, Map<string, number>>();
+    for (const ch of changes) {
+      if (ch.status !== 'R' || ch.from === undefined || excluded(ch.from) || excluded(ch.path)) continue;
+      const [from, to] = [groupOf(ch.from), groupOf(ch.path)];
+      if (from === null || to === null || from === to || atMergeNames.has(from)) continue;
+      const t = moved.get(from) ?? new Map<string, number>();
+      moved.set(from, t.set(to, (t.get(to) ?? 0) + 1));
+    }
+    for (const [from, t] of moved) {
+      const [to] = [...t].sort((a, b) => b[1] - a[1] || byCodepoint(a[0], b[0]))[0]!;
+      atMerge.set(from, name(to));
+    }
+  }
+  return out;
 }
 
 const MARKERS = new Map<string, keyof DebtCounts>(DEBT_KEYS.map((k) => [k.toUpperCase(), k]));

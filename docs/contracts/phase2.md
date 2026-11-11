@@ -1,6 +1,6 @@
 # Phase 2 contract (#29)
 
-**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
+**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch) and 2026-11-11 (content roots, #71).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
 
 | Shape | Types | Produced by | Consumed by |
 |---|---|---|---|
@@ -14,6 +14,7 @@
 ## Layout
 - **Integers only:** `canonicalJson` only takes integers, so lengths are world units ×1000 (`…Milli`) and angles are thousandths of a turn.
 - **Ids:** every body is keyed by the snapshot's stable `DirId` / `FileId`. Paths are for labels only.
+- **Content roots (amended 2026-11-11, #71):** in most repos one folder (`src/`, `lib/`, `packages/`) holds most of the code, so as one planet it hid the structure that matters. The human decided (2026-11-11, `docs/features/content-roots.md`) that the user can name one or more content roots. `source.roots` lists them: repo-relative, sorted, no trailing slash. `[]` is #18's mapping, where every top-level folder is a planet. A root's direct subfolders holding a surface file are **content** planets (`Planet.zone: 'content'`), on the inner orbits. Every other top-level folder holding one is an **outer** planet, on orbits beyond them: content planets take slots 0 to `CONTENT_SLOTS - 1` and outer planets start `OUTER_GAP_SLOTS` empty slots later (layout constants), so neither zone's growth moves the other's planets. A content planet born while every content slot is taken goes to the innermost free slot past the gap. Partners are older planets in the same zone. A root is never a planet itself. A file directly inside a root is a star moonlet of kind `root-file`. With `roots: []` every planet is `outer`, and the layout is #18's apart from the two new keys. Fog's `planets` covers both zones, by the same rule (`planetHome` in `src/core/structure.ts`). The view accepts the fields and needn't style zones yet.
 - **Orbits:** slot 0 is innermost. `slotSpacingMilli ≥ 2 × maxPlanetRadiusMilli`, so growth never forces a move (#18). `phaseMilliturn` is the frame-0 angle. Orbital motion is the renderer's job, as a function of frame number.
 - **Surface:** a Fibonacci sphere of `grid.cells` cells. Cell `i` is centred at `fibonacciCell(i, cells)`, and both `layout()` and the renderer use that one helper. "Nearest free cell" means nearest by angle.
 - **Overflow is counted, never dropped (Rule 1):** `moonOverflow`, `surface.overflow`, `moonletOverflow`.
@@ -30,13 +31,14 @@
 - **Coverage:** `files` lists every file in `snapshot.files`, including surface overflow, sorted by `fileId`. Planet and star counts add up to `files.length`. Star counts include root files, unmatched tests and test data.
 - **No wall-clock time anywhere:** `baseline` and `since` are commit SHAs.
 - **Chart state on disk** (`.git/commet/`) is private to #33. Others only see `FogView` and send `ChartAction`.
+- **Every `ChartAction` carries `at`** (#58, amended 2026-11-11): the `FogView.head` the user was looking at, as a full SHA. The write is recorded at `at`: a chart or baseline covers changes up to `at` and no further. So if a scan lands after the view's last fetch, a change that arrived unseen (say, a new agent commit) is newer than `at` and stays fogged, with no false clear (AGENTS.md Rule 1), no refusal and no race. `at` must be a commit the current snapshot knows (in its window, on HEAD's first-parent line). Otherwise (another branch, before the window, a snapshot that went backwards) the write is refused with `{ ok: false, error: 'unknown-head', head: <current> }` (`ChartUnknownHead`) and nothing is written; the view refetches and asks again. For `chart`, `fileId` is the file's id as of `at` and must lead to a file at HEAD. `baseline-undo` pops the last baseline. `commet chart` uses the current head.
 
 ## Local HTTP surface (`commet open`)
 - **Bind and Host:** binds 127.0.0.1 only. `Host` must be `127.0.0.1:<port>` or `localhost:<port>`.
 - **Token:** the opened URL is `http://127.0.0.1:<port>/#t=<token>`. The fragment is never sent to the server. The view reads it and sends `x-commet-token` on every data request.
 - **Static bundle:** served at `/` from `dist/web` without a token, because it holds no repo data. No directory listing and no traversal.
 - **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`.
-- **Write routes:** `POST /api/chart` with a `ChartAction` JSON body returns a `ChartResult`. `POST /api/beacon` answers 501 until R10. Every other method or path is refused.
+- **Write routes:** `POST /api/chart` with a `ChartAction` JSON body (exact keys, `at` a full 40-hex SHA, or 64-hex in a SHA-256 repo) returns a `ChartResult`. An unknown `at` gets `ChartUnknownHead` with status 409 Conflict, told apart from other refusals (400) by its `head`. `POST /api/beacon` answers 501 until R10. Every other method or path is refused.
 - **Live updates:** `GET /api/events` is a `text/event-stream` read with `fetch`, so the token stays in a header. Each `data:` line is a `LiveEvent`. The view refetches the named resource.
 - **No CORS headers,** and cross-origin writes are refused.
 

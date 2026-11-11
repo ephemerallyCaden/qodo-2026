@@ -18,21 +18,21 @@ You are the astronaut and your AI agents are your drone crew. Anything you didn'
 
 ## Requirements
 **Core**
-- [ ] R1. `commet scan` turns a local clone into a versioned snapshot. Identical input gives byte-identical output.
+- [x] R1. `commet scan` turns a local clone into a versioned snapshot. Identical input gives byte-identical output.
   - Input = git state plus the attribution event cache in `.git/commet/`, so agent logs expiring after 30 days don't change past snapshots.
   - The history window is anchored to HEAD's commit date, never the wall clock.
   - No absolute paths, code or prompt text in the snapshot. Agent edits are stored only as line hashes plus safe metadata.
   - Refuses shallow clones with instructions to unshallow (Commet never fetches).
   - Default window 12–24 months and a file cap (~5k); overflow is shown as an asteroid belt. Exclusion rules (vendor, generated, lockfiles, binaries) are recorded in the snapshot.
-- [ ] R2. Agent attribution, confidence-ranked: session logs/hooks (high) → trailers and bot authors (high when present) → heuristics (low, labelled "possibly agent") → unknown. Never guess silently, and flag "committed by you, written by an agent". **v1 sources:** Claude Code logs (matched to this repo, including its worktrees, via `git rev-parse --git-common-dir`), trailers, bot authors and git-ai notes. Codex comes in week 3. Each log parser is pinned to a sample-log fixture because no tool documents its format.
+- [x] R2. Agent attribution, confidence-ranked: session logs/hooks (high) → trailers and bot authors (high when present) → heuristics (low, labelled "possibly agent") → unknown. Never guess silently, and flag "committed by you, written by an agent". **v1 sources:** Claude Code logs (matched to this repo, including its worktrees, via `git rev-parse --git-common-dir`), trailers, bot authors and git-ai notes. Codex comes in week 3. Each log parser is pinned to a sample-log fixture because no tool documents its format.
 - [ ] R2b. Per-session attribution. Each session is its own drone, seeded from a hash of tool + session ID. Show safe metadata only (time, branch, model), never prompts. Without logs, fall back to pseudo-sessions inferred from commit clustering, labelled "inferred".
-- [ ] R3. Stable layout per the space mapping above: append-only orbit slots, and file identity survives renames. Adding files never moves existing planets. Size = lines of code. **A planet's look shows its code health** in four bands, worst to best: lava → toxic → ash → healthy (human, 2026-11-06), from debt markers and opt-in Qodo findings (#17/#18). The healthy band has three seeded looks, lush, ocean and ice, picked by a hash of the planet's stable ID (human, 2026-11-09); seeded variety never crosses a band. Gas giant and barren moon are asset-library extras only. Every visual channel and its meaning is listed in the art direction §6, "What a planet tells you".
-- [ ] R4. three.js pixel view: planet focus, warp between systems, 2D map toggle, reduced motion (animation frozen on a fixed frame, rendering only on interaction, cuts instead of glides). Labels use a crisp bitmap pixel font drawn at native resolution outside the pixel pass. **Camera: perspective free flight (human, 2026-11-04).** It is the most immersive option. Known cost: pixel shimmer and crawl under camera motion (see technical-risks #9). Mitigating that is an art-direction and render task. The camera module stays pluggable.
-- [ ] R5. Fog of war, per file. Fog covers every change you didn't write yourself: agents, teammates and unknown attribution. Opening a file's diff charts it, and a planet clears when all its files are charted. Any later change refogs the whole file. **First-run baseline (approved 2026-11-04):** an explicit, undoable "chart everything up to <HEAD> as my baseline" action, so the whole repo isn't fogged on day one. Comprehension questions are an optional alternative way to chart, generated from git only in v1 (no LLM). State is local only.
+- [~] R3. Stable layout per the space mapping above: append-only orbit slots, and file identity survives renames. Adding files never moves existing planets. Size = lines of code. **Biomes are decorative**, picked by a hash of the planet's stable ID; they carry no data.
+- [~] R4. three.js pixel view: planet focus, warp between systems, 2D map toggle, reduced motion (animation frozen on a fixed frame, rendering only on interaction, cuts instead of glides). Labels use a crisp bitmap pixel font drawn at native resolution outside the pixel pass. **Camera: perspective free flight (human, 2026-11-04).** It is the most immersive option. Known cost: pixel shimmer and crawl under camera motion (see technical-risks #9). Mitigating that is an art-direction and render task. The camera module stays pluggable.
+- [~] R5. Fog of war, per file. Fog covers every change you didn't write yourself: agents, teammates and unknown attribution. Opening a file's diff charts it, and a planet clears when all its files are charted. Any later change refogs the whole file. **First-run baseline (approved 2026-11-04):** an explicit, undoable "chart everything up to <HEAD> as my baseline" action, so the whole repo isn't fogged on day one. Comprehension questions are an optional alternative way to chart, generated from git only in v1 (no LLM). State is local only.
 - [ ] R6. Teammates' astronauts and territory come from local git history, with no network calls. Teammates' agent logs never reach your machine, so their agent work is visible only through trailers, bot authors or pushed git-ai notes. Anything else they committed shows as **unknown**, never as human.
 - [ ] R7. `commet hook install` adds a git post-commit/post-merge hook and a Claude Code hook that refresh the snapshot and record session events (hashes and safe metadata only) to `.git/commet/events.jsonl`. It asks before writing to `.git/hooks/` or `.claude/settings.local.json`, chains existing hooks rather than replacing them, and `commet hook remove` undoes it.
-- [ ] R8. Factory-verifiable: golden snapshots on fixture repos, layout property tests, a deterministic render mode for golden images, draw-call budgets. A frame is a pure function of (snapshot, chart state, camera, frame number).
-- [ ] R14. Hardened local server. `commet open` binds 127.0.0.1 only, rejects requests whose Host header isn't localhost (blocks DNS rebinding), requires a per-launch secret token from the opened URL, sends no CORS headers, and accepts writes only for chart state and beacons. It pushes live updates when the snapshot changes. Must pass the builder-security check before merge.
+- [~] R8. Factory-verifiable: golden snapshots on fixture repos, layout property tests, a deterministic render mode for golden images, draw-call budgets. A frame is a pure function of (snapshot, chart state, camera, frame number).
+- [~] R14. Hardened local server. `commet open` binds 127.0.0.1 only, rejects requests whose Host header isn't localhost (blocks DNS rebinding), requires a per-launch secret token from the opened URL, sends no CORS headers, and accepts writes only for chart state and beacons. It pushes live updates when the snapshot changes. Must pass the builder-security check before merge.
 
 **Candidates (approved 2026-11-04)**
 - [ ] R9. Co-change constellations: lines between files that usually change together, from git history only. If a change touches a file but not its usual partner, flag the partner: "usually changes with X (not touched)". Deterministic, documented thresholds.
@@ -86,13 +86,14 @@ Agent session or merge → hook runs `commet scan` → snapshot → the local se
 ## Tasks
 Done: #1 and #5 (R1, R2 scan and attribution), #16 (R3 scan structure), #19 (toxic band design).
 
-**Phase 2: first light** (milestone, due 2026-11-15). The contract goes first. The other tickets can then be built in parallel, each in its own directory.
-- #29: interface contract (layout.v1, fog view, local API, render hook). Team lead. Blocks the rest.
-- #23: design call on merge births and `test/`. Human. Blocks #18.
+**Phase 2: first light** (milestone closed 2026-11-11). All merged to session/week1:
+- #29: interface contract (layout.v1, fog view, local API, render hook), amended for rings, the `healthy` band and `depthFade`.
+- #23: decided by the human (merge look-through; test data rides with the tests).
 - #18: `layout()` and `layout.json` (R3).
-- #30: three.js system view (R4).
-- #31: render harness and golden images (R8). Its final AC waits on #30.
-- #32: hardened `commet open` server (R14). Its chart-write AC waits on #33.
-- #33: fog of war and chart state, logic and CLI (R5).
+- #30: three.js system view (R4), on the sample fixture and on Commet's own repo.
+- #31: render harness and real-view goldens from CI (R8).
+- #32: hardened `commet open` serving the view, layout and live fog, and accepting chart writes (R14).
+- #33: fog of war and chart state (R5); #58: chart actions are recorded at the head the user saw.
+End to end: `commet scan` → `commet open` → the view renders this repo, and a chart write over the API clears fog.
 
-After Phase 2: #34 hackathon mode (R15). Scan follow-ups: #17 (in progress), #21, #22, #24, #25, #28.
+After Phase 2: #34 hackathon mode (R15), the art follow-ups #59–#62 and #65, test hygiene #49 and #53 (P0), and #68. `[~]` means the core has shipped and parts remain (R3: rename lineage #40; R4: warp, 2D map, fog and drone visuals; R5: fog visuals and comprehension questions; R8: #68). Scan follow-ups: #17 (in progress), #21, #22, #24, #25, #28.

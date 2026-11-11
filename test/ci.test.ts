@@ -1,8 +1,8 @@
 import { spawnSync, execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { tempDir } from './fixtures/tmp.js';
 
 const workflow = readFileSync(join(import.meta.dirname, '../.github/workflows/ci.yml'), 'utf8');
 /** One job's body: from its key to the next job key (two-space indent) or the end of the file. */
@@ -28,6 +28,11 @@ it('the CI render job runs in the Playwright image matching @playwright/test, pi
   expect(body).toMatch(/if: failure\(\) && steps\.update\.outcome == 'success'\n\s+uses: actions\/upload-artifact@v4\n\s+with:\n\s+name: render-goldens\n\s+path: test\/golden\/render\//);
 });
 
+it('every render run builds dist/web first (Playwright global setup), so the render job never drives a missing or stale view (#31 AC 8)', async () => {
+  const { default: config } = await import('../playwright.config.js');
+  expect(config.globalSetup).toBe('./test/render/global-setup.ts');
+});
+
 describe('Golden-Update gate (.github/scripts/golden-update.sh)', () => {
   const SCRIPT = join(import.meta.dirname, '../.github/scripts/golden-update.sh');
 
@@ -40,7 +45,7 @@ describe('Golden-Update gate (.github/scripts/golden-update.sh)', () => {
   });
 
   it('fails a commit that changes test/golden/ without a Golden-Update: <reason> line, and only that commit', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'commet-golden-gate-'));
+    const dir = tempDir('commet-golden-gate-');
     const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
     const commit = (file: string, message: string) => {
       mkdirSync(dirname(join(dir, file)), { recursive: true });

@@ -17,6 +17,8 @@ export default defineConfig({
   testDir: 'test/render',
   testMatch: '**/*.spec.ts',
   outputDir: 'test-results/render',
+  // view.spec.ts drives the built view: build dist/web from the current sources first.
+  globalSetup: './test/render/global-setup.ts',
   // One worker: SwiftShader is CPU-bound, and serial runs keep the timing comparable between runs.
   workers: 1,
   forbidOnly: Boolean(process.env['CI']),
