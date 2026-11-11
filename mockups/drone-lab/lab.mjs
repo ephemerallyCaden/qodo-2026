@@ -19,7 +19,7 @@ import { PALETTES, SLOTS, BRAND_PALETTES, TEAL, paletteHexes } from './palette.j
 import { PARAMS, DEFAULTS, DRONE_EYE, showValue } from './params.js';
 import { VARIANTS, PICKED, FINAL, FINAL_PARAMS } from './variants.js';
 import { LOOP, MOTION_LOOP, CYCLES } from './drone.js';
-import { BRANDS, DISTINCT, BRAND_COLOURS, sessionLook } from './brands.js';
+import { BRANDS, BRAND_BY_ID, DISTINCT, BRAND_COLOURS, GOOGLE_OPTIONS, sessionLook } from './brands.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
@@ -33,6 +33,9 @@ const CODEX_BEFORE = {
   params: { headW: 0.122, headH: 0.098, headD: 0.11, headRound: 0.9, headCorner: 0.6, headTaper: 1, headFlat: 0.2, rim: 0, antenna: 0, crown: 1, crownN: 7, crownR: 0.039, crownArc: 2.05, crownZ: -0.2, screenW: 0.76, screenH: 0.55, screenY: 0.02, screenRound: 4.5, bezel: 0.08, eyes: DRONE_EYE.prompt, glyphSet: 3, thrusters: 0, thrR: 0.026, thrL: 0.022, thrFlare: 1.1, thrSpread: 0.55, puffSize: 1.15, puffRate: 0.45, sparkles: 1, bobAmp: 0.03, drift: 0.16, bank: 0.26, lookYaw: 0.4 },
   palette: { name: 'OpenAI Codex (before)', shell: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], trim: ['#4185d8', '#5ab9e5', '#a5e6ff', '#ffffff'], screen: ['#12173d', '#293268', '#ffffff'], glow: TEAL, accent: ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], smoke: ['#909edd', '#c1d9f2', '#ffffff'] },
 };
+// Qodo before the human's 2026-11-11 ask ("add a purple snout colouring to the tip of its nose, and
+// remove the angry teal eyes. Let's make it just the sunglass"): teal Slant eyes, diff marks while reviewing.
+const QODO_BEFORE = { snoutTip: 0, noEyes: 0, glyphSet: 2 };
 const FPS = 15;
 const wanted = process.argv.slice(2).filter((a) => !a.startsWith('brand='));
 // brand=copilot,codex limits brand-closeups and brand-gifs to those drones.
@@ -247,18 +250,20 @@ try {
     }
     console.log('  face probe: working = glyphs and no eyes, idle = eyes and no glyphs (A–E and D-final)');
   }
-  if (want('brands')) {
-    // The same face probe for every brand drone (its own eye, and the V2 fallback where it has one).
-    for (const b of BRANDS) {
+  if (want('brands') || want('google-options')) {
+    // The same face probe for every brand drone and Google option (its own eye, and the V2 fallback
+    // where it has one). Green counts the working face: glyphs, or Qodo's glint sweep. A drone with no
+    // eyes (Qodo, 2026-11-11) must show none at rest either.
+    for (const b of [...(want('brands') ? BRANDS : []), ...(want('google-options') ? GOOGLE_OPTIONS : [])]) {
       for (const eyes of [null, b.v2Eyes ?? null].filter((e, i) => i === 0 || e != null)) {
         for (const [t, working] of [[0.5, false], [3.2, false], [7.0, true], [8.6, true]]) {
           const p = await page.evaluate(([id, tt, e]) => window.lab.faceProbe({ brand: id, params: e == null ? {} : { eyes: e }, t: tt, yaw: 0, zoom: 2, motion: true, smoke: false }, 160, 160), [b.id, t, eyes]);
-          const ok = working ? p.eyes === 0 && p.glyphs > 20 : p.eyes > 10 && p.glyphs === 0;
+          const ok = working ? p.eyes === 0 && p.glyphs > 20 : (b.params.noEyes ? p.eyes === 0 : p.eyes > 10) && p.glyphs === 0;
           if (!ok) problems.push(`face probe ${b.id}${eyes == null ? '' : ' (V2 fallback eyes)'} t = ${t}: ${p.eyes} eye px, ${p.glyphs} glyph px`);
         }
       }
     }
-    console.log('  face probe: every brand drone works with glyphs and no eyes, idles with eyes and no glyphs');
+    console.log('  face probe: every drone works with its working face and no eyes, idles with eyes (Qodo: none) and no working face');
   }
 
   // ---------------------------------------------------------------- brand drones (phase 2)
@@ -340,6 +345,49 @@ try {
     }
   }
 
+  // ---------------------------------------------------------------- Google options G1-G5 (2026-11-11)
+  const gheads = [[`${BRAND_BY_ID.google.name} (current)`, BRAND_BY_ID.google.signature], ...GOOGLE_OPTIONS.map((o) => [o.name, o.look])];
+  const gcells = [{ brand: 'google' }, ...GOOGLE_OPTIONS.map((o) => ({ brand: o.id }))];
+  if (want('google-options')) {
+    // G1-G5 beside the current Google drone: front, 3/4 and side at 180p (x3), then at the 2x close-up.
+    await render('google options', {
+      title: `Google · five options inspired by the Gemini sparkle, beside the current drone · 180p crops at x3 · idle t = ${STILL_T} s · BLK 36 only · original designs, not affiliated with or endorsed by Google`,
+      w: 100, h: 100, scale: 3, rowLabelW: 56, headH: 96, heads: gheads,
+      rows: VIEWS.map(([label, yaw]) => ({ label, cells: gcells.map((c) => ({ ...c, yaw, t: STILL_T })) })),
+    }, path.join(OUT, 'brands-google-options.png'));
+    await render('google options close-up', {
+      title: `Google · the five options and the current drone · 2x close-up (camera at half distance), x2 · idle t = ${STILL_T} s`,
+      w: 160, h: 160, scale: 2, rowLabelW: 56, headH: 96, heads: gheads,
+      rows: VIEWS4.map(([label, yaw]) => ({ label, cells: gcells.map((c) => ({ ...c, yaw, t: STILL_T, zoom: 2 })) })),
+    }, path.join(OUT, 'brands-google-options-closeup.png'));
+  }
+
+  if (want('qodo-before-after')) {
+    // Qodo before and after: idle at the 2x close-up, then reviewing (front, drift held still) at four
+    // moments 0.2 s apart, one glint sweep's worth (before: diff marks read row by row in teal).
+    const hold = { drift: 0, bank: 0, lookYaw: 0, bobAmp: 0 };
+    const review = (params, label) => ({ label, cells: [6.7, 6.9, 7.1, 7.3].map((t) => ({ brand: 'qodo', params: { ...hold, ...params }, yaw: 0, t, zoom: 2, motion: true, smoke: false, caption: `reviewing, t = ${t} s` })) });
+    await render('qodo before/after', {
+      title: `Qodo · before and after (2026-11-11: a purple nose tip, no eyes, just the sunglasses) · 2x close-up, x3 · idle t = ${STILL_T} s, then reviewing`,
+      w: 160, h: 160, scale: 3, rowLabelW: 120,
+      rows: [
+        closeRow({ brand: 'qodo', params: QODO_BEFORE }, 'before: teal slant eyes behind the shades'),
+        closeRow({ brand: 'qodo' }, 'after: a purple nose tip, just the sunglasses'),
+        review(QODO_BEFORE, 'before, reviewing: teal diff marks read row by row'),
+        review({}, 'after, reviewing: the head dips and a glint sweeps across the lenses'),
+      ],
+    }, path.join(OUT, 'brand-qodo-before-after.png'));
+    // The nose tip must read at 180p: at least a 2 x 2 block of its own in every view.
+    for (const [label, yaw] of VIEWS) {
+      const [a, b] = await Promise.all([{}, { snoutTip: 0 }].map((params) => page.evaluate(([c]) => window.lab.pixels(c, 100, 100), [{ brand: 'qodo', params, yaw, t: STILL_T }])));
+      const on = a.map((c, i) => c !== b[i]);
+      let n = 0, block = false;
+      on.forEach((v, i) => { if (!v) return; n++; const x = i % 100; if (x < 99 && on[i + 1] && on[i + 100] && on[i + 101]) block = true; });
+      console.log(`  Qodo nose tip at 180p, ${label}: ${n} px${block ? ', with a 2 x 2 block' : ''}`);
+      if (!block) problems.push(`Qodo nose tip at 180p, ${label}: ${n} px and no 2 x 2 block`);
+    }
+  }
+
   if (want('codex-before-after')) {
     // The Codex head before (separate small puffs) and after (one smooth blended cloud), close up and at 180p.
     await render('codex before/after', {
@@ -362,6 +410,10 @@ try {
     for (const s of a4.scales) {
       console.log(`  A4 ${s.name} (drone ~${s.heightPx}px tall): closest pair ${s.closest.a}–${s.closest.b} (score ${s.closest.score.toFixed(2)}: IoU ${s.closest.iou.toFixed(2)}, ΔE ${s.closest.dE.toFixed(3)}); min ΔE ${s.minDE.a}–${s.minDE.b} ${s.minDE.dE.toFixed(3)}; max IoU ${s.maxIoU.a}–${s.maxIoU.b} ${s.maxIoU.iou.toFixed(2)}`);
       if (s.gate) for (const p of s.pairs) if (p.score < 1) problems.push(`A4 ${s.name}: ${p.a} and ${p.b} too alike (IoU ${p.iou.toFixed(2)}, ΔE ${p.dE.toFixed(3)}, score ${p.score.toFixed(2)} < 1)`);
+      for (const o of s.options) {
+        console.log(`    ${o.id} (would replace ${o.replaces}): closest ${o.closest.b} (score ${o.closest.score.toFixed(2)}: IoU ${o.closest.iou.toFixed(2)}, ΔE ${o.closest.dE.toFixed(3)}), then ${o.pairs[1].b} ${o.pairs[1].score.toFixed(2)}, ${o.pairs[2].b} ${o.pairs[2].score.toFixed(2)}${o.pass ? '' : ` · ${o.pairs.filter((p) => p.score < 1).length} pair(s) below 1`}`);
+        if (s.gate && !o.pass) for (const p of o.pairs.filter((q) => q.score < 1)) problems.push(`A4 ${s.name}: option ${o.id} and ${p.b} too alike (IoU ${p.iou.toFixed(2)}, ΔE ${p.dE.toFixed(3)}, score ${p.score.toFixed(2)} < 1)`);
+      }
     }
   }
 
@@ -425,8 +477,9 @@ async function brandDistinctness(page) {
       }
       return views;
     };
-    const looks = {};
+    const looks = {}, optLooks = {};
     for (const b of DISTINCT) looks[b.id] = await lookOf({ brand: b.id }, b.id);
+    for (const o of GOOGLE_OPTIONS) optLooks[o.id] = await lookOf({ brand: o.id }, o.id);
     const iouOf = (p, q) => {
       let best = 0;
       const dx0 = Math.round(p.cx - q.cx), dy0 = Math.round(p.cy - q.cy);
@@ -455,13 +508,18 @@ async function brandDistinctness(page) {
       pairs.push({ a, b, ...pairOf(looks[a], looks[b]) });
     }
     pairs.sort((p, q) => p.score - q.score);
+    // Each Google option against every drone but the one it would replace (it must pass them all).
+    const options = GOOGLE_OPTIONS.map((o) => {
+      const ps = DISTINCT.filter((b) => b.id !== o.brand).map((b) => ({ a: o.id, b: b.id, ...pairOf(optLooks[o.id], looks[b.id]) })).sort((p, q) => p.score - q.score);
+      return { id: o.id, replaces: o.brand, closest: ps[0], pass: ps.every((p) => p.score >= 1), pairs: ps };
+    });
     const heights = Object.values(looks).map((l) => l[0].height);
     scales.push({
       name: sc.name, gate: sc.gate, zoom: sc.zoom, heightPx: Math.round(heights.reduce((s, h) => s + h, 0) / heights.length),
       closest: pairs[0],
       minDE: pairs.reduce((m, p) => (p.dE < m.dE ? p : m)), maxIoU: pairs.reduce((m, p) => (p.iou > m.iou ? p : m)),
-      means: Object.fromEntries(Object.entries(looks).map(([id, l]) => [id, l.map((v) => v.mean.map((x) => Math.round(x * 1000) / 1000))])),
-      pairs,
+      means: Object.fromEntries(Object.entries({ ...looks, ...optLooks }).map(([id, l]) => [id, l.map((v) => v.mean.map((x) => Math.round(x * 1000) / 1000))])),
+      pairs, options,
     });
   }
   return { thresholds: { shape: A4_SHAPE, colour: A4_COLOUR }, views: A4_VIEWS.map(([n]) => n), sameAs: Object.fromEntries(BRANDS.filter((b) => b.sameAs).map((b) => [b.id, b.sameAs])), scales };

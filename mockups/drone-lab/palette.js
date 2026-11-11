@@ -79,5 +79,36 @@ export const BRAND_PALETTES = {
   unknown: { ...PALETTES.base, name: 'unknown agent (the generic drone)' },
 };
 
-/** Every colour a palette can produce. */
-export const paletteHexes = (pal) => Object.keys(SLOTS).flatMap((k) => pal[k]);
+// The Google options G1-G5 (brands.js GOOGLE_OPTIONS, 2026-11-11): the Gemini sparkle's soft gradient
+// as four flat BLK 36 ramps, one per quadrant panel (`tints`: top, left, bottom, right; four lit bands
+// each), mapped by OKLab distance (brands.js GEMINI_COLOURS). No gradients and no dithering.
+const GEM_RED = ['#66334b', '#872a38', '#cc5250', '#ff6866']; // top: #df525f -> #cc5250
+const GEM_YELLOW = ['#cc5250', '#ff965f', '#ffe091', '#ffe091']; // left: #e2992d -> #ff965f, #d4c02c -> #ffe091
+const GEM_GREEN = ['#14665b', '#22896e', '#42bc7f', '#8cff9b']; // bottom: #2bb67b -> #42bc7f
+const GEM_BLUE = ['#36277f', '#354ab2', '#4185d8', '#5ab9e5']; // right and middle: #3287ff -> #4185d8
+export const GEMINI_TINTS = [GEM_RED, GEM_YELLOW, GEM_GREEN, GEM_BLUE];
+const WHITE_SHELL = ['#6b74b2', '#909edd', '#c1d9f2', '#ffffff'];
+const SKY_SHELL = ['#4185d8', '#5ab9e5', '#a5e6ff', '#ffffff']; // Gemini's light blue, lit to white
+const WHITE_TRIM = ['#909edd', '#c1d9f2', '#ffffff', '#ffffff'];
+const BLUE_TRIM = ['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'];
+const DARK_SCREEN = ['#000000', '#12173d', '#ffffff'];
+const WHITE_SMOKE = ['#909edd', '#c1d9f2', '#ffffff'];
+export const OPTION_PALETTES = {
+  // The sparkle itself: blue in the middle (the shell) and right, white bezel and nozzles.
+  g1: { name: 'G1 · Sparkle', shell: GEM_BLUE, trim: WHITE_TRIM, screen: DARK_SCREEN, glow: TEAL, accent: GEM_BLUE, smoke: WHITE_SMOKE, tints: GEMINI_TINTS },
+  // White like Google's page, white trim, the colour all in the sparkle on the antenna. (With Gemini-blue
+  // trim on the rim and bezel A4 measured it at 0.39 against the generic drone: the same shape, and the
+  // blue and white averaged out to the generic's mean colour.)
+  g2: { name: 'G2 · Star antenna', shell: WHITE_SHELL, trim: WHITE_TRIM, screen: VISOR, glow: TEAL, accent: BLUE_TRIM, smoke: WHITE_SMOKE, tints: GEMINI_TINTS },
+  // Gemini's light blue with white trim, the sparkle screen's bezel in the four colours. (A white shell
+  // with the darker screen was 0.94 against Qodo in A4.)
+  g3: { name: 'G3 · Sparkle visor', shell: SKY_SHELL, trim: WHITE_TRIM, screen: VISOR, glow: TEAL, accent: BLUE_TRIM, smoke: WHITE_SMOKE, tints: GEMINI_TINTS },
+  // A light-blue core, Gemini-blue bezel and nozzles, the four fins in the four colours. (A white core
+  // was 0.91 against Kiro in A4.)
+  g4: { name: 'G4 · Compass fins', shell: SKY_SHELL, trim: BLUE_TRIM, screen: VISOR, glow: TEAL, accent: BLUE_TRIM, smoke: WHITE_SMOKE, tints: GEMINI_TINTS },
+  // A Gemini-blue egg, white trim, the orbiting sparkle in the four colours.
+  g5: { name: 'G5 · Orbiting sparkle', shell: BLUE_TRIM, trim: WHITE_TRIM, screen: DARK_SCREEN, glow: TEAL, accent: BLUE_TRIM, smoke: WHITE_SMOKE, tints: GEMINI_TINTS },
+};
+
+/** Every colour a palette can produce (its six slots, plus its quadrant tints if it has them). */
+export const paletteHexes = (pal) => [...Object.keys(SLOTS).flatMap((k) => pal[k]), ...(pal.tints ?? []).flat()];

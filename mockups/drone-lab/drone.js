@@ -68,6 +68,13 @@ const FRAG = /* glsl */ `
   uniform int uHookN; uniform vec3 uHook[4];
   uniform int uSplit; uniform float uSplitY;
   uniform int uGlyphSet, uScrFlat, uShades;
+  uniform float uSnTip; // Qodo's nose tip (2026-11-11)
+  // The Gemini-inspired Google options (2026-11-11); all off by default.
+  uniform vec3 uTint[16]; // four quadrant ramps (top, left, bottom, right), four bands each
+  uniform float uHeadStar; uniform vec2 uStarK; // the sparkle head's blend; every sparkle's curve and tip rounding
+  uniform int uStarPart; uniform vec3 uStarC; uniform vec2 uStarRot; uniform float uStarS, uStarH; // the small sparkle: centre, spin (cos, sin), size, puff
+  uniform int uFinN; uniform vec3 uFinA[4], uFinB[4]; uniform vec2 uFinR;
+  uniform int uQuad, uScrStar;
   ${EYES_GLSL}
   in vec3 vPosW;
 
@@ -112,6 +119,40 @@ const FRAG = /* glsl */ `
   // The hexagonal head: apothem headW, point to point 2 headH, rounded by the head's corner radius.
   float dHexHead(vec3 p) { float r = uHeadK.x; return sdHexPrism(p, uHeadB.x - r, uHeadB.z - r, 1.1547 * uHeadB.x / uHeadB.y) - r; }
 
+  // A four-point sparkle in 2D, tips up, down, left and right at distance s: a square with a disc
+  // cut from each corner, each disc centred at (c, c) (c = starCurve x the square's half-size) and
+  // passing through the tips, so the sides are concave arcs; then the tips are rounded (starTip).
+  // Mirrored in JS (starField).
+  float sdStar2(vec2 p, float s) {
+    float r = uStarK.y * s, b = s - r, c = uStarK.x * b;
+    p = abs(p);
+    vec2 q = p - vec2(b);
+    float box = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+    return max(box, length(vec2(b - c, c)) - length(p - vec2(c))) - r;
+  }
+  // The sparkle as a puffy plate facing +z: a knife edge at the rim, thin at the tips, swelling
+  // toward the half-thickness hd in the middle (a bound, so the march under-steps it). The exponent
+  // is capped so the field stays finite far outside (an infinity would turn smin into NaN).
+  float sdStar3(vec3 p, float s, float hd) {
+    float d2 = sdStar2(p.xy, s);
+    return max(d2, (abs(p.z) - hd * (1.0 - exp(min(d2 / hd, 4.0)))) * 0.7);
+  }
+  // The sparkle head: tips at headW across and headH up, headD thick in the middle.
+  float dStarHead(vec3 p) { float sy = uHeadB.x / uHeadB.y; return sdStar3(vec3(p.x, p.y * sy, p.z), uHeadB.x, uHeadB.z) * min(1.0, 1.0 / sy); }
+  // The small sparkle: two crossed puffy plates (facing front and side), so it reads from any side.
+  // uv is the 2D place on the nearer plate (for its quadrant colour).
+  vec3 starLocal(vec3 p) { vec3 q = p - uStarC; return vec3(uStarRot.x * q.x - uStarRot.y * q.z, q.y, uStarRot.y * q.x + uStarRot.x * q.z); }
+  float dStar(vec3 p, out vec2 uv) {
+    vec3 q = starLocal(p);
+    float a = sdStar3(q, uStarS, uStarH), b = sdStar3(vec3(-q.z, q.y, q.x), uStarS, uStarH);
+    uv = a < b ? q.xy : vec2(-q.z, q.y);
+    return min(a, b);
+  }
+  float dStar(vec3 p) { vec2 uv; return dStar(p, uv); }
+  bool starOn() { return uStarPart == 1 || (uStarPart == 2 && uSmokeOn == 1); } // an orbiting star floats free, shown with the smoke
+  // Which quadrant panel a point is in: 0 top, 1 left, 2 bottom, 3 right (split on the diagonals).
+  int quadOf(vec2 v) { return v.y >= abs(v.x) ? 0 : -v.y >= abs(v.x) ? 2 : v.x < 0.0 ? 1 : 3; }
+
   // The head family: a rounded box blended toward an ellipsoid, tapered toward the bottom,
   // its bottom optionally cut flat (k = corner radius, round, taper, flat). Mirrored in JS.
   float sdShape(vec3 q, vec3 b, vec4 k) {
@@ -126,6 +167,7 @@ const FRAG = /* glsl */ `
   float dHead(vec3 p) {
     float d = sdShape(p, uHeadB, uHeadK);
     if (uHeadHex > 0.001) d = mix(d, dHexHead(p), uHeadHex);
+    if (uHeadStar > 0.001) d = mix(d, dStarHead(p), uHeadStar);
     if (uChin == 1) d = smin(d, length(p - uChinC) - uChinR, 0.03);
     for (int i = 0; i < ${MAX_CROWN}; i++) { if (i >= uCrownN) break; d = smin(d, length(p - uCrownC[i]) - uCrownR, uCrownK); }
     return d;
@@ -163,6 +205,7 @@ const FRAG = /* glsl */ `
     return d;
   }
   float dSnout(vec3 p) { return sdRoundCone(p, uSnA, uSnB, uSnR.x, uSnR.y); }
+  float dFin(vec3 p, int i) { return sdRoundCone(p, uFinA[i], uFinB[i], uFinR.x, uFinR.y); }
   float dThr(vec3 p, int i) { return sdRoundCone(p, uThrA[i], uThrB[i], uThrR.x, uThrR.y); }
 
   float mapBody(vec3 p) {
@@ -171,7 +214,7 @@ const FRAG = /* glsl */ `
     for (int s = 0; s < 2; s++) {
       if (uEars > 0) d = smin(d, dEar(p, s), K);
       if (uTopper == 1) d = smin(d, dGog(p, s), K);
-      if (s < uAntN) d = smin(smin(d, dStalk(p, s), K), dTip(p, s), K);
+      if (s < uAntN) { d = smin(d, dStalk(p, s), K); if (uStarPart != 1) d = smin(d, dTip(p, s), K); }
     }
     if (uTopper == 2) d = smin(d, dCrest(p), 0.01);
     if (uGogBr == 1) d = smin(d, dBridge(p), K);
@@ -180,6 +223,9 @@ const FRAG = /* glsl */ `
     for (int i = 0; i < ${MAX_SKIRT}; i++) { if (i >= uSkirtN) break; d = smin(d, dSkirt(p, i), uSkirt == 3 ? uSkR * 0.7 : K); }
     if (uSnout == 1) d = smin(d, dSnout(p), 0.008);
     for (int i = 0; i < 4; i++) { if (i >= uHookN) break; d = smin(d, dHook(p, i), K); }
+    if (uStarPart == 1) d = smin(d, dStar(p), K);
+    else if (starOn()) d = min(d, dStar(p));
+    for (int i = 0; i < 4; i++) { if (i >= uFinN) break; d = smin(d, dFin(p, i), K); }
     return d;
   }
   // Smoke: free-floating particles. Round puffs are three blended spheres (a chunky cloud),
@@ -243,6 +289,7 @@ const FRAG = /* glsl */ `
     vec3 n = p / uHeadB;
     vec2 q = vec2(atan(n.x, n.z) / atan(uScreen.x), (atan(n.y, length(n.xz)) - atan(uScreen.z)) / atan(uScreen.y));
     if (uScrFlat == 1) q = n.z > 0.2 ? vec2(n.x / n.z / uScreen.x, (n.y / n.z - uScreen.z) / uScreen.y) : vec2(9.0);
+    if (uHeadStar > 0.5) q = p.z > 0.0 ? vec2(n.x / uScreen.x, (n.y - uScreen.z) / uScreen.y) : vec2(9.0); // the sparkle head: straight on, so a round screen stays round
     return vec3(q, pow(abs(q.x), uScreen.w) + pow(abs(q.y), uScreen.w));
   }
   // Screen coords -> the V2 32 x 24 eye box, fitted inside the screen at its real aspect.
@@ -299,7 +346,7 @@ const FRAG = /* glsl */ `
   const int GLYPHS[119] = int[119](0, 14, 17, 21, 17, 14, 0, 0, 17, 10, 4, 10, 17, 0, 0, 31, 17, 17, 17, 31, 0, 0, 4, 4, 31, 4, 4, 0, 0, 0, 0, 4, 0, 0, 0, 1, 2, 2, 4, 8, 8, 16, 16, 8, 8, 4, 2, 2, 1, 6, 4, 4, 8, 4, 4, 6, 12, 4, 4, 2, 4, 4, 12, 0, 4, 0, 0, 4, 4, 8, 2, 4, 8, 16, 8, 4, 2, 8, 4, 2, 1, 2, 4, 8, 10, 10, 31, 10, 31, 10, 10, 0, 0, 31, 0, 31, 0, 0, 0, 4, 21, 14, 21, 4, 0, 14, 17, 19, 21, 25, 17, 14, 4, 12, 4, 4, 4, 4, 14);
   bool glyphLit(vec2 q, out int tone) {
     tone = 3;
-    if (uGlyph.x <= 0.0) return false;
+    if (uGlyph.x <= 0.0 || uGlyphSet == 4) return false;
     float u = eyeUnit(), gp = uGlyph.w;
     vec2 S = uEyePhys / u; // screen half-size in eye-box px
     vec2 cell = vec2(6.0, 8.0) * gp; // 5 x 7 glyph plus a 1 px gap
@@ -309,6 +356,7 @@ const FRAG = /* glsl */ `
     if (ci.x < 0.0 || ci.y < 0.0 || ci.x >= n.x || ci.y >= n.y) return false;
     vec2 cq = ((ci + 0.5) * cell - n * cell * 0.5) / S * 1.2; // keep cells well inside the screen
     if (pow(abs(cq.x), uScreen.w) + pow(abs(cq.y), uScreen.w) > 1.0) return false;
+    if (uScrStar == 1 && sdStar2(cq, 1.0) > 0.0) return false;
     float id = ci.x + ci.y * 17.0;
     // Review marks: a reading line scans down the screen; read rows keep their marks.
     float scan = mod(floor(uGlyph.y * 2.5), n.y + 2.0);
@@ -329,6 +377,14 @@ const FRAG = /* glsl */ `
     tone = h < 0.22 ? 1 : h < 0.6 ? 2 : 3;
     if (uGlyphSet == 2) tone = ci.y == scan ? 3 : 1;
     return ((GLYPHS[g * 7 + b.y] >> (4 - b.x)) & 1) == 1;
+  }
+  // The glint sweep (glyphSet 4), the working face without glyphs: a diagonal shine about 4 eye-box
+  // px wide sweeps across the screen, left to right, once per 0.8 s (a line read), while the glyphs
+  // would show. P is in eye-box px.
+  bool sweepLit(vec2 P) {
+    if (uGlyphSet != 4 || uGlyph.x <= 0.0) return false;
+    float x = P.x - 0.5 * (P.y - 12.0) - mix(-3.0, 35.0, fract(uGlyph.y / 0.8));
+    return x >= 0.0 && x < 4.0;
   }
   bool glint(vec2 q) {
     float u = eyeUnit();
@@ -357,7 +413,7 @@ const FRAG = /* glsl */ `
       if (uTopper == 1) { d = dGog(p, s); if (d < best) { best = d; part = 6; gi = s; } }
       if (s < uAntN) {
         d = dStalk(p, s); if (d < best) { best = d; part = 1; }
-        d = dTip(p, s); if (d < best) { best = d; part = 4; }
+        if (uStarPart != 1) { d = dTip(p, s); if (d < best) { best = d; part = 4; } }
       }
     }
     if (uTopper == 2) { d = dCrest(p); if (d < best) { best = d; part = 2; } }
@@ -366,15 +422,29 @@ const FRAG = /* glsl */ `
     for (int i = 0; i < 4; i++) { if (i >= uThrN) break; d = dThr(p, i); if (d < best) { best = d; part = 7; gi = i; } }
     // Legs and tentacles take the accent slot; hem scallops are the head's own shell.
     for (int i = 0; i < ${MAX_SKIRT}; i++) { if (i >= uSkirtN) break; d = dSkirt(p, i); if (d < best) { best = d; part = uSkirt == 3 ? 8 : 2; } }
-    if (uSnout == 1) { d = dSnout(p); if (d < best) { best = d; part = 1; } }
+    if (uSnout == 1) { d = dSnout(p); if (d < best) { best = d; part = 9; } }
     for (int i = 0; i < 4; i++) { if (i >= uHookN) break; d = dHook(p, i); if (d < best) { best = d; part = 1; } }
+    // Sparkles and fins take the four quadrant tints (10 + quadrant): fins up, left, down, right.
+    if (starOn()) { vec2 uv; d = dStar(p, uv); if (d < best) { best = d; part = 10 + quadOf(uv); } }
+    for (int i = 0; i < 4; i++) { if (i >= uFinN) break; d = dFin(p, i); if (d < best) { best = d; part = 10 + i; } }
     if (part == 0) {
       vec3 s = screenQ(p);
       sq = s.xy;
+      int shell = uQuad == 1 ? 10 + quadOf(p.xy / uHeadB.xy) : 0;
       if (uShades == 1) return shadesAt(boxP(sq)) ? 3 : accentAt(p) ? 2 : 0; // no bezel: sunglasses have no frame colour
+      if (uScrStar == 1) { // a sparkle screen, its bezel (or quadrant tints) round it
+        float st = sdStar2(sq, 1.0);
+        if (st < 0.0) return 3;
+        if (st < uBezel) return uQuad == 2 ? 10 + quadOf(sq) : 1;
+        return accentAt(p) ? 2 : shell;
+      }
       if (s.z < 1.0) return 3;
       if (uBezel > 0.0 && s.z < pow(1.0 + uBezel, uScreen.w)) return 1;
-      return accentAt(p) ? 2 : 0;
+      return accentAt(p) ? 2 : shell;
+    }
+    if (part == 9) { // the snout, its tip in the accent colour
+      vec3 ab = uSnB - uSnA;
+      return uSnTip > 0.0 && dot(p - uSnA, ab) / dot(ab, ab) > 1.0 - uSnTip ? 2 : 1;
     }
     if (part == 6) {
       vec3 g = gogLocal(p, gi);
@@ -432,9 +502,12 @@ const FRAG = /* glsl */ `
               int tone;
               if (glyphLit(sq, tone)) c = uFaceDebug == 1 ? vec3(0.0, 1.0, 0.0) : uGlow[tone];
               else if (uEyesOn == 1 && eyesLit(boxP(sq))) c = uFaceDebug == 1 ? vec3(1.0, 0.0, 0.0) : uGlow[3];
-              if (uShades == 1 ? shadesGlint(boxP(sq)) : glint(sq)) c = uScr[2];
+              if (sweepLit(boxP(sq))) c = uFaceDebug == 1 ? vec3(0.0, 1.0, 0.0) : uScr[2]; // the debug render counts it as the working face
+              else if (uGlyphSet == 4 && uGlyph.x > 0.0) {} // the sweep replaces the resting glint
+              else if (uShades == 1 ? shadesGlint(boxP(sq)) : glint(sq)) c = uScr[2];
             } else if (sq.x < -0.35 && sq.y > 0.2 && sq.y < 0.62 && sq.x > -0.7) c = uScr[2];
-          } else if (r == 2) c = uAcc[b];
+          } else if (r >= 10) c = uTint[(r - 10) * 4 + b];
+          else if (r == 2) c = uAcc[b];
           else if (r == 1) c = uTrim[b];
           else c = uShell[b];
         }
@@ -471,6 +544,8 @@ const PROXY_GEO = new THREE.BoxGeometry(BMAX[0] - BMIN[0], BMAX[1] - BMIN[1], BM
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const colors = (hexes) => hexes.map((h) => new THREE.Color(h));
+// A palette's four quadrant ramps (top, left, bottom, right), flattened; palettes without tints use the shell.
+const tintsOf = (pal) => (pal.tints ?? [pal.shell, pal.shell, pal.shell, pal.shell]).flat();
 const TAU = Math.PI * 2;
 
 // ---------------------------------------------------------------- JS port of the head field
@@ -514,6 +589,21 @@ export function hexField(b, r) {
     return Math.min(Math.max(d2, wz), 0) + Math.hypot(Math.max(d2, 0), Math.max(wz, 0)) - r;
   };
 }
+/** A four-point sparkle in 2D (sdStar2 in the shader): tips at distance s; curve = starCurve, tip = starTip. */
+export function star2(px, py, s, curve, tip) {
+  const r = tip * s, b = s - r, c = curve * b;
+  const x = Math.abs(px), y = Math.abs(py), qx = x - b, qy = y - b;
+  const box = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0);
+  return Math.max(box, Math.hypot(b - c, c) - Math.hypot(x - c, y - c)) - r;
+}
+/** The sparkle head (dStarHead in the shader): tips at b.x across and b.y up, b.z thick in the middle. */
+export function starField(b, curve, tip) {
+  const sy = b.x / b.y;
+  return (p) => {
+    const d2 = star2(p.x, p.y * sy, b.x, curve, tip);
+    return Math.max(d2, (Math.abs(p.z) - b.z * (1 - Math.exp(Math.min(d2 / b.z, 4)))) * 0.7) * Math.min(1, 1 / sy);
+  };
+}
 /** Where a ray from inside a field leaves it (bisection). */
 export function exitAlong(field, from, dir, maxT = 0.8) {
   let lo = 0, hi = maxT;
@@ -548,7 +638,9 @@ export function layout(P) {
   const head = { b: V(P.headW, P.headH, P.headD), k: [P.headCorner * Math.min(P.headW, P.headH, P.headD), P.headRound, P.headTaper, P.headFlat] };
   const shapeF = shapeField(head.b, head.k);
   const hexF = P.headHex > 0.001 ? hexField(head.b, head.k[0]) : null;
-  const headF = hexF ? (p) => mix(shapeF(p), hexF(p), P.headHex) : shapeF;
+  const hexed = hexF ? (p) => mix(shapeF(p), hexF(p), P.headHex) : shapeF;
+  const starF = P.headStar > 0.001 ? starField(head.b, P.starCurve, P.starTip) : null;
+  const headF = starF ? (p) => mix(hexed(p), starF(p), P.headStar) : hexed;
   const headBottom = -exitAlong(headF, V(), V(0, -1, 0));
   const chin = { on: P.chin === 1, c: V(0, headBottom - 0.15 * P.chinR, -0.1 * P.headD), r: P.chinR };
   const core = chin.on ? (p) => smin(headF(p), p.clone().sub(chin.c).length() - chin.r, 0.03) : headF;
@@ -669,7 +761,20 @@ export function layout(P) {
     snout = { a, b: a.clone().addScaledVector(dir, P.snoutL), r: [P.snoutR, 0.5 * P.snoutR] };
   }
 
-  return { P, head, headF, core, chin, top, bottom: Math.min(bottom, nozzleBottom, skirtBottom, snout ? snout.b.y - snout.r[1] : 1), rim, ears, gog, bridge, strap, crest, ant, hook, crown, skirt, snout, thr };
+  // Fins: four tapered cones out of the head in its front plane, up, left, down and right (a compass
+  // sparkle), rooted well inside it and reaching finL past its surface.
+  const fins = [];
+  if (P.fins === 1) {
+    for (const [x, y] of [[0, 1], [-1, 0], [0, -1], [1, 0]]) {
+      const dir = V(x, y, 0), out = exitAlong(core, V(), dir, 1), tipR = P.finR * P.finTip;
+      fins.push({ a: dir.clone().multiplyScalar(0.55 * out), b: dir.clone().multiplyScalar(out + P.finL - tipR), r: [P.finR, tipR] });
+    }
+  }
+  const finBottom = Math.min(...fins.map((f) => f.b.y - f.r[1]), 1);
+  // The antenna star sits on the stalk's end (its bottom tip over it), facing front.
+  const star = P.starPart === 1 && ant.length ? { c: ant[0].base.clone().addScaledVector(ant[0].dir, P.antL + 0.7 * P.starR), rot: [1, 0] } : null;
+
+  return { P, head, headF, core, chin, top, bottom: Math.min(bottom, nozzleBottom, skirtBottom, finBottom, snout ? snout.b.y - snout.r[1] : 1), rim, ears, gog, bridge, strap, crest, ant, hook, crown, skirt, snout, thr, fins, star };
 }
 
 // ---------------------------------------------------------------- motion
@@ -801,6 +906,19 @@ export function skirtAt(Lay, t) {
   });
 }
 
+/**
+ * The small sparkle at time t, in the body frame: the antenna star stays put; the orbiting star goes
+ * round the head once per 6 s idle loop (so it locks to both loops), dipping in front and rising
+ * behind, and spins orbSpin turns per orbit. At the stills' t = 0.9 s it's at the front left.
+ */
+export function starAt(Lay, t) {
+  const { P } = Lay;
+  if (P.starPart !== 2) return Lay.star;
+  const th = (TAU * t) / LOOP - 1.65;
+  const R = P.orbR * P.headW;
+  return { c: V(R * Math.sin(th), P.orbY * P.headH - P.orbTilt * R * Math.cos(th), R * Math.cos(th)), rot: [Math.cos(P.orbSpin * th), Math.sin(P.orbSpin * th)] };
+}
+
 /** Pieces the silhouette is meant to have with smoke and sparkles off: always 1. */
 export const intendedPieces = () => 1;
 
@@ -813,6 +931,8 @@ export function extents(Lay) {
   for (const c of Lay.crown) top = Math.max(top, c.y + P.crownR + 0.25 * P.crownK); // a smooth union bulges by up to k / 4
   if (P.topper === 2) top = Math.max(top, Lay.crest.c.y + Lay.crest.b.y);
   if (P.topper === 1) for (const g of Lay.gog) top = Math.max(top, g.c.y + P.gogH * Math.abs(g.y.y) + P.gogT * Math.abs(g.z.y));
+  if (Lay.star) top = Math.max(top, Lay.star.c.y + P.starR); // the antenna star (an orbiting one floats free, like the smoke)
+  for (const f of Lay.fins) top = Math.max(top, f.b.y + f.r[1]);
   // Half-width at rest (for the brand size-class check): head, rim, ears, crown puffs, skirt.
   let half = P.headW * Math.max(1, P.headTaper);
   if (P.rim) half = Math.max(half, Lay.rim.r[0] + P.rimT);
@@ -820,6 +940,7 @@ export function extents(Lay) {
   for (const c of Lay.crown) half = Math.max(half, Math.abs(c.x) + P.crownR + 0.25 * P.crownK);
   if (P.topper === 1) for (const g of Lay.gog) half = Math.max(half, Math.abs(g.c.x) + P.gogW * Math.abs(g.x.x) + P.gogT * Math.abs(g.z.x));
   for (const k of Lay.skirt) half = Math.max(half, Math.abs(k.a.x) + P.skirtR, k.c ? Math.abs(k.c.x) + P.skirtR : 0);
+  for (const f of Lay.fins) half = Math.max(half, Math.abs(f.b.x) + f.r[1]);
   return { top: top * P.size, bottom: Lay.bottom * P.size, half: half * P.size };
 }
 
@@ -853,6 +974,11 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     uSkirt: { value: 0 }, uSkirtN: { value: 0 }, uSkA: { value: vecs(MAX_SKIRT) }, uSkB: { value: vecs(MAX_SKIRT) }, uSkC: { value: vecs(MAX_SKIRT) }, uSkR: { value: 0 },
     uSnout: { value: 0 }, uSnA: { value: V() }, uSnB: { value: V(0, 0, 1) }, uSnR: { value: new THREE.Vector2() },
     uHookN: { value: 0 }, uHook: { value: vecs(4) }, uSplit: { value: 0 }, uSplitY: { value: 0 }, uGlyphSet: { value: 0 }, uScrFlat: { value: 0 }, uShades: { value: 0 },
+    uSnTip: { value: 0 }, uTint: { value: colors(tintsOf(palette)) },
+    uHeadStar: { value: 0 }, uStarK: { value: new THREE.Vector2(1.15, 0.08) },
+    uStarPart: { value: 0 }, uStarC: { value: V() }, uStarRot: { value: new THREE.Vector2(1, 0) }, uStarS: { value: 0.03 }, uStarH: { value: 0.01 },
+    uFinN: { value: 0 }, uFinA: { value: vecs(4) }, uFinB: { value: vecs(4).map((v) => v.set(0, 1, 0)) }, uFinR: { value: new THREE.Vector2() },
+    uQuad: { value: 0 }, uScrStar: { value: 0 },
   };
   const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: U, side: THREE.BackSide });
   const proxy = new THREE.Mesh(PROXY_GEO, mat);
@@ -895,6 +1021,16 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     if (Lay.snout) { U.uSnA.value.copy(Lay.snout.a); U.uSnB.value.copy(Lay.snout.b); U.uSnR.value.set(...Lay.snout.r); }
     U.uHookN.value = Lay.hook.length; Lay.hook.forEach((h, i) => U.uHook.value[i].copy(h));
     U.uSplit.value = P.screenSplit; U.uSplitY.value = P.splitY; U.uGlyphSet.value = P.glyphSet; U.uScrFlat.value = P.screenFlat; U.uShades.value = P.screenShades;
+    U.uSnTip.value = P.snout ? P.snoutTip : 0;
+    U.uHeadStar.value = P.headStar; U.uStarK.value.set(P.starCurve, P.starTip);
+    U.uStarPart.value = P.starPart === 2 || Lay.star ? P.starPart : 0; U.uStarS.value = P.starR; U.uStarH.value = P.starT * P.starR;
+    placeStar(0);
+    U.uFinN.value = Lay.fins.length; Lay.fins.forEach((f, i) => { U.uFinA.value[i].copy(f.a); U.uFinB.value[i].copy(f.b); }); if (Lay.fins.length) U.uFinR.value.set(...Lay.fins[0].r);
+    U.uQuad.value = P.quadTint; U.uScrStar.value = P.screenStar;
+  }
+  function placeStar(t) {
+    const st = starAt(Lay, t);
+    if (st) { U.uStarC.value.copy(st.c); U.uStarRot.value.set(...st.rot); }
   }
   function placeSkirt(t) {
     skirtAt(Lay, t).forEach((k, i) => { U.uSkA.value[i].copy(k.a); if (k.b) U.uSkB.value[i].copy(k.b); if (k.c) U.uSkC.value[i].copy(k.c); });
@@ -903,6 +1039,8 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
 
   function setPalette(pal) {
     for (const [u, k] of [['uShell', 'shell'], ['uTrim', 'trim'], ['uAcc', 'accent'], ['uGlow', 'glow'], ['uScr', 'screen'], ['uSmoke', 'smoke']]) U[u].value.forEach((c, i) => c.set(pal[k][i]));
+    const tints = tintsOf(pal);
+    U.uTint.value.forEach((c, i) => c.set(tints[i]));
   }
 
   const q = new THREE.Quaternion();
@@ -919,9 +1057,10 @@ export function makeDrone({ palette = PALETTES.base } = {}) {
     const beh = behaviour(t, motion);
     const face = faceAt(beh);
     U.uBlink.value = Math.min(blink ?? beh.blink, face.eyeOpen);
-    U.uEyesOn.value = face.eyes ? 1 : 0;
+    U.uEyesOn.value = face.eyes && !P.noEyes ? 1 : 0;
     U.uEyeXf.value.set(P.glance * beh.glance, P.gaze, P.eyeScale, U.uBlink.value);
     if (P.skirtWave > 0) placeSkirt(t);
+    if (P.starPart === 2) placeStar(t);
     U.uGlyph.value.set(face.glyphs, beh.workT, P.glyphRate, P.glyphPx);
     U.uFaceDebug.value = faceDebug ? 1 : 0;
     U.uSmokeOn.value = smoke ? 1 : 0;

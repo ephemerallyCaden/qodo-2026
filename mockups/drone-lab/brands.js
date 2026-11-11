@@ -10,7 +10,7 @@
 // signature accessory and the brand palette (ACCESSORIES); the unknown agent is the generic drone.
 import { FINAL } from './variants.js';
 import { DEFAULTS, PARAM_BY_KEY, DRONE_EYE } from './params.js';
-import { BRAND_PALETTES } from './palette.js';
+import { BRAND_PALETTES, OPTION_PALETTES } from './palette.js';
 import { hashStr } from '../asset-viewer/faces.js';
 
 // Eyes (V2 indices): 0 dots 1 cyclops 2 visor slit 3 binocular 4 three 5 happy 6 LED bar 7 heartbeat 8 slant 9 X;
@@ -41,6 +41,11 @@ export const ACCESSORIES = {
     words: 'six curling tentacles under the saucer, swaying with the bob',
     params: { skirt: 2, skirtN: 6, skirtL: 0.06, skirtR: 0.015, skirtSpread: 0.86, skirtCurl: 0.8, skirtWave: 0.006 },
     detail: { key: 'skirtL', min: 0.054, max: 0.066 },
+  },
+  'antenna star': {
+    words: 'a small puffy four-point sparkle on the antenna in place of its tip, its tips in the four Gemini colours',
+    params: { starPart: 1, starR: 0.06, starT: 0.42 },
+    detail: { key: 'starR', min: 0.057, max: 0.063 },
   },
 };
 /** The face keys an accessory drone may set besides its accessory: its eye and its working glyphs. */
@@ -161,16 +166,18 @@ const ENTRIES = [
   {
     id: 'qodo', name: 'Qodo', covers: 'Qodo (the code-review bot and its fix commits)',
     mascot: 'the white anteater in a purple hoodie, with classic black sunglasses, on a skateboard',
-    signature: 'a white hooded head with a long white snout and black sunglasses for a screen (two lenses under a straight brow bar), its slant eyes glowing through; purple only in its boosters and a hem band; reviews: reads diff marks row by row, head dipped',
+    signature: 'a white hooded head with a long white snout tipped purple and black sunglasses for a face, no eyes; purple in its boosters, a hem band and its nose tip; reviews: head dipped, a glint sweeping across the lenses line by line',
     params: {
       rim: 0, antenna: 0,
       headW: 0.112, headH: 0.098, headD: 0.112, headRound: 0.9, headCorner: 0.6, headTaper: 1.05, headFlat: 0.2,
       snout: 1, snoutL: 0.09, snoutR: 0.024, snoutY: -0.28, snoutDrop: 0.35,
       ears: 1, earR: 0.026, earT: 0.012, earY: 0.55,
+      snoutTip: 0.3, // a purple nose tip (human, 2026-11-11)
       screenW: 0.78, screenH: 0.5, screenY: 0.32, screenRound: 4, bezel: 0.14, eyes: 8, eyeScale: 0.8, screenShades: 1,
+      noEyes: 1, // just the sunglasses (human, 2026-11-11: "remove the angry teal eyes")
       thrAccent: 1, accent: 1, accentY: -0.65, accentW: 0.12, // purple boosters and a hoodie hem band
       thrusters: 0, thrR: 0.024, thrL: 0.022, thrSpread: 0.6, thrFlare: 1.1,
-      smoke: 0, puffSize: 0.95, puffRate: 0.4, sparkles: 1, glyphSet: 2, workNod: 0.2,
+      smoke: 0, puffSize: 0.95, puffRate: 0.4, sparkles: 1, glyphSet: 4, workNod: 0.2, // reviews: head dipped, a glint sweeping across the lenses
       bobAmp: 0.028, drift: 0.2, bank: 0.32, lookYaw: 0.3, size: 1.5,
     },
     detail: { key: 'snoutL', min: 0.082, max: 0.098 },
@@ -212,6 +219,91 @@ export const PROVIDERS = BRANDS.filter((b) => b.id !== 'generic' && b.id !== 'un
 /** The drones A4 measures: a `sameAs` drone is its twin (only the label differs), so it isn't measured again. */
 export const DISTINCT = BRANDS.filter((b) => !b.sameAs);
 
+// Google options (human, 2026-11-11): "for the google bot, I want to completely redesign it ... inspired
+// by the google gemini logo ... do 5 variations I can pick from". The Gemini sparkle is a four-point
+// star with deeply concave sides and rounded tips, a soft gradient from red at the top, yellow on the
+// left and green at the bottom to blue on the right and in the middle. Each option maps that gradient
+// to flat quadrant panels of BLK 36 (palette.js OPTION_PALETTES `tints`: top, left, bottom, right) on
+// a different idea. They're normalised like the brand drones but aren't in BRANDS: the current Google
+// drone stays until the human picks, so the asset library's catalogue is unchanged.
+const OPTION_ENTRIES = [
+  {
+    id: 'g1', name: 'G1 · Sparkle', brand: 'google',
+    look: 'head-is-body: the drone is a puffy four-point sparkle, its tips in the four Gemini colours, with a round screen in its blue middle',
+    params: {
+      rim: 0, antenna: 0,
+      headStar: 1, headW: 0.15, headH: 0.15, headD: 0.06, headRound: 0, starCurve: 1.15, starTip: 0.08, quadTint: 1,
+      screenW: 0.4, screenH: 0.4, screenY: 0, screenRound: 2, bezel: 0.2, eyes: 0,
+      thrusters: 0, thrR: 0.02, thrL: 0.018, thrSpread: 0.9, thrFlare: 1,
+      smoke: 0, puffSize: 0.9, puffRate: 0.4, sparkles: 3,
+      bobAmp: 0.035, drift: 0.16, bank: 0.28, lookYaw: 0.4,
+    },
+    detail: { key: 'starCurve', min: 1.1, max: 1.2 },
+    trims: [['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff']],
+  },
+  {
+    id: 'g2', name: 'G2 · Star antenna', brand: 'google',
+    look: "the generic drone's exact shape in white, a big four-colour sparkle on its antenna in place of the tip",
+    accessory: 'antenna star', face: {},
+    trims: [['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], ['#36277f', '#354ab2', '#4185d8', '#5ab9e5']],
+  },
+  {
+    id: 'g3', name: 'G3 · Sparkle visor', brand: 'google',
+    look: "the generic drone's exact shape in Gemini's light blue, its screen a four-point sparkle framed in the four Gemini colours, small dot eyes in the middle",
+    face: { screenStar: 1, quadTint: 2, bezel: 0.24, screenW: 0.9, screenH: 0.62, screenY: 0.2, eyes: 0, eyeScale: 0.6 },
+    detail: { key: 'antL', min: 0.04, max: 0.05 },
+    trims: [['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff']],
+  },
+  {
+    id: 'g4', name: 'G4 · Compass fins', brand: 'google',
+    look: 'a round light-blue core with four tapered fins pointing up, left, down and right in the four Gemini colours (a sparkle drawn as a compass)',
+    params: {
+      rim: 0, antenna: 0,
+      headW: 0.1, headH: 0.1, headD: 0.1, headRound: 1, headCorner: 0.6, headTaper: 1, headFlat: 0,
+      fins: 1, finL: 0.06, finR: 0.03, finTip: 0.3,
+      screenW: 0.7, screenH: 0.55, screenY: 0, screenRound: 3, bezel: 0.14, eyes: 5,
+      thrusters: 0, thrR: 0.02, thrL: 0.018, thrSpread: 0.9, thrFlare: 1,
+      smoke: 0, puffSize: 0.9, puffRate: 0.4, sparkles: 2,
+      bobAmp: 0.03, drift: 0.16, bank: 0.28, lookYaw: 0.4,
+    },
+    detail: { key: 'finL', min: 0.055, max: 0.065 },
+    trims: [['#354ab2', '#4185d8', '#5ab9e5', '#a5e6ff'], ['#36277f', '#354ab2', '#4185d8', '#5ab9e5']],
+  },
+  {
+    id: 'g5', name: 'G5 · Orbiting sparkle', brand: 'google',
+    look: 'a Gemini-blue egg with a wraparound visor band, and a small four-colour sparkle orbiting its crown once per 6 s, spinning as it goes',
+    params: {
+      rim: 0, antenna: 0,
+      headW: 0.1, headH: 0.13, headD: 0.105, headRound: 1, headCorner: 0.6, headTaper: 1, headFlat: 0.25,
+      starPart: 2, starR: 0.042, starT: 0.42, orbR: 1.5, orbY: 0.7, orbTilt: 0.25, orbSpin: 2,
+      screenW: 1.6, screenH: 0.35, screenY: 0.05, screenRound: 4, bezel: 0.1, eyes: 0,
+      thrusters: 1, thrR: 0.03, thrL: 0.018, thrFlare: 0.9,
+      smoke: 0, puffSize: 0.9, puffRate: 0.4, sparkles: 2,
+      bobAmp: 0.035, drift: 0.16, bank: 0.28, lookYaw: 0.4,
+    },
+    detail: { key: 'orbY', min: 0.65, max: 0.75 },
+    trims: [['#909edd', '#c1d9f2', '#ffffff', '#ffffff'], ['#6b74b2', '#c1d9f2', '#ffffff', '#ffffff']],
+  },
+];
+export const GOOGLE_OPTIONS = OPTION_ENTRIES.map((o) => ({
+  ...o,
+  params: { ...DEFAULTS, ...FINAL.params, ...ACCESSORIES[o.accessory]?.params, ...o.face, ...o.params },
+  detail: o.detail ?? ACCESSORIES[o.accessory].detail,
+  palette: OPTION_PALETTES[o.id],
+}));
+export const OPTION_BY_ID = Object.fromEntries(GOOGLE_OPTIONS.map((o) => [o.id, o]));
+
+// The Gemini sparkle's colours, sampled from the human's reference (21 x 21 px means; the soft blends
+// between them aren't mapped: each quadrant is one flat ramp), -> BLK 36 for palette.js GEMINI_TINTS.
+// `note` flags a pick to keep an eye on. lab.mjs adds the nearest entries and the OKLab distances.
+export const GEMINI_COLOURS = [
+  { part: 'top tip (coral red)', quad: 0, hex: '#df525f', chosen: ['#cc5250'], why: '' },
+  { part: 'left side (orange)', quad: 1, hex: '#e2992d', chosen: ['#ff965f'], why: '' },
+  { part: 'left tip (yellow)', quad: 1, hex: '#d4c02c', chosen: ['#ffe091'], why: '', note: 'a loose match (0.129): BLK 36 has no saturated yellow, so the left tip reads cream-yellow over an orange shade' },
+  { part: 'bottom tip (green)', quad: 2, hex: '#2bb67b', chosen: ['#42bc7f'], why: '', note: "0.041 from the [OIII] event teal #00bc9c, and the green ramp's #22896e is 0.043 from #007c66: closer than the teal slate the brand drones avoid (0.037). It's a lit body colour, never emissive, and only the bottom quadrant, beside red, yellow and blue" },
+  { part: 'right tip and middle (blue)', quad: 3, hex: '#3287ff', chosen: ['#4185d8'], why: '' },
+];
+
 // Per-session seeded details: personality ranges every brand shares (applied round the brand's
 // own value, clamped to the parameter's range), plus each brand's one shape detail and trims.
 export const SESSION_VARY = { puffRate: 0.08, gaze: 1, glance: 1, lookYaw: 0.06 };
@@ -232,7 +324,7 @@ const clampTo = (key, v) => { const p = PARAM_BY_KEY[key]; return Math.min(p.max
  * Returns { params, palette, phase, trim } (phase: a time offset in seconds, so sessions bob out of step).
  */
 export function sessionLook(brandId, session) {
-  const b = BRAND_BY_ID[brandId];
+  const b = BRAND_BY_ID[brandId] ?? OPTION_BY_ID[brandId]; // a brand drone, or a Google option
   if (session == null) return { params: b.params, palette: b.palette, phase: 0, trim: -1 };
   const rnd = mulberry32(hashStr(`${brandId}:${session}`));
   const params = { ...b.params };
