@@ -34,8 +34,8 @@ Today every top-level folder is one planet (#18). In most repos one folder (`src
 ## Assumptions
 - [x] A1. **Decided (human, 2026-11-11):** files directly inside a root (e.g. `src/cli.ts`) become **moonlets of the star**, like repo root files (`kind: 'root-file'`). Every planet is a real subfolder.
 - [ ] A2. Tests stay moons of the planet that holds their `testOf` target, which may now be a content planet such as `src/core`.
-- [ ] A3. With no root (today's mapping), output is byte-identical to the current layout, so existing goldens don't change.
-- [ ] A4. The outer ring starts one slot spacing beyond the outermost content slot that could be needed. Exact spacing is a layout constant.
+- [x] A3. **Agreed (team lead, 2026-11-11):** with no root (today's mapping), output is byte-identical to the current layout **modulo `source.roots` and `zone`**. C9 makes those two keys required, so every layout gains `roots: []` and `zone: 'outer'`; removing them gives the previous bytes exactly. The golden updates are one Golden-Update commit whose diff is only those keys.
+- [x] A4. **Resolved (team lead, 2026-11-11):** content planets take slots 0–7 (`CONTENT_SLOTS = 8`, a layout constant) and the outer ring starts at slot 9, one empty slot beyond. A content planet born while every content slot is taken takes the next free slot past the gap. A boundary derived from the history (say, one past the highest content slot ever used) would grow whenever a new content planet is born while every content slot is taken, which in a growing repo is most new subfolders, and then every outer planet would move out one spacing. That breaks C7 (adding commits never moves a body), and never moving bodies beats a tight ring.
 
 ## Flow
 `commet scan` → (no saved roots and a TTY) guess + prompt → save `config.json` → scan → `layout(snapshot, history, roots)` → `layout.json` (with `source.roots`) → fog uses the same planet set → `commet open` shows content planets close to the star, outer planets beyond.
