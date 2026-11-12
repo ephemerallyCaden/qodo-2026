@@ -24,6 +24,14 @@ const commit = (dir: string, env: NodeJS.ProcessEnv = {}) => {
   git(dir, ['commit', '-q', '-m', 'change'], env);
   return Date.now() - t0;
 };
+/** The repo's files outside Commet's own state dir (where locks leave their last released slot). */
+const work = (dir: string) => Object.fromEntries(Object.entries(tree(dir)).filter(([k]) => !k.startsWith('/.git/commet')));
+/** Lock slots under `dir` that are still held (not released). */
+const heldSlots = (dir: string) => Object.entries(tree(dir)).filter(([k, v]) => /\.lock\.\d+$/.test(k)
+  && !v.endsWith(` ${Buffer.from('released').toString('base64')}`)).map(([k]) => k);
+/** Everything under `dir` but released lock slots. */
+const noSlots = (dir: string) => Object.fromEntries(Object.entries(tree(dir)).filter(([k]) => !/\.lock\.\d+$/.test(k) || heldSlots(dir).includes(k)));
+
 /** Runs a hook file directly the way git does (relative $0, from the work tree), returning its exit code and stderr. */
 const runHook = (dir: string, rel: string, env: NodeJS.ProcessEnv = {}) => {
   const r = spawnSync(rel, [], { cwd: dir, env: { ...process.env, ...env }, encoding: 'utf8' });
@@ -99,15 +107,17 @@ describe('consent', () => {
   it('one install or remove at a time: another holding the lock means nothing is written', async () => {
     const dir = hookRepo();
     writeFileSync(join(dir, '.git/hooks/post-commit'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-    writeFileSync(join(dir, '.git/commet-hook.lock.1'), String(process.pid));
+    mkdirSync(join(dir, '.git/commet'), { mode: 0o700 });
+    writeFileSync(join(dir, '.git/commet/hook.lock.1'), String(process.pid));
     const before = tree(dir);
     const r = await hook(['install', '--yes'], dir, { paths: fakeCli() });
     expect(r.code).toBe(5);
     expect(r.err).toContain('another `commet hook install` or `remove` is running; nothing was written');
     expect(tree(dir)).toEqual(before);
-    rmSync(join(dir, '.git/commet-hook.lock.1'));
+    rmSync(join(dir, '.git/commet/hook.lock.1'));
     expect((await hook(['install', '--yes'], dir, { paths: fakeCli() })).code).toBe(0);
-    expect(readdirSync(join(dir, '.git')).filter((n) => n.startsWith('commet-hook.lock'))).toEqual([]);
+    expect(heldSlots(join(dir, '.git/commet'))).toEqual([]);
+    expect(readdirSync(join(dir, '.git')).filter((n) => n.includes('lock'))).toEqual([]);
   });
 
   it('rejects unknown and contradictory flags', async () => {
@@ -164,11 +174,11 @@ describe('git hooks', () => {
     const target = join(dir, '.git', 'shared-hook');
     writeFileSync(target, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     symlinkSync(target, join(dir, '.git/hooks/post-commit'));
-    const before = tree(join(dir, '.git'));
+    const before = work(dir);
     expect((await hook(['install', '--yes', '--git-only'], dir, { paths: fakeCli() })).code).toBe(0);
     expect(lstatSync(join(dir, '.git/hooks/post-commit.commet-chained')).isSymbolicLink()).toBe(true);
     await hook(['remove'], dir);
-    expect(tree(join(dir, '.git'))).toEqual(before);
+    expect(work(dir)).toEqual(before);
   });
 
   it('installing twice changes nothing, and remove without install (or twice) is a no-op', async () => {
@@ -184,9 +194,12 @@ describe('git hooks', () => {
     expect(again).toEqual({ code: 0, out: 'commet hooks are already installed; nothing to change\n', err: '' });
     expect(tree(dir)).toEqual(installed);
     expect((await hook(['remove'], dir)).code).toBe(0);
-    expect(tree(dir)).toEqual(pristine);
+    // Every byte outside Commet's state is as it was; inside it, only the hook lock's released slot.
+    expect(work(dir)).toEqual(pristine);
+    expect(heldSlots(join(dir, '.git/commet'))).toEqual([]);
+    const removed = tree(dir);
     expect((await hook(['remove'], dir)).out).toBe('no Commet hooks are installed; nothing to remove\n');
-    expect(tree(dir)).toEqual(pristine);
+    expect(tree(dir)).toEqual(removed);
   });
 
   it('a CLI that moved is updated in place, keeping the chained hook', async () => {
@@ -262,7 +275,7 @@ describe('git hooks', () => {
     expect(r.err.includes(shared)).toBe(false);
     expect(tree(shared)).toEqual({});
     // The refused run wrote nothing; the Claude Code part alone (run second) wrote only its file.
-    const after = tree(dir);
+    const after = work(dir);
     expect(Object.keys(after).filter((k) => !(k in before))).toEqual(['/.claude', `/${SETTINGS}`]);
 
     const tracked = hookRepo();
@@ -293,7 +306,7 @@ describe('git hooks', () => {
     const dir = hookRepo();
     writeFileSync(join(dir, '.git/hooks/post-merge'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     mkdirp(join(dir, '.claude'));
-    const before = tree(dir);
+    const before = work(dir);
     // The settings folder turns read-only while the question is open, so only the settings write fails.
     const r = await hook(['install'], dir, { paths: fakeCli(), ask: async () => {
       chmodSync(join(dir, '.claude'), 0o555);
@@ -301,7 +314,7 @@ describe('git hooks', () => {
     } });
     chmodSync(join(dir, '.claude'), 0o755);
     expect(r.code).toBe(1);
-    expect(tree(dir)).toEqual(before);
+    expect(work(dir)).toEqual(before);
   });
 
   it('remove never follows .git/hooks swapped for a link out of the repo, even to Commet-marked hooks', async () => {
@@ -322,14 +335,14 @@ describe('git hooks', () => {
     await hook(['install', '--yes', '--git-only'], dir, { paths });
     chmodSync(join(dir, '.git/hooks/post-merge'), 0o644);
     mkdirp(join(dir, '.claude'));
-    const before = tree(dir);
+    const before = work(dir);
     const r = await hook(['install'], dir, { paths, ask: async () => {
       chmodSync(join(dir, '.claude'), 0o555);
       return 'y';
     } });
     chmodSync(join(dir, '.claude'), 0o755);
     expect(r.code).toBe(1);
-    expect(tree(dir)).toEqual(before);
+    expect(work(dir)).toEqual(before);
   });
 
   it('refuses to write into a hooks folder swapped for a link after planning', () => {
@@ -424,7 +437,7 @@ describe('Claude Code hook', () => {
     await hook(['install', '--yes', '--claude-only'], dir, { paths: fakeCli() });
     expect(statSync(join(dir, SETTINGS)).isFile()).toBe(true);
     await hook(['remove'], dir);
-    expect(tree(dir)).toEqual(before);
+    expect(work(dir)).toEqual(before);
   });
 
   it('a file reformatted since install loses only Commet\'s hook, keeping settings added since', async () => {
@@ -647,7 +660,7 @@ describe('hook refresh', () => {
     release();
     await first;
     expect(scans).toBe(2);
-    expect(tree(dir)).toEqual({});
+    expect(noSlots(dir)).toEqual({});
   });
 
   it('never takes a lock its owner is still writing (no pid yet, just made)', async () => {
@@ -668,7 +681,7 @@ describe('hook refresh', () => {
       return 0;
     });
     expect(scans).toBe(8);
-    expect(tree(dir)).toEqual({});
+    expect(noSlots(dir)).toEqual({});
   });
 
   it('a dead holder is overtaken by the next slot, never deleted by name; a contender below a newer slot backs off', () => {
@@ -685,11 +698,33 @@ describe('hook refresh', () => {
     // One that saw slot 1 too and tries slot 2 can't create it.
     expect(claim(lock, 2)).toBeNull();
     expect(Object.keys(tree(dir))).toEqual(['/x.lock.2']);
+    // Released, the slot stays (so its number isn't handed out again) and the next holder goes above it.
     release();
-    expect(tree(dir)).toEqual({});
+    expect(readFileSync(`${lock}.2`, 'utf8')).toBe('released');
     const again = tryLock(lock)!;
-    expect(Object.keys(tree(dir))).toEqual(['/x.lock.1']);
+    expect(Object.keys(tree(dir))).toEqual(['/x.lock.3']);
     again();
+  });
+
+  it('a slow contender can never take over a number another holder took and released (PR #105 r4)', () => {
+    const dir = tempDir('commet-hooks-recycle-');
+    const lock = join(dir, 'x.lock');
+    // A dead holder at slot 1. Slow D lists the slots now, sees it, and means to claim slot 2...
+    writeFileSync(`${lock}.1`, deadPid());
+    const dTarget = 2;
+    // ...but first A and B each take the lock and let it go, and C takes it and holds it.
+    tryLock(lock)!();
+    tryLock(lock)!();
+    const c = tryLock(lock)!;
+    expect(c).toBeTypeOf('function');
+    const held = heldSlots(dir);
+    expect(held).toHaveLength(1);
+    // D now claims the slot it meant to: it must not get the lock, and C's slot must stand.
+    expect(claim(lock, dTarget)).toBeNull();
+    expect(heldSlots(dir)).toEqual(held);
+    expect(tryLock(lock)).toBeNull();
+    c();
+    expect(heldSlots(dir)).toEqual([]);
   });
 
   it('slots stay bounded: ten takeovers in a row leave at most two files', () => {
@@ -707,7 +742,8 @@ describe('hook refresh', () => {
     }
     expect(readdirSync(dir)).toEqual(['x.lock.11']);
     release();
-    expect(readdirSync(dir)).toEqual([]);
+    expect(readdirSync(dir)).toEqual(['x.lock.11']);
+    expect(heldSlots(dir)).toEqual([]);
   });
 
   it('takes over a lock its process left behind', async () => {
@@ -716,7 +752,7 @@ describe('hook refresh', () => {
     let scans = 0;
     await coalescedRefresh(dir, 'k', async () => (scans++, 0));
     expect(scans).toBe(1);
-    expect(tree(dir)).toEqual({});
+    expect(noSlots(dir)).toEqual({});
   });
 
   it('scans publish one at a time: a held lock is waited for, never written through', async () => {
@@ -726,7 +762,7 @@ describe('hook refresh', () => {
     expect(await withLock(lock, () => 1, 3, 5)).toBeNull();
     setTimeout(held, 50);
     expect(await withLock(lock, () => 2, 100, 5)).toEqual({ value: 2 });
-    expect(tree(dir)).toEqual({});
+    expect(noSlots(dir)).toEqual({});
   });
 
   it('a scan waits for the publish lock and, while another scan holds it, writes nothing', async () => {
@@ -745,7 +781,8 @@ describe('hook refresh', () => {
     const r = await hook(['refresh'], dir, { env: { CLAUDE_CONFIG_DIR: tempDir('commet-hooks-claude-') } });
     expect(r).toEqual({ code: 0, out: '', err: '' });
     expect(existsSync(join(dir, '.git/commet/snapshot.json'))).toBe(true);
-    expect(Object.keys(tree(join(dir, '.git/commet'))).filter((f) => f.includes('refresh') || f.includes('lock'))).toEqual([]);
+    expect(heldSlots(join(dir, '.git/commet'))).toEqual([]);
+    expect(Object.keys(tree(join(dir, '.git/commet'))).filter((f) => f.includes('pending'))).toEqual([]);
   });
 });
 

@@ -148,11 +148,11 @@ async function planInstallAll(repo: Repo, parts: Parts, paths: HookPaths): Promi
 
 /**
  * Runs `fn` holding the hook lock, so two installs or removes never act on the same hooks at once
- * (a second one could chain Commet's own hook over the user's). It sits beside git's own locks in
- * the common dir and is gone afterwards, so a remove leaves no trace of the install.
+ * (a second one could chain Commet's own hook over the user's). It lives with Commet's own state,
+ * so nothing of it is left in the hooks or the settings.
  */
 async function withHookLock<T>(repo: Repo, fn: () => Promise<T>): Promise<T> {
-  const release = tryLock(join(repo.commonDir, 'commet-hook.lock'));
+  const release = tryLock(join(stateDir(repo.commonDir), 'hook.lock'));
   if (!release) throw new CommetError('another `commet hook install` or `remove` is running; nothing was written', EXIT.state);
   try {
     return await fn();

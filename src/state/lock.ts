@@ -3,7 +3,9 @@
 // holder is the highest slot. Taking over a dead holder's lock creates the next slot rather than
 // deleting the dead one by name, so no check can be overtaken between judging a file and removing
 // it: two contenders for the same slot can't both create it, and one that lands below a newer slot
-// backs off.
+// backs off. Slot numbers never go down: releasing marks the slot released rather than deleting it,
+// and only a higher holder clears the slots below it, so a number is never handed out twice while
+// someone may still claim it (PR #105 r4). The last released slot stays, as one file.
 import { lstatSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 
@@ -20,19 +22,24 @@ const alive = (pid: number) => {
   }
 };
 
-/** Whether a slot's owner is gone (a slot with no pid yet is its owner's for FRESH_MS). */
+/** What a released slot holds. */
+const RELEASED = 'released';
+
+/** Whether a slot is free to pass: released, or its owner gone (a slot with no pid yet is its owner's for FRESH_MS). */
 function stale(file: string): boolean {
-  let pid = NaN;
+  let text = '';
   let mtimeMs: number;
   try {
     const st = lstatSync(file);
     mtimeMs = st.mtimeMs;
     // Only a regular file is read: a planted FIFO would block.
-    if (st.isFile()) pid = Number(readFileSync(file, 'utf8'));
+    if (st.isFile()) text = readFileSync(file, 'utf8');
   } catch {
     return true; // gone
   }
-  return Number.isSafeInteger(pid) && pid > 0 ? !alive(pid) : Date.now() - mtimeMs >= FRESH_MS;
+  if (text === RELEASED) return true;
+  const pid = Number(text);
+  return text !== '' && Number.isSafeInteger(pid) && pid > 0 ? !alive(pid) : Date.now() - mtimeMs >= FRESH_MS;
 }
 
 /** The lock's slot numbers, ascending. */
@@ -43,8 +50,9 @@ function slots(lock: string): number[] {
 }
 
 /**
- * Creates slot `n` and keeps it only if no higher slot exists then; slots below it are dead
- * holders' leftovers and are cleared. Returns the release, or null. Exported for tests.
+ * Creates slot `n` and keeps it only if no higher slot exists then; slots below it are released or
+ * dead holders' and are cleared. Returns the release, which marks the slot released (it stays, so
+ * its number is never reused), or null. Exported for tests.
  */
 export function claim(lock: string, n: number): (() => void) | null {
   const mine = `${lock}.${n}`;
@@ -67,7 +75,7 @@ export function claim(lock: string, n: number): (() => void) | null {
       // Not a file (planted): it only ever sits below the holder, so it's harmless where it is.
     }
   }
-  return () => rmSync(mine, { force: true });
+  return () => writeFileSync(mine, RELEASED);
 }
 
 /** Takes the lock, returning its release, or null while a live process holds it. */
