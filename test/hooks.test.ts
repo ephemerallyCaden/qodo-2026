@@ -1,7 +1,7 @@
 // `commet hook install | remove | event | refresh` (R7, #77): consent, chaining, worktrees,
 // core.hooksPath, the Claude Code settings merge, deduplicated events and coalesced refreshes.
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, posix, win32 } from 'node:path';
 import { Readable } from 'node:stream';
@@ -11,7 +11,7 @@ import { placePath } from '../src/hooks/event.js';
 import { applyInstall, HOOK_MARK, hookScript, planInstall } from '../src/hooks/git-hooks.js';
 import { coalescedRefresh } from '../src/hooks/refresh.js';
 import { EVENTS_FILE, readEvents } from '../src/state/events.js';
-import { clearGuard, tryLock, withLock } from '../src/state/lock.js';
+import { claim, tryLock, withLock } from '../src/state/lock.js';
 import { cli, scripted } from './fixtures/cli.js';
 import { calls, fakeCli, git, GIT_ENV, hook, hookRepo, mkdirp, tempDir, tree } from './fixtures/hooks.js';
 
@@ -99,15 +99,15 @@ describe('consent', () => {
   it('one install or remove at a time: another holding the lock means nothing is written', async () => {
     const dir = hookRepo();
     writeFileSync(join(dir, '.git/hooks/post-commit'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-    writeFileSync(join(dir, '.git/commet-hook.lock'), String(process.pid));
+    writeFileSync(join(dir, '.git/commet-hook.lock.1'), String(process.pid));
     const before = tree(dir);
     const r = await hook(['install', '--yes'], dir, { paths: fakeCli() });
     expect(r.code).toBe(5);
     expect(r.err).toContain('another `commet hook install` or `remove` is running; nothing was written');
     expect(tree(dir)).toEqual(before);
-    rmSync(join(dir, '.git/commet-hook.lock'));
+    rmSync(join(dir, '.git/commet-hook.lock.1'));
     expect((await hook(['install', '--yes'], dir, { paths: fakeCli() })).code).toBe(0);
-    expect(existsSync(join(dir, '.git/commet-hook.lock'))).toBe(false);
+    expect(readdirSync(join(dir, '.git')).filter((n) => n.startsWith('commet-hook.lock'))).toEqual([]);
   });
 
   it('rejects unknown and contradictory flags', async () => {
@@ -652,11 +652,11 @@ describe('hook refresh', () => {
 
   it('never takes a lock its owner is still writing (no pid yet, just made)', async () => {
     const dir = tempDir('commet-hooks-fresh-');
-    writeFileSync(join(dir, 'refresh-k.lock'), '');
+    writeFileSync(join(dir, 'refresh-k.lock.1'), '');
     let scans = 0;
     await coalescedRefresh(dir, 'k', async () => (scans++, 0));
     expect(scans).toBe(0);
-    expect(existsSync(join(dir, 'refresh-k.lock'))).toBe(true);
+    expect(existsSync(join(dir, 'refresh-k.lock.1'))).toBe(true);
   });
 
   it('keeps folding requests in until none arrive, however many rounds that takes', async () => {
@@ -671,55 +671,68 @@ describe('hook refresh', () => {
     expect(tree(dir)).toEqual({});
   });
 
-  it('only one process judges a stale lock: while another holds the reap guard, the stale lock stays', () => {
-    const dir = tempDir('commet-hooks-reap-');
+  it('a dead holder is overtaken by the next slot, never deleted by name; a contender below a newer slot backs off', () => {
+    const dir = tempDir('commet-hooks-slots-');
     const lock = join(dir, 'x.lock');
-    writeFileSync(lock, deadPid());
-    // A live process (this one) is mid-way through reaping it.
-    writeFileSync(`${lock}.reap`, String(process.pid));
-    expect(tryLock(lock)).toBe(false);
-    expect(readFileSync(lock, 'utf8')).not.toBe(String(process.pid));
-    rmSync(`${lock}.reap`);
-    expect(tryLock(lock)).toBe(true);
-    expect(readFileSync(lock, 'utf8')).toBe(String(process.pid));
-    expect(Object.keys(tree(dir))).toEqual(['/x.lock']);
+    writeFileSync(`${lock}.1`, deadPid());
+    const release = tryLock(lock)!;
+    expect(release).toBeTypeOf('function');
+    // The dead holder's slot was cleared; this process holds slot 2.
+    expect(Object.keys(tree(dir))).toEqual(['/x.lock.2']);
+    expect(tryLock(lock)).toBeNull();
+    // A contender that saw only the dead slot 1 and comes in late lands below slot 2, and backs off.
+    expect(claim(lock, 1)).toBeNull();
+    // One that saw slot 1 too and tries slot 2 can't create it.
+    expect(claim(lock, 2)).toBeNull();
+    expect(Object.keys(tree(dir))).toEqual(['/x.lock.2']);
+    release();
+    expect(tree(dir)).toEqual({});
+    const again = tryLock(lock)!;
+    expect(Object.keys(tree(dir))).toEqual(['/x.lock.1']);
+    again();
   });
 
-  it('a reap guard its process left behind is cleared, a live one never', () => {
-    const dir = tempDir('commet-hooks-guard-');
+  it('slots stay bounded: ten takeovers in a row leave at most two files', () => {
+    const dir = tempDir('commet-hooks-bounded-');
     const lock = join(dir, 'x.lock');
-    writeFileSync(lock, deadPid());
-    writeFileSync(`${lock}.reap`, deadPid());
-    expect(tryLock(lock)).toBe(false); // clears the dead reaper's guard this time
-    expect(existsSync(`${lock}.reap`)).toBe(false);
-    expect(tryLock(lock)).toBe(true);
-    writeFileSync(`${lock}.reap`, String(process.pid));
-    clearGuard(`${lock}.reap`);
-    expect(readFileSync(`${lock}.reap`, 'utf8')).toBe(String(process.pid));
+    const dead = deadPid();
+    let release = tryLock(lock)!;
+    for (let i = 0; i < 10; i++) {
+      // The holder dies without releasing: its slot now names a dead process.
+      const [held] = readdirSync(dir);
+      writeFileSync(join(dir, held!), dead);
+      release = tryLock(lock)!;
+      expect(release).toBeTypeOf('function');
+      expect(readdirSync(dir).length).toBeLessThanOrEqual(2);
+    }
+    expect(readdirSync(dir)).toEqual(['x.lock.11']);
+    release();
+    expect(readdirSync(dir)).toEqual([]);
   });
 
   it('takes over a lock its process left behind', async () => {
     const dir = tempDir('commet-hooks-stale-');
-    writeFileSync(join(dir, 'refresh-k.lock'), deadPid());
+    writeFileSync(join(dir, 'refresh-k.lock.1'), deadPid());
     let scans = 0;
     await coalescedRefresh(dir, 'k', async () => (scans++, 0));
     expect(scans).toBe(1);
+    expect(tree(dir)).toEqual({});
   });
 
   it('scans publish one at a time: a held lock is waited for, never written through', async () => {
     const dir = tempDir('commet-hooks-publish-');
     const lock = join(dir, 'publish.lock');
-    writeFileSync(lock, String(process.pid));
+    const held = tryLock(lock)!;
     expect(await withLock(lock, () => 1, 3, 5)).toBeNull();
-    setTimeout(() => rmSync(lock), 50);
+    setTimeout(held, 50);
     expect(await withLock(lock, () => 2, 100, 5)).toEqual({ value: 2 });
-    expect(existsSync(lock)).toBe(false);
+    expect(tree(dir)).toEqual({});
   });
 
   it('a scan waits for the publish lock and, while another scan holds it, writes nothing', async () => {
     const dir = hookRepo();
     mkdirSync(join(dir, '.git/commet'), { mode: 0o700 });
-    writeFileSync(join(dir, '.git/commet/publish.lock'), String(process.pid));
+    writeFileSync(join(dir, '.git/commet/publish.lock.1'), String(process.pid));
     const r = await cli(['scan'], dir, { ...process.env, CLAUDE_CONFIG_DIR: tempDir('commet-hooks-claude-') });
     expect(r.code).toBe(5);
     expect(r.err).toContain('another scan has been writing its results for 5 s; nothing was written');

@@ -152,12 +152,12 @@ async function planInstallAll(repo: Repo, parts: Parts, paths: HookPaths): Promi
  * the common dir and is gone afterwards, so a remove leaves no trace of the install.
  */
 async function withHookLock<T>(repo: Repo, fn: () => Promise<T>): Promise<T> {
-  const lock = join(repo.commonDir, 'commet-hook.lock');
-  if (!tryLock(lock)) throw new CommetError('another `commet hook install` or `remove` is running; nothing was written', EXIT.state);
+  const release = tryLock(join(repo.commonDir, 'commet-hook.lock'));
+  if (!release) throw new CommetError('another `commet hook install` or `remove` is running; nothing was written', EXIT.state);
   try {
     return await fn();
   } finally {
-    rmSync(lock, { force: true });
+    release();
   }
 }
 

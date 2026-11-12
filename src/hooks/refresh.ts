@@ -22,12 +22,13 @@ export async function coalescedRefresh(dir: string, key: string, scan: () => Pro
   // One more round only when a request came in during the last scan, so this ends once commits stop.
   let code = 0;
   for (;;) {
-    if (!tryLock(lock)) return code;
+    const release = tryLock(lock);
+    if (!release) return code;
     try {
       rmSync(pending, { force: true });
       code = await scan();
     } finally {
-      rmSync(lock, { force: true });
+      release();
     }
     if (!lstatSync(pending, { throwIfNoEntry: false })) return code;
   }

@@ -1,8 +1,13 @@
-// A lock file in the state dir holding its owner's pid: taken by exclusive create, and taken over
-// only once its owner is gone, so a killed `commet` never leaves it stuck.
-import { linkSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync, type BigIntStats } from 'node:fs';
+// Lock files holding their owner's pid, taken over once the owner is gone, so a killed `commet`
+// never leaves one stuck. A lock is a series of slots, `<lock>.<n>`, each created exclusively: the
+// holder is the highest slot. Taking over a dead holder's lock creates the next slot rather than
+// deleting the dead one by name, so no check can be overtaken between judging a file and removing
+// it: two contenders for the same slot can't both create it, and one that lands below a newer slot
+// backs off.
+import { lstatSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname } from 'node:path';
 
-/** A lock whose pid isn't readable yet is its owner's for this long: it may still be writing it. */
+/** A slot whose pid isn't readable yet is its owner's for this long: it may still be writing it. */
 const FRESH_MS = 10_000;
 
 const alive = (pid: number) => {
@@ -15,78 +20,61 @@ const alive = (pid: number) => {
   }
 };
 
-/** Whether the lock may be taken over: its owner is gone (a lock with no pid yet is its owner's for FRESH_MS). */
-function stale(lock: string): boolean {
-  let st: BigIntStats;
+/** Whether a slot's owner is gone (a slot with no pid yet is its owner's for FRESH_MS). */
+function stale(file: string): boolean {
   let pid = NaN;
+  let mtimeMs: number;
   try {
-    st = lstatSync(lock, { bigint: true });
+    const st = lstatSync(file);
+    mtimeMs = st.mtimeMs;
     // Only a regular file is read: a planted FIFO would block.
-    if (st.isFile()) pid = Number(readFileSync(lock, 'utf8'));
+    if (st.isFile()) pid = Number(readFileSync(file, 'utf8'));
   } catch {
-    return false;
+    return true; // gone
   }
-  return Number.isSafeInteger(pid) && pid > 0 ? !alive(pid) : Date.now() - Number(st.mtimeMs) >= FRESH_MS;
+  return Number.isSafeInteger(pid) && pid > 0 ? !alive(pid) : Date.now() - mtimeMs >= FRESH_MS;
 }
 
-/** Creates `file` holding our pid, exclusively; false when it exists. */
-function create(file: string): boolean {
-  try {
-    writeFileSync(file, String(process.pid), { flag: 'wx', mode: 0o600 });
-    return true;
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-    return false;
-  }
+/** The lock's slot numbers, ascending. */
+function slots(lock: string): number[] {
+  const prefix = `${basename(lock)}.`;
+  return readdirSync(dirname(lock)).filter((n) => n.startsWith(prefix) && /^[1-9]\d{0,15}$/.test(n.slice(prefix.length)))
+    .map((n) => Number(n.slice(prefix.length))).sort((a, b) => a - b);
 }
 
 /**
- * Removes the lock if its owner is gone. Only the process holding `<lock>.reap` may judge and remove
- * it, and while the stale lock is there nobody can create a new one, so the file removed is always
- * the one judged: two contenders can never both take over. True when the lock is gone.
+ * Creates slot `n` and keeps it only if no higher slot exists then; slots below it are dead
+ * holders' leftovers and are cleared. Returns the release, or null. Exported for tests.
  */
-function reapStale(lock: string): boolean {
-  const guard = `${lock}.reap`;
-  if (!create(guard)) {
-    // A reaper that died inside this short step leaves its guard: once it's stale too, it's cleared
-    // for the next try (renamed aside and checked, so a live reaper's guard is never the one removed).
-    if (stale(guard)) clearGuard(guard);
-    return false;
-  }
+export function claim(lock: string, n: number): (() => void) | null {
+  const mine = `${lock}.${n}`;
   try {
-    if (!lstatSync(lock, { throwIfNoEntry: false })) return true;
-    if (!stale(lock)) return false;
-    rmSync(lock, { force: true });
-    return true;
-  } finally {
-    rmSync(guard, { force: true });
+    writeFileSync(mine, String(process.pid), { flag: 'wx', mode: 0o600 });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    return null;
   }
-}
-
-/** Moves a stale guard aside to a name of our own and deletes it only if it's still stale, else puts it back. Exported for tests. */
-export function clearGuard(guard: string): void {
-  const mine = `${guard}-${process.pid}`;
-  try {
-    renameSync(guard, mine);
-  } catch {
-    return; // cleared already
-  }
-  try {
-    if (!stale(mine)) linkSync(mine, guard);
-  } catch {
-    // A newer guard is there already: that one stands.
-  } finally {
+  const all = slots(lock);
+  if (all.some((m) => m > n)) {
     rmSync(mine, { force: true });
+    return null;
   }
+  for (const m of all) {
+    if (m >= n) continue;
+    try {
+      rmSync(`${lock}.${m}`, { force: true });
+    } catch {
+      // Not a file (planted): it only ever sits below the holder, so it's harmless where it is.
+    }
+  }
+  return () => rmSync(mine, { force: true });
 }
 
-/** Takes the lock, or returns false while another live process holds it (or is judging a stale one). */
-export function tryLock(lock: string): boolean {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (create(lock)) return true;
-    if (!reapStale(lock)) return false;
-  }
-  return false;
+/** Takes the lock, returning its release, or null while a live process holds it. */
+export function tryLock(lock: string): (() => void) | null {
+  const top = slots(lock).at(-1);
+  if (top !== undefined && !stale(`${lock}.${top}`)) return null;
+  return claim(lock, (top ?? 0) + 1);
 }
 
 /**
@@ -94,13 +82,14 @@ export function tryLock(lock: string): boolean {
  * when it never came free (the caller says what that means).
  */
 export async function withLock<T>(lock: string, fn: () => T, tries = 250, waitMs = 20): Promise<{ value: T } | null> {
-  for (let i = 0; !tryLock(lock); i++) {
+  let release: (() => void) | null;
+  for (let i = 0; !(release = tryLock(lock)); i++) {
     if (i >= tries) return null;
     await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
   try {
     return { value: fn() };
   } finally {
-    rmSync(lock, { force: true });
+    release();
   }
 }
