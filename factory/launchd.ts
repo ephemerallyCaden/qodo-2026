@@ -123,9 +123,10 @@ export const LABEL_DEFS: { name: string; color: string; description: string }[] 
   { name: LABELS.working, color: 'FBCA04', description: 'The agent runner has claimed this ticket' },
   { name: LABELS.help, color: 'D93F0B', description: 'The agent runner stopped or refused; a human is needed' },
   { name: LABELS.done, color: '5319E7', description: 'The agent runner finished; the PR awaits the human' },
+  { name: LABELS.proposal, color: 'C5DEF5', description: 'A Qodo finding that keeps recurring, proposed as a rule; the human decides' },
 ];
 
-/** Creates or updates the four labels; `--force` makes it idempotent. */
+/** Creates or updates the runner's labels; `--force` makes it idempotent. */
 export async function setupLabels(cfg: Config, d: Pick<InstallDeps, 'exec' | 'print'>): Promise<number> {
   let failed = 0;
   for (const l of LABEL_DEFS) {

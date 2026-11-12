@@ -19,6 +19,8 @@ export interface Finding {
   action_level?: string;
   category?: string;
   attribution_status?: string;
+  /** The commit the finding was raised on. */
+  git_sha?: string;
   dismiss_reason?: string | null;
   location?: { file_path?: string; start_line?: number; end_line?: number };
   evidence?: { explanation?: string };

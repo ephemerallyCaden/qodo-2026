@@ -6,6 +6,8 @@ import { expect } from 'vitest';
 import { defaults, LABELS, type Config } from '../../factory/config.js';
 import type { Exec, ExecOptions, ExecResult } from '../../factory/exec.js';
 import type { Clock } from '../../factory/log.js';
+import { emptyLedger } from '../../factory/ledger.js';
+import { ledgerFile, runSweep, type SweepOptions, type SweepSummary } from '../../factory/repeats.js';
 import type { CheckRun, Finding, ReviewRun } from '../../factory/review.js';
 import { runTick, type Deps, type Outcome } from '../../factory/runner.js';
 import { PROBE, STATE_MARK } from '../../factory/sandbox.js';
@@ -31,6 +33,8 @@ export interface FakeIssue {
   labels: Set<string>;
   labeler: string | null;
   comments: string[];
+  /** Comments by other people (the runner's own are `comments`). */
+  foreign?: { login: string; body: string }[];
   state: 'OPEN' | 'CLOSED';
 }
 
@@ -56,8 +60,31 @@ type Claude = (w: World, args: string[]) => ExecResult;
 /** 'off' behaves as if unsandboxed (settings ignored); 'no-run' never runs the probe at all. */
 export type SandboxMode = 'on' | 'off' | 'no-run';
 
+/** One judge call as the fake sees it: the system prompt, the prompt and the JSON schema. */
+export interface JudgeSeen {
+  system: string;
+  prompt: string;
+  schema: { properties?: Record<string, unknown> };
+}
+export type Judge = (w: World, call: JudgeSeen) => ExecResult;
+
+/** A PR the owner opened by hand (not the runner's), with the review Qodo gives it. */
+export interface OwnerPr {
+  number: number;
+  title: string;
+  body: string;
+  head: string;
+  state: 'OPEN' | 'MERGED' | 'CLOSED';
+  updatedAt: string;
+  author: string;
+  /** The PR's head commit; by default the commit its one review ran on. */
+  headOid: string;
+  /** Qodo's answer to `read pr-review-session findings` for this PR. */
+  review: { runs: ReviewRun[]; findings: Finding[] } | (() => ExecResult);
+}
+
 export const ok = (stdout = ''): ExecResult => ({ code: 0, stdout, stderr: '', timedOut: false });
-const fail = (code = 1, stderr = 'failed'): ExecResult => ({ code, stdout: '', stderr, timedOut: false });
+export const fail = (code = 1, stderr = 'failed'): ExecResult => ({ code, stdout: '', stderr, timedOut: false });
 const sha = (n: number) => n.toString(16).padStart(40, 'c');
 
 /** The text of the prompt in a recorded claude call. */
@@ -80,6 +107,48 @@ export function claudeOut(o: {
 }
 
 const fence = (block: object) => `All done.\n\n\`\`\`json\n${JSON.stringify(block, null, 2)}\n\`\`\`\n`;
+
+/** A judge call that answers with `answer` as its structured output. */
+export function judgeOut(answer: unknown, over: { subtype?: string; code?: number; structured?: boolean } = {}): ExecResult {
+  const json = {
+    type: 'result', subtype: over.subtype ?? 'success', is_error: false, result: JSON.stringify(answer), num_turns: 2, total_cost_usd: 0.1,
+    ...(over.structured === false ? {} : { structured_output: answer }),
+  };
+  return { code: over.code ?? 0, stdout: JSON.stringify(json), stderr: '', timedOut: false };
+}
+
+/** The JSON between `<tag>` and `</tag>` in a judge prompt. */
+export const tagged = <T>(prompt: string, tag: string): T => JSON.parse(new RegExp(`<${tag}>\\n([\\s\\S]*?)\\n</${tag}>`).exec(prompt)![1]!) as T;
+
+/** The kind a fake finding repeats: its title's `[kind]` prefix, else its own id (a one-off). */
+export const kindOf = (f: { id: string; title: string }) => /^\[([a-z0-9-]+)\]/.exec(f.title)?.[1] ?? f.id;
+
+export const DRAFT = {
+  mistake: 'Git output is framed with a byte other than NUL.',
+  rule: { name: 'Frame path-listing git output on NUL', what: 'Read git output that lists paths with -z and split it on NUL only.', where: 'src/scan/** and src/attrib/**', why: 'Seen 3 times across 2 tickets.' },
+  category: 'Correctness',
+  criteria: ['AGENTS.md has a rule saying what to do, where and why.', 'The rule cites the findings in this issue.'],
+};
+
+/**
+ * A judge that groups findings by `kindOf`, naming each group "Mistake: <kind>.", and answers
+ * every draft with DRAFT. Deterministic, so tests can count groups.
+ */
+export const kindJudge: Judge = (_, call) => {
+  if (call.schema.properties?.['rule']) return judgeOut(DRAFT);
+  const groups = tagged<{ group: string; mistake: string }[]>(call.prompt, 'groups');
+  const findings = tagged<{ id: string; title: string }[]>(call.prompt, 'findings');
+  return judgeOut({
+    assignments: findings.map((f) => {
+      const mistake = `Mistake: ${kindOf(f)}.`;
+      const known = groups.find((g) => g.mistake === mistake);
+      return known ? { finding: f.id, group: known.group } : { finding: f.id, group: `new:${kindOf(f).replace(/[^A-Za-z0-9_-]/g, '')}`, mistake };
+    }),
+  });
+};
+
+/** A finding of a repeating kind (see `kindOf`). */
+export const kinded = (id: string, kind: string, over: Partial<Finding> = {}) => finding(id, { title: `[${kind}] Finding ${id}`, ...over });
 
 /** An agent call that commits once and reports done. */
 export function agentDone(block: object = {}, commits = 1): Claude {
@@ -156,6 +225,15 @@ export class World {
   lockBusy = false;
   /** What lockf runs once it holds the lock. */
   inner: (() => Promise<number>) | null = null;
+  ownerPrs: OwnerPr[] = [];
+  /** `qodo read rules search` results; null = the search fails. */
+  rules: { id: number; name: string; content: string; severity: string }[] | null = [];
+  judge: Judge = kindJudge;
+  /** GitHub's author search lets other people's PRs through (the runner must filter them itself). */
+  authorSearchLeaks = false;
+  /** `gh issue list --label rule-proposal` works. */
+  proposalListOk = true;
+  readonly evidenceDir = join(this.repoDir, '.archive/docs/hackathon/evidence');
   /** How the probe fares under claude's sandbox and under sandbox-exec: 'on' refuses what it should. */
   claudeSandbox: SandboxMode = 'on';
   seatbelt: SandboxMode = 'on';
@@ -186,6 +264,45 @@ export class World {
 
   config(over: Partial<Config> = {}): Config {
     return { ...defaults(this.home, this.repoDir, this.commonDir, SLUG), ...over };
+  }
+
+  /** One findings sweep with the real defaults, except a generous call cap. */
+  sweep(opts: Partial<SweepOptions> = {}, over: Partial<Config> = {}): Promise<SweepSummary> {
+    return runSweep(this.config({ sweepMaxCalls: 20, ...over }), { exec: this.exec, clock: this.clock, env: { PATH: '/usr/bin', GH_TOKEN: FAKE_TOKEN }, print: () => {} },
+      { seedThrough: null, ...opts });
+  }
+
+  /** Starts an empty ledger seeded long ago, so the next sweep isn't the seeding one and every finding is new. */
+  startLedger(): void {
+    mkdirSync(join(this.commonDir, 'factory/findings'), { recursive: true });
+    writeFileSync(ledgerFile(this.config()), JSON.stringify(emptyLedger('2000-01-01T00:00:00.000Z')));
+  }
+
+  /** An owner PR for ticket `ticket` (or none), reviewed once at `startedAt` with these findings. */
+  addOwnerPr(number: number, findings: Finding[], o: { ticket?: number; startedAt?: string; over?: Partial<OwnerPr> } = {}): OwnerPr {
+    const commit = sha(9000 + number);
+    const pr: OwnerPr = {
+      number, title: `feat: change ${number}`, body: o.ticket ? `Does it.\n\nCloses #${o.ticket}\n` : 'Does it.\n',
+      head: o.ticket ? `feature/${o.ticket}-change` : `feature/change-${number}`, state: 'MERGED', updatedAt: '2026-11-08T00:00:00Z', author: OWNER, headOid: commit,
+      review: {
+        runs: [{ run_id: number, commit_sha: commit, started_at: o.startedAt ?? '2026-11-08T00:00:00.000000Z', status: 'completed', review_effort: 'standard' }],
+        findings: findings.map((f) => ({ git_sha: commit, ...f })),
+      },
+      ...o.over,
+    };
+    this.ownerPrs.push(pr);
+    return pr;
+  }
+
+  /** A local \`qodo review --json\` export under the evidence folder. */
+  writeExport(rel: string, findings: Finding[], o: { startedAt?: string; complete?: boolean; error?: boolean } = {}): void {
+    const file = join(this.evidenceDir, rel);
+    mkdirSync(join(file, '..'), { recursive: true });
+    writeFileSync(file, JSON.stringify(o.error ? { error: { message: 'review failed' } } : {
+      findings, finding_state: { complete: o.complete ?? true, introduced: findings.map((f) => f.id), resolved: [], still_open: [], dismissed: [] },
+      review_agent_comment: 'x',
+      meta: { coverage: { complete: true }, run: { effort: { effective: 'standard' }, timing: { started_at: o.startedAt ?? '2026-11-07T00:00:00.000000+00:00' } } },
+    }));
   }
 
   addIssue(n: number, over: Partial<FakeIssue> = {}): FakeIssue {
@@ -236,6 +353,11 @@ export class World {
         throw new Error(`unexpected sandbox-exec ${inner}`);
       }
       case 'claude': {
+        // The judge first: like the self-test it saves no session, but only it asks for a JSON schema.
+        if (args.includes('--json-schema')) {
+          const at = (f: string) => args[args.indexOf(f) + 1]!;
+          return this.judge(this, { system: at('--system-prompt'), prompt: at('-p'), schema: JSON.parse(at('--json-schema')) as JudgeSeen['schema'] });
+        }
         if (args.includes('--no-session-persistence')) {
           this.selfTestCwd = opts.cwd!;
           return this.selfTestClaude ? this.selfTestClaude(this, args) : this.selfTest(args, opts);
@@ -267,14 +389,31 @@ export class World {
       // `--label x`, or GitHub search's `label:a,b` (either label).
       const wanted = args.includes('--label') ? [flag('--label')] : (/\blabel:(\S+)/.exec(flag('--search'))?.[1] ?? '').split(',');
       // Newest first, so the runner has to sort for itself.
-      const list = [...this.issues.values()].filter((i) => i.state === 'OPEN' && wanted.some((l) => i.labels.has(l))).sort((x, y) => y.number - x.number);
-      return ok(JSON.stringify(list.map((i) => ({ number: i.number, createdAt: i.createdAt, labels: [...i.labels].map((name) => ({ name })) }))));
+      const all = args.includes('--state') && flag('--state') === 'all';
+      if (args.includes('--label') && flag('--label') === LABELS.proposal && !this.proposalListOk) return fail();
+      const list = [...this.issues.values()].filter((i) => (all || i.state === 'OPEN') && wanted.some((l) => i.labels.has(l))).sort((x, y) => y.number - x.number);
+      return ok(JSON.stringify(list.map((i) => ({
+        number: i.number, createdAt: i.createdAt, labels: [...i.labels].map((name) => ({ name })), title: i.title, body: i.body, author: { login: i.author }, state: i.state,
+      }))));
+    }
+    if (a === 'issue' && b === 'create') {
+      const number = Math.max(199, ...this.issues.keys()) + 1;
+      this.issues.set(number, {
+        number, title: flag('--title'), body: readFileSync(flag('--body-file'), 'utf8'), author: this.ghUser, createdAt: new Date(this.now).toISOString(),
+        labels: new Set([flag('--label')]), labeler: null, comments: [], state: 'OPEN',
+      });
+      return ok(`https://github.com/${SLUG}/issues/${number}\n`);
+    }
+    if (a === 'pr' && b === 'list') {
+      const mine = this.prs.map((p) => ({ number: p.number, url: p.url, title: p.title, body: p.body, headRefName: p.branch, headRefOid: this.remoteHead, state: p.state, updatedAt: new Date(this.now).toISOString(), author: { login: this.ghUser } }));
+      const owner = this.ownerPrs.map((p) => ({ number: p.number, url: `https://github.com/${SLUG}/pull/${p.number}`, title: p.title, body: p.body, headRefName: p.head, headRefOid: p.headOid, state: p.state, updatedAt: p.updatedAt, author: { login: p.author } }));
+      return ok(JSON.stringify([...owner, ...mine].filter((p) => this.authorSearchLeaks || !args.includes('--author') || p.author.login === flag('--author'))));
     }
     if (a === 'issue' && b === 'view') {
       const i = issue(args[2]!);
       return ok(JSON.stringify({
         number: i.number, ...this.issueText(i), author: { login: i.author }, url: `https://github.com/${SLUG}/issues/${i.number}`,
-        state: i.state, labels: [...i.labels].map((name) => ({ name })),
+        state: i.state, labels: [...i.labels].map((name) => ({ name })), comments: i.comments.map((body) => ({ body })),
       }));
     }
     if (a === 'issue' && b === 'edit') {
@@ -305,6 +444,14 @@ export class World {
       if (events) {
         const i = issue(events[1]!);
         return ok(i.labeler ? `someone-else\n${i.labeler}\n` : '');
+      }
+      const proposalComments = /issues\/(\d+)\/comments$/.exec(path);
+      if (proposalComments && this.issues.has(Number(proposalComments[1]))) {
+        // Emulates `--jq '.[] | select(.user.login == "<login>") | .body'`.
+        const i = this.issues.get(Number(proposalComments[1]))!;
+        const login = /select\(\.user\.login == "([^"]+)"\)/.exec(flag('--jq'))?.[1];
+        const all = [...i.comments.map((body) => ({ login: this.ghUser, body })), ...(i.foreign ?? [])];
+        return ok(all.filter((c) => c.login === login).map((c) => c.body).join('\n'));
       }
       if (/issues\/\d+\/comments$/.test(path)) {
         const h = this.remoteHead;
@@ -343,6 +490,14 @@ export class World {
 
   private qodo(args: string[]): ExecResult {
     if (args[1] === 'whoami') return this.qodoOk ? ok('{"schema_version":1}\ntrace abc\n') : fail();
+    if (args[1] === 'rules') return this.rules ? ok(`${JSON.stringify({ rules: this.rules })}\n  trace 1\n`) : fail();
+    const url = args[args.indexOf('--pr-url') + 1];
+    const owned = this.ownerPrs.find((p) => url === `https://github.com/${SLUG}/pull/${p.number}`);
+    if (owned) {
+      if (typeof owned.review === 'function') return owned.review();
+      const { runs, findings } = owned.review;
+      return ok(`${JSON.stringify({ pr_url: url, finding_count: findings.length, findings, review_runs: runs })}\ntrace 123\n`);
+    }
     const head = this.remoteHead;
     const runs: ReviewRun[] = [];
     let findings: Finding[] = [];

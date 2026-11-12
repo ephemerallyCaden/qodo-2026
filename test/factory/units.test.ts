@@ -224,6 +224,23 @@ describe('guardrails (R8)', () => {
     [['config', 'user.name', 'x']], [['remote', 'set-url', 'origin', 'x']],
   ])('refuses git %j', (args) => expect(() => assertGitAllowed(args)).toThrow(GuardError));
 
+  const create = (...extra: string[]) => ['issue', 'create', '--repo', 'o/r', '--title', 'Rule proposal: x', '--body-file', '/f.md', ...extra];
+  it.each([
+    [create()], [create('--label', 'bug')], [create('--label', 'rule-proposal,ready-for-agent')], [create('--label', 'ready-for-agent')],
+    [create('--label', 'rule-proposal', '--label', 'ready-for-agent')], [create('--label', 'rule-proposal', '--assignee', 'x')],
+    [['issue', 'create', '--repo', 'o/r', '--title', 't', '--body', 'b', '--label', 'rule-proposal']], [create('--label', 'rule-proposal', '--web')],
+    [['issue', 'edit', '7', '--repo', 'o/r', '--remove-label', 'rule-proposal', '--add-label', 'agent-done']],
+    [['issue', 'edit', '7', '--repo', 'o/r', '--remove-label', 'agent-needs-help', '--add-label', 'ready-for-agent']],
+    [['issue', 'close', '7']], [['issue', 'delete', '7']],
+  ])('refuses every issue create but a rule proposal, and never approves or unmarks one (repeat-findings R7): gh %j', (args) => {
+    expect(() => assertGhAllowed(args)).toThrow(GuardError);
+  });
+
+  it('allows the one issue create the sweep makes, and its read-only PR list', () => {
+    expect(() => assertGhAllowed(create('--label', 'rule-proposal'))).not.toThrow();
+    expect(() => assertGhAllowed(['pr', 'list', '--repo', 'o/r', '--author', 'o', '--json', 'number'])).not.toThrow();
+  });
+
   it('allows the one push form the runner uses', () => {
     expect(() => assertGitAllowed(['push', 'origin', 'HEAD:refs/heads/agent/24-scan-x'])).not.toThrow();
     // The verified commit by SHA (Qodo PR104 2372ddf8); a SHA can't widen the target.

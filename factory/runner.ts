@@ -19,6 +19,7 @@ import {
   type CheckRun, type CiState, type Finding, type QodoState, type ReviewRun,
 } from './review.js';
 import { claudeSettings, SANDBOX_EXEC, sandboxSelfTest, seatbelt, seatbeltProfile, worktreeGit, type SandboxPaths } from './sandbox.js';
+import { Shell } from './shell.js';
 import { acceptanceCriteria, branchStem, ticketHash, ticketMarkdown, type Ticket } from './ticket.js';
 
 export interface Deps {
@@ -85,6 +86,7 @@ interface Review {
 
 class Tick {
   private log: RunLog;
+  private shell: Shell;
   /** Environment for the runner's own commands. */
   private env: NodeJS.ProcessEnv;
   /** Environment for anything that runs agent-written code: the agent and the checks. */
@@ -121,7 +123,8 @@ class Tick {
 
   constructor(private cfg: Config, private deps: Deps) {
     this.log = new RunLog(cfg.dryRun ? null : ticksFile(cfg), deps.clock, deps.print, machinePaths(cfg));
-    this.env = { ...deps.env, GIT_TERMINAL_PROMPT: '0', GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', NO_COLOR: '1' };
+    this.shell = new Shell(cfg, deps.exec, deps.clock, () => this.log, deps.env);
+    this.env = this.shell.env;
     this.sandbox = { home: cfg.home, stateDir: cfg.stateDir, env: deps.env };
   }
 
@@ -667,18 +670,12 @@ class Tick {
 
   // ----- commands -----
 
-  private async sh(cmd: string, args: readonly string[], opts: { cwd?: string; timeoutMs: number; env?: NodeJS.ProcessEnv }): Promise<ExecResult> {
-    const t0 = this.deps.clock.now();
-    const res = await this.deps.exec(cmd, args, { ...opts, env: opts.env ?? this.env });
-    this.log.event('exec', {
-      cmd: basename(cmd), args: args.map((a) => (a.length > 160 ? `<${a.length} chars>` : a)),
-      ...(opts.cwd ? { cwd: opts.cwd } : {}), code: res.code, timedOut: res.timedOut, ms: this.deps.clock.now() - t0,
-    });
-    return res;
+  private sh(cmd: string, args: readonly string[], opts: { cwd?: string; timeoutMs: number; env?: NodeJS.ProcessEnv }): Promise<ExecResult> {
+    return this.shell.sh(cmd, args, opts);
   }
 
   private gh(args: string[]): Promise<ExecResult> {
-    return this.sh(this.cfg.gh, args, { cwd: this.cfg.repoDir, timeoutMs: this.cfg.timeouts.gh });
+    return this.shell.gh(args);
   }
 
   private async ghOk(args: string[], what: string): Promise<string> {
@@ -688,7 +685,7 @@ class Tick {
   }
 
   private qodo(args: string[]): Promise<ExecResult> {
-    return this.sh(this.cfg.qodo, args, { timeoutMs: this.cfg.timeouts.qodo });
+    return this.shell.qodo(args);
   }
 
   /** npm in the worktree runs agent-written code, so it gets the agent's environment and limits (S5). */

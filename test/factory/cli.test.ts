@@ -5,8 +5,10 @@ import { main, RUN_CAP_MS, type CliDeps } from '../../factory/cli.js';
 import { defaults } from '../../factory/config.js';
 import { realExec } from '../../factory/exec.js';
 import { JOB_LABEL, LABEL_DEFS, plistPath, renderPlist } from '../../factory/launchd.js';
+import type { Ledger } from '../../factory/ledger.js';
+import { ledgerFile } from '../../factory/repeats.js';
 import { PROBE_TIMEOUT_MS, SELF_TEST_TIMEOUT_MS } from '../../factory/sandbox.js';
-import { BASE, ok, SLUG, World } from './world.js';
+import { BASE, finding, ok, SLUG, World } from './world.js';
 import { tempDir } from '../fixtures/tmp.js';
 
 function deps(w: World, over: Partial<CliDeps> = {}) {
@@ -34,13 +36,59 @@ describe('one run at a time (R1)', () => {
     expect(ticks.map((e) => e['event'])).toEqual(['busy']);
   });
 
-  it('runs the tick inside lockf, and --once is the same one-shot tick', async () => {
+  it('runs the tick inside lockf, and --once is the same one-shot tick, findings sweep included', async () => {
     const w = new World();
     const { d } = deps(w);
     w.inner = () => main(['--once'], { ...d, env: { ...d.env, COMMET_FACTORY_LOCKED: '1' } });
     expect(await main(['--once'], d)).toBe(0);
     expect(w.callsTo('lockf')).toHaveLength(1);
-    expect(w.callsTo('gh').map((c) => c.args.slice(0, 2).join(' '))).toEqual(['issue list']);
+    // The ticket pick, then the findings sweep (repeat-findings R3) with nothing to read.
+    expect(w.callsTo('gh').map((c) => c.args.slice(0, 2).join(' '))).toEqual(['issue list', 'pr list']);
+    expect(w.callsTo('claude')).toHaveLength(0);
+  });
+
+  it('a tick sweeps findings after its ticket work; a dry-run tick does not (repeat-findings R3)', async () => {
+    const w = new World();
+    w.addOwnerPr(3, [finding('a1')]);
+    const { d } = deps(w);
+    expect(await main(['tick', '--dry-run'], d)).toBe(0);
+    expect(w.callsTo('gh').some((c) => c.args[0] === 'pr')).toBe(false);
+    w.inner = () => main(['tick'], { ...d, env: { ...d.env, COMMET_FACTORY_LOCKED: '1' } });
+    expect(await main(['tick'], d)).toBe(0);
+    expect(Object.keys((JSON.parse(readFileSync(ledgerFile(w.config()), 'utf8')) as Ledger).findings)).toEqual(['a1']);
+  });
+
+  it('runs a findings sweep inside the same lock, and reports busy when a tick holds it', async () => {
+    const w = new World();
+    const { d, out } = deps(w);
+    w.inner = () => main(['sweep'], { ...d, env: { ...d.env, COMMET_FACTORY_LOCKED: '1' } });
+    expect(await main(['sweep'], d)).toBe(0);
+    expect(w.callsTo('lockf')[0]!.args.slice(4)).toEqual(['/n/node', d.script, 'sweep']);
+    expect(w.callsTo('gh').map((c) => c.args.slice(0, 2).join(' '))).toEqual(['pr list']);
+    expect(out.join('')).toContain('findings sweep: ok, seeding');
+    w.lockBusy = true;
+    expect(await main(['sweep'], d)).toBe(1);
+  });
+
+  it('a dry-run sweep takes no lock and writes nothing', async () => {
+    const w = new World();
+    const { d, out } = deps(w);
+    expect(await main(['sweep', '--dry-run', '--max-calls', '0'], d)).toBe(0);
+    expect(w.callsTo('lockf')).toHaveLength(0);
+    expect(existsSync(join(w.commonDir, 'factory'))).toBe(false);
+    expect(out.join('')).toContain('0 group(s) at the threshold');
+  });
+
+  it('keeps the sweep options to sweep, and --issue to tick', async () => {
+    const w = new World();
+    const { d, err } = deps(w);
+    expect(await main(['tick', '--seed-through', '3'], d)).toBe(2);
+    expect(await main(['tick', '--max-calls', '3'], d)).toBe(2);
+    expect(await main(['sweep', '--dry-run', '--issue', '3'], d)).toBe(2);
+    expect(await main(['sweep', '--seed-through', 'x'], d)).toBe(2);
+    expect(err.join('')).toContain('--seed-through only works with sweep');
+    expect(err.join('')).toContain('--issue only works with tick');
+    expect(w.callsTo('lockf')).toHaveLength(0);
   });
 
   it('a dry run takes no lock', async () => {
@@ -163,7 +211,12 @@ describe('CLI output shows no absolute machine paths (Qodo PR37 5ffe421b)', () =
 });
 
 describe('labels', () => {
-  it('creates or updates the four labels with --force, so it is idempotent', async () => {
+  it('includes rule-proposal (repeat-findings R12)', () => {
+    expect(LABEL_DEFS.map((l) => l.name)).toEqual(['ready-for-agent', 'agent-working', 'agent-needs-help', 'agent-done', 'rule-proposal']);
+    for (const l of LABEL_DEFS) expect(l.description.length).toBeLessThanOrEqual(100);
+  });
+
+  it('creates or updates every label with --force, so it is idempotent', async () => {
     const w = new World();
     const calls: string[][] = [];
     const exec: CliDeps['exec'] = async (cmd, args, opts) => {
@@ -176,7 +229,7 @@ describe('labels', () => {
     const { d } = deps(w, { exec });
     expect(await main(['labels'], d)).toBe(0);
     expect(await main(['labels'], d)).toBe(0);
-    expect(calls).toHaveLength(8);
+    expect(calls).toHaveLength(2 * LABEL_DEFS.length);
     expect(calls.map((c) => c[2])).toEqual([...LABEL_DEFS, ...LABEL_DEFS].map((l) => l.name));
     for (const c of calls) expect(c).toEqual(expect.arrayContaining(['label', 'create', '--repo', SLUG, '--force']));
   });
@@ -209,7 +262,9 @@ describe('timers (R13)', () => {
     // a 4-check verify per agent call, every fix round and a review wait per push. The outer cap must sit above it.
     const verifies = 1 + c.maxFixRounds;
     const worst = PROBE_TIMEOUT_MS + SELF_TEST_TIMEOUT_MS + 2 * c.timeouts.npmCi + c.timeouts.agent + verifies * 4 * c.timeouts.check + c.maxFixRounds * c.timeouts.fix + verifies * c.reviewTimeoutMs;
-    expect(worst).toBeLessThan(RUN_CAP_MS);
+    // Then the findings sweep: its budget, plus one judge call or qodo read started just before it ran out.
+    const sweep = c.sweepBudgetMs + Math.max(c.timeouts.judge, c.timeouts.qodo, c.timeouts.gh);
+    expect(worst + sweep).toBeLessThan(RUN_CAP_MS);
   });
 });
 

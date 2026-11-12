@@ -5,6 +5,8 @@ export const LABELS = {
   working: 'agent-working',
   help: 'agent-needs-help',
   done: 'agent-done',
+  /** A repeat-findings rule proposal (docs/features/repeat-findings.md R6). The runner only ever adds it at creation. */
+  proposal: 'rule-proposal',
 } as const;
 
 export interface Config {
@@ -35,7 +37,18 @@ export interface Config {
   fixMaxTurns: number;
   maxBudgetUsd: number;
   fixMaxBudgetUsd: number;
-  timeouts: { gh: number; git: number; npmCi: number; check: number; agent: number; fix: number; qodo: number };
+  timeouts: { gh: number; git: number; npmCi: number; check: number; agent: number; fix: number; qodo: number; judge: number };
+  /** Local `qodo review --json` exports the findings sweep reads (repeat-findings R1). */
+  evidenceDir: string;
+  /** LLM calls (judge and draft) one sweep may make (repeat-findings R10); `sweep --max-calls` sets it. */
+  sweepMaxCalls: number;
+  /** Findings per judge call. */
+  judgeBatch: number;
+  judgeBudgetUsd: number;
+  /** A sweep starts no new read or LLM call after this long. */
+  sweepBudgetMs: number;
+  /** PRs one sweep lists; a full list is logged, since older PRs may be cut off. */
+  prListLimit: number;
   dryRun: boolean;
   /** Dry-run preview of one issue as if the owner had just labelled it. */
   previewIssue: number | null;
@@ -50,7 +63,9 @@ export function defaults(home: string, repoDir: string, commonDir: string, slug:
     midwayCookie: join(home, '.midway/cookie'), minCredHours: 2,
     maxFixRounds: 2, pollMs: MIN, reviewTimeoutMs: 30 * MIN, settleMs: 3 * MIN,
     maxTurns: 120, fixMaxTurns: 80, maxBudgetUsd: 15, fixMaxBudgetUsd: 8,
-    timeouts: { gh: MIN, git: 2 * MIN, npmCi: 10 * MIN, check: 15 * MIN, agent: 90 * MIN, fix: 30 * MIN, qodo: 2 * MIN },
+    timeouts: { gh: MIN, git: 2 * MIN, npmCi: 10 * MIN, check: 15 * MIN, agent: 90 * MIN, fix: 30 * MIN, qodo: 2 * MIN, judge: 5 * MIN },
+    evidenceDir: join(repoDir, '.archive/docs/hackathon/evidence'),
+    sweepMaxCalls: 4, judgeBatch: 20, judgeBudgetUsd: 1, sweepBudgetMs: 20 * MIN, prListLimit: 1000,
     dryRun: false, previewIssue: null,
   };
 }
@@ -59,6 +74,9 @@ export function defaults(home: string, repoDir: string, commonDir: string, slug:
 export const machinePaths = (c: Config): [string, string][] => [[c.repoDir, '.'], [c.home, '~']];
 
 export const ticksFile = (c: Config) => join(c.stateDir, 'ticks.jsonl');
+
+/** The findings sweep's ledger and log (repeat-findings R2), beside the runner's other state. */
+export const findingsDir = (c: Config) => join(c.stateDir, 'findings');
 
 /**
  * `session/<name>` with a name git accepts as a ref component (Qodo PR #93 4c0331e1): no leading
