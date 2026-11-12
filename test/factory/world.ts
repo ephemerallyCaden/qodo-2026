@@ -226,6 +226,7 @@ export class World {
       case 'sandbox-exec': {
         const [, , inner, ...rest] = args;
         if (inner === 'npm') return this.npm(rest);
+        if (inner === 'git') return this.git(rest, opts);
         if (inner === '/bin/sh' && rest[0] === PROBE) return this.probe(opts.cwd!, this.seatbelt);
         throw new Error(`unexpected sandbox-exec ${inner}`);
       }
@@ -364,11 +365,14 @@ export class World {
       case 'diff': return ok(this.changed.join('\n') + '\n');
       case 'status': return ok(this.dirty);
       case 'log': return ok('fix(scan): parse numstat positionally on NUL\n');
-      case 'push':
-        expect(opts.cwd).toContain('.sandboxes');
-        this.remoteHead = this.head;
-        this.pushTimes.set(this.head, this.now);
+      case 'push': {
+        // The runner pushes the commit it verified, by SHA, from the main checkout.
+        expect(opts.cwd).toBe(this.repoDir);
+        const sha = rest[1]!.split(':')[0]!;
+        this.remoteHead = sha === 'HEAD' ? this.head : sha;
+        this.pushTimes.set(this.remoteHead, this.now);
         return ok();
+      }
       default: throw new Error(`unrouted git ${args.join(' ')}`);
     }
   }
@@ -415,8 +419,14 @@ export class World {
 
   // ----- queries for assertions -----
 
-  callsTo(cmd: string): Call[] {
-    return this.calls.filter((c) => c.cmd.split('/').at(-1) === cmd);
+  /** Calls of `cmd`, including those run under sandbox-exec (unwrapped, with their profile). */
+  callsTo(cmd: string): (Call & { profile?: string })[] {
+    const name = (c: string) => c.split('/').at(-1);
+    return this.calls.flatMap((c) => {
+      if (name(c.cmd) === cmd) return [c];
+      if (name(c.cmd) === 'sandbox-exec' && name(c.args[2] ?? '') === cmd) return [{ ...c, cmd: c.args[2]!, args: c.args.slice(3), profile: c.args[1]! }];
+      return [];
+    });
   }
 
   gitCalls(sub: string): Call[] {
@@ -424,8 +434,8 @@ export class World {
   }
 
   /** npm runs in the worktree, each under sandbox-exec: the npm args, with the profile it ran under. */
-  npmCalls(): (Call & { profile: string })[] {
-    return this.callsTo('sandbox-exec').filter((c) => c.args[2] === 'npm').map((c) => ({ ...c, profile: c.args[1]!, args: c.args.slice(3) }));
+  npmCalls(): (Call & { profile?: string })[] {
+    return this.callsTo('npm').filter((c) => c.profile);
   }
 
   /** The agent's own calls, without the sandbox self-test's. */
@@ -461,7 +471,7 @@ export function assertGuardrails(w: World): void {
     const refspec = c.args.at(-1)!;
     expect(c.args.some((a) => /^(-f|--force.*|--mirror|--all|--delete|-d)$/.test(a)), `force push: ${c.args.join(' ')}`).toBe(false);
     expect(refspec.startsWith('+')).toBe(false);
-    expect(refspec).toMatch(/^HEAD:refs\/heads\/agent\/\d+-/);
+    expect(refspec).toMatch(/^[0-9a-f]{40}:refs\/heads\/agent\/\d+-/);
     expect(refspec).not.toMatch(/refs\/heads\/(main|session\/)/);
   }
 }

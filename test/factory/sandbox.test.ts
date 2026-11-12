@@ -1,26 +1,18 @@
 // The agent's sandbox and the runner's own (Qodo PR #93 b274f225). Everything here works on
 // files the test creates under a temp dir; no real credential file is ever touched.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { agentEnv, PASSED_ENV, readClaude } from '../../factory/agent.js';
 import { realExec } from '../../factory/exec.js';
 import {
-  claudeSettings, deniedReads, pinnedGitEnv, PROBE, probeScript, probeVerdict, SANDBOX_EXEC, seatbelt, seatbeltProfile, STATE_MARK,
+  claudeSettings, deniedReads, pinnedGitEnv, PROBE, probeScript, probeVerdict, SANDBOX_EXEC, seatbelt, seatbeltProfile, STATE_MARK, worktreeGit,
   type ProbeDirs, type SandboxPaths,
 } from '../../factory/sandbox.js';
+import { realTempDir } from '../fixtures/tmp.js';
 
-const dirs: string[] = [];
-afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-});
-const temp = () => {
-  const d = realpathSync(mkdtempSync(join(tmpdir(), 'sandbox-test-')));
-  dirs.push(d);
-  return d;
-};
+const temp = () => realTempDir('sandbox-test-');
 
 describe('the agent environment is an allowlist (S6)', () => {
   it('keeps only the login basics, drops every token, key and socket, and still clears the GitHub credentials', () => {
@@ -54,7 +46,7 @@ describe('what the sandbox denies (S1, S2, S3)', () => {
     const s = claudeSettings(p, { worktree: '/r/.sandboxes/agent-1' }) as { sandbox: { filesystem: { denyRead: string[]; denyWrite: string[] } }; permissions: { deny: string[] } };
     expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining(['/h/.midway', '/h/.claude.json*', '/h/.claude/.credentials.json']));
     // Qodo PR93 b301674c: the records that tell git where a worktree's config lives.
-    expect(s.sandbox.filesystem.denyWrite).toEqual(['/r/.git/factory', '/r/.sandboxes/agent-1/.git',
+    expect(s.sandbox.filesystem.denyWrite).toEqual(['/r/.git/factory', '/r/.sandboxes/agent-1/.git', '/r/.git/commondir', '/r/.git/config.worktree',
       '/r/.git/worktrees/*/commondir', '/r/.git/worktrees/*/gitdir', '/r/.git/worktrees/*/config.worktree']);
     // `//` is an absolute path in a permission rule; a single `/` would anchor at the settings source.
     expect(s.permissions.deny).toEqual(expect.arrayContaining([
@@ -75,7 +67,8 @@ describe('what the sandbox denies (S1, S2, S3)', () => {
     expect(check).toContain('(deny file-read* (subpath "/h/.midway") (subpath "/h/.aws") (subpath "/h/.ssh")');
     expect(check).toContain('(regex #"^/h/\\.claude\\.json")');
     expect(check).toContain('(deny file-write* (subpath "/r/.git/factory") (subpath "/r/.git/hooks") (literal "/r/.git/config")\n' +
-      '  (literal "/r/.sandboxes/agent-1/.git") (regex #"^/r/\\.git/worktrees/[^/]+/(commondir|gitdir|config\\.worktree)$"))');
+      '  (literal "/r/.sandboxes/agent-1/.git") (literal "/r/.git/commondir") (literal "/r/.git/config.worktree") (literal "/r/.git/worktrees")' +
+      ' (regex #"^/r/\\.git/worktrees/[^/]+$") (regex #"^/r/\\.git/worktrees/[^/]+/(commondir|gitdir|config\\.worktree)$"))');
     expect(check).not.toContain('(subpath "/h/.npm")');
     const install = seatbeltProfile(p, { worktree: '/r/.sandboxes/agent-1', mode: 'install' });
     expect(install).not.toContain('network-outbound');
@@ -165,11 +158,15 @@ describe.skipIf(!canSandbox)('the runner sandbox, for real (S5)', () => {
     const { d, profile } = setup();
     const common = join(d.stateDir, '..');
     for (const x of ['worktrees/agent-1', 'worktrees/other']) mkdirSync(join(common, x), { recursive: true });
-    const targets = [join(d.work, '.git'), join(common, 'worktrees/other/commondir'), join(common, 'worktrees/agent-1/gitdir'), join(common, 'worktrees/agent-1/index')];
-    const script = targets.map((t, i) => `echo x > '${t}' 2> err-${i} || true`).join('\n');
+    const targets = [join(d.work, '.git'), join(common, 'worktrees/other/commondir'), join(common, 'worktrees/agent-1/gitdir'),
+      join(common, 'commondir'), join(common, 'config.worktree'), join(common, 'worktrees/agent-1/index')];
+    const script = [...targets.map((t, i) => `echo x > '${t}' 2> err-${i} || true`),
+      // Qodo PR104 2372ddf8: nor can a worktree dir be moved aside and swapped for a symlink.
+      `mv '${join(common, 'worktrees/other')}' '${join(common, 'worktrees/moved')}' 2> err-mv || true`].join('\n');
     const res = await realExec()(SANDBOX_EXEC, seatbelt(profile, '/bin/sh', ['-c', script]), { cwd: d.work, timeoutMs: 10_000, env });
     expect(res.code).toBe(0);
-    expect(targets.map((t) => existsSync(t))).toEqual([false, false, false, true]);
+    expect(targets.map((t) => existsSync(t))).toEqual([false, false, false, false, false, true]);
+    expect(existsSync(join(common, 'worktrees/other'))).toBe(true);
   }, 30_000);
 
   it('the same probe unsandboxed fails the verdict, so a pass means something', async () => {
@@ -222,4 +219,56 @@ describe("the runner's git in the worktree runs nothing the agent planted (Qodo 
     git(s.worktree, status, pinnedGitEnv(s));
     expect(existsSync(s.pwned)).toBe(false);
   });
+});
+
+// Real git and real Seatbelt (Qodo PR104 2372ddf8): with extensions.worktreeConfig on, a worktree
+// dir swapped for a symlink to one holding a planted config.worktree beats pinning alone. The
+// runner's git in the worktree runs sandboxed, so the planted command runs contained.
+describe.skipIf(!canSandbox)("the runner's git in a hijacked worktree runs contained (Qodo PR104 2372ddf8)", () => {
+  const git = (cwd: string, args: string[]) => {
+    const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } });
+    if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
+    return r.stdout;
+  };
+  it('a planted fsmonitor reads the cookie and writes the state dir for unsandboxed git, but neither under worktreeGit', async () => {
+    const root = temp();
+    const home = join(root, 'home');
+    mkdirSync(join(home, '.midway'), { recursive: true });
+    writeFileSync(join(home, '.midway/cookie'), 'FAKE-COOKIE-TOKEN\n');
+    const main = join(root, 'main');
+    mkdirSync(main);
+    git(main, ['init', '-q', '-b', 'session/week1']);
+    writeFileSync(join(main, 'a.txt'), 'a\n');
+    git(main, ['add', 'a.txt']);
+    git(main, ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'a']);
+    const worktree = join(main, '.sandboxes/agent-1');
+    git(main, ['worktree', 'add', '-q', '-b', 'agent/1-x', worktree]);
+    const gitDir = git(worktree, ['rev-parse', '--absolute-git-dir']).trim();
+    const stateDir = join(main, '.git/factory');
+    mkdirSync(stateDir);
+    git(main, ['config', 'extensions.worktreeConfig', 'true']);
+    // The swap: the real worktree dir moved aside, a symlink to a copy with a planted config in its place.
+    const leak = join(root, 'leak');
+    writeFileSync(join(root, 'hook.sh'), `#!/bin/sh\ncat '${join(home, '.midway/cookie')}' > '${leak}' 2>&1\ntouch '${join(stateDir, 'pwned')}'\nexit 1\n`, { mode: 0o755 });
+    const evil = join(root, 'evil-gitdir');
+    cpSync(gitDir, evil, { recursive: true });
+    writeFileSync(join(evil, 'config.worktree'), `[core]\n\tfsmonitor = ${join(root, 'hook.sh')}\n`);
+    renameSync(gitDir, `${gitDir}-moved`);
+    symlinkSync(evil, gitDir);
+    const status = ['status', '--porcelain', '--ignore-submodules=all'];
+    const paths: SandboxPaths = { home, stateDir, env: {} };
+    const base = { PATH: process.env['PATH'] ?? '/usr/bin:/bin', HOME: home, GIT_CONFIG_NOSYSTEM: '1' };
+
+    // Pinning alone: the planted command runs with the runner's access.
+    spawnSync('git', status, { cwd: worktree, env: { ...base, ...pinnedGitEnv({ gitDir, commonDir: join(main, '.git'), worktree }) } });
+    expect(readFileSync(leak, 'utf8')).toContain('FAKE-COOKIE-TOKEN');
+    expect(existsSync(join(stateDir, 'pwned'))).toBe(true);
+    rmSync(leak);
+    rmSync(join(stateDir, 'pwned'));
+
+    const g = worktreeGit(paths, { gitDir, worktree }, status, base);
+    await realExec()(g.cmd, g.args, { cwd: worktree, timeoutMs: 20_000, env: g.env });
+    expect(existsSync(leak) ? readFileSync(leak, 'utf8') : '').not.toContain('FAKE-COOKIE-TOKEN');
+    expect(existsSync(join(stateDir, 'pwned'))).toBe(false);
+  }, 30_000);
 });

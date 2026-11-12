@@ -226,6 +226,10 @@ describe('guardrails (R8)', () => {
 
   it('allows the one push form the runner uses', () => {
     expect(() => assertGitAllowed(['push', 'origin', 'HEAD:refs/heads/agent/24-scan-x'])).not.toThrow();
+    // The verified commit by SHA (Qodo PR104 2372ddf8); a SHA can't widen the target.
+    expect(() => assertGitAllowed(['push', 'origin', `${'a'.repeat(40)}:refs/heads/agent/24-scan-x`])).not.toThrow();
+    expect(() => assertGitAllowed(['push', 'origin', `${'a'.repeat(40)}:refs/heads/session/week1`])).toThrow(GuardError);
+    expect(() => assertGitAllowed(['push', 'origin', 'abc123:refs/heads/agent/24-scan-x'])).toThrow(GuardError);
     expect(() => assertGitAllowed(['merge-base', '--is-ancestor', 'a', 'HEAD'])).not.toThrow();
   });
 
@@ -238,7 +242,11 @@ describe('guardrails (R8)', () => {
     await expect(exec('/opt/homebrew/bin/gh', ['pr', 'merge', '1'], { timeoutMs: 1 })).rejects.toThrow(GuardError);
     await expect(exec('git', ['push', 'origin', 'HEAD:refs/heads/main'], { timeoutMs: 1 })).rejects.toThrow(GuardError);
     await exec('npm', ['test'], { timeoutMs: 1 });
-    expect(ran).toEqual(['npm']);
+    // A command run under sandbox-exec is checked too.
+    await expect(exec('/usr/bin/sandbox-exec', ['-p', '(version 1)', 'git', 'push', 'origin', 'HEAD:refs/heads/main'], { timeoutMs: 1 })).rejects.toThrow(GuardError);
+    await expect(exec('/usr/bin/sandbox-exec', ['-p', '(version 1)', '/opt/homebrew/bin/gh', 'pr', 'merge', '1'], { timeoutMs: 1 })).rejects.toThrow(GuardError);
+    await exec('/usr/bin/sandbox-exec', ['-p', '(version 1)', 'git', 'status'], { timeoutMs: 1 });
+    expect(ran).toEqual(['npm', '/usr/bin/sandbox-exec']);
   });
 });
 

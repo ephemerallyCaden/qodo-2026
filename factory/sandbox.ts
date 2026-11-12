@@ -61,13 +61,14 @@ export function deniedReads(p: SandboxPaths): Denied[] {
 const rulePath = (path: string) => `/${path}`;
 
 /**
- * Git records an agent could rewrite to hand git a config it wrote (Qodo PR #93 b301674c): its
- * worktree's `.git` file, and each worktree's `commondir`, `gitdir` and `config.worktree` under
- * the shared `.git/worktrees/`, the human's own worktrees included. Git still commits through
- * the rest of that dir.
+ * Git records an agent could rewrite to hand git a config it wrote (Qodo PR #93 b301674c, PR #104
+ * 2372ddf8): its worktree's `.git` file, the shared `.git`'s own `commondir` and `config.worktree`
+ * (the main checkout honours both), and each worktree's `commondir`, `gitdir` and
+ * `config.worktree`, the human's own worktrees included. Git still commits through the rest.
  */
 const RECORDS = ['commondir', 'gitdir', 'config.worktree'];
 const worktreesDir = (p: SandboxPaths) => join(dirname(p.stateDir), 'worktrees');
+const commonRecords = (p: SandboxPaths) => ['commondir', 'config.worktree'].map((r) => join(dirname(p.stateDir), r));
 
 /**
  * The `--settings` for every headless call. Bash runs sandboxed, and nothing falls back to
@@ -92,7 +93,7 @@ export function claudeSettings(p: SandboxPaths, o: { worktree: string; extra?: D
       autoAllowBashIfSandboxed: false,
       filesystem: {
         denyRead: denied.map((d) => (d.kind === 'prefix' ? `${d.path}*` : d.path)),
-        denyWrite: [p.stateDir, gitFile, ...RECORDS.map((r) => join(worktreesDir(p), '*', r))],
+        denyWrite: [p.stateDir, gitFile, ...commonRecords(p), ...RECORDS.map((r) => join(worktreesDir(p), '*', r))],
       },
       network: { allowedDomains: [], strictAllowlist: true, allowLocalBinding: true },
     },
@@ -131,13 +132,16 @@ export function seatbeltProfile(p: SandboxPaths, o: { worktree: string; mode: 'i
   if (p.env['TMPDIR']) writable.push(p.env['TMPDIR']);
   if (o.mode === 'install') writable.push(p.env['npm_config_cache'] || join(p.home, '.npm'));
   const denied = [...deniedReads(p), ...(o.extra ?? [])];
-  const records = `(regex #"^${reEscape(real(worktreesDir(p)))}/[^/]+/(${RECORDS.map(reEscape).join('|')})$")`;
+  // Here the worktree dirs themselves are pinned too, so one can't be swapped for a symlink.
+  const wt = reEscape(real(worktreesDir(p)));
+  const records = `(literal ${sbString(real(worktreesDir(p)))}) (regex #"^${wt}/[^/]+$") (regex #"^${wt}/[^/]+/(${RECORDS.map(reEscape).join('|')})$")`;
+  const shared = commonRecords(p).map((r) => `(literal ${sbString(real(r))})`).join(' ');
   return [
     '(version 1)',
     '(allow default)',
     `(deny file-write* (require-not (require-any ${writable.map((w) => `(subpath ${sbString(real(w))})`).join(' ')})))`,
     `(deny file-write* (subpath ${sbString(real(p.stateDir))}) (subpath ${sbString(real(join(common, 'hooks')))}) (literal ${sbString(real(join(common, 'config')))})`,
-    `  (literal ${sbString(real(join(o.worktree, '.git')))}) ${records})`,
+    `  (literal ${sbString(real(join(o.worktree, '.git')))}) ${shared} ${records})`,
     `(deny file-read* ${denied.map(sbFilter).join(' ')})`,
     ...(o.mode === 'check' ? ['(deny network-outbound (require-not (remote ip "localhost:*")))'] : []),
     '',
@@ -307,10 +311,21 @@ export async function sandboxSelfTest(o: {
 }
 
 /**
- * The runner's own git in the worktree runs unsandboxed, with its gh login (Qodo PR #93
- * b301674c). Pinning the git dir it recorded before the agent ran, the shared `.git` and the
- * work tree means a rewritten `.git` file or `commondir` can't hand it a config the agent wrote;
- * only the shared config and hooks apply, which neither sandbox lets anything write.
+ * How the runner runs git in the agent's worktree (Qodo PR #104 2372ddf8): under the checks'
+ * Seatbelt profile, with the agent's environment and no credentials, pinned to the git dir it
+ * recorded. Whatever config the agent plants there runs contained. Only the push leaves the
+ * sandbox, and it runs in the main checkout, never in the worktree.
+ */
+export function worktreeGit(p: SandboxPaths, g: { gitDir: string; worktree: string }, args: readonly string[], env: NodeJS.ProcessEnv) {
+  const pin = g.gitDir ? pinnedGitEnv({ gitDir: g.gitDir, commonDir: dirname(p.stateDir), worktree: g.worktree }) : {};
+  return { cmd: SANDBOX_EXEC, args: seatbelt(seatbeltProfile(p, { worktree: g.worktree, mode: 'check' }), 'git', args), env: { ...env, ...pin } };
+}
+
+/**
+ * Pins the runner's git in the worktree (Qodo PR #93 b301674c) to the git dir it recorded before
+ * the agent ran, the shared `.git` and the work tree, so a rewritten `.git` file or `commondir`
+ * can't hand it a config the agent wrote; only the shared config and hooks apply, which neither
+ * sandbox lets anything write.
  */
 export function pinnedGitEnv(g: { gitDir: string; commonDir: string; worktree: string }): NodeJS.ProcessEnv {
   return { GIT_DIR: g.gitDir, GIT_COMMON_DIR: g.commonDir, GIT_WORK_TREE: g.worktree };

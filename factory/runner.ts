@@ -3,7 +3,7 @@
 // publish its branch as a PR, then loop on CI and Qodo with at most two fix rounds.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import {
   agentEnv, agentRecord, claudeArgs, fixPrompt, fixResult, implementPrompt, implementResult, isPrTitle, readClaude,
   systemPrompt, type AgentCall, type Disposition, type FixInput, type ImplementResult,
@@ -18,7 +18,7 @@ import {
   ciState, isBlocking, parseQodo, qodoMarker, qodoState, shortSha,
   type CheckRun, type CiState, type Finding, type QodoState, type ReviewRun,
 } from './review.js';
-import { claudeSettings, pinnedGitEnv, SANDBOX_EXEC, sandboxSelfTest, seatbelt, seatbeltProfile, type SandboxPaths } from './sandbox.js';
+import { claudeSettings, SANDBOX_EXEC, sandboxSelfTest, seatbelt, seatbeltProfile, worktreeGit, type SandboxPaths } from './sandbox.js';
 import { acceptanceCriteria, branchStem, ticketHash, ticketMarkdown, type Ticket } from './ticket.js';
 
 export interface Deps {
@@ -421,7 +421,8 @@ class Tick {
         continue;
       }
       await this.assertNotEdited();
-      await this.git(this.worktree, ['push', 'origin', `HEAD:refs/heads/${this.branch}`]);
+      // The exact commit verified, from the main checkout: no git config the agent can reach applies.
+      await this.git(this.cfg.repoDir, ['push', 'origin', `${verified}:refs/heads/${this.branch}`]);
       this.head = verified;
       this.log.event('push', { branch: this.branch, head: verified });
       return;
@@ -691,14 +692,17 @@ class Tick {
 
   /**
    * git with the human's gh login as the only credential helper (Research: not the keychain). In
-   * the worktree it is pinned to the git dir recorded at creation, never one the agent pointed it at.
+   * the agent's worktree it runs sandboxed, credential-free and pinned instead (`worktreeGit`).
    */
   private gitTry(cwd: string, args: string[]): Promise<ExecResult> {
-    const pin = cwd === this.worktree && this.gitDir
-      ? pinnedGitEnv({ gitDir: this.gitDir, commonDir: dirname(this.cfg.stateDir), worktree: this.worktree }) : {};
+    const timeoutMs = this.cfg.timeouts.git;
+    if (cwd === this.worktree) {
+      const g = worktreeGit(this.sandbox, { gitDir: this.gitDir, worktree: this.worktree }, args, this.agentEnv);
+      return this.sh(g.cmd, g.args, { cwd, timeoutMs, env: g.env });
+    }
     return this.sh('git', args, {
-      cwd, timeoutMs: this.cfg.timeouts.git,
-      env: { ...this.env, ...pin, GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '',
+      cwd, timeoutMs,
+      env: { ...this.env, GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '',
         GIT_CONFIG_KEY_1: 'credential.helper', GIT_CONFIG_VALUE_1: `!${this.cfg.gh} auth git-credential` },
     });
   }

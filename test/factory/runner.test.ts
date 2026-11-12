@@ -312,7 +312,9 @@ describe('publish (R5)', () => {
     const w = world();
     expect(await happy(w)).toEqual({ state: 'done', issue: 24, pr: 'https://github.com/owner/repo/pull/100' });
     const push = w.gitCalls('push')[0]!;
-    expect(push.args).toEqual(['push', 'origin', 'HEAD:refs/heads/agent/24-scan-windowcommits-splits-numstat-on-u']);
+    // The verified commit by SHA, from the main checkout (Qodo PR104 2372ddf8).
+    expect(push.args).toEqual(['push', 'origin', `${w.commits.at(-1)}:refs/heads/agent/24-scan-windowcommits-splits-numstat-on-u`]);
+    expect(push.cwd).toBe(w.repoDir);
     // The human's gh login is the only credential helper; the keychain helper is reset (Research).
     expect(push.env).toMatchObject({ GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: 'credential.helper', GIT_CONFIG_VALUE_0: '',
       GIT_CONFIG_KEY_1: 'credential.helper', GIT_CONFIG_VALUE_1: '!/opt/homebrew/bin/gh auth git-credential' });
@@ -664,6 +666,7 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
       expect(s.sandbox.filesystem.denyRead).toContain(join(w.home, '.claude/.credentials.json'));
       expect(s.permissions.deny).toContain(`Read(/${join(w.home, '.claude/.credentials.json')})`);
       expect(s.sandbox.filesystem.denyWrite).toEqual([stateDir(w), join(w.repoDir, '.sandboxes/agent-24/.git'),
+        join(w.commonDir, 'commondir'), join(w.commonDir, 'config.worktree'),
         ...['commondir', 'gitdir', 'config.worktree'].map((r) => join(w.commonDir, 'worktrees/*', r))]);
       expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining([join(w.home, '.npmrc'), join(w.home, '.netrc')]));
       // Qodo PR93 cf5b7463: no settings from the worktree, so nothing there can loosen these.
@@ -757,7 +760,7 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
     expect(runLog(w).at(-1)).toMatchObject({ event: 'end', state: 'needs-help' });
   });
 
-  it("pins the runner's own git in the worktree to the git dir recorded before anything ran there (Qodo PR93 b301674c)", async () => {
+  it("runs its own git in the worktree sandboxed, credential-free and pinned, and pushes by SHA from the main checkout (Qodo PR93 b301674c, PR104 2372ddf8)", async () => {
     const w = world();
     w.findings = firstHeadOnly([finding('f1')], []);
     w.addIssue(24);
@@ -767,14 +770,22 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
     const inTree = w.callsTo('git').filter((c) => c.cwd === tree);
     const [record, ...rest] = inTree;
     expect(record!.args).toEqual(['rev-parse', '--absolute-git-dir']);
-    expect(w.calls.indexOf(record!)).toBeLessThan(w.calls.findIndex((c) => c.cmd.endsWith('sandbox-exec') && c.args[2] === 'npm'));
     expect(rest.length).toBeGreaterThan(10);
-    expect(rest.map((c) => c.args[0])).toEqual(expect.arrayContaining(['rev-list', 'diff', 'status', 'rev-parse', 'log', 'push', 'merge-base']));
+    expect(rest.map((c) => c.args[0])).toEqual(expect.arrayContaining(['rev-list', 'diff', 'status', 'rev-parse', 'log', 'merge-base']));
+    for (const c of inTree) {
+      expect(c.profile, c.args.join(' ')).toContain('(deny network-outbound');
+      expect(c.env?.['GIT_CONFIG_VALUE_1'], 'no gh credential helper').toMatch(/push-disabled/);
+      for (const k of Object.keys(RUNNER_SECRETS)) expect(c.env?.[k]).toBeUndefined();
+    }
     for (const c of rest) {
       expect(c.env, c.args.join(' ')).toMatchObject({ GIT_DIR: join(w.commonDir, 'worktrees/agent-24'), GIT_COMMON_DIR: w.commonDir, GIT_WORK_TREE: tree });
     }
     for (const c of w.gitCalls('status')) expect(c.args).toContain('--ignore-submodules=all');
-    for (const c of w.callsTo('git').filter((x) => x.cwd === w.repoDir)) expect(c.env?.['GIT_DIR']).toBeUndefined();
+    // Only main-checkout git runs unsandboxed, with the gh login; the pushes are the verified heads.
+    const outside = w.callsTo('git').filter((c) => !c.profile);
+    expect(outside.every((c) => c.cwd === w.repoDir)).toBe(true);
+    expect(w.gitCalls('push').map((c) => c.args[2]!.split(':')[0])).toEqual(w.commits);
+    for (const c of w.gitCalls('push')) expect(c.env?.['GIT_CONFIG_VALUE_1']).toMatch(/gh auth git-credential$/);
   });
 
   it('an agent call that exits because its sandbox cannot start stops the run and says so', async () => {

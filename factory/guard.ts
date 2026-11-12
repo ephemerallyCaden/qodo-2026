@@ -45,21 +45,21 @@ export function assertGitAllowed(args: readonly string[]): void {
 }
 
 /**
- * Exactly `push origin HEAD:refs/heads/agent/<N>-<slug>`: no flags, no `+`, no deletes. The
- * `agent/` prefix rules out main and every session branch.
+ * Exactly `push origin <HEAD or a full SHA>:refs/heads/agent/<N>-<slug>`: no flags, no `+`, no
+ * deletes. The `agent/` prefix rules out main and every session branch.
  */
 function assertSafePush(rest: readonly string[]): void {
   if (rest.length !== 2 || rest[0] !== 'origin') throw new GuardError(`push must be "origin <refspec>", got ${JSON.stringify(rest)}`);
-  const m = /^HEAD:refs\/heads\/(.+)$/.exec(rest[1]!);
+  const m = /^(?:HEAD|[0-9a-f]{40}):refs\/heads\/(.+)$/.exec(rest[1]!);
   if (!m || !AGENT_BRANCH.test(m[1]!)) throw new GuardError(`push to ${rest[1]} is not allowed`);
 }
 
-/** Checks every gh and git command before it runs; anything else passes through. */
+/** Checks every gh and git command before it runs, also one sandbox-exec runs; anything else passes through. */
 export function guarded(exec: Exec): Exec {
   return async (cmd, args, opts) => {
-    const name = basename(cmd);
-    if (name === 'gh') assertGhAllowed(args);
-    if (name === 'git') assertGitAllowed(args);
+    const [name, inner] = basename(cmd) === 'sandbox-exec' ? [basename(args[2] ?? ''), args.slice(3)] : [basename(cmd), args];
+    if (name === 'gh') assertGhAllowed(inner);
+    if (name === 'git') assertGitAllowed(inner);
     return exec(cmd, args, opts);
   };
 }
