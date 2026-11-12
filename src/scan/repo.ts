@@ -228,9 +228,10 @@ const HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
  * log is read line by line (AGENTS.md Rule 7, #38): a record starts only at a line that begins with
  * NUL while no hunk is open, and the `@@` counts tell content from headers, so no content line can
  * start, end or re-key a record. A commit is `incomplete`, its readable lines kept but never human,
- * when a hunk line isn't one its counts allow (the hunk then ends there), a hunk is still open when
- * the output ends, an `@@` line doesn't parse, a `+` or `-` line other than the `---`/`+++` headers
- * sits outside a hunk, an added line has no path, or the last line is cut off. `window`, when given,
+ * when a hunk line isn't one its counts allow (the hunk ends before it, and it is read as a line
+ * outside any hunk, so it may be the next record's header), a hunk is still open when the output
+ * ends, an `@@` line doesn't parse, a `+` or `-` line other than the `---`/`+++` headers sits outside
+ * a hunk, an added line has no path, or the last line is cut off. `window`, when given,
  * holds the commits a header may name. Output that can't be split into records is refused: a
  * non-empty line before the first header, or a header that isn't the full SHA of a window commit.
  * A repeated header keeps only the first record, as numstatLog does.
@@ -257,9 +258,11 @@ export async function addedLines(git: Git, head: string, sinceIso: string, windo
         else unread();
       } else if (l.startsWith('-') && minus > 0) minus--;
       else if (!l.startsWith('\\')) {
-        // A line the counts don't allow: they can't be trusted past it. It never starts a record.
+        // A line the counts don't allow isn't content: the hunk ends before it, and it is read again
+        // with no hunk open, so a header after a cut-off hunk still starts its record (Qodo ca4c5aa4).
         unread();
         plus = minus = 0;
+        read(l);
       }
     } else if (l.startsWith('\0')) {
       const key = l.slice(1);

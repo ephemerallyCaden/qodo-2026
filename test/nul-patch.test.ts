@@ -234,11 +234,26 @@ describe('#38: a commit whose record can\'t be read completely is never human (s
     });
   }
 
-  it('a NUL-led line while a hunk is open never starts a record: the commit is incomplete, and what follows stays in it', async () => {
-    const patches = await read(record(A, ...added('x.ts', ['@@ -0,0 +1,2 @@', '+a']), `\0${B}`, '', ...added('y.ts', ['@@ -0,0 +1 @@', '+y'])));
-    expect([...patches.keys()]).toEqual([A]);
-    expect(Object.fromEntries(patches.get(A)!)).toEqual({ 'x.ts': ['a'], 'y.ts': ['y'] });
+  it('a header right after a hunk cut off early starts its own record: the cut-off commit is incomplete, the next keeps its lines', async () => {
+    // Qodo PR #100 ca4c5aa4: the header was swallowed, so B's lines went under A and B had no record.
+    const cut = record(A, ...added('x.ts', ['@@ -0,0 +1,2 @@', '+a']));
+    const patches = await read(cut + record(B, ...added('y.ts', ['@@ -0,0 +1 @@', '+y'])));
+    expect([...patches.keys()]).toEqual([A, B]);
+    expect(Object.fromEntries(patches.get(A)!)).toEqual({ 'x.ts': ['a'] });
+    expect(Object.fromEntries(patches.get(B)!)).toEqual({ 'y.ts': ['y'] });
     expect(patches.incomplete).toEqual(new Set([A]));
+    // The same as the output's last line, without its newline (an empty last commit).
+    const last = await read(`${cut}\0${B}`);
+    expect([...last.keys()]).toEqual([A, B]);
+    expect(last.get(B)).toEqual(new Map());
+    expect(last.incomplete).toEqual(new Set([A]));
+  });
+
+  it('a removed or added line that holds a NUL and a real SHA is content the counts allow: it never starts a record', async () => {
+    const patches = await read(record(A, 'diff --git a/x.ts b/x.ts', '--- a/x.ts', '+++ b/x.ts', '@@ -1 +1,2 @@', `-\0${B}`, `+\0${B}`, '+b'));
+    expect([...patches.keys()]).toEqual([A]);
+    expect(Object.fromEntries(patches.get(A)!)).toEqual({ 'x.ts': [`\0${B}`, 'b'] });
+    expect(patches.incomplete).toEqual(new Set());
   });
 
   it('a `\\ No newline at end of file` marker, inside a hunk or right after it, is read completely', async () => {
@@ -258,6 +273,8 @@ describe('#38: patch log output that can\'t be split into records is refused (st
       record(`${A} `),
       record('c'.repeat(40)),
       OK_B + `\0${'a'.repeat(39)}`,
+      // A header after a hunk cut off early is checked like any other.
+      record(A, ...added('x.ts', ['@@ -0,0 +1,2 @@', '+a'])) + record('c'.repeat(40)),
     ]) await expect(read(out), JSON.stringify(out)).rejects.toThrow(/misframed/);
   });
 
