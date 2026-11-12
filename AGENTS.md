@@ -25,6 +25,7 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 - A full local run is for work that gets no PR (a debugger's reproduction) or when CI is down. Use `lockf -k /tmp/commet-fullsuite.lock npm test` then, and never put targeted runs under that lock.
 - If a file times out under load, re-run that file alone, not the suite.
 - One test: `npx vitest run -t "<name>"`.
+- **Never run `commet scan`, `commet chart`, `commet open` or `commet hook` against this repo from a worktree or sandbox** without `--out <file>` (scan) or a throwaway clone. Every worktree shares the main repo's `.git/commet/`, which is the human's own state (saved roots, chart progress, events). Check `git rev-parse --git-common-dir` first; use a temp repo or a clone for experiments.
 - Test temp dirs come only from `tempDir()` / `realTempDir()` in `test/fixtures/tmp.ts` (ESLint bans direct `mkdtemp` under `test/`). Each file's dirs are removed after it, pass or fail; a run fails if any is left (in CI, also on any other new `commet-*` dir). The hook timeout is a 300 s hard cap (`vitest.config.ts`).
 - Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
 - No local `qodo review` when a task PR follows: the PR review is the gate, as for the agent runner. Run one local round only for work that won't get a PR. (On #16, six local rounds took over 2 hours, and the PR review ran anyway.)
