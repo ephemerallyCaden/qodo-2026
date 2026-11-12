@@ -8,8 +8,8 @@
 // preconditions pass before and after the fix, so a broken fixture can never make a repro pass
 // vacuously. The Bug A and "same class" blocks stay on that branch, for #39 and #42.
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { realTempDir, tempDir } from './fixtures/tmp.js';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { matchCommits } from '../src/attrib/match.js';
@@ -33,7 +33,7 @@ type Step = [id: string, when: string, files: Files | ((dir: string, sha: Record
 
 /** Self-authored commits, in order, at fixed dates; `attrs` seeds .gitattributes. */
 function gitRepo(steps: Step[], attrs?: string): MiniRepo {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-nul-')));
+  const dir = realTempDir('commet-nul-');
   const git = (args: string[], env: Record<string, string> = {}) =>
     execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env } }).trim();
   git(['init', '-q', '-b', 'main']);
@@ -308,7 +308,7 @@ describe('#38: the same class with and without the NUL', () => {
 
 /** Runs `fn` with a git shim first on PATH that replaces `from` with `to` in the `-U0` patch log only. */
 async function withPatchShim<T>(from: string, to: string, fn: () => Promise<T>): Promise<T> {
-  const shim = mkdtempSync(join(tmpdir(), 'commet-patch-shim-'));
+  const shim = tempDir('commet-patch-shim-');
   const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
   writeFileSync(join(shim, 'shim.mjs'), [
     "import { spawnSync } from 'node:child_process';",
