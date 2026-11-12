@@ -5,9 +5,6 @@ import { lstatSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tryLock } from '../state/lock.js';
 
-/** At most this many scans back to back, however many commits arrive while they run. */
-const MAX_ROUNDS = 5;
-
 /**
  * Runs `scan` unless one is already running for this worktree (`key`), in which case it leaves a
  * request the running one picks up when it finishes. The request is made before trying the lock and
@@ -22,8 +19,9 @@ export async function coalescedRefresh(dir: string, key: string, scan: () => Pro
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
   }
+  // One more round only when a request came in during the last scan, so this ends once commits stop.
   let code = 0;
-  for (let round = 0; round < MAX_ROUNDS; round++) {
+  for (;;) {
     if (!tryLock(lock)) return code;
     try {
       rmSync(pending, { force: true });
@@ -33,5 +31,4 @@ export async function coalescedRefresh(dir: string, key: string, scan: () => Pro
     }
     if (!lstatSync(pending, { throwIfNoEntry: false })) return code;
   }
-  return code;
 }

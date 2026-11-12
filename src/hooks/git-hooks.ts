@@ -73,8 +73,8 @@ export async function hooksTarget(git: Git, commonDir: string): Promise<HooksTar
   const out = await tryGit(git, ['rev-parse', '--path-format=absolute', '--git-path', 'hooks']);
   if (out === null) return { refused: 'git could not say where this repository\'s hooks are' };
   const dir = realish(out.replace(/\n$/, ''));
-  const rel = relative(commonDir, dir);
-  if (rel.startsWith('..') || isAbsolute(rel)) {
+  const label = ownLabel(commonDir, dir);
+  if (label === null) {
     const top = (await tryGit(git, ['rev-parse', '--show-toplevel']))?.replace(/\n$/, '');
     const inTree = top !== undefined && top !== '' && !relative(realish(top), dir).startsWith('..');
     return { refused: inTree
@@ -83,10 +83,27 @@ export async function hooksTarget(git: Git, commonDir: string): Promise<HooksTar
         + 'Still available: `commet hook install --claude-only` records agent sessions, and `commet scan` refreshes the snapshot by hand '
         + '(or add `commet hook refresh` to that hook yourself)' };
   }
-  return { dir, label: rel === '' ? '<git-common-dir>' : `<git-common-dir>/${rel.split(sep).join('/')}` };
+  return { dir, label };
 }
 
-type Entry = { kind: 'absent' } | { kind: 'ours'; text: string; executable: boolean } | { kind: 'other' } | { kind: 'unusable' };
+/** How the plan names a real hooks dir inside the git common dir, or null when it's outside it. */
+function ownLabel(commonDir: string, dir: string): string | null {
+  const rel = relative(commonDir, dir);
+  if (rel.startsWith('..') || isAbsolute(rel)) return null;
+  return rel === '' ? '<git-common-dir>' : `<git-common-dir>/${rel.split(sep).join('/')}`;
+}
+
+/**
+ * `path`'s real form and label when it's a hooks dir inside the common dir (`.git/hooks` swapped for
+ * a link to elsewhere isn't), else null: remove looks only where install could have written.
+ */
+export function ownHooksDir(commonDir: string, path: string): { dir: string; label: string } | null {
+  const dir = realish(path);
+  const label = ownLabel(commonDir, dir);
+  return label === null ? null : { dir, label };
+}
+
+type Entry = { kind: 'absent' } | { kind: 'ours'; text: string; mode: number } | { kind: 'other' } | { kind: 'unusable' };
 
 function entry(file: string): Entry {
   let st: ReturnType<typeof lstatSync>;
@@ -101,12 +118,12 @@ function entry(file: string): Entry {
   if (!st.isFile()) return { kind: 'unusable' };
   if (st.size > MAX_HOOK_BYTES) return { kind: 'other' };
   const text = readFileSync(file, 'utf8');
-  return text.split('\n')[1] === HOOK_MARK ? { kind: 'ours', text, executable: (st.mode & 0o111) !== 0 } : { kind: 'other' };
+  return text.split('\n')[1] === HOOK_MARK ? { kind: 'ours', text, mode: st.mode & 0o7777 } : { kind: 'other' };
 }
 
 export type HookStep =
   | { hook: GitHookName; action: 'write' | 'chain-and-write'; script: string }
-  | { hook: GitHookName; action: 'rewrite'; script: string; previous: string }
+  | { hook: GitHookName; action: 'rewrite'; script: string; previous: string; previousMode: number }
   | { hook: GitHookName; action: 'unchanged' }
   | { hook: GitHookName; action: 'conflict'; why: string };
 
@@ -119,7 +136,8 @@ export function planInstall(dir: string, node: string, cli: string): HookStep[] 
     if (target.kind === 'unusable') return { hook, action: 'conflict', why: `${hook} is not a file` };
     // Commet's own hook that git can't run (not executable) is written again.
     if (target.kind === 'ours') {
-      return target.text === script && target.executable ? { hook, action: 'unchanged' } : { hook, action: 'rewrite', script, previous: target.text };
+      return target.text === script && (target.mode & 0o111) !== 0 ? { hook, action: 'unchanged' }
+        : { hook, action: 'rewrite', script, previous: target.text, previousMode: target.mode };
     }
     if (chained) {
       return { hook, action: 'conflict', why: `${hook}${CHAINED} is already there but ${hook} isn't Commet's; move one of them away first` };
@@ -128,13 +146,13 @@ export function planInstall(dir: string, node: string, cli: string): HookStep[] 
   });
 }
 
-/** Writes `text` at `target` by renaming a staged copy over it, executable whatever the umask. */
-function putScript(dir: string, target: string, text: string, beforeRename: () => void = () => undefined): void {
+/** Writes `text` at `target` by renaming a staged copy over it, with `mode` whatever the umask. */
+function putScript(dir: string, target: string, text: string, beforeRename: () => void = () => undefined, mode = 0o755): void {
   const staged = join(dir, `.${basename(target)}.commet-${process.pid}`);
   rmSync(staged, { force: true });
-  writeFileSync(staged, text, { mode: 0o755, flag: 'wx' });
+  writeFileSync(staged, text, { mode, flag: 'wx' });
   try {
-    chmodSync(staged, 0o755);
+    chmodSync(staged, mode);
     beforeRename();
     renameSync(staged, target);
   } finally {
@@ -175,7 +193,7 @@ export function applyInstall(dir: string, steps: HookStep[]): () => void {
         undo.push(() => renameSync(target + CHAINED, target));
       } else if (step.action === 'rewrite') {
         putScript(dir, target, step.script);
-        undo.push(() => putScript(dir, target, step.previous));
+        undo.push(() => putScript(dir, target, step.previous, undefined, step.previousMode));
       }
     }
   } catch (e) {

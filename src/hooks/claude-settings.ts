@@ -10,8 +10,13 @@ import { EDIT_TOOLS } from './event.js';
 
 /** Marks a PostToolUse command as Commet's: a shell comment at its end, naming what install created. */
 const COMMAND_MARK = '# commet:hook-event';
-/** Commet's command: the CLI's `hook event`, then the marker; a user's command that only ends in the marker isn't. */
-const MARKED = / hook event # commet:hook-event(?::(file|hooks|post))?$/;
+/**
+ * Commet's command exactly as install writes it: two single-quoted paths (node, the CLI), `hook
+ * event`, the marker. A user's command that merely ends the same way isn't Commet's.
+ */
+const QUOTED = `'(?:[^']|'\\\\'')*'`;
+const MARKED = new RegExp(`^${QUOTED} ${QUOTED} hook event # commet:hook-event(?::(file|hooks|post))?$`);
+const TAIL = / hook event # commet:hook-event(?::(?:file|hooks|post))?$/;
 const HOOK_TIMEOUT_S = 10;
 
 type Created = 'file' | 'hooks' | 'post' | 'none';
@@ -178,7 +183,7 @@ export function removeText(text: string): Removal | null {
   const marked = ourCommand(post)!;
   // What install created, as its marker says, and the CLI command it ran.
   const created = (MARKED.exec(marked)![1] as Created | undefined) ?? 'none';
-  const command = marked.replace(MARKED, '');
+  const command = marked.replace(TAIL, '');
   if (created === 'file') {
     const fresh = installText(null, command);
     if (!('error' in fresh) && fresh.text === text) return { text: null, exact: true };

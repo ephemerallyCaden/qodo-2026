@@ -1,6 +1,6 @@
 // A lock file in the state dir holding its owner's pid: taken by exclusive create, and taken over
 // only once its owner is gone, so a killed `commet` never leaves it stuck.
-import { lstatSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { linkSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync, type BigIntStats } from 'node:fs';
 
 /** A lock whose pid isn't readable yet is its owner's for this long: it may still be writing it. */
 const FRESH_MS = 10_000;
@@ -15,19 +15,43 @@ const alive = (pid: number) => {
   }
 };
 
-/** Whether the lock at `lock` is held by a live process (or was made too recently to tell). */
-function held(lock: string): boolean {
-  let st: ReturnType<typeof lstatSync> | undefined;
+/**
+ * The lock's inode when it may be taken over (its owner is gone), or null while it's held by a live
+ * process, was made too recently to tell, or is gone already.
+ */
+function staleIno(lock: string): bigint | null {
+  let st: BigIntStats;
   let pid = NaN;
   try {
-    st = lstatSync(lock);
+    st = lstatSync(lock, { bigint: true });
     // Only a regular file is read: a planted FIFO would block.
     if (st.isFile()) pid = Number(readFileSync(lock, 'utf8'));
   } catch {
-    return false; // gone already
+    return null;
   }
-  if (Number.isSafeInteger(pid) && pid > 0) return alive(pid);
-  return Date.now() - st.mtimeMs < FRESH_MS;
+  const isHeld = Number.isSafeInteger(pid) && pid > 0 ? alive(pid) : Date.now() - Number(st.mtimeMs) < FRESH_MS;
+  return isHeld ? null : st.ino;
+}
+
+/**
+ * Removes the lock only if it is still the stale one inspected (inode `ino`): it's renamed to a
+ * name of this process's own first, so the file removed is exactly the one checked. A fresh lock
+ * another process took meanwhile is put back, unless a newer one is already there. Exported for tests.
+ */
+export function reap(lock: string, ino: bigint): void {
+  const mine = `${lock}.reap-${process.pid}`;
+  try {
+    renameSync(lock, mine);
+  } catch {
+    return; // someone else reaped it
+  }
+  try {
+    if (lstatSync(mine, { bigint: true }).ino !== ino) linkSync(mine, lock);
+  } catch {
+    // A newer lock is at the name already: that one stands.
+  } finally {
+    rmSync(mine, { force: true });
+  }
 }
 
 /** Takes the lock, or returns false while another live process holds it. */
@@ -39,8 +63,12 @@ export function tryLock(lock: string): boolean {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
     }
-    if (held(lock)) return false;
-    rmSync(lock, { force: true });
+    const ino = staleIno(lock);
+    if (ino === null) {
+      if (lstatSync(lock, { throwIfNoEntry: false })) return false;
+      continue; // released meanwhile: try again
+    }
+    reap(lock, ino);
   }
   return false;
 }

@@ -1,18 +1,18 @@
 // `commet hook install | remove | event | refresh` (R7, #77): consent, chaining, worktrees,
 // core.hooksPath, the Claude Code settings merge, deduplicated events and coalesced refreshes.
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, posix, win32 } from 'node:path';
 import { Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { installText, removeText } from '../src/hooks/claude-settings.js';
 import { placePath } from '../src/hooks/event.js';
-import { applyInstall, HOOK_MARK, planInstall } from '../src/hooks/git-hooks.js';
+import { applyInstall, HOOK_MARK, hookScript, planInstall } from '../src/hooks/git-hooks.js';
 import { coalescedRefresh } from '../src/hooks/refresh.js';
 import { EVENTS_FILE, readEvents } from '../src/state/events.js';
-import { withLock } from '../src/state/lock.js';
-import { scripted } from './fixtures/cli.js';
+import { reap, withLock } from '../src/state/lock.js';
+import { cli, scripted } from './fixtures/cli.js';
 import { calls, fakeCli, git, GIT_ENV, hook, hookRepo, mkdirp, tempDir, tree } from './fixtures/hooks.js';
 
 
@@ -304,6 +304,34 @@ describe('git hooks', () => {
     expect(tree(dir)).toEqual(before);
   });
 
+  it('remove never follows .git/hooks swapped for a link out of the repo, even to Commet-marked hooks', async () => {
+    const dir = hookRepo();
+    const elsewhere = tempDir('commet-hooks-elsewhere-');
+    writeFileSync(join(elsewhere, 'post-commit'), hookScript('post-commit', '/n', '/c'), { mode: 0o755 });
+    writeFileSync(join(elsewhere, 'post-commit.commet-chained'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    rmSync(join(dir, '.git/hooks'), { recursive: true });
+    symlinkSync(elsewhere, join(dir, '.git/hooks'));
+    const before = tree(elsewhere);
+    expect((await hook(['remove'], dir)).out).toBe('no Commet hooks are installed; nothing to remove\n');
+    expect(tree(elsewhere)).toEqual(before);
+  });
+
+  it('a failed install puts a rewritten hook back with its mode as well as its text', async () => {
+    const dir = hookRepo();
+    const paths = fakeCli();
+    await hook(['install', '--yes', '--git-only'], dir, { paths });
+    chmodSync(join(dir, '.git/hooks/post-merge'), 0o644);
+    mkdirp(join(dir, '.claude'));
+    const before = tree(dir);
+    const r = await hook(['install'], dir, { paths, ask: async () => {
+      chmodSync(join(dir, '.claude'), 0o555);
+      return 'y';
+    } });
+    chmodSync(join(dir, '.claude'), 0o755);
+    expect(r.code).toBe(1);
+    expect(tree(dir)).toEqual(before);
+  });
+
   it('refuses to write into a hooks folder swapped for a link after planning', () => {
     const dir = hookRepo();
     const hooks = join(dir, '.git/hooks');
@@ -378,6 +406,16 @@ describe('Claude Code hook', () => {
     expect(readFileSync(join(dir, SETTINGS), 'utf8')).toContain('echo ready # commet:hook-event');
     await hook(['remove'], dir);
     expect(readFileSync(join(dir, SETTINGS), 'utf8')).toBe(text);
+  });
+
+  it('a user command shaped like Commet\'s tail but not running a quoted CLI is left alone', async () => {
+    const dir = hookRepo();
+    mkdirp(join(dir, '.claude'));
+    const text = '{"hooks": {"PostToolUse": [{"matcher": "Edit", "hooks": [{"type": "command", "command": "echo hook event # commet:hook-event"}]}]}}\n';
+    writeFileSync(join(dir, SETTINGS), text);
+    expect((await hook(['remove'], dir)).out).toBe('no Commet hooks are installed; nothing to remove\n');
+    expect(readFileSync(join(dir, SETTINGS), 'utf8')).toBe(text);
+    expect(removeText(text)).toBeNull();
   });
 
   it('creates the file (and .claude) when absent, and remove takes both away', async () => {
@@ -571,6 +609,13 @@ describe('hook event', () => {
     expect(await readEvents(join(dir, '.git/commet'))).toMatchObject({ events: [{ path: 'src/a\\b.ts' }], dropped: 0 });
   });
 
+  it('a Write that creates an empty file is recorded, with no hunks', async () => {
+    const dir = eventRepo();
+    writeFileSync(join(dir, 'src/empty.ts'), '');
+    await sendEvent(dir, payload(dir, { tool_name: 'Write', tool_response: { type: 'create', filePath: join(dir, 'src/empty.ts'), content: '', structuredPatch: [] } }));
+    expect(await readEvents(join(dir, '.git/commet'))).toMatchObject({ events: [{ path: 'src/empty.ts', op: 'create', hunks: [] }], dropped: 0 });
+  });
+
   it('an oversized payload is drained and counted as a drop', async () => {
     const dir = eventRepo();
     const big = Readable.from((function* () {
@@ -611,6 +656,34 @@ describe('hook refresh', () => {
     expect(existsSync(join(dir, 'refresh-k.lock'))).toBe(true);
   });
 
+  it('keeps folding requests in until none arrive, however many rounds that takes', async () => {
+    const dir = tempDir('commet-hooks-rounds-');
+    let scans = 0;
+    // Each of the first seven scans sees a new commit arrive while it runs.
+    await coalescedRefresh(dir, 'k', async () => {
+      if (++scans <= 7) writeFileSync(join(dir, 'refresh-k.pending'), '');
+      return 0;
+    });
+    expect(scans).toBe(8);
+    expect(tree(dir)).toEqual({});
+  });
+
+  it('reaping a stale lock removes only the file inspected, never a fresh one taken meanwhile', () => {
+    const dir = tempDir('commet-hooks-reap-');
+    const lock = join(dir, 'x.lock');
+    writeFileSync(lock, '1');
+    const staleIno = lstatSync(lock, { bigint: true }).ino;
+    // Another process reaped it and took the lock first.
+    rmSync(lock);
+    writeFileSync(join(dir, 'keep'), '');
+    writeFileSync(lock, String(process.pid));
+    reap(lock, staleIno);
+    expect(readFileSync(lock, 'utf8')).toBe(String(process.pid));
+    reap(lock, lstatSync(lock, { bigint: true }).ino);
+    expect(existsSync(lock)).toBe(false);
+    expect(Object.keys(tree(dir))).toEqual(['/keep']);
+  });
+
   it('takes over a lock its process left behind', async () => {
     const dir = tempDir('commet-hooks-stale-');
     const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }).stdout;
@@ -629,6 +702,17 @@ describe('hook refresh', () => {
     expect(await withLock(lock, () => 2, 100, 5)).toEqual({ value: 2 });
     expect(existsSync(lock)).toBe(false);
   });
+
+  it('a scan waits for the publish lock and, while another scan holds it, writes nothing', async () => {
+    const dir = hookRepo();
+    mkdirSync(join(dir, '.git/commet'), { mode: 0o700 });
+    writeFileSync(join(dir, '.git/commet/publish.lock'), String(process.pid));
+    const r = await cli(['scan'], dir, { ...process.env, CLAUDE_CONFIG_DIR: tempDir('commet-hooks-claude-') });
+    expect(r.code).toBe(5);
+    expect(r.err).toContain('another scan has been writing its results for 5 s; nothing was written');
+    expect(existsSync(join(dir, '.git/commet/snapshot.json'))).toBe(false);
+    expect(existsSync(join(dir, '.git/commet/layout.json'))).toBe(false);
+  }, 60_000);
 
   it('runs a quiet scan of the worktree it was called from', async () => {
     const dir = hookRepo();

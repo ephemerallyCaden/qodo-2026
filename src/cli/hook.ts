@@ -10,7 +10,7 @@ import { lineHasher, sha256Hex } from '../core/hash.js';
 import { installText, removeText, shownGroup } from '../hooks/claude-settings.js';
 import { eventsFromPayload, placePath } from '../hooks/event.js';
 import {
-  applyInstall, applyRemove, CHAINED, hookScript, hooksTarget, planInstall, planRemove, shellQuote, type HookStep, type RemoveStep,
+  applyInstall, applyRemove, CHAINED, hookScript, hooksTarget, ownHooksDir, planInstall, planRemove, shellQuote, type HookStep, type RemoveStep,
 } from '../hooks/git-hooks.js';
 import { coalescedRefresh } from '../hooks/refresh.js';
 import { gitRunner, tryGit, type Git } from '../scan/git.js';
@@ -89,10 +89,15 @@ async function readSettings(repo: Repo): Promise<SettingsFile | { refused: strin
  */
 function writeSettings(settings: SettingsFile, text: string): void {
   mkdirSync(settings.dir, { recursive: true, mode: 0o755 });
+  checkSettingsDir(settings);
+  writeAtomic(settings.file, text, settings.mode);
+}
+
+/** .claude must still be the real folder planned, so nothing is written or deleted through a link swapped in since. */
+function checkSettingsDir(settings: SettingsFile): void {
   if (!lstatSync(settings.dir).isDirectory() || realpathSync.native(settings.dir) !== settings.dir) {
     throw new CommetError('state error: .claude changed (now a link); nothing was written to it', EXIT.state);
   }
-  writeAtomic(settings.file, text, settings.mode);
 }
 
 const indent = (text: string) => text.replace(/\n$/, '').split('\n').map((l) => `  | ${l}`).join('\n') + '\n';
@@ -219,7 +224,9 @@ async function planRemoveAll(repo: Repo, parts: Parts): Promise<RemovePlan> {
   if (parts.git) {
     // The hooks dir git uses now, and the default one, in case core.hooksPath changed since install.
     const target = await hooksTarget(repo.git, repo.commonDir);
-    const dirs = new Map<string, string>([[join(repo.commonDir, 'hooks'), '<git-common-dir>/hooks']]);
+    const dirs = new Map<string, string>();
+    const own = ownHooksDir(repo.commonDir, join(repo.commonDir, 'hooks'));
+    if (own) dirs.set(own.dir, own.label);
     if (!('refused' in target)) dirs.set(target.dir, target.label);
     for (const [dir, label] of dirs) {
       const steps: RemoveStep[] = planRemove(dir);
@@ -243,6 +250,7 @@ async function planRemoveAll(repo: Repo, parts: Parts): Promise<RemovePlan> {
           : 'the file was reformatted since install, so it was rewritten with every other setting kept'}`);
         plan.apply.push(() => {
           if (before.text !== null) return writeSettings(settings, before.text);
+          checkSettingsDir(settings);
           rmSync(settings.file);
           try {
             rmdirSync(settings.dir);

@@ -121,7 +121,8 @@ export function eventsFromPayload(payload: unknown, ctx: EventContext): (AgentEd
   } else if (Array.isArray(patch)) hunks = [];
   else return drop('malformed');
   if (hunks === null) return drop('malformed');
-  if (hunks.length === 0) return [];
+  // A file created empty is still an edit worth a record; an edit that changed nothing isn't.
+  if (hunks.length === 0 && res['type'] !== 'create') return [];
   const path = ctx.place(res['filePath']);
   if (path === null) return [];
   if (path === 'unplaceable') return drop('unplaceable');
