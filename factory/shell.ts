@@ -14,6 +14,7 @@ export interface ShOptions {
   cwd?: string;
   timeoutMs: number;
   env?: NodeJS.ProcessEnv;
+  input?: string;
 }
 
 export class Shell {

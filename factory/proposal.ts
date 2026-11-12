@@ -43,7 +43,8 @@ export const scrubLocalPaths = (s: string) => s
 /** No `@name` in a post pings anyone (a Qodo description can quote `@param` or `@types/node`). */
 const noMentions = (s: string) => s.replace(/@(?=[A-Za-z0-9_-])/g, '@\u200b');
 
-const line = (s: string) => noMentions(oneLine(s));
+/** One line, no mentions, and no HTML comment: quoted text can't hide in a post or pose as a marker (PR #99 28f6b127). */
+const line = (s: string) => noMentions(oneLine(s)).replace(/<!--/g, '&lt;!--');
 
 export function proposalTitle(d: Draft): string {
   const name = line(d.rule.name);
@@ -97,6 +98,7 @@ export function proposalBody(o: {
     ...d.criteria.map((c, i) => `${i + 1}. ${line(c)}`),
     `${d.criteria.length + 1}. Only AGENTS.md changes: no code, tests or other docs.`,
     '',
+    postedMarker(o.findings.map((f) => f.id)),
     proposalMarker(o.group),
     '',
   ].join('\n');

@@ -49,6 +49,8 @@ export interface Config {
   sweepBudgetMs: number;
   /** PRs one sweep lists; a full list is logged, since older PRs may be cut off. */
   prListLimit: number;
+  /** A settled closed PR is still read again after this long. */
+  prRereadMs: number;
   dryRun: boolean;
   /** Dry-run preview of one issue as if the owner had just labelled it. */
   previewIssue: number | null;
@@ -65,7 +67,7 @@ export function defaults(home: string, repoDir: string, commonDir: string, slug:
     maxTurns: 120, fixMaxTurns: 80, maxBudgetUsd: 15, fixMaxBudgetUsd: 8,
     timeouts: { gh: MIN, git: 2 * MIN, npmCi: 10 * MIN, check: 15 * MIN, agent: 90 * MIN, fix: 30 * MIN, qodo: 2 * MIN, judge: 5 * MIN },
     evidenceDir: join(repoDir, '.archive/docs/hackathon/evidence'),
-    sweepMaxCalls: 4, judgeBatch: 20, judgeBudgetUsd: 1, sweepBudgetMs: 20 * MIN, prListLimit: 1000,
+    sweepMaxCalls: 4, judgeBatch: 20, judgeBudgetUsd: 1, sweepBudgetMs: 20 * MIN, prListLimit: 1000, prRereadMs: 24 * 60 * MIN,
     dryRun: false, previewIssue: null,
   };
 }

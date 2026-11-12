@@ -53,6 +53,8 @@ export interface Call {
   cmd: string;
   args: string[];
   cwd: string | undefined;
+  /** What the call got on stdin, if anything. */
+  input?: string;
   env: NodeJS.ProcessEnv | undefined;
 }
 
@@ -109,9 +111,9 @@ export function claudeOut(o: {
 const fence = (block: object) => `All done.\n\n\`\`\`json\n${JSON.stringify(block, null, 2)}\n\`\`\`\n`;
 
 /** A judge call that answers with `answer` as its structured output. */
-export function judgeOut(answer: unknown, over: { subtype?: string; code?: number; structured?: boolean } = {}): ExecResult {
+export function judgeOut(answer: unknown, over: { subtype?: string; code?: number; structured?: boolean; isError?: boolean; cost?: number } = {}): ExecResult {
   const json = {
-    type: 'result', subtype: over.subtype ?? 'success', is_error: false, result: JSON.stringify(answer), num_turns: 2, total_cost_usd: 0.1,
+    type: 'result', subtype: over.subtype ?? 'success', is_error: over.isError ?? false, result: JSON.stringify(answer), num_turns: 2, total_cost_usd: over.cost ?? 0.1,
     ...(over.structured === false ? {} : { structured_output: answer }),
   };
   return { code: over.code ?? 0, stdout: JSON.stringify(json), stderr: '', timedOut: false };
@@ -335,7 +337,7 @@ export class World {
   }
 
   readonly exec: Exec = async (cmd, args, opts) => {
-    this.calls.push({ cmd, args: [...args], cwd: opts.cwd, env: opts.env });
+    this.calls.push({ cmd, args: [...args], cwd: opts.cwd, env: opts.env, ...(opts.input !== undefined ? { input: opts.input } : {}) });
     return this.route(cmd.split('/').at(-1)!, [...args], opts);
   };
 
@@ -356,7 +358,7 @@ export class World {
         // The judge first: like the self-test it saves no session, but only it asks for a JSON schema.
         if (args.includes('--json-schema')) {
           const at = (f: string) => args[args.indexOf(f) + 1]!;
-          return this.judge(this, { system: at('--system-prompt'), prompt: at('-p'), schema: JSON.parse(at('--json-schema')) as JudgeSeen['schema'] });
+          return this.judge(this, { system: at('--system-prompt'), prompt: opts.input ?? '', schema: JSON.parse(at('--json-schema')) as JudgeSeen['schema'] });
         }
         if (args.includes('--no-session-persistence')) {
           this.selfTestCwd = opts.cwd!;

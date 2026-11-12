@@ -26,8 +26,10 @@ export interface JudgeCall {
  * the runner's environment even when the model has no tools.
  */
 export function judgeArgs(c: JudgeCall, budgetUsd: number): string[] {
+  // The prompt goes on stdin (`claude -p` reads it there): the group catalogue grows with the
+  // ledger, and argv has an OS limit (PR #99 3edb1940).
   return [
-    '-p', c.prompt,
+    '-p',
     '--system-prompt', c.system,
     '--json-schema', JSON.stringify(c.schema),
     '--output-format', 'json',
@@ -43,7 +45,10 @@ export function judgeArgs(c: JudgeCall, budgetUsd: number): string[] {
 
 export type JudgeResult =
   | { ok: true; answer: unknown; costUsd: number }
-  /** `infra`: the call itself failed (stop for this sweep, no attempt counted); otherwise the answer was unusable. */
+  /**
+   * `infra`: the call never reached the model (stop for this sweep, no attempt counted). Otherwise
+   * the model answered and the answer was unusable, which counts against the batch (R4).
+   */
   | { ok: false; infra: boolean; reason: string; costUsd: number };
 
 export function readJudge(res: ExecResult): JudgeResult {
@@ -52,8 +57,11 @@ export function readJudge(res: ExecResult): JudgeResult {
   const o = firstJson(res.stdout) as (Partial<ClaudeOutput> & { structured_output?: unknown }) | null;
   if (!o || typeof o.subtype !== 'string') return { ok: false, infra: true, reason: `judge call failed (exit ${res.code}, no JSON result)`, costUsd: 0 };
   const costUsd = typeof o.total_cost_usd === 'number' ? o.total_cost_usd : 0;
-  if (o.subtype === 'error_max_turns') return { ok: false, infra: false, reason: 'judge hit max turns', costUsd };
-  if (o.subtype !== 'success' || o.is_error || res.code !== 0) return { ok: false, infra: true, reason: `judge call failed: ${o.subtype}, exit ${res.code}`, costUsd };
+  if (o.subtype !== 'success' || o.is_error || res.code !== 0) {
+    // Billed tokens mean the model ran: schema retries, a spend or turn cap and a refusal depend
+    // on the batch, so they count against it (PR #99 42e31888). No cost: auth, network or API.
+    return { ok: false, infra: !(costUsd > 0), reason: `judge call failed: ${o.subtype}${o.is_error ? ' (is_error)' : ''}, exit ${res.code}`, costUsd };
+  }
   if (o.structured_output !== undefined && o.structured_output !== null) return { ok: true, answer: o.structured_output, costUsd };
   const text = typeof o.result === 'string' ? o.result : '';
   let answer: unknown = lastJsonBlock(text);

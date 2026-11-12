@@ -298,6 +298,13 @@ describe('kill timers (R13)', () => {
     expect(res).toMatchObject({ code: null, timedOut: false, error: expect.stringContaining('ENOENT') });
   });
 
+  it('writes input to a command\'s stdin, and closes it (the judge prompt, PR #99 3edb1940)', async () => {
+    const big = 'x'.repeat(2 * 1024 * 1024);
+    const res = await realExec()('/bin/sh', ['-c', 'wc -c'], { timeoutMs: 10_000, input: big });
+    expect(res).toMatchObject({ code: 0, timedOut: false });
+    expect(Number(res.stdout.trim())).toBe(big.length);
+  });
+
   it('returns output and the exit code of a normal command', async () => {
     expect(await realExec()('/bin/sh', ['-c', 'echo hi; echo err >&2; exit 3'], { timeoutMs: 5_000 }))
       .toEqual({ code: 3, stdout: 'hi\n', stderr: 'err\n', timedOut: false });

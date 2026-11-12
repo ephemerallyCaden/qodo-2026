@@ -157,7 +157,16 @@ describe('repeats across sources become one proposal (R5, R6)', () => {
     const f = ledger(w).findings['long']!;
     expect(f.title.length).toBeLessThanOrEqual(300);
     expect(f.description.length).toBeLessThanOrEqual(2000);
-    expect(Math.max(...judgeCalls(w).map((c) => c.args[c.args.indexOf('-p') + 1]!.length))).toBeLessThan(20_000);
+    expect(Math.max(...judgeCalls(w).map((c) => c.input!.length))).toBeLessThan(20_000);
+  });
+
+  it('a local export carrying a dismissed finding\'s id never undoes the PR\'s false-positive dismissal (PR #99 30ccac80)', async () => {
+    const w = world();
+    w.startLedger();
+    w.addOwnerPr(20, [kinded('fp', 'framing', { dismiss_reason: 'false_positive' })], { ticket: 16 });
+    w.writeExport('t16-local-r1.json', [kinded('fp', 'framing')]);
+    await w.sweep();
+    expect(ledger(w).findings['fp']).toMatchObject({ falsePositive: true, group: null });
   });
 
   it('false positives are recorded but never counted', async () => {
@@ -255,6 +264,48 @@ describe('the human decides (R6, R7)', () => {
     const calls = judgeCalls(w).length;
     expect((await w.sweep()).proposed).toEqual([200]);
     expect(judgeCalls(w)).toHaveLength(calls);
+  });
+
+  it('an issue title gets the same path redaction as the body (PR #99 53ee33c4)', async () => {
+    const w = world();
+    w.startLedger();
+    framing(w);
+    w.judge = (wd, call) => (call.schema.properties?.['rule'] ? judgeOut({ ...DRAFT, rule: { ...DRAFT.rule, name: 'Never copy /Users/other/x into /private/var/folders/q/T/y' } }) : kindJudge(wd, call));
+    await w.sweep();
+    expect(proposals(w)[0]!.title).toBe('Rule proposal: Never copy <home>/x into <tmp>');
+  });
+
+  it('a marker quoted in a finding\'s description neither hides in the post nor makes another group adopt the issue (PR #99 28f6b127)', async () => {
+    const w = world();
+    w.startLedger();
+    framing(w);
+    reviewOf(w.ownerPrs[1]!).findings[0]!.description = 'Quotes <!-- commet-rule-proposal g-other --> here.';
+    await w.sweep();
+    const body = proposals(w)[0]!.body;
+    expect(body).not.toContain('<!-- commet-rule-proposal g-other');
+    // A second group of the same shape must open its own issue, not adopt this one.
+    w.addOwnerPr(40, [kinded('o1', 'other'), kinded('o2', 'other')], { ticket: 41 });
+    w.addOwnerPr(42, [kinded('o3', 'other')], { ticket: 43 });
+    w.judge = (wd, call) => kindJudge(wd, call);
+    const s = await w.sweep();
+    expect(s.proposed).toHaveLength(1);
+    expect(proposals(w)).toHaveLength(2);
+  });
+
+  it('an adopted issue keeps only the findings its body lists as reported; newer ones are commented (PR #99 87b8de13)', async () => {
+    const w = world();
+    w.startLedger();
+    framing(w);
+    await w.sweep();
+    const l = ledger(w);
+    l.groups['g-a1']!.issue = null;
+    l.groups['g-a1']!.reported = [];
+    writeFileSync(ledgerFile(w.config()), JSON.stringify(l));
+    w.addOwnerPr(30, [kinded('a4', 'framing')], { ticket: 25 });
+    await w.sweep();
+    expect(ledger(w).groups['g-a1']).toMatchObject({ issue: 200, reported: ['a1', 'a2', 'a3'] });
+    await w.sweep();
+    expect(w.issues.get(200)!.comments.at(-1)).toContain('`a4`');
   });
 
   it('adopts the issue a lost ledger write left behind instead of opening a second', async () => {
@@ -369,6 +420,19 @@ describe('fail closed (R4)', () => {
     expect(ledger(w).findings['t2']!.seed).toBe(false);
   });
 
+  it('a settled closed PR is read again once a day, in case Qodo changed it without GitHub noticing (PR #99 28c34d3f)', async () => {
+    const w = world();
+    w.startLedger();
+    w.addOwnerPr(3, [finding('t1')]);
+    await w.sweep();
+    await w.sweep();
+    await w.sweep();
+    expect(qodoReads(w, 3)).toHaveLength(2);
+    w.now += 25 * 60 * 60_000;
+    await w.sweep();
+    expect(qodoReads(w, 3)).toHaveLength(3);
+  });
+
   it('a closed PR is done only once its findings hold still after the review (PR #99 6fcd135e)', async () => {
     const w = world();
     w.startLedger();
@@ -463,6 +527,21 @@ describe('fail closed (R4)', () => {
     expect(sweepEvents(w).find((e) => e['event'] === 'findings-renamed')).toMatchObject({ group: 'g-a1', from: 'Mistake: framing.' });
   });
 
+  it('a group broadened after its draft was saved, but before it was posted, is drafted again (PR #99 37c1c34b)', async () => {
+    const w = world();
+    w.startLedger();
+    framing(w);
+    w.rules = null;
+    await w.sweep();
+    expect(ledger(w).groups['g-a1']!.draft).toEqual(DRAFT);
+    w.rules = [];
+    w.addOwnerPr(30, [finding('wide')], { ticket: 25 });
+    w.judge = (wd, call) => (call.schema.properties?.['rule'] ? judgeOut({ ...DRAFT, rule: { ...DRAFT.rule, name: 'The broader rule' } })
+      : judgeOut({ assignments: [{ finding: 'wide', group: 'g-a1', mistake: 'A broader mistake.' }] }));
+    await w.sweep();
+    expect(proposals(w)[0]!.title).toBe('Rule proposal: The broader rule');
+  });
+
   it('a garbled draft opens nothing; the next sweep drafts again', async () => {
     const w = world();
     w.startLedger();
@@ -472,6 +551,29 @@ describe('fail closed (R4)', () => {
     expect(ledger(w).groups['g-a1']).toMatchObject({ draft: null, draftAttempts: 1, issue: null });
     w.judge = kindJudge;
     expect((await w.sweep()).proposed).toEqual([200]);
+  });
+
+  it.each([
+    ['error_max_structured_output_retries', { subtype: 'error_max_structured_output_retries', code: 1 }],
+    ['error_max_budget_usd', { subtype: 'error_max_budget_usd', code: 1 }],
+    ['a refusal (is_error)', { isError: true, code: 1 }],
+  ])('a call the model answered but failed (%s) counts against the batch, so it is set aside in the end (PR #99 42e31888)', async (_, over) => {
+    const w = world();
+    w.startLedger();
+    w.addOwnerPr(3, [finding('stuck')]);
+    w.judge = () => judgeOut({}, { ...over, cost: 0.2 });
+    for (let i = 0; i < 3; i++) await w.sweep();
+    expect(ledger(w).findings['stuck']).toMatchObject({ judgeAttempts: 3, unjudgeable: true });
+    expect((await w.sweep()).calls).toBe(0);
+  });
+
+  it('a call that never reached the model (no cost) is an infrastructure failure, not the batch\'s fault (PR #99 42e31888)', async () => {
+    const w = world();
+    w.startLedger();
+    w.addOwnerPr(3, [finding('t1')]);
+    w.judge = () => judgeOut({}, { isError: true, code: 1, cost: 0 });
+    await w.sweep();
+    expect(ledger(w).findings['t1']!.judgeAttempts).toBe(0);
   });
 
   it('a failed judge call stops judging for this sweep without counting against the findings', async () => {
@@ -508,6 +610,21 @@ describe('fail closed (R4)', () => {
     const s = await runSweep(w.config({ sweepMaxCalls: 20 }), { exec, clock: w.clock, env: {}, print: () => {} }, { seedThrough: null });
     expect(s.exports).toBe(0);
     expect(sweepEvents(w).find((e) => e['event'] === 'findings-out-of-time')).toMatchObject({ stopped: 'local exports' });
+  });
+
+  it('a draft that runs past the budget posts nothing this sweep (PR #99 a53a285e)', async () => {
+    const w = world();
+    w.startLedger();
+    framing(w);
+    w.judge = (wd, call) => {
+      if (call.schema.properties?.['rule']) wd.now += 25 * 60_000;
+      return kindJudge(wd, call);
+    };
+    expect((await w.sweep()).proposed).toEqual([]);
+    expect(proposals(w)).toEqual([]);
+    expect(ledger(w).groups['g-a1']!.draft).toEqual(DRAFT);
+    w.judge = kindJudge;
+    expect((await w.sweep()).proposed).toEqual([200]);
   });
 
   it('past its time budget the sweep starts no proposal work (PR #99 5e7378c6)', async () => {
@@ -661,6 +778,9 @@ describe('cost and scope (R1, R3, R10)', () => {
       expect(c.args).toEqual(expect.arrayContaining(['--tools', '', '--no-session-persistence', '--strict-mcp-config', '--permission-mode', 'dontAsk']));
       expect(c.args.slice(c.args.indexOf('--setting-sources'), c.args.indexOf('--setting-sources') + 2)).toEqual(['--setting-sources', 'user']);
       expect(c.args).not.toContain('--resume');
+      // The prompt goes on stdin, so a large catalogue can't outgrow the argument limit (PR #99 3edb1940).
+      expect(c.input).toContain('<findings>');
+      expect(c.args.join(' ')).not.toContain('<findings>');
       // Never a temp dir: agent-run code can write those.
       expect(c.cwd).toBe(w.home);
       expect(c.cwd).not.toBe(tmpdir());
@@ -721,6 +841,23 @@ describe('sources (R5)', () => {
     expect(prTickets({ title: 'x', body: 'Closes #24', headRefName: 'agent/24-scan-x-2' })).toEqual([24]);
   });
 
+  it('a Day PR neither merges the tickets it closes nor bridges them through findings it shares (PR #99 cd40c8b1)', () => {
+    const l = emptyLedger('2000-01-01T00:00:00.000Z');
+    const pr = (number: number, head: string, tickets: number[]) => {
+      l.prs[number] = { number, head, tickets, readAt: null, lastReviewAt: null };
+    };
+    pr(93, 'session/week1', [16, 33]);
+    pr(20, 'feature/16-x', [16]);
+    pr(50, 'feature/33-x', [33]);
+    ingest(l, 'pr:20', [finding('a')], () => null);
+    ingest(l, 'pr:50', [finding('b')], () => null);
+    ingest(l, 'pr:93', [finding('a'), finding('b'), finding('d')], () => null);
+    const src = sources(l);
+    expect(src.of(l.findings['a']!)).not.toBe(src.of(l.findings['b']!));
+    expect([src.label(src.of(l.findings['a']!)).text, src.label(src.of(l.findings['b']!)).text]).toEqual(['#16', '#33']);
+    expect([src.counted(l.findings['a']!), src.counted(l.findings['d']!)]).toEqual([true, false]);
+  });
+
   it.each([
     ['t16-local/t16-qodo-r2.json', 't16'], ['t18-local-qodo-review-r1.json', 't18'], ['t31b-local-qodo-review-r3.json', 't31b'],
     ['t32ac8-local-qodo-review-r2-incomplete.json', 't32ac8'], ['day5-rules-local-r1.json', 'day5-rules'], ['qodo-local-review-r2.json', 'qodo-local-review'],
@@ -738,7 +875,8 @@ describe('sources (R5)', () => {
     pr(4, 'session/week1', [5]);
     pr(8, 'session/week1', []);
     pr(12, 'fix/local-review', []);
-    for (const f of ['day5-rules-local-r1.json', 'pr-view/qodo-local-r1.json', 't30-local-r1.json', 'qodo-local-review-r3.json', 'misc-local-r1.json']) {
+    pr(99, 'feature/repeat-findings', []);
+    for (const f of ['day5-rules-local-r1.json', 'pr-view/qodo-local-r1.json', 't30-local-r1.json', 'qodo-local-review-r3.json', 'misc-local-r1.json', 'feature-repeat-findings-local-r1.json']) {
       l.files[f] = { size: 1, mtimeMs: 1, done: true };
     }
     const add = (id: string, origin: string) => ingest(l, origin, [finding(id)], () => null);
@@ -747,6 +885,7 @@ describe('sources (R5)', () => {
     add('f4', 'pr:4'); add('f8', 'pr:8');
     add('f12', 'pr:12'); add('lr', 'file:qodo-local-review-r3.json'); add('f12', 'file:qodo-local-review-r3.json');
     add('mi', 'file:misc-local-r1.json');
+    add('frpr', 'pr:99'); add('fr', 'file:feature-repeat-findings-local-r1.json');
     const src = sources(l);
     const of = (id: string) => src.of(l.findings[id]!);
     expect(of('d5')).toBe(of('f36'));
@@ -754,6 +893,8 @@ describe('sources (R5)', () => {
     expect(of('t30')).toBe(of('f55'));
     expect(of('lr')).toBe(of('f12'));
     expect(of('f4')).not.toBe(of('f8'));
+    // PR #99 ead2defd: an export named after the whole branch, slashes flattened, joins that PR.
+    expect(of('fr')).toBe(of('frpr'));
     // Day PRs (#4 and #8 here) never supply a source; a finding also seen elsewhere takes that place's.
     expect(src.counted(l.findings['f8']!)).toBe(false);
     expect(src.counted(l.findings['f4']!)).toBe(false);
@@ -788,6 +929,8 @@ describe('reads (R2, R4)', () => {
     expect(parseLocalExport(exp({ meta: { run: { effort: { effective: 'standard' } } } }))).toMatchObject({ kind: 'partial' });
     expect(parseLocalExport(exp({ meta: { run: { effort: { effective: 'skip' } } } }))).toMatchObject({ kind: 'partial' });
     expect(parseLocalExport('{"error":{"message":"review failed"}}')).toMatchObject({ kind: 'partial' });
+    // PR #99 d1546926: an error is partial even beside findings and complete-looking state.
+    expect(parseLocalExport(exp({ error: { message: 'review failed' } }))).toMatchObject({ kind: 'partial' });
     expect(parseLocalExport('{"page":1,"rules":[]}')).toEqual({ kind: 'other' });
     expect(parseLocalExport('[1,2]')).toEqual({ kind: 'other' });
   });
@@ -857,12 +1000,16 @@ describe('judge answers (R4)', () => {
     expect(readJudge({ code: 1, stdout: '', stderr: '', timedOut: false })).toMatchObject({ ok: false, infra: true });
     expect(readJudge({ code: null, stdout: '', stderr: '', timedOut: true })).toMatchObject({ ok: false, infra: true });
     expect(readJudge(judgeOut({}, { subtype: 'error_max_turns' }))).toMatchObject({ ok: false, infra: false });
+    expect(readJudge(judgeOut({}, { subtype: 'error_max_structured_output_retries', code: 1 }))).toMatchObject({ ok: false, infra: false });
+    expect(readJudge(judgeOut({}, { subtype: 'error_during_execution', code: 1, cost: 0 }))).toMatchObject({ ok: false, infra: true });
+    expect(readJudge(judgeOut({}, { isError: true, cost: 0 }))).toMatchObject({ ok: false, infra: true });
     expect(readJudge(judgeOut('free text', { structured: false }))).toMatchObject({ ok: true, answer: 'free text' });
   });
 
-  it('builds a call with no tools and no saved session', () => {
-    const args = judgeArgs({ system: 's', prompt: 'p', schema: { type: 'object' } }, 1);
-    expect(args.slice(0, 2)).toEqual(['-p', 'p']);
+  it('builds a call with no tools and no saved session, the prompt kept off the command line (PR #99 3edb1940)', () => {
+    const args = judgeArgs({ system: 's', prompt: 'THE-PROMPT', schema: { type: 'object' } }, 1);
+    expect(args[0]).toBe('-p');
+    expect(args).not.toContain('THE-PROMPT');
     expect(args).toEqual(expect.arrayContaining(['--tools', '', '--no-session-persistence', '--json-schema', '{"type":"object"}', '--system-prompt', 's']));
   });
 });

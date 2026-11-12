@@ -7,6 +7,8 @@ export interface ExecOptions {
   env?: NodeJS.ProcessEnv;
   /** Pass stdio straight through instead of capturing it (the lock wrapper). */
   inherit?: boolean;
+  /** Written to the command's stdin, which is otherwise closed (a judge prompt too long for argv). */
+  input?: string;
 }
 
 export interface ExecResult {
@@ -59,8 +61,13 @@ export function realExec(killGraceMs = 5_000, schedule: Schedule = realSchedule)
     let cancelHardKill: (() => void) | undefined;
     const child = spawn(cmd, args, {
       cwd: opts.cwd, env: opts.env ?? process.env, detached: true,
-      stdio: opts.inherit ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+      stdio: opts.inherit ? 'inherit' : [opts.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
+    if (opts.input !== undefined && child.stdin) {
+      // A command that exits without reading all of it is reported by its exit code, not as EPIPE.
+      child.stdin.on('error', () => {});
+      child.stdin.end(opts.input);
+    }
     const pid = child.pid;
     if (pid !== undefined) live.add(pid);
     const cancelTimer = schedule(() => {

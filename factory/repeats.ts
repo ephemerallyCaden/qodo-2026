@@ -209,7 +209,9 @@ class Sweep {
     if (mine.length !== list.length) this.log.event('findings-ignored', { prs: list.filter((p) => !mine.includes(p)).map((p) => p.number), why: 'not opened by the owner' });
     for (const pr of mine) {
       const known = this.ledger.prs[pr.number];
-      if (known && known.readAt === pr.updatedAt && pr.state !== 'OPEN') continue;
+      // A settled closed PR is read again once a day: Qodo can change it without GitHub's updatedAt (PR #99 28c34d3f).
+      const recent = !!known?.lastReadAt && this.deps.clock.now() - Date.parse(known.lastReadAt) < cfg.prRereadMs;
+      if (known && known.readAt === pr.updatedAt && pr.state !== 'OPEN' && recent) continue;
       if (this.late('PR reads')) return;
       const read = classifyPrRead(await this.shell.qodo(['read', 'pr-review-session', 'findings', '--pr-url', pr.url, '--extended', '--json']), pr.headRefOid);
       const rec: LedgerPr = { readAt: null, lastReviewAt: null, ...known, number: pr.number, head: pr.headRefName, tickets: prTickets(pr) };
@@ -308,6 +310,11 @@ class Sweep {
           if (p.rename && p.rename !== g.mistake) {
             this.log.event('findings-renamed', { group: g.id, from: g.mistake, to: p.rename });
             g.mistake = p.rename;
+            // An unposted draft was written for the narrower group: draft again (PR #99 37c1c34b).
+            if (g.issue === null) {
+              g.draft = null;
+              g.draftAttempts = 0;
+            }
           }
           continue;
         }
@@ -365,6 +372,8 @@ class Sweep {
         return;
       }
       g.draft = draft;
+      // The draft may have used up the budget: rule search and posting wait for the next sweep (PR #99 a53a285e).
+      if (this.late('proposals')) return;
     }
     const rules = await this.ruleSearch(g.id, ruleQuery(g.draft));
     if (rules === null) return;
@@ -372,11 +381,14 @@ class Sweep {
     if (existing === undefined) return;
     if (existing !== null) {
       // An earlier sweep opened it and lost the ledger write: adopt it rather than open a second.
-      this.posted(g, existing, st.members);
-      this.log.event('findings-adopted', { group: g.id, issue: existing });
+      // Only what its body lists counts as reported; anything newer goes out as a comment (PR #99 87b8de13).
+      const listed = postedIds([existing.body]);
+      this.posted(g, existing.number, st.members.filter((f) => listed.has(f.id)));
+      this.log.event('findings-adopted', { group: g.id, issue: existing.number, listed: [...listed] });
       return;
     }
-    const title = proposalTitle(g.draft);
+    // The title gets the body's redaction too (PR #99 53ee33c4).
+    const title = scrubLocalPaths(redact(proposalTitle(g.draft), machinePaths(this.cfg)));
     const body = proposalBody({ group: g.id, draft: g.draft, findings: st.members.map((f) => this.cite(f, src)), sources: st.sources.length, rules });
     const res = await this.post(`open "${title}" for ${g.id} (${st.members.length} findings from ${st.sources.length} sources): ${g.draft.mistake}`,
       `proposal-${g.id}.md`, body, (file) => ['issue', 'create', '--repo', this.cfg.slug, '--title', title, '--body-file', file, '--label', LABELS.proposal]);
@@ -490,10 +502,14 @@ class Sweep {
     return this.proposals;
   }
 
-  /** The proposal carrying this group's marker: a number, null for none, undefined if unreadable. */
-  private async proposalIssue(group: string): Promise<number | null | undefined> {
+  /**
+   * The proposal whose body ends with this group's marker: the issue, null for none, undefined if
+   * unreadable. Only its last line counts, so a marker quoted in a finding can't be matched (PR #99 28f6b127).
+   */
+  private async proposalIssue(group: string): Promise<{ number: number; body: string } | null | undefined> {
     const list = await this.proposalList();
-    return list ? list.find((i) => i.body.includes(proposalMarker(group)))?.number ?? null : undefined;
+    if (!list) return undefined;
+    return list.find((i) => i.body.trimEnd().split('\n').at(-1) === proposalMarker(group)) ?? null;
   }
 
   /**
@@ -555,7 +571,7 @@ class Sweep {
     // From HOME: not the repo (no project CLAUDE.md in the prompt) and not a temp dir, which
     // agent-run code may write (factory/sandbox.ts), so nothing there can plant context for the judge.
     const out = readJudge(await this.shell.sh(this.cfg.claude, judgeArgs(call, this.cfg.judgeBudgetUsd), {
-      cwd: this.cfg.home, timeoutMs: this.cfg.timeouts.judge, env: { ...this.shell.env, GH_TOKEN: '', GITHUB_TOKEN: '' },
+      cwd: this.cfg.home, timeoutMs: this.cfg.timeouts.judge, env: { ...this.shell.env, GH_TOKEN: '', GITHUB_TOKEN: '' }, input: call.prompt,
     }));
     this.s.costUsd += out.costUsd;
     this.log.event('findings-judge', { kind, ok: out.ok, ...(out.ok ? {} : { reason: out.reason }), costUsd: out.costUsd });

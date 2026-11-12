@@ -205,7 +205,8 @@ export function parseLocalExport(text: string, named = false): LocalExport {
   const o = firstJson(text);
   if (o === null && named) return { kind: 'partial', why: 'not valid JSON' };
   if (!isRecord(o)) return { kind: 'other' };
-  if ('error' in o && !('findings' in o)) return { kind: 'partial', why: 'the review failed' };
+  // A failed review is partial even beside findings and complete-looking state (PR #99 d1546926).
+  if ('error' in o) return { kind: 'partial', why: 'the review failed' };
   if (!Array.isArray(o['findings']) || !isRecord(o['finding_state'])) return { kind: 'other' };
   const findings = o['findings'] as unknown[];
   if (!findings.every((f) => isRecord(f) && typeof f['id'] === 'string')) return { kind: 'partial', why: 'a finding has no id' };
@@ -246,7 +247,8 @@ export function ingest(l: Ledger, origin: string, findings: Finding[], reviewedA
     const known = l.findings[f.id];
     if (known) {
       if (!known.origins.includes(origin)) known.origins.push(origin);
-      known.falsePositive = falsePositive;
+      // Dismissals live on the PR; a local export never carries one, so it can't undo it (PR #99 30ccac80).
+      known.falsePositive = origin.startsWith('pr:') ? falsePositive : known.falsePositive || falsePositive;
       continue;
     }
     const at = reviewedAt(f);
@@ -307,7 +309,8 @@ const isSessionBranch = (head: string) => /^session\//.test(head);
 /** A stem names a branch when it equals the branch's last segment, ignoring a ticket number and a `pr-` prefix. */
 function stemMatchesBranch(stem: string, head: string): boolean {
   const last = head.split('/').at(-1)!;
-  const names = new Set([last, last.replace(/^\d+-/, '')]);
+  // Also the whole branch with its slashes flattened: `feature-repeat-findings-local-r1.json` (PR #99 ead2defd).
+  const names = new Set([last, last.replace(/^\d+-/, ''), head.replace(/\//g, '-')]);
   return names.has(stem) || names.has(stem.replace(/^pr-/, ''));
 }
 
@@ -341,11 +344,14 @@ export function sources(l: Ledger): Sources {
     if (ra !== rb) parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb);
   };
   const prs = Object.values(l.prs);
+  const dayPr = (origin: string) => origin.startsWith('pr:') && isSessionBranch(l.prs[origin.slice(3)]?.head ?? '');
   for (const pr of prs) {
     const node = `pr:${pr.number}`;
     find(node);
+    // A Day PR joins nothing: not the tickets it closes, not its shared branch (PR #99 cd40c8b1).
+    if (isSessionBranch(pr.head)) continue;
     for (const t of pr.tickets) union(node, `ticket:${t}`);
-    if (!isSessionBranch(pr.head)) union(node, `branch:${pr.head}`);
+    union(node, `branch:${pr.head}`);
   }
   for (const path of Object.keys(l.files)) {
     const stem = exportStem(path);
@@ -354,14 +360,18 @@ export function sources(l: Ledger): Sources {
     if (target) union(`stem:${stem}`, target);
     for (const pr of prs) if (!isSessionBranch(pr.head) && stemMatchesBranch(stem, pr.head)) union(`stem:${stem}`, `pr:${pr.number}`);
   }
-  for (const f of Object.values(l.findings)) for (const o of f.origins.slice(1)) union(f.origins[0]!, o);
+  // Every place one id was seen joins up, except a Day PR, which would bridge separate tickets.
+  const placed = (f: LedgerFinding) => f.origins.filter((o) => !dayPr(o));
+  for (const f of Object.values(l.findings)) {
+    const [first, ...rest] = placed(f);
+    for (const o of rest) union(first!, o);
+  }
 
   const members = new Map<string, string[]>();
   for (const node of parent.keys()) push(members, find(node), node);
   const nums = (nodes: string[], kind: string) => nodes.filter((n) => n.startsWith(`${kind}:`)).map((n) => Number(n.slice(kind.length + 1))).sort((a, b) => a - b);
-  const dayPr = (origin: string) => origin.startsWith('pr:') && isSessionBranch(l.prs[origin.slice(3)]?.head ?? '');
   return {
-    of: (f) => find(f.origins[0]!),
+    of: (f) => find(placed(f)[0] ?? f.origins[0]!),
     counted: (f) => !f.origins.every(dayPr),
     label: (source) => {
       const nodes = members.get(source) ?? [source];
