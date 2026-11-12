@@ -662,3 +662,39 @@ describe('PR #20 Qodo review r2', () => {
     await expect(lineageLog(async () => ['', a, '100', '\nA', 'd/a.t'].join('\0'), 'HEAD')).rejects.toThrow(/incomplete/);
   });
 });
+
+describe('PR #93 Qodo review (6d5aa4b1): every lineage timestamp is checked', () => {
+  const [a, b] = ['a'.repeat(40), 'b'.repeat(40)];
+  // Each log is read buffered and streamed one character at a time, so a check can't depend on chunking.
+  const runners = (raw: string) => [async () => raw, Object.assign(async (): Promise<string> => raw,
+    { stream: async (_: string[], onData: (c: string) => void) => { for (const ch of raw) onData(ch); } })];
+  const refused = async (tokens: string[], why: RegExp) => {
+    for (const git of runners(tokens.join('\0'))) await expect(lineageLog(git, 'HEAD')).rejects.toThrow(why);
+  };
+
+  it('an empty timestamp is refused, mid-stream or as the last header', async () => {
+    await refused(['', a, '', '\nA', 'd/a.ts', '', b, '200', ''], /malformed commit timestamp/);
+    await refused(['', a, '100', '\nA', 'd/a.ts', '', b, ''], /incomplete/);
+  });
+
+  it('a log cut off inside its last header is refused, not kept with a broken timestamp', async () => {
+    // Inside the SHA and right after its NUL (already refused), then partway through a timestamp.
+    for (const tail of [[b.slice(0, 20)], [b, '']]) await refused(['', a, '100', '\nA', 'd/a.ts', '', ...tail], /incomplete/);
+    for (const ct of [' ', '+', '-', '2e', '200.', '0x', '0_']) await refused(['', a, '100', '\nA', 'd/a.ts', '', b, ct], /malformed commit timestamp/);
+  });
+
+  it('a timestamp that is not plain digits in range is refused, mid-stream or as the last header', async () => {
+    for (const ct of ['abc', ' 100', '100 ', '+100', '-100', '1e3', '0x10', '100.5', '0100', '1_000', '１', '8640000000001', '9'.repeat(400)]) {
+      await refused(['', a, ct, '\nA', 'd/a.ts', '', b, '200', ''], /malformed commit timestamp/);
+      await refused(['', a, '100', '\nA', 'd/a.ts', '', b, ct], /malformed commit timestamp/);
+    }
+  });
+
+  it('a well-formed last timestamp without its closing NUL still parses (an empty HEAD commit)', async () => {
+    for (const ct of ['0', '200', '1794444294', '8640000000000']) {
+      for (const git of runners(['', a, '100', '\nA', 'd/a.ts', '', b, ct].join('\0'))) {
+        expect((await lineageLog(git, 'HEAD')).map((c) => [c.sha, c.dateMs])).toEqual([[a, 100_000], [b, Number(ct) * 1000]]);
+      }
+    }
+  });
+});

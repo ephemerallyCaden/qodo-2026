@@ -49,15 +49,17 @@ async function logChanges(git: Git, args: string[]): Promise<LineageCommit[]> {
         sha = t;
         want = 'ct';
         return;
-      case 'ct':
+      case 'ct': {
+        const dateMs = commitMs(t);
         if (cur?.sha === sha) into = [];
         else {
-          cur = { sha, dateMs: Number(t) * 1000, changes: [] };
+          cur = { sha, dateMs, changes: [] };
           commits.push(cur);
           into = cur.changes;
         }
         want = 'status';
         return;
+      }
       case 'from':
         from = t;
         want = 'to';
@@ -80,11 +82,23 @@ async function logChanges(git: Git, args: string[]): Promise<LineageCommit[]> {
   };
   if (git.stream) await git.stream(args, feed);
   else feed(await git(args));
-  // A last header's timestamp may end the output without a closing NUL (an empty HEAD commit);
-  // anything else left over is a cut-off record, refused rather than half-read (PR #20 Qodo r2 #1).
+  // A last header's timestamp may end the output without a closing NUL (an empty HEAD commit), and
+  // is then checked like any other; anything else left over is a cut-off record, refused rather
+  // than half-read (PR #20 Qodo r2 #1, PR #93 Qodo 6d5aa4b1).
   if (pending !== '' && want === 'ct') token(pending);
   else if (pending !== '' || (want !== 'status' && want !== 'sha')) throw new Error('lineage log ended inside an incomplete record');
   return commits;
+}
+
+// `%ct` as git writes it: unsigned decimal seconds with no padding, sign, space or exponent.
+const COMMIT_TIME = /^(?:0|[1-9][0-9]*)$/;
+// The latest second a Date holds, so isoUtc can't throw on a lineage date.
+const MAX_DATE_S = 8.64e12;
+
+/** A lineage header's commit time in ms; a malformed one is a misframed or cut-off record. */
+function commitMs(t: string): number {
+  if (!COMMIT_TIME.test(t) || Number(t) > MAX_DATE_S) throw new Error('lineage log holds a malformed commit timestamp');
+  return Number(t) * 1000;
 }
 
 /**
