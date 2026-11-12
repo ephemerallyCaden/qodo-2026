@@ -11,7 +11,7 @@ import { placePath } from '../src/hooks/event.js';
 import { applyInstall, HOOK_MARK, hookScript, planInstall } from '../src/hooks/git-hooks.js';
 import { coalescedRefresh } from '../src/hooks/refresh.js';
 import { EVENTS_FILE, readEvents } from '../src/state/events.js';
-import { reap, withLock } from '../src/state/lock.js';
+import { clearGuard, tryLock, withLock } from '../src/state/lock.js';
 import { cli, scripted } from './fixtures/cli.js';
 import { calls, fakeCli, git, GIT_ENV, hook, hookRepo, mkdirp, tempDir, tree } from './fixtures/hooks.js';
 
@@ -488,6 +488,9 @@ describe('Claude Code hook', () => {
   });
 });
 
+/** The pid of a process that has exited. */
+const deadPid = () => spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }).stdout;
+
 const SID = '0f1e2d3c-4b5a-4968-8776-655443322110';
 const payload = (repo: string, o: Record<string, unknown> = {}) => ({
   session_id: SID, transcript_path: `/somewhere/.claude/projects/-slug/${SID}.jsonl`, cwd: repo, permission_mode: 'default',
@@ -668,26 +671,36 @@ describe('hook refresh', () => {
     expect(tree(dir)).toEqual({});
   });
 
-  it('reaping a stale lock removes only the file inspected, never a fresh one taken meanwhile', () => {
+  it('only one process judges a stale lock: while another holds the reap guard, the stale lock stays', () => {
     const dir = tempDir('commet-hooks-reap-');
     const lock = join(dir, 'x.lock');
-    writeFileSync(lock, '1');
-    const staleIno = lstatSync(lock, { bigint: true }).ino;
-    // Another process reaped it and took the lock first.
-    rmSync(lock);
-    writeFileSync(join(dir, 'keep'), '');
-    writeFileSync(lock, String(process.pid));
-    reap(lock, staleIno);
+    writeFileSync(lock, deadPid());
+    // A live process (this one) is mid-way through reaping it.
+    writeFileSync(`${lock}.reap`, String(process.pid));
+    expect(tryLock(lock)).toBe(false);
+    expect(readFileSync(lock, 'utf8')).not.toBe(String(process.pid));
+    rmSync(`${lock}.reap`);
+    expect(tryLock(lock)).toBe(true);
     expect(readFileSync(lock, 'utf8')).toBe(String(process.pid));
-    reap(lock, lstatSync(lock, { bigint: true }).ino);
-    expect(existsSync(lock)).toBe(false);
-    expect(Object.keys(tree(dir))).toEqual(['/keep']);
+    expect(Object.keys(tree(dir))).toEqual(['/x.lock']);
+  });
+
+  it('a reap guard its process left behind is cleared, a live one never', () => {
+    const dir = tempDir('commet-hooks-guard-');
+    const lock = join(dir, 'x.lock');
+    writeFileSync(lock, deadPid());
+    writeFileSync(`${lock}.reap`, deadPid());
+    expect(tryLock(lock)).toBe(false); // clears the dead reaper's guard this time
+    expect(existsSync(`${lock}.reap`)).toBe(false);
+    expect(tryLock(lock)).toBe(true);
+    writeFileSync(`${lock}.reap`, String(process.pid));
+    clearGuard(`${lock}.reap`);
+    expect(readFileSync(`${lock}.reap`, 'utf8')).toBe(String(process.pid));
   });
 
   it('takes over a lock its process left behind', async () => {
     const dir = tempDir('commet-hooks-stale-');
-    const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }).stdout;
-    writeFileSync(join(dir, 'refresh-k.lock'), dead);
+    writeFileSync(join(dir, 'refresh-k.lock'), deadPid());
     let scans = 0;
     await coalescedRefresh(dir, 'k', async () => (scans++, 0));
     expect(scans).toBe(1);
