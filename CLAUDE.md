@@ -26,7 +26,7 @@ Node ≥ 20.19, npm. From the repo (or worktree) root:
 - `node dist/cli.js chart status | baseline [--undo] | [--] <file>`: fog of war and chart state (R5). Chart state lives in `<git-common-dir>/commet/chart.json` (ids and SHAs only, mode 0600), with `chart.lock` as its write lock. A bad path or a folder exits 2; damaged or symlinked state exits 5 and is never reset.
 - `npm run factory -- labels|install|uninstall|tick [--once|--dry-run [--issue N]]`: the agent runner (`factory/`, built separately, not in the published package; see AGENTS.md "Agent runner"). The lead runs `install --interval 900 --base <current session branch>` itself (no human step) after any `factory/` change merges, and again whenever the session branch changes; see AGENTS.md "Agent runner". Runner state (lock, `ticks.jsonl`, `runs/`, the installed copy) lives in `<git-common-dir>/factory/`, never in the work tree.
 
-The design mockups live on `feature/hype-gif` under `mockups/asset-viewer/` (`npm install && npm test` there). They are throwaway prototypes, not product code.
+The design mockups live on `feature/asset-library` (the art line) under `mockups/`: the asset viewer (the reference implementation), the asset library (the playground), and the drone, debris and health-looks labs. Each folder is its own npm project (`npm ci && npm test` there; that branch's CLAUDE.md has the details). They are throwaway prototypes, not product code.
 
 ## Layout
 - `snapshot.json` and `layout.json` produced by `commet scan`; local state in `.git/commet/` (snapshot, layout, `config.json` with the saved content roots, `chart.json` + `chart.lock`, beacons, events).

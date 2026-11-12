@@ -51,6 +51,8 @@ You are the astronaut and your AI agents are your drone crew. Anything you didn'
     - PRs: only through the opt-in, read-only GitHub token. Without it, branch debris still works.
   - Clicking a piece shows its age, its last commit, and which session or person created it, then gives a **copyable** cleanup command (`git branch -d …` / `gh pr close …`). Commet never deletes, closes or posts anything itself.
   - Shown as repo-level tidiness: total debris count and a rough mass figure. No per-person tallies.
+  - **Debris owns all stale work (human, 2026-11-09).** Rings no longer mean unmerged branches, which supersedes #18's "rings = unmerged branches". Whether rings mean anything else is open; until they do, they stay out of the product view.
+  - Debris is a modifier on any planet, whatever its health band, and must never be mistaken for a ring, a moon or an artefact. The art is designed in `docs/features/space-debris.md`.
 
 **Candidates (approved 2026-11-09)**
 - [ ] R15. Hackathon mode (human, 2026-11-09). For when you have no time to understand a codebase and just need to get it at a glance. `commet open --glance` or an in-app toggle hides fog **without charting anything**, so turning it off restores your real fog (principle 2). It shows where the work is (size plus recent churn), who wrote it (agent, human and unknown share per planet) and health. The setting is per launch and not saved. Candidate idea: a worker overlay that colours planets by agent session or human. Feature doc: `docs/features/hackathon-mode.md`. Issue #34.
