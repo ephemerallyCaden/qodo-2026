@@ -122,6 +122,7 @@ export class World {
   calls: Call[] = [];
   now = T0;
   readonly clock: Clock = { now: () => this.now, sleep: async (ms) => { this.now += ms; } };
+  // Real paths: the sandbox-exec profile names resolved paths (/private/var/…).
   readonly root = realTempDir('agent-runner-');
   readonly home = join(this.root, 'home');
   readonly repoDir = join(this.root, 'repo');
@@ -162,6 +163,10 @@ export class World {
   selfTestClaude: ((w: World, args: string[]) => ExecResult) | null = null;
   /** Whether the self-test's Read of the canary comes back as a permission denial. */
   readDenied = true;
+  /** Where the shared `.git`'s `origin/<base>` ref points if something moved it after the fetch (null: the base). */
+  originRef: string | null = null;
+  /** The files each commit changes; when empty, every diff is `changed`. */
+  commitFiles = new Map<string, string[]>();
 
   constructor() {
     mkdirSync(join(this.home, '.toolbox/bin'), { recursive: true });
@@ -356,13 +361,21 @@ export class World {
         if (rest[0] === '--path-format=absolute') return ok(`${this.commonDir}\n`);
         if (rest[0] === '--verify') return fail();
         if (rest[0] === '--absolute-git-dir') return ok(`${join(this.commonDir, 'worktrees', opts.cwd!.split('/').at(-1)!)}\n`);
+        if (rest[0]?.startsWith('origin/')) return ok(`${this.resolve(rest[0].replace('^{commit}', ''))}\n`);
         return ok(`${this.head}\n`);
       case 'remote': return ok(`https://github.com/${SLUG}.git\n`);
-      case 'fetch': case 'worktree': return ok();
+      case 'fetch':
+        this.originRef = null;
+        return ok();
+      case 'worktree': return ok();
       case 'ls-remote': return ok('');
-      case 'rev-list': return ok(`${this.commits.length}\n`);
+      case 'rev-list': return ok(`${this.commitsAfter(rest.find((a) => a.endsWith('..HEAD'))!.slice(0, -'..HEAD'.length)).length}\n`);
       case 'merge-base': return rest[1] === this.base || this.commits.includes(rest[1]!) ? ok() : fail();
-      case 'diff': return ok(this.changed.join('\n') + '\n');
+      case 'diff': {
+        if (!this.commitFiles.size) return ok(this.changed.join('\n') + '\n');
+        const after = this.commitsAfter(rest.find((a) => a.endsWith('...HEAD'))!.slice(0, -'...HEAD'.length));
+        return ok([...new Set(after.flatMap((c) => this.commitFiles.get(c) ?? []))].join('\n') + '\n');
+      }
       case 'status': return ok(this.dirty);
       case 'log': return ok('fix(scan): parse numstat positionally on NUL\n');
       case 'push': {
@@ -405,6 +418,17 @@ export class World {
     const read = this.readDenied && this.claudeSandbox !== 'off';
     return claudeOut({ result: 'done', session: 'selftest', turns: 3, cost: 0.1,
       denials: read ? [{ tool_name: 'Read', tool_use_id: 't1', tool_input: { file_path: promptOf(args).match(/Read tool once on (\S+)\./)?.[1] } }] : [] });
+  }
+
+  /** What a rev names: `origin/<base>` is the fetched base unless something moved the ref since. */
+  private resolve(rev: string): string {
+    return rev === `origin/${BASE}` ? this.originRef ?? this.base : rev;
+  }
+
+  /** The commits after `rev` on the agent's branch (all of them for the base). */
+  private commitsAfter(rev: string): string[] {
+    const i = this.commits.indexOf(this.resolve(rev));
+    return i >= 0 ? this.commits.slice(i + 1) : this.commits;
   }
 
   private npm(args: string[]): ExecResult {

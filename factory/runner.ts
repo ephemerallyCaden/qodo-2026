@@ -100,6 +100,11 @@ class Tick {
   private worktree = '';
   /** The worktree's git dir, recorded before anything agent-written runs in it (b301674c). */
   private gitDir = '';
+  /**
+   * The base commit as fetched. Every later comparison uses it, never the `origin/<base>` ref,
+   * which anything the agent runs can move in the shared `.git`.
+   */
+  private baseSha = '';
   private pr: { url: string; number: number } | null = null;
   /** The last pushed (and verified) commit. */
   private head: string | null = null;
@@ -352,8 +357,10 @@ class Tick {
     mkdirSync(ghDir, { recursive: true });
     this.agentEnv = agentEnv(this.env, ghDir);
     await this.git(cfg.repoDir, ['fetch', 'origin', cfg.base]);
+    this.baseSha = (await this.git(cfg.repoDir, ['rev-parse', `origin/${cfg.base}^{commit}`])).trim();
+    if (!/^[0-9a-f]{40}$/.test(this.baseSha)) throw new Stop(`could not read the fetched origin/${cfg.base}`);
     await this.chooseBranch(t);
-    await this.git(cfg.repoDir, ['worktree', 'add', '--no-track', '-b', this.branch, this.worktree, `origin/${cfg.base}`]);
+    await this.git(cfg.repoDir, ['worktree', 'add', '--no-track', '-b', this.branch, this.worktree, this.baseSha]);
     this.gitDir = (await this.git(this.worktree, ['rev-parse', '--absolute-git-dir'])).trim();
     this.log.event('worktree', { branch: this.branch, path: this.worktree });
     // S5: with the network open no repo code runs (no lifecycle scripts); the install scripts then run offline.
@@ -432,12 +439,12 @@ class Tick {
   /** The verified HEAD, or the problems to send back to the agent. */
   private async verify(): Promise<string | { check: string; output: string }[]> {
     const { cfg } = this;
-    const ahead = Number((await this.git(this.worktree, ['rev-list', '--count', `origin/${cfg.base}..HEAD`])).trim());
+    const ahead = Number((await this.git(this.worktree, ['rev-list', '--count', `${this.baseSha}..HEAD`])).trim());
     if (!ahead) throw new Stop('the agent made no commits');
     if (this.head && (await this.gitTry(this.worktree, ['merge-base', '--is-ancestor', this.head, 'HEAD'])).code !== 0) {
       throw new Stop(`the agent rewrote pushed history (${shortSha(this.head)} is no longer an ancestor of HEAD)`);
     }
-    const changed = (await this.git(this.worktree, ['diff', '--name-only', `origin/${cfg.base}...HEAD`])).split('\n').filter(Boolean);
+    const changed = (await this.git(this.worktree, ['diff', '--name-only', `${this.baseSha}...HEAD`])).split('\n').filter(Boolean);
     const touched = changed.filter((f) => PROTECTED.some((re) => re.test(f)));
     if (touched.length) throw new Stop(`the agent changed protected paths: ${touched.join(', ')}`);
     // Never into a nested repo the agent planted: git would run under that repo's config.
@@ -478,7 +485,7 @@ class Tick {
   private async openPr(impl: ImplementResult): Promise<void> {
     const { cfg } = this;
     const t = this.ticket!;
-    const subject = firstLine(await this.git(this.worktree, ['log', '--reverse', '--format=%s', `origin/${cfg.base}..HEAD`]));
+    const subject = firstLine(await this.git(this.worktree, ['log', '--reverse', '--format=%s', `${this.baseSha}..HEAD`]));
     const title = impl.prTitle ?? (isPrTitle(subject) ? subject : `chore(agent): resolve #${t.number}`);
     const body = prBody({
       ticket: t, base: cfg.base, branch: this.branch, head: this.head!, summary: impl.summary, criteria: this.criteria,

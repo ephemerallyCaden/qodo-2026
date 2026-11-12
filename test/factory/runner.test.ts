@@ -220,7 +220,9 @@ describe('claim (R2) and work (R4)', () => {
     await w.tick();
     const add = w.gitCalls('worktree')[0]!.args;
     expect(add).toEqual(['worktree', 'add', '--no-track', '-b', 'agent/24-scan-windowcommits-splits-numstat-on-u',
-      join(w.repoDir, '.sandboxes/agent-24'), `origin/${BASE}`]);
+      join(w.repoDir, '.sandboxes/agent-24'), w.base]);
+    // The base SHA, read right after the fetch; nothing compares against the movable ref after it.
+    expect(w.gitCalls('rev-parse').map((c) => c.args[1])).toContain(`origin/${BASE}^{commit}`);
     const claude = w.agentCalls()[0]!;
     expect(claude.cwd).toBe(join(w.repoDir, '.sandboxes/agent-24'));
     expect(claude.args).toEqual(expect.arrayContaining(['--permission-mode', 'dontAsk', '--output-format', 'json', '--strict-mcp-config']));
@@ -288,6 +290,21 @@ describe('agent failures end in agent-needs-help (R7)', () => {
     w.addIssue(24);
     w.claude.push(implementDone(0));
     expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: 'the agent made no commits' });
+  });
+
+  it('a protected path change is caught even after the agent moves origin/<base> in the shared .git', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.claude.push((x) => {
+      const hidden = x.commit();
+      x.commitFiles.set(hidden, ['.github/workflows/ci.yml']);
+      x.commitFiles.set(x.commit(), ['src/x.ts']);
+      // Repo code can write the shared .git's refs: point origin/<base> past the workflow change.
+      x.originRef = hidden;
+      return claudeOut({ result: '```json\n{"status":"done","summary":"s","criteria":[]}\n```' });
+    });
+    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: expect.stringContaining('.github/workflows/ci.yml') });
+    expect(w.gitCalls('push')).toHaveLength(0);
   });
 
   it('stops before pushing when the agent touched a protected path', async () => {
