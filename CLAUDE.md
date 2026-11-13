@@ -15,6 +15,7 @@
 Node ≥ 20.19, npm. From the repo (or worktree) root:
 - `npm ci`: install (lockfile-exact). In a new sandbox whose `package-lock.json` matches the session worktree's, clone instead: `cp -cR <session-worktree>/node_modules .` (seconds, no network, no extra disk on APFS).
 - `npm run build`: `tsc` to `dist/` (the bin is `dist/cli.js`), then `vite build --config web/vite.config.ts` to `dist/web/` (the view `commet open` serves).
+- The view's fog (#74): `view.fogTicket()` is taken before any request that returns fog, and `view.applyFog(fog, ticket)` is the single entry point (a stale ticket returns false; `View.load()` takes one too). Unknown or unusable fog draws everything fogged (Rule 1).
 - `npx vite --config web/vite.config.ts`: the view's dev server on 127.0.0.1, with fixtures via `?fixture=mini|empty|invalid|missing`. Render test mode is `?test=1` (`window.__commet`).
 - `npm run typecheck`: strict `tsc --noEmit` over `src/`, `test/` and `factory/`, plus `test/render` and `test/web/dom` with the DOM lib, and `web/`.
 - `npm run lint`: ESLint. Bans `Math.random`, `Date.now`, `performance.now`, `crypto.randomUUID`, `new Date()` and `localeCompare` in `src/{core,scan,attrib}`, `web/src` and the render stand-in, Node built-ins in `src/core`, and U+0001 / `%x01` git-output framing in `src/{scan,attrib}` (AGENTS.md Rule 7).
