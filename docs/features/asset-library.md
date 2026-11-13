@@ -43,6 +43,7 @@ Open the library → browse the catalogue → click an asset → it renders on t
 - Task: R9–R11 (feature agent, branch feature/asset-library): done, a6cc792..68da3d9 (library 40/40, viewer 26/26). The history tab has 10 family timelines; the `/art-archive/` route serves an exact allowlist of PNG and GIF files on 127.0.0.1, read-only, with realpath containment.
 - Dustier-ash trial + viewer bind: done (4af1dc2..6a332dc).
 - Drones group: done (b1e89ef..b2afd10). 11 provider drones + A–E explorations, a full inspector, drones in scenes, and 10 drones at 0 px against the drone lab's capture page. Known gap: drones in scenes get no depth fade.
+- Star group: done (b7d9836). Fog group: done (e66b737): 30 tiles (6 biomes × 5 coverages, chart-one, refog-one and chart-all event tiles, fog with debris), an inspector fog section, scenes keep fog, and a live fog history family; four fidelity cases at 0 px against the viewer.
 - Debris group: done (b3811cc..69c3116). 24 tiles, an inspector debris section with sweep and selection, debris in scenes, a live debris history (A–E, A2, A3), and 3 cases at 0 px against the viewer. Thumbnails now render on scroll. Library 59/59, viewer 28/28, health-looks 24/24, drone-lab 21/21, debris-lab 24/24.
 
 ## Completion

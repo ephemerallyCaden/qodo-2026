@@ -1,7 +1,7 @@
 # Feature: Fog of war (art)
 
 ## Status
-In Progress (D2d approved; limb fix, then porting)
+Complete (art); product drawing (#74) to follow
 
 ## Trigger
 The human, 2026-11-09: "suggest more things to design and make", then "keep going" (2026-11-10). Fog of war is R5, the product's core signal. Its logic and chart state are in PR #50 (#33), which says "drawing fog waits for the art pass".
@@ -56,6 +56,11 @@ Scan → fog view (#33) per file → fogged cells on each planet → you open a 
 - Exploration lab `mockups/fog-lab/` on `feature/fog-lab` (feature agent): 4–5 distinct fog directions on several bands and coverage levels (0/25/50/75/100% charted), with the clear and refog moments, measured against F3 and F8, for the human to pick.
 
 ## Completion
-- Merged: —
-- Date: —
-- Verification: —
+- Merged: feature/asset-library (12588f7 viewer D2d, 1eaa3ef the lab, e66b737 the library Fog group and the haze fix), pushed.
+- Date: 2026-11-13
+- Final look (human, 2026-11-11): the D2d dark veil, with the veil's darks cool (five fixed blue-plum tones, never lava's warm crust), the halo-coloured limb, and the lit-limb haze fogged too. Fog hides health by design: the band reads on charted land and in the label.
+- Verification:
+  - fog-lab 17/17; viewer 31/31; library fog 4/4 with 4 fidelity cases at 0 px against the viewer (lush 50%, ocean fully fogged with haze, a mid-clear, a mid chart-all with teal); health-looks, debris-lab and drone-lab green.
+  - Fog off: shots.mjs hashes identical to 968bc0c.
+  - Measured: fog pixels near lava crust 0.0% (from 89.6% on toxic); limb ring merged into space 0.0%; health on charted land 0/48 misreads at 25/50/75% charted.
+- For the product (#74): reuse `mockups/asset-viewer/fog-layout.js` (pure: #18's grid, the territory rule, the events, the cell texture) and `fog.js` (the D2d look and the haze rule); the colour and outline exceptions are in art direction §9.
