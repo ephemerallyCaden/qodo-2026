@@ -192,6 +192,16 @@ describe('picking a drone (Qodo PR #127 r1)', () => {
   });
 });
 
+describe('the panel shows only the fields it names (Rule 2)', () => {
+  it('a path, prompt or command planted in the session object never reaches the rows or the labels', () => {
+    const canary = '/Users/someone/secret-project';
+    const hostile = { ...session(1, 'star'), cwd: canary, path: canary, prompt: canary, subject: canary, files: [canary] } as never;
+    const out = [...droneRows(hostile, 'src').flat(), droneLabels(hostile).label ?? '', droneLabels(hostile).selectedLabel].join('\n');
+    expect(out).not.toContain(canary);
+    expect(out).not.toContain('secret');
+  });
+});
+
 describe('palette (Rule 5)', () => {
   it('draws the drones from BLK 36 only', () => {
     const hexes = Object.values(palette.drone).flatMap((look) => Object.values(look).flat());

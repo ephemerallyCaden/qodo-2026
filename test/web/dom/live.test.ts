@@ -71,7 +71,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
   };
   let model: SystemModel | null = null;
   const view = {
-    pass: { canvas: Object.assign(new EventTarget(), { focus: () => {} }) },
+    pass: { canvas: Object.assign(new EventTarget(), { focus: () => {}, setPointerCapture: () => {}, getBoundingClientRect: () => ({ left: 0, top: 0 }) }) },
     labels: { px: 2 },
     fog: null as FogView | null,
     get model() { return model; },
@@ -91,7 +91,10 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     selectedDrone: null as string | null,
     drawn: [] as readonly FleetEntry[],
     setDrones: async (e: readonly FleetEntry[]) => { view.drawn = e; return true; },
-    pickDroneAt: () => null,
+    droneAt: null as string | null,
+    planetAt: null as number | null,
+    pickDroneAt: () => view.droneAt,
+    pickAt: () => view.planetAt,
     resize: () => {},
     draw: () => ({}),
     focusTarget: () => null,
@@ -300,5 +303,26 @@ describe('drones in live mode (#80)', () => {
     await settle();
     expect(l.view.drawn.length).toBe(2);
     expect(hud()).toMatch(/^2 drones shown/);
+  });
+
+  /** A click on the view canvas, as Input sees it: a press and a release in the same place. */
+  const click = (l: Awaited<ReturnType<typeof live>>) => {
+    const ev = (type: string) => Object.assign(new Event(type), { button: 0, pointerId: 1, clientX: 5, clientY: 5, movementX: 0, movementY: 0 });
+    l.view.pass.canvas.dispatchEvent(ev('pointerdown'));
+    l.view.pass.canvas.dispatchEvent(ev('pointerup'));
+  };
+
+  it('clicking a planet closes the selected drone (its panel and its highlight)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!)]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.view.drawn.length).toBe(1));
+    l.view.droneAt = session(1, a!).key;
+    click(l);
+    expect(l.view.selectedDrone).toBe(session(1, a!).key);
+    l.view.droneAt = null;
+    l.view.planetAt = 0;
+    click(l);
+    expect(l.view.selectedDrone).toBeNull();
   });
 });
