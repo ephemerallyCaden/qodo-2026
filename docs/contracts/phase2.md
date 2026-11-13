@@ -1,11 +1,12 @@
 # Phase 2 contract (#29)
 
-**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch) and 2026-11-11 (content roots, #71; the unseen and diff routes, #75).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
+**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch), 2026-11-11 (content roots, #71; the unseen and diff routes, #75) and 2026-11-13 (drone view, #80).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
 
 | Shape | Types | Produced by | Consumed by |
 |---|---|---|---|
 | `layout.json` | `src/core/contract/layout.ts` (`LayoutV1`) | #18 `layout()` | #30 view, #32 server, #34 later |
 | Fog view | `src/core/contract/fog.ts` (`FogView`, `ChartAction`) | #33 R5 | #32 server, #30 view |
+| Drone view | `src/core/contract/drones.ts` (`DroneView`, `DroneSession`) | #80 | #32 server, #30 view |
 | Local HTTP surface | `src/core/contract/api.ts` (`API`, `TOKEN_HEADER`, `WEB_DIST`, `LiveEvent`; #75: `UnseenList`, `DiffView`) | #32 R14, #75 | #30 view |
 | Render hook | `src/core/contract/api.ts` (`RenderHook`, `RenderInput`, `RenderStats`, `TEST_MODE_PARAM`) | #30 view | #31 render tests |
 
@@ -33,11 +34,19 @@
 - **Chart state on disk** (`.git/commet/`) is private to #33. Others only see `FogView` and send `ChartAction`.
 - **Every `ChartAction` carries `at`** (#58, amended 2026-11-11): the `FogView.head` the user was looking at, as a full SHA. The write is recorded at `at`: a chart or baseline covers changes up to `at` and no further. So if a scan lands after the view's last fetch, a change that arrived unseen (say, a new agent commit) is newer than `at` and stays fogged, with no false clear (AGENTS.md Rule 1), no refusal and no race. `at` must be a commit the current snapshot knows (in its window, on HEAD's first-parent line). Otherwise (another branch, before the window, a snapshot that went backwards) the write is refused with `{ ok: false, error: 'unknown-head', head: <current> }` (`ChartUnknownHead`) and nothing is written; the view refetches and asks again. For `chart`, `fileId` is the file's id as of `at` and must lead to a file at HEAD. `baseline-undo` pops the last baseline. `commet chart` uses the current head.
 
+## Drone view (amended 2026-11-13, #80)
+- **What it is:** one `DroneSession` per agent session in the snapshot, sorted by `key`, plus `total`, `placed` and `needsRescan`. It is served at `GET /api/drones` and holds nothing the snapshot's sessions don't already hold.
+- **Safe fields only (Rules 2 and 6):** key, seed, tool, kind, parent, agent type, start and end, branch, model, `inferred` and `home`. No paths, commit subjects, prompts, or per-session line, file or commit counts. Branch, model and agent type already pass the parser's `metaToken` filter.
+- **`home`:** the planet's `DirId`, `'star'`, or null. It is built from the session's `files` and the fog's `FogBase.home` map (`openFogSource`), so drones and fog agree on where a file lives, and #64's pair check covers drones too. The planet holding most of the session's files wins, with ties broken by codepoint. A session with no files of its own is null, except that a subagent takes its parent's home. Null is counted and never drawn or guessed (Rule 1).
+- **`needsRescan`:** true when the snapshot has no `Session.files` (it was scanned before #80). Every `home` is then null. This is the lead's reading of the human's decision on #80's default 4: an old snapshot is not refused, and the view says "rescan to place drones".
+- **Tool:** `tool` is a string, not the snapshot's `Tool` union, so a provider the scanner doesn't know yet draws the generic drone with its name.
+- **Determinism:** the view is a pure function of the snapshot and the layout. Two scans of the same repo and logs give byte-identical `canonicalJson`. No wall-clock time (principle 3).
+
 ## Local HTTP surface (`commet open`)
 - **Bind and Host:** binds 127.0.0.1 only. `Host` must be `127.0.0.1:<port>` or `localhost:<port>`.
 - **Token:** the opened URL is `http://127.0.0.1:<port>/#t=<token>`. The fragment is never sent to the server. The view reads it and sends `x-commet-token` on every data request.
 - **Static bundle:** served at `/` from `dist/web` without a token, because it holds no repo data. No directory listing and no traversal.
-- **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`, `/api/unseen`, `/api/diff`.
+- **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`, `/api/unseen`, `/api/diff`, `/api/drones` (#80, GET only, behind the same Host, origin and token gates).
 - **Write routes:** `POST /api/chart` with a `ChartAction` JSON body (exact keys, `at` a full 40-hex SHA, or 64-hex in a SHA-256 repo) returns a `ChartResult`. An unknown `at` gets `ChartUnknownHead` with status 409 Conflict, told apart from other refusals (400) by its `head`. `POST /api/beacon` answers 501 until R10. Every other method or path is refused.
 - **Reviewing from the view (amended 2026-11-11, #75):** two more read routes, so a file can be charted where its diff is read (R5).
   - `GET /api/unseen?home=<DirId>|star&at=<Sha>` (`UnseenQuery`, `UnseenList`) lists the fogged files of one planet, or of the star, with their paths. Layout has no file paths and leaves out surface overflow, and fog.1 has no file-to-planet map, so the view can't name them otherwise. fog.1 is unchanged.

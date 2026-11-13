@@ -14,6 +14,7 @@ export const API = {
   snapshot: '/api/snapshot',
   layout: '/api/layout',
   fog: '/api/fog',
+  drones: '/api/drones',
   chart: '/api/chart',
   beacon: '/api/beacon',
   events: '/api/events',
