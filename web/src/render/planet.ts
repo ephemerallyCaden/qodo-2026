@@ -5,9 +5,11 @@
 import * as THREE from 'three';
 import { palette } from '../../../src/core/palette.js';
 import { TURNS, turnAngle } from '../model/motion.js';
+import { surfacePlan } from '../model/fog.js';
 import { mulberry32 } from '../model/prng.js';
 import { MOON_RADIUS, moonOffset, planetReach, type PlanetModel } from '../model/system.js';
 import { dot, normalize, type Vec3 } from '../model/vec.js';
+import { moonFogAttribute, PlanetFog } from './fog.js';
 import { LOOKS, type Weather } from './looks.js';
 import { orbitingSpheres, placeSpheres, ramp, shaderMaterial, toonMaterial } from './materials.js';
 import { crackMask, crackShare, makeFbm3, nearestCell, poolField, tangentFrame, voronoiCells } from './noise.js';
@@ -70,6 +72,10 @@ const v3 = (a: Vec3) => new THREE.Vector3(a[0], a[1], a[2]);
 export interface PlanetObject {
   model: PlanetModel;
   root: THREE.Group;
+  /** The surface's fog (its files in surface order, model.surface.settlements). */
+  fog: PlanetFog;
+  /** The test moons' per-instance fog, in model.moons order (null without moons). */
+  moonFog: THREE.InstancedBufferAttribute | null;
   update(frame: number, centre: Vec3, radiusPx: number): void;
   dispose(): void;
 }
@@ -90,8 +96,10 @@ export function makePlanet(model: PlanetModel): PlanetObject {
     : model.look === 'ice' ? poolCut(CRACKS.ice, [seedOff[1], seedOff[2], seedOff[0]]) // the shader's uSeedOff.yzx
     : 9;
   const [a, b, c, g] = look.ramps;
+  const fog = new PlanetFog(surfacePlan(model.surface), look.ramps);
 
   const surfaceMat = shaderMaterial(PLANET_FRAG, {
+    ...fog.uniforms,
     uBiome: { value: look.id },
     uA: { value: ramp(a, 5) }, uB: { value: ramp(b, 5) }, uC: { value: ramp(c, 5) }, uG: { value: ramp(g, 3) },
     uSeedOff: { value: v3(seedOff) }, uSea: { value: sea }, uPoolCut: { value: cut }, uCrackLift: { value: lift },
@@ -103,10 +111,10 @@ export function makePlanet(model: PlanetModel): PlanetObject {
   spin.add(surface);
   body.add(spin);
 
-  const disposables: { dispose(): void }[] = [surfaceMat];
+  const disposables: { dispose(): void }[] = [surfaceMat, fog];
   let haze: THREE.Mesh | null = null;
   if (look.haze) {
-    const hazeMat = shaderMaterial(HAZE_FRAG, { uHaze: { value: ramp([look.haze], 1)[0] } });
+    const hazeMat = shaderMaterial(HAZE_FRAG, { ...fog.uniforms, uHaze: { value: ramp([look.haze], 1)[0] } });
     haze = new THREE.Mesh(PLANET_GEO, hazeMat);
     haze.scale.setScalar(1.06);
     body.add(haze);
@@ -152,12 +160,15 @@ export function makePlanet(model: PlanetModel): PlanetObject {
   }
 
   // Test moons: warm three-tone spheres, all one size, on inclined orbits (one per surface turn).
-  let moons: THREE.InstancedMesh | null = null;
+  let moons: THREE.InstancedMesh | null = null, moonFog: THREE.InstancedBufferAttribute | null = null;
   if (model.moons.length > 0) {
-    const moonMat = toonMaterial(palette.world.moonBody);
-    moons = orbitingSpheres(moonMat, model.moons.length, planetReach(model), MOON_GEO);
+    const moonMat = toonMaterial(palette.world.moonBody, palette.fog.veil.moonBody);
+    const geo = MOON_GEO.clone(); // its own copy: it carries this planet's per-moon fog
+    moonFog = moonFogAttribute(model.moons.length);
+    geo.setAttribute('aFog', moonFog);
+    moons = orbitingSpheres(moonMat, model.moons.length, planetReach(model), geo);
     root.add(moons);
-    disposables.push(moonMat, moons);
+    disposables.push(moonMat, geo, moons);
   }
 
   /** radiusPx: the planet's radius on screen in internal px, for the puff level of detail. */
@@ -174,15 +185,19 @@ export function makePlanet(model: PlanetModel): PlanetObject {
     (surfaceMat.uniforms['uLavaTime']!.value as THREE.Vector2).set(Math.cos(lava), Math.sin(lava));
     if (moons) placeSpheres(moons, model.moons.map((m) => moonOffset(m, frame)), MOON_RADIUS);
     center.value.copy(root.position);
-    if (shadowMat) {
-      root.updateMatrixWorld(true); // the shadow pass needs this frame's surface matrix now; render() updates the rest
-      (shadowMat.uniforms['uToSurface']!.value as THREE.Matrix4).copy(surface.matrixWorld).invert();
-    }
+    // The shadow pass and the fog need this frame's surface matrix now; render() updates the rest.
+    root.updateMatrixWorld(true);
+    if (shadowMat) (shadowMat.uniforms['uToSurface']!.value as THREE.Matrix4).copy(surface.matrixWorld).invert();
+    (fog.uniforms['uFogModel']!.value as THREE.Matrix4).copy(surface.matrixWorld);
+    (fog.uniforms['uFogToSurface']!.value as THREE.Matrix4).copy(surface.matrixWorld).invert();
+    fog.uniforms['uFogRadiusPx']!.value = radiusPx;
   }
 
   return {
     model,
     root,
+    fog,
+    moonFog,
     update,
     dispose: () => { for (const d of disposables) d.dispose(); },
   };

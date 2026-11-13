@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
 import { context, launch } from '../../playwright.config.js';
 import { assertRendered, coverage, diffPixels, LOW_RES, statsProblems } from './frame.js';
 import { checkGolden, describeEnv } from './golden.js';
-import { goldenOptions, MINI, openView, render, renderEnv, type Rendered, type Target } from './harness.js';
+import { goldenOptions, MINI_INPUT, openView, render, renderEnv, type Rendered, type Target } from './harness.js';
 import { PIXELS } from './thresholds.js';
 import { paletteProblems, share, type RenderEnv } from './twin.js';
 
@@ -16,7 +16,7 @@ export const LATER = 180;
 /** The pixels of the i-th frame rendered. */
 const px = (rs: Rendered[], i: number) => rs[i]!.pixels;
 
-/** A golden of the `mini` fixture, named `<view>-mini-f<frame>[-reduced]` in test/golden/render/. */
+/** A golden of the `mini` fixture with its fog (#74), named `<view>-mini-f<frame>[-reduced]` in test/golden/render/. */
 export interface GoldenCase { frame: number; reducedMotion: boolean }
 
 /** One line of evidence for a frame: renderer.info figures and how much of it isn't space. */
@@ -42,11 +42,11 @@ export function renderSuite(name: string, target: () => Target, goldens: GoldenC
 
     test('frame n is a pure function of (input, n): same pixels in any order, and in a fresh browser', async ({ page, playwright }) => {
       const first = await openView(page, target());
-      const a = await render(first, { layout: MINI }, [0, LATER, 0]);
+      const a = await render(first, { ...MINI_INPUT }, [0, LATER, 0]);
       const browser = await playwright.chromium.launch(launch);
       try {
         const fresh = await openView(await browser.newPage(context), target());
-        const b = await render(fresh, { layout: MINI }, [LATER, 0]);
+        const b = await render(fresh, { ...MINI_INPUT }, [LATER, 0]);
         for (const r of [...a, ...b]) assertRendered(r.pixels, r.stats, LOW_RES);
         const diffs = { sameRunRepeat: diffPixels(px(a, 0), px(a, 2)), freshBrowserF0: diffPixels(px(a, 0), px(b, 1)), freshBrowserLater: diffPixels(px(a, 1), px(b, 0)) };
         console.log(`determinism diffs (max ${PIXELS.maxDiffPixels}): ${JSON.stringify(diffs)}`);
@@ -62,8 +62,8 @@ export function renderSuite(name: string, target: () => Target, goldens: GoldenC
 
     test('reduced motion holds frame 0 (system-design §7: n is fixed at 0)', async ({ page }) => {
       const view = await openView(page, target());
-      const still = await render(view, { layout: MINI, reducedMotion: true }, [0, LATER]);
-      const moving = await render(view, { layout: MINI }, [0, LATER]);
+      const still = await render(view, { ...MINI_INPUT, reducedMotion: true }, [0, LATER]);
+      const moving = await render(view, { ...MINI_INPUT }, [0, LATER]);
       for (const r of [...still, ...moving]) assertRendered(r.pixels, r.stats, LOW_RES);
       expect(diffPixels(px(still, 1), px(still, 0)), `reduced motion, frame ${LATER} vs 0`).toBe(0);
       expect(diffPixels(px(still, 1), px(moving, 0)), `reduced motion, frame ${LATER} vs frame 0 without it`).toBe(0);
@@ -74,7 +74,7 @@ export function renderSuite(name: string, target: () => Target, goldens: GoldenC
 
     test('stays within the draw budget (renderer.info, not FPS)', async ({ page }) => {
       const view = await openView(page, target());
-      const frames = await render(view, { layout: MINI }, [0, LATER]);
+      const frames = await render(view, { ...MINI_INPUT }, [0, LATER]);
       for (const r of frames) {
         console.log(`frame ${r.frame}: ${describeFrame(r)}`);
         expect(statsProblems(r.stats, r.pixels)).toEqual([]);
@@ -87,10 +87,10 @@ export function renderSuite(name: string, target: () => Target, goldens: GoldenC
       test(`matches golden ${golden}`, async ({ page }, info) => {
         const view = await openView(page, target());
         // §10: with the depth fade off, every pixel is a palette colour.
-        const [flat] = await render(view, { layout: MINI, reducedMotion: g.reducedMotion, depthFade: false }, [g.frame]);
+        const [flat] = await render(view, { ...MINI_INPUT, reducedMotion: g.reducedMotion, depthFade: false }, [g.frame]);
         assertRendered(flat!.pixels, flat!.stats, LOW_RES); // an empty frame is trivially palette-only
         expect(paletteProblems(flat!.pixels)).toEqual([]);
-        const [r] = await render(view, { layout: MINI, reducedMotion: g.reducedMotion }, [g.frame]);
+        const [r] = await render(view, { ...MINI_INPUT, reducedMotion: g.reducedMotion }, [g.frame]);
         assertRendered(r!.pixels, r!.stats, LOW_RES);
         console.log(`${golden}: ${describeFrame(r!)}; depth fade off: ${describeFrame(flat!)}, 0 px off-palette`);
         expect(view.errors).toEqual([]);

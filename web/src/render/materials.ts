@@ -1,10 +1,10 @@
 // Palette colours as GPU uniforms, and the uniforms every material shares (key light, eye, depth
 // tints). Colours only ever come from palette.ts (AGENTS.md Rule 5).
 import * as THREE from 'three';
-import { palette } from '../../../src/core/palette.js';
+import { palette, type FogVeil } from '../../../src/core/palette.js';
 import { TUNED_DEPTH } from '../model/depth.js';
 import type { Vec3 } from '../model/vec.js';
-import { TOON_FRAG, VERT } from './shaders.js';
+import { TOON_FRAG, TOON_VERT, VERT } from './shaders.js';
 
 // Palette hexes go to the screen untouched: no sRGB conversion anywhere in the pipeline.
 THREE.ColorManagement.enabled = false;
@@ -33,9 +33,15 @@ export function shaderMaterial(fragmentShader: string, uniforms: Uniforms, opts:
   return new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader, uniforms: { ...SHARED, ...uniforms }, ...opts });
 }
 
-/** Moons and moonlets: a 4-step ramp in light bands. */
-export const toonMaterial = (hexes: readonly string[]): THREE.ShaderMaterial =>
-  shaderMaterial(TOON_FRAG, { uRamp: { value: ramp(hexes, 4) }, uBands: { value: new THREE.Vector3(-0.15, 0.35, 0.7) } });
+/**
+ * Moons and moonlets: a 4-step ramp in light bands, and the ramp's fog veil (palette.fog.veil: lit,
+ * night, hatch, line) for the instances whose file is fogged (#74; the mesh carries `aFog`).
+ */
+export const toonMaterial = (hexes: readonly string[], veil: FogVeil): THREE.ShaderMaterial =>
+  shaderMaterial(TOON_FRAG, {
+    uRamp: { value: ramp(hexes, 4) }, uBands: { value: new THREE.Vector3(-0.15, 0.35, 0.7) },
+    uRampFog: { value: [veil.lit, veil.night, veil.hatch, veil.line].map(color) }, uFogTeal: { value: color(palette.accent.teal[3]) },
+  }, { vertexShader: TOON_VERT });
 
 /**
  * An instanced mesh of same-size spheres (moons, moonlets) that move on fixed orbits round its

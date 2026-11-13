@@ -7,6 +7,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import type { Browser, Page } from '@playwright/test';
 import ts from 'typescript';
 import { TEST_MODE_PARAM, WEB_DIST, type RenderInput, type RenderStats } from '../../src/core/contract/api.js';
+import type { FogView } from '../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import type { Frame } from './frame.js';
 import type { GoldenOptions } from './golden.js';
@@ -51,6 +52,26 @@ export function systemView(): Target {
 
 /** The contract's `mini` fixture (test/fixtures/contract). */
 export const MINI = JSON.parse(readFileSync(join(ROOT, 'test/fixtures/contract/mini.layout.json'), 'utf8')) as LayoutV1;
+/** Its fog view (#74): the toxic `web` planet's one surface file and one moonlet fogged, one file charted, the rest clear. */
+export const MINI_FOG = JSON.parse(readFileSync(join(ROOT, 'test/fixtures/contract/mini.fog.json'), 'utf8')) as FogView;
+/** What the suite renders: mini with its fog, so every golden is a fogged frame. */
+export const MINI_INPUT = { layout: MINI, fog: MINI_FOG } as const;
+
+/**
+ * A fog view for a layout with every drawn file (settlements, moons, moonlets) clear except those
+ * `fogged` picks, with matching counts and the layout's head (the view checks it).
+ */
+export function fogFor(layout: LayoutV1, fogged: (fileId: string) => boolean = () => false): FogView {
+  const ids = (p: LayoutV1['planets'][number]) => [...p.surface.settlements.map((s) => s.fileId), ...p.moons.map((m) => m.fileId)];
+  const all = [...layout.planets.flatMap(ids), ...layout.star.moonlets.map((m) => m.fileId)].sort();
+  const count = (list: string[]) => ({ total: list.length, fogged: list.filter(fogged).length });
+  return {
+    schemaVersion: 'fog.1', head: layout.source.head, baseline: null,
+    files: all.map((fileId) => (fogged(fileId) ? { fileId, state: 'fogged', reasons: ['agent'], since: layout.source.head } : { fileId, state: 'clear', reasons: [], since: null })),
+    planets: [...layout.planets].sort((a, b) => (a.dirId < b.dirId ? -1 : 1)).map((p) => ({ dirId: p.dirId, ...count(ids(p)) })),
+    star: count(layout.star.moonlets.map((m) => m.fileId)),
+  };
+}
 
 /** The file for a request path, or null when it's outside every mount. A `.js` request with only a `.ts` beside it is served transpiled. */
 function locate(t: Target, pathname: string): { file: string; transpile: boolean } | null {

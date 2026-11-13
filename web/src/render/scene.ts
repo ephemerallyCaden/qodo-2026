@@ -2,13 +2,18 @@
 // (model, frame, camera pose). Building is deterministic from the layout; posing holds no state
 // between frames, so any frame can be drawn in any order (principle 3).
 import * as THREE from 'three';
+import type { FogView } from '../../../src/core/contract/fog.js';
 import { palette } from '../../../src/core/palette.js';
 import { ASPECT, FAR, FOV_DEG, NEAR, basis, eyeOf, fovOf, project, projectedRadius, systemDepth, type OrbitPose } from '../camera/pose.js';
 import type { DepthStretch } from '../model/depth.js';
+import { fileFogAt, foggedBy, planetPulse, planetTally, type FogEvent } from '../model/fog.js';
+import { loopPhase } from '../model/motion.js';
+import { frameWidth } from '../model/pixels.js';
 import { mulberry32 } from '../model/prng.js';
 import { MOONLET_RADIUS, moonletPosition, planetCentre, type SystemModel } from '../model/system.js';
 import { add, scale, type Sphere, type Vec3 } from '../model/vec.js';
 import { LIGHT_VIEW, orbitingSpheres, placeSpheres, ramp, shaderMaterial, SHARED, toonMaterial } from './materials.js';
+import { FOG_SHARED, moonFogAttribute, setMoonFog } from './fog.js';
 import { MOON_GEO, makePlanet, type PlanetObject } from './planet.js';
 import { STAR_FRAG, STARFIELD_FRAG, STARFIELD_VERT } from './shaders.js';
 
@@ -45,6 +50,12 @@ export class SystemScene {
   readonly planets: PlanetObject[];
   private readonly starfield = makeStarfield();
   private readonly moonlets: THREE.InstancedMesh | null;
+  private readonly moonletFog: THREE.InstancedBufferAttribute | null;
+  /** The fog drawn (null: no usable fog view, so every file is fogged) and the events over it. */
+  private fog: FogView | null = null;
+  private fogEvents: readonly FogEvent[] = [];
+  /** The fog changed since its rows were last written; events rewrite them every frame anyway. */
+  private fogDirty = true;
   private readonly disposables: { dispose(): void }[] = [];
   /** The depth fade's later steps, scaled to this system (#59). */
   private readonly depth: DepthStretch;
@@ -62,18 +73,52 @@ export class SystemScene {
 
     // Moonlets (root files, unmatched tests): small grey regolith spheres on the star's innermost orbit.
     if (model.star.moonlets.length > 0) {
-      const mat = toonMaterial(palette.world.moon.slice(1));
+      const mat = toonMaterial(palette.world.moon.slice(1), palette.fog.veil.moon);
       const orbit = model.star.moonlets[0]!.orbit; // one orbit for every moonlet
-      this.moonlets = orbitingSpheres(mat, model.star.moonlets.length, orbit + MOONLET_RADIUS, MOON_GEO);
+      const geo = MOON_GEO.clone(); // its own copy: it carries the moonlets' fog
+      this.moonletFog = moonFogAttribute(model.star.moonlets.length);
+      geo.setAttribute('aFog', this.moonletFog);
+      this.moonlets = orbitingSpheres(mat, model.star.moonlets.length, orbit + MOONLET_RADIUS, geo);
       this.scene.add(this.moonlets);
-      this.disposables.push(mat, this.moonlets);
-    } else this.moonlets = null;
+      this.disposables.push(mat, geo, this.moonlets);
+    } else { this.moonlets = null; this.moonletFog = null; }
 
     this.planets = model.planets.map((p) => {
       const obj = makePlanet(p);
       this.scene.add(obj.root);
       return obj;
     });
+  }
+
+  /** Every file this scene draws (settlements, test moons, moonlets): what fog events are about. */
+  fileIds(): string[] {
+    return [
+      ...this.model.planets.flatMap((p) => [...p.surface.settlements.map((s) => s.fileId), ...p.moons.map((m) => m.fileId)]),
+      ...this.model.star.moonlets.map((m) => m.fileId),
+    ];
+  }
+
+  /** The fog to draw, and the clear and refog events over it (model/fog.ts). */
+  setFog(fog: FogView | null, events: readonly FogEvent[]): void {
+    this.fog = fog;
+    this.fogEvents = events;
+    this.fogDirty = true;
+  }
+
+  /** Writes every body's fog for this frame: a pure function of (fog, events, frame). */
+  private poseFog(frame: number): void {
+    FOG_SHARED.uFogPhase.value = loopPhase(frame);
+    if (!this.fogDirty && this.fogEvents.length === 0) return;
+    const fogged = foggedBy(this.fog);
+    const events = new Map(this.fogEvents.map((e) => [e.fileId, e]));
+    const at = (id: string) => fileFogAt(fogged(id), events.get(id), frame);
+    for (const p of this.planets) {
+      const moonIds = p.model.moons.map((m) => m.fileId);
+      p.fog.set(p.fog.plan.fileIds.map(at), planetPulse(p.fog.plan, events, moonIds, planetTally(this.fog, p.model.dirId)?.fogged ?? null, frame));
+      if (p.moonFog) setMoonFog(p.moonFog, moonIds.map(at));
+    }
+    if (this.moonletFog) setMoonFog(this.moonletFog, this.model.star.moonlets.map((m) => at(m.fileId)));
+    this.fogDirty = false;
   }
 
   /** Planet centres at a frame, in model order. */
@@ -100,6 +145,8 @@ export class SystemScene {
     const b = basis(view.yaw, view.pitch);
     SHARED.uLight.value.set(...add(add(scale(b.right, LIGHT_VIEW.x), scale(b.up, LIGHT_VIEW.y)), scale(b.back, LIGHT_VIEW.z))).normalize();
     this.starfield.position.copy(this.camera.position);
+    FOG_SHARED.uFogView.value.set(frameWidth(pixelHeight), pixelHeight);
+    this.poseFog(frame);
 
     const centres = this.centres(frame);
     this.planets.forEach((p, i) => {

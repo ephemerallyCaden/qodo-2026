@@ -6,6 +6,7 @@
 // (AGENTS.md Rule 5); the shaders only pick ramp steps. All lighting comes from the one key light
 // (uLight) in flat bands; there are no stock materials, shadow maps or post passes (Rule 4).
 import { DEPTH_RANGE } from '../model/depth.js';
+import { FOG_HAZE, FOG_MOON, FOG_SURFACE } from './fog-glsl.js';
 
 /**
  * Lava fissures and ice crevasses, and their open plates (lava pools, ice water), from the asset
@@ -128,14 +129,22 @@ export const VERT = /* glsl */ `
   }
 `;
 
-/** Moons and moonlets: a 4-step ramp in light bands. */
+/** Moons and moonlets: VERT, plus each instance's fog (fog.ts moonFogAttribute: fogged, event, progress). */
+export const TOON_VERT = VERT.replace('out vec3 vLocal;', 'out vec3 vLocal;\n  in vec3 aFog;\n  flat out vec3 vFog;')
+  .replace('vLocal = position;', 'vLocal = position;\n    vFog = aFog;');
+
+/** Moons and moonlets: a 4-step ramp in light bands, each one test file or root file, fogged as a whole (#74). */
 export const TOON_FRAG = /* glsl */ `
   ${BANDS}
   ${DEPTH}
   uniform vec3 uRamp[4];
   in vec3 vNormalW;
   in vec3 vPosW;
-  void main() { gl_FragColor = vec4(depthFade(uRamp[band(normalize(vNormalW))], vPosW, 1.0), 1.0); }
+  ${FOG_MOON}
+  void main() {
+    int b = band(normalize(vNormalW));
+    gl_FragColor = vec4(depthFade(moonFog(normalize(vLocal), b, uRamp[b]), vPosW, 1.0), 1.0);
+  }
 `;
 
 /** The star: unlit, three glow bands from the limb in (centre hottest). */
@@ -351,14 +360,19 @@ const SURFACE = /* glsl */ `
   }
 `;
 
+// The surface, with fog over it (fog-glsl.ts, #74). A fogged pixel isn't molten glow any more, so it
+// fades at full strength: a fogged lava world doesn't glow from afar (fog hides health).
 export const PLANET_FRAG = /* glsl */ `${SURFACE}
+  ${FOG_SURFACE}
   void main() {
     vec3 p = normalize(vLocal);
     setScreenScale(p);
     if (uBiome == ${LOOK_ID.lava}) gLavaV = lavaFlow(p);
     int b = band(normalize(vNormalW));
     vec3 c = surface(p, b);
-    gl_FragColor = vec4(depthFade(c, vPosW, gGlow ? 0.5 : 1.0), 1.0);
+    bool glow = gGlow;
+    vec3 f = fog(p, b, c);
+    gl_FragColor = vec4(depthFade(f, vPosW, glow && f == c ? 0.5 : 1.0), 1.0);
   }
 `;
 
@@ -389,6 +403,7 @@ export const SHADOW_VERT = /* glsl */ `
   }
 `;
 export const SHADOW_FRAG = /* glsl */ `${SURFACE}
+  ${FOG_SURFACE}
   in vec3 vHitW;
   in float vReach;
   void main() {
@@ -397,7 +412,7 @@ export const SHADOW_FRAG = /* glsl */ `${SURFACE}
     setScreenScale(p);
     int b = band(normalize(vHitW));
     if (b == 0) discard;
-    gl_FragColor = vec4(depthFade(surface(p, b - 1), vPosW, 1.0), 1.0);
+    gl_FragColor = vec4(depthFade(fog(p, b - 1, surface(p, b - 1)), vPosW, 1.0), 1.0); // a shadow never uncovers fogged ground
   }
 `;
 
@@ -438,9 +453,13 @@ export const CLOUD_FRAG = /* glsl */ `
   }
 `;
 
-/** Haze: a slightly larger shell drawn only near the lit limb, a thin crescent, never an outline. */
+/**
+ * Haze: a slightly larger shell drawn only near the lit limb, a thin crescent, never an outline. None
+ * over fogged ground (#74): the haze's colour would hint at the band, and fog hides health.
+ */
 export const HAZE_FRAG = /* glsl */ `
   ${DEPTH}
+  ${FOG_HAZE}
   uniform vec3 uHaze;
   uniform vec3 uLight;
   in vec3 vNormalW;
@@ -449,6 +468,7 @@ export const HAZE_FRAG = /* glsl */ `
     vec3 n = normalize(vNormalW);
     float rim = 1.0 - abs(dot(n, normalize(uEye - vPosW)));
     if (rim < 0.72 || dot(n, uLight) < 0.3) discard;
+    if (fogHidesHaze(vPosW)) discard;
     gl_FragColor = vec4(depthFade(uHaze, vPosW, 1.0), 1.0);
   }
 `;

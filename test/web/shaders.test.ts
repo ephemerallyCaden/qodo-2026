@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { startPose } from '../../web/src/camera/pose.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { SystemScene } from '../../web/src/render/scene.js';
+import { HAZE_FRAG } from '../../web/src/render/shaders.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
 
 const VERTEX = 35633, FRAGMENT = 35632;
@@ -73,5 +74,31 @@ describe('the GLSL three submits for the view', () => {
     const surfaces = fragments.filter((f) => f.includes('uvec3 pcg3d'));
     for (const f of surfaces) expect(declarations(f, 'modelMatrix')).toBe(1);
     for (const v of vertices) expect(declarations(v, 'modelMatrix')).toBe(1);
+  });
+});
+
+describe('fog in the GLSL three submits (#74)', () => {
+  const { gl, canvas, sources } = recordingGl();
+  const renderer = new THREE.WebGLRenderer({ canvas, context: gl });
+  const system = new SystemScene(systemModel(miniLayout));
+  system.pose(0, startPose(system.model), 180);
+  system.scene.traverse((o) => { o.visible = true; });
+  renderer.compile(system.scene, system.camera);
+  const fragments = sources.filter((s) => s.type === FRAGMENT).map((s) => s.src);
+  const vertices = sources.filter((s) => s.type === VERTEX).map((s) => s.src);
+
+  it('draws fog inside shaders that already run: every surface and cloud shadow, the haze and the moons', () => {
+    const surfaces = fragments.filter((f) => f.includes('uvec3 pcg3d'));
+    expect(surfaces.length).toBeGreaterThanOrEqual(2); // the surface and its cloud shadow
+    for (const f of surfaces) expect(f).toMatch(/fog\(p, b(?: - 1)?, (?:c|surface\(p, b - 1\))\)/);
+    expect(HAZE_FRAG).toContain('if (fogHidesHaze(vPosW)) discard;'); // mini may draw no hazy look
+    expect(fragments.filter((f) => f.includes('uniform vec3 uHaze')).every((f) => f.includes('if (fogHidesHaze(vPosW)) discard;'))).toBe(true);
+    const toon = fragments.filter((f) => f.includes('moonFog('));
+    expect(toon.length).toBeGreaterThanOrEqual(1);
+    expect(vertices.some((v) => v.includes('in vec3 aFog;') && v.includes('flat out vec3 vFog;'))).toBe(true);
+  });
+
+  it('declares projectionMatrix at most once per fragment program (the fog projects its glyph anchors)', () => {
+    for (const f of fragments) expect(f.match(/uniform\s+mat4\s+projectionMatrix\s*;/g)?.length ?? 0).toBeLessThanOrEqual(1);
   });
 });
