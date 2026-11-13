@@ -234,6 +234,23 @@ describe('the view\'s fog ledger (tickets, the head check, fronts)', () => {
     expect(l.change).toEqual({ cleared: 0, refogged: 0 });
   });
 
+  it('measures the fog of a new scan against the fog its layout replaced, so a refog arriving with a scan still rolls in (Qodo PR #117 r3)', () => {
+    const l = new FogLedger();
+    l.setLayout(HEAD, true);
+    l.apply(charted, l.ticket(), ids, 0, true);
+    const NEXT = '3'.repeat(40);
+    expect(l.setLayout(NEXT, true)).toBe(true); // the old fog is dropped for the new layout
+    expect(l.fog).toBeNull();
+    expect(l.apply({ ...miniFog, head: NEXT }, l.ticket(), ids, 10, true)).toBe(true); // f_000000000003 is fogged again
+    expect(l.events).toEqual([{ fileId: 'f_000000000003', kind: 'refog', start: 10 }]);
+    expect(l.change).toEqual({ cleared: 0, refogged: 1 });
+    // unknown to known still snaps: nothing to measure against
+    l.setLayout(HEAD, true);
+    l.apply(null, l.ticket(), ids, 20, true);
+    l.apply(miniFog, l.ticket(), ids, 30, true);
+    expect(l.events.filter((e) => e.start === 30)).toEqual([]);
+  });
+
   it('starts fronts at the frame seen, only when animating, and counts the change either way', () => {
     const l = new FogLedger();
     l.setLayout(HEAD, true);

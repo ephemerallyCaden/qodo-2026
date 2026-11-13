@@ -178,6 +178,8 @@ export class FogLedger {
   events: FogEvent[] = [];
   /** Whether the last fog given was dropped for coming from another scan than the layout. */
   mismatch = false;
+  /** The fog a new layout dropped, until the next fog is applied: what that fog's changes are measured against (a refog that arrives with a scan still rolls in). */
+  private prior: FogView | null = null;
   /** What the last applied fog changed for the files drawn, fronts or not. */
   change = { cleared: 0, refogged: 0 };
 
@@ -195,7 +197,8 @@ export class FogLedger {
     this.applied = ticket;
     this.mismatch = fog !== null && fog.head !== this.layoutHead;
     const usable = this.mismatch ? null : fog;
-    const changes = fogChanges(this.fog, usable, fileIds, frame);
+    const changes = fogChanges(this.fog ?? this.prior, usable, fileIds, frame);
+    this.prior = null;
     this.change = { cleared: changes.filter((e) => e.kind === 'clear').length, refogged: changes.filter((e) => e.kind === 'refog').length };
     this.events = mergeEvents(this.events, animate ? changes : [], frame);
     this.fog = usable;
@@ -210,6 +213,7 @@ export class FogLedger {
     this.layoutHead = head;
     if (!animate) this.events = [];
     if (!this.fog || this.fog.head === head) return false;
+    this.prior = this.fog;
     this.fog = null;
     this.mismatch = true;
     this.events = [];

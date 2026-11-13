@@ -86,7 +86,10 @@ test('a fogged frame is palette-only with the depth fade off: the veil, its line
 test('teal stays off the frame at rest (it marks events only)', async ({ page }) => {
   const view = await openView(page, systemView());
   for (const input of [{ ...MINI_INPUT }, { ...MINI_INPUT, ...focus('web') }, { layout: MINI, fog: null, ...focus('src') }]) {
-    for (const r of await render(view, { ...input, depthFade: false }, [0, LATER])) expect(count(r, palette.accent.teal)).toBe(0);
+    for (const r of await render(view, { ...input, depthFade: false }, [0, LATER])) {
+      assertRendered(r.pixels, r.stats); // a blank frame has no teal either
+      expect(count(r, palette.accent.teal)).toBe(0);
+    }
   }
   expect(view.errors).toEqual([]);
 });
