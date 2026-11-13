@@ -96,6 +96,35 @@ function deepFreeze<T>(value: T): T {
   return Object.freeze(value);
 }
 
+/**
+ * Fog of war, D2d · dark veil (art-direction §9; human, 2026-11-11; feature/fog-lab 69be694): a
+ * fogged file's parcel is its ramp's darkest step mixed toward space, by `lit` on the lit side and
+ * `night` on the night side, with faint hatching (`hatch`) and a dim parcel line (`line`). The mixes
+ * are new colours, the human's fog-only exception to the filter rule, so they live here as named
+ * roles: the renderer only picks them, never mixes on the GPU, and a fogged frame with the depth fade
+ * off stays palette-only. The fogged limb is `world.halo`; events add only `accent.teal`.
+ */
+export const FOG_MIX = { lit: 0.65, night: 0.82, hatch: 0.42, line: 0.3 } as const;
+/** The ramps a fog veil can sit on: every planet look's ramps (web/src/render/looks.ts), test moons and moonlets. */
+export const FOG_RAMPS = [
+  'ocean', 'land', 'cap', 'water', 'ice', 'crevasse', 'sand', 'rock', 'crust', 'glow', 'ash',
+  'sludge', 'toxic', 'fungus', 'moonBody', 'moon',
+] as const satisfies readonly (keyof typeof PALETTE.world)[];
+export type FogRamp = (typeof FOG_RAMPS)[number];
+export type FogVeil = { readonly [K in keyof typeof FOG_MIX]: Hex };
+
+/** `a` moved `k` (0..1) of the way to `b`, per 8-bit channel, rounded as the GPU rounds its output. */
+function mixHex(a: Hex, b: Hex, k: number): Hex {
+  const ch = (h: Hex, i: number) => parseInt(h.slice(1 + 2 * i, 3 + 2 * i), 16);
+  return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * k).toString(16).padStart(2, '0')).join('')}`;
+}
+const veilOf = (ramp: Ramp): FogVeil => {
+  const dark = ramp[0]!;
+  return { lit: mixHex(dark, PALETTE.world.space, FOG_MIX.lit), night: mixHex(dark, PALETTE.world.space, FOG_MIX.night),
+    hatch: mixHex(dark, PALETTE.world.space, FOG_MIX.hatch), line: mixHex(dark, PALETTE.world.space, FOG_MIX.line) };
+};
+const FOG = { veil: Object.fromEntries(FOG_RAMPS.map((r) => [r, veilOf(PALETTE.world[r])])) as { readonly [R in FogRamp]: FogVeil } };
+
 /** Frozen at runtime too, so nothing can retune a colour behind the pinned test. */
-export const palette = deepFreeze(PALETTE);
+export const palette = deepFreeze({ ...PALETTE, fog: FOG });
 export type Palette = typeof palette;

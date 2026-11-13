@@ -46,6 +46,106 @@
       "#29174c"
     ]
   },
+  "fog": {
+    "veil": {
+      "ash": {
+        "hatch": "#151218",
+        "line": "#161318",
+        "lit": "#120f17",
+        "night": "#0f0d17"
+      },
+      "cap": {
+        "hatch": "#2a2d5d",
+        "line": "#30346b",
+        "lit": "#1f1f41",
+        "night": "#16152c"
+      },
+      "crevasse": {
+        "hatch": "#121936",
+        "line": "#131c3d",
+        "lit": "#10132a",
+        "night": "#0f0f20"
+      },
+      "crust": {
+        "hatch": "#0c0a13",
+        "line": "#0c0a12",
+        "lit": "#0c0b14",
+        "night": "#0d0b15"
+      },
+      "fungus": {
+        "hatch": "#4c301b",
+        "line": "#59371c",
+        "lit": "#332119",
+        "night": "#211617"
+      },
+      "glow": {
+        "hatch": "#7a2418",
+        "line": "#912919",
+        "lit": "#4f1a17",
+        "night": "#2f1317"
+      },
+      "ice": {
+        "hatch": "#3a4a6d",
+        "line": "#43577f",
+        "lit": "#28314b",
+        "night": "#1b1f31"
+      },
+      "land": {
+        "hatch": "#102827",
+        "line": "#112e2a",
+        "lit": "#0f1d20",
+        "night": "#0e141b"
+      },
+      "moon": {
+        "hatch": "#1c1b23",
+        "line": "#1f1e25",
+        "lit": "#16141e",
+        "night": "#12101a"
+      },
+      "moonBody": {
+        "hatch": "#673c23",
+        "line": "#7a4725",
+        "lit": "#43291e",
+        "night": "#291a1a"
+      },
+      "ocean": {
+        "hatch": "#11153f",
+        "line": "#121847",
+        "lit": "#0f112f",
+        "night": "#0e0e23"
+      },
+      "rock": {
+        "hatch": "#201515",
+        "line": "#241715",
+        "lit": "#191115",
+        "night": "#130e16"
+      },
+      "sand": {
+        "hatch": "#43261b",
+        "line": "#4e2c1c",
+        "lit": "#2e1b19",
+        "night": "#1e1317"
+      },
+      "sludge": {
+        "hatch": "#120d11",
+        "line": "#130d10",
+        "lit": "#100c13",
+        "night": "#0e0c15"
+      },
+      "toxic": {
+        "hatch": "#271514",
+        "line": "#2d1713",
+        "lit": "#1d1115",
+        "night": "#150e15"
+      },
+      "water": {
+        "hatch": "#0e1436",
+        "line": "#0e163d",
+        "lit": "#0e102a",
+        "night": "#0d0e20"
+      }
+    }
+  },
   "world": {
     "ash": [
       "#1a1719",
