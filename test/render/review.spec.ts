@@ -232,9 +232,10 @@ test.describe('#75 review panel', () => {
     const g = gate();
     f.hooks.diff = async (q, s) => { await g.wait; return readDiff(f.dir, q, s); };
     await openFile(page, 'aa/one.ts');
-    // The fog read fails during a reload: the view has no usable fog.
+    // A new scan lands while the fog read fails: the view keeps no fog of the drawn layout (#64), so none is usable.
     f.hooks.fog = () => Promise.reject(new Error('fog down'));
-    touchLayout(f);
+    f.commit('2026-10-10T10:00:00Z', () => appendFileSync(join(f.dir, 'aa/one.ts'), '// next\n'));
+    await f.scan();
     await expect.poll(() => page.$eval('#panel', (p) => p.textContent ?? ''), { timeout: 10_000 }).toContain("isn't available");
     g.open();
     await page.waitForTimeout(500);
