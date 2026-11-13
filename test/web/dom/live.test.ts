@@ -28,7 +28,10 @@ const layoutAt = (head: string): LayoutV1 => ({ ...miniLayout, source: { ...mini
 const fogAt = (head: string, baseline: string | null = null): FogView => ({ ...miniFog, head, baseline });
 
 /** The page's elements by id, as the drone controller finds them. */
-const els = new Map<string, { textContent: string; hidden: boolean }>();
+const els = new Map<string, { textContent: string; hidden: boolean; contains?: (n: unknown) => boolean }>();
+/** What the page's keyboard focus is on (document.activeElement). */
+const PANEL_BUTTON = { id: 'close' };
+let activeElement: unknown = null;
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {} })); // reduced motion: the loop sleeps
@@ -37,7 +40,8 @@ beforeEach(() => {
   vi.stubGlobal('innerHeight', 360);
   vi.stubGlobal('addEventListener', () => {});
   els.clear();
-  vi.stubGlobal('document', { getElementById: (id: string) => { if (!els.has(id)) els.set(id, { textContent: '', hidden: true }); return els.get(id); } }); // the drone HUD line and panel host
+  activeElement = null;
+  vi.stubGlobal('document', { get activeElement() { return activeElement; }, getElementById: (id: string) => { if (!els.has(id)) els.set(id, { textContent: '', hidden: true, contains: (n) => n === PANEL_BUTTON }); return els.get(id); } }); // the drone HUD line and panel host
   vi.stubGlobal('requestAnimationFrame', () => 1);
   vi.stubGlobal('cancelAnimationFrame', () => {});
 });
@@ -71,7 +75,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
   };
   let model: SystemModel | null = null;
   const view = {
-    pass: { canvas: Object.assign(new EventTarget(), { focus: () => {}, setPointerCapture: () => {}, getBoundingClientRect: () => ({ left: 0, top: 0 }) }) },
+    pass: { canvas: Object.assign(new EventTarget(), { focused: 0, focus() { this.focused++; }, setPointerCapture: () => {}, getBoundingClientRect: () => ({ left: 0, top: 0 }) }) },
     labels: { px: 2 },
     fog: null as FogView | null,
     get model() { return model; },
@@ -347,5 +351,40 @@ describe('drones in live mode (#80)', () => {
     expect(l.view.selectedDrone).not.toBeNull();
     l.view.pass.canvas.dispatchEvent(ev('keydown', { key: 'Home', code: 'Home', altKey: false, ctrlKey: false, metaKey: false, preventDefault: () => {} }));
     expect(l.view.selectedDrone).toBeNull();
+  });
+
+  /** Selects a drone and shows its panel, as a click does; the stubbed panel never opens by itself. */
+  const openPanel = async (l: Awaited<ReturnType<typeof live>>) => {
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!)]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.view.drawn.length).toBe(1));
+    l.view.droneAt = session(1, a!).key;
+    const ev = (type: string) => Object.assign(new Event(type), { button: 0, pointerId: 1, clientX: 5, clientY: 5, movementX: 0, movementY: 0 });
+    l.view.pass.canvas.dispatchEvent(ev('pointerdown'));
+    l.view.pass.canvas.dispatchEvent(ev('pointerup'));
+    expect(l.view.selectedDrone).not.toBeNull();
+    els.get('drone-panel')!.hidden = false;
+  };
+  const escape = (l: Awaited<ReturnType<typeof live>>) =>
+    l.view.pass.canvas.dispatchEvent(Object.assign(new Event('keydown'), { key: 'Escape', code: 'Escape', altKey: false, ctrlKey: false, metaKey: false, preventDefault: () => {} }));
+
+  it('closing the panel while keyboard focus is inside it hands focus back to the view (Qodo 048c2a94)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await openPanel(l);
+    const before = (l.view.pass.canvas as unknown as { focused: number }).focused;
+    activeElement = PANEL_BUTTON;
+    escape(l);
+    expect(l.view.selectedDrone).toBeNull();
+    expect((l.view.pass.canvas as unknown as { focused: number }).focused).toBe(before + 1);
+  });
+
+  it('closing the panel with focus elsewhere does not steal it', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await openPanel(l);
+    const before = (l.view.pass.canvas as unknown as { focused: number }).focused;
+    activeElement = { id: 'somewhere else' };
+    escape(l);
+    expect(l.view.selectedDrone).toBeNull();
+    expect((l.view.pass.canvas as unknown as { focused: number }).focused).toBe(before);
   });
 });
