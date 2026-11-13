@@ -48,6 +48,8 @@ export interface PlanetModel {
   phase: number;
   slot: number;
   moons: MoonModel[];
+  /** The surface grid and its files (#18), for the fog's territories (#74). */
+  surface: { cells: number; settlements: { fileId: string; cell: number }[] };
   /** What the view shows as text; overflow is counted, never dropped (Rule 1). */
   counts: {
     loc: number;
@@ -105,6 +107,7 @@ function planetModel(p: Planet): PlanetModel {
     phase: p.slot.phaseMilliturn / 1000,
     slot: p.slot.index,
     moons: p.moons.map((m) => moonModel(radius, m.fileId, m.slot)),
+    surface: { cells: p.surface.grid.cells, settlements: p.surface.settlements.map((s) => ({ fileId: s.fileId, cell: s.cell })) },
     counts: {
       loc: p.loc,
       moons: p.moons.length,

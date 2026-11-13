@@ -6,7 +6,7 @@ import { LOOP_FRAMES, REDUCED_MOTION_FRAME, TURNS, effectiveFrame, loopPhase, tu
 import { clampPixelHeight, frameWidth, upscaleFactor } from '../../web/src/model/pixels.js';
 import { mulberry32 } from '../../web/src/model/prng.js';
 import { HEALTHY_LOOKS, MOON_RADIUS, MILLI_PER_RENDER_UNIT, lookOf, moonOffset, moonletPosition, planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
-import { miniLayout } from '../fixtures/contract/mini.js';
+import { miniFog, miniLayout } from '../fixtures/contract/mini.js';
 
 const clone = (): LayoutV1 => structuredClone(miniLayout);
 const longitude = (v: [number, number, number]) => Math.atan2(v[2], v[0]);
@@ -178,7 +178,15 @@ describe('info text', () => {
     expect(systemLines(m)[0]).toBe('3 planets');
     expect(systemLines(m)).toContain('2 test data files (ride with the tests, not drawn)');
     const empty = systemModel({ ...clone(), planets: [], star: { ...miniLayout.star, moonlets: [], testData: 0 } });
-    expect(systemLines(empty)).toEqual(['no planets yet: just the star']);
+    expect(systemLines(empty)).toEqual(['no planets yet: just the star', 'uncharted: unknown, so every file is drawn uncharted']);
+  });
+
+  it('counts uncharted files from the fog view, unplaced files and moons included, and says when it is unknown (F2, Rule 1)', () => {
+    expect(planetLines(m.planets[1]!, miniFog)).toContain('uncharted: 1 of 25 files');
+    expect(systemLines(m, miniFog)).toContain('uncharted: 2 of 37 files');
+    expect(planetLines(m.planets[1]!)).toContain('uncharted: unknown, so every file is drawn uncharted');
+    expect(infoLines(m, 1, miniFog)).toEqual(planetLines(m.planets[1]!, miniFog));
+    expect(summaryText(m, null, miniFog)).toContain('uncharted: 2 of 37 files');
   });
 
   it('gives screen readers everything the canvas shows: the info panel and every planet name', () => {
@@ -187,7 +195,7 @@ describe('info text', () => {
   });
 
   it('never shows a per-person figure or a score (Rule 6)', () => {
-    const text = [...systemLines(m), ...m.planets.flatMap(planetLines)].join('\n');
+    const text = [...systemLines(m, miniFog), ...m.planets.flatMap((p) => planetLines(p, miniFog))].join('\n');
     expect(text).not.toMatch(/score|points|xp|streak|rank|level/i);
   });
 });
