@@ -316,5 +316,7 @@ export async function applyChart(repoDir: string, body: unknown): Promise<ChartR
 /** GET /api/drones (#80): the drone view, placed with the same file-to-planet map as the fog. State errors throw CommetError. */
 export async function readDrones(repoDir: string): Promise<DroneView> {
   const { base } = await openFogSource(repoDir);
+  // isSnapshot checks only what fog reads; sessions are the drone view's input.
+  if (!Array.isArray(base.snapshot.sessions)) throw new CommetError('state error: .git/commet/snapshot.json is damaged or from another commet version; run `commet scan`', EXIT.state);
   return droneView(base.snapshot, base.home);
 }

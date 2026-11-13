@@ -4,8 +4,10 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { EXIT } from '../src/core/errors.js';
 import { fileIdOf, homes } from '../src/core/fog/index.js';
 import type { SnapshotV02 } from '../src/core/snapshot/types.js';
+import { writeAtomic } from '../src/state/io.js';
 import { openFogSource, readDrones, readFog } from '../src/state/chart.js';
 import { cli } from './fixtures/cli.js';
 import { createResult, miniClaude, miniRepo, session } from './fixtures/mini.js';
@@ -70,5 +72,14 @@ describe('readDrones on a scanned repo', () => {
     const fogMsg = await msg(() => readFog(r.repo.dir));
     expect(fogMsg).toMatch(/come from different scans/);
     expect(await msg(() => readDrones(r.repo.dir))).toBe(fogMsg);
+  });
+
+  it('a snapshot without sessions is a state error, not an internal one (Qodo r1)', async () => {
+    const r = setup();
+    expect((await r.run('scan', '--no-root')).code).toBe(0);
+    const file = join(r.state, 'snapshot.json');
+    const { sessions: _gone, ...damaged } = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    writeAtomic(file, JSON.stringify(damaged));
+    await expect(readDrones(r.repo.dir)).rejects.toMatchObject({ name: 'CommetError', exitCode: EXIT.state, message: expect.stringMatching(/damaged.*run `commet scan`/) });
   });
 });
