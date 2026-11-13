@@ -47,8 +47,11 @@ export interface ScanOptions {
   roots?: (head: HeadTree) => Promise<string[]>;
 }
 
-/** HEAD as content roots are chosen from (#71): the scanned files with their LOC, and every folder holding one. */
-export interface HeadTree { commonDir: string; files: { path: string; loc: number }[]; folders: ReadonlySet<string> }
+/**
+ * HEAD as content roots are chosen from (#71): the scanned files with their LOC, and every folder holding one,
+ * plus the repo's id, so the last scan's roots are kept only from a layout of this repository (#73).
+ */
+export interface HeadTree { commonDir: string; repoId: string; files: { path: string; loc: number }[]; folders: ReadonlySet<string> }
 
 /** Aggregate log-reading counts for the summary; null when logs weren't read. */
 export type LogStats = (LogCounts & { transcripts: number }) | null;
@@ -130,7 +133,7 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   const binary = binaryNames(history, [...head].filter(([, row]) => row.binary).map(([p]) => p));
   const lineageExcluded = (p: string) => binary.has(p) || excluded(p, undefined);
   const folders = foldersOf(headPaths);
-  const asked = o.roots ? parseRoots(await o.roots({ commonDir: repo.commonDir, files: kept.map(([path, row]) => ({ path, loc: row.added })), folders }),
+  const asked = o.roots ? parseRoots(await o.roots({ commonDir: repo.commonDir, repoId: repo.repoId, files: kept.map(([path, row]) => ({ path, loc: row.added })), folders }),
     folders) : { roots: [] };
   if ('error' in asked) throw new CommetError(`content roots: ${asked.error}`, EXIT.usage);
   const lineage = buildLineage(history, lineageExcluded, asked.roots);

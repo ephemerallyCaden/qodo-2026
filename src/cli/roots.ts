@@ -1,10 +1,13 @@
 // Choosing the content roots for `commet scan` (#71 C1–C5): flags, the saved answer, or a guess the
-// user confirms at a terminal. Without one (hooks, CI, the agent runner) nothing is asked and the
-// scan never blocks. Output names repo-relative folders only (C10).
+// user confirms at a terminal. Without one (hooks, CI, the agent runner) nothing is asked, nothing is
+// saved, the last scan's roots are kept (#73) and the scan never blocks. Output names repo-relative folders only (C10).
+import { lstatSync } from 'node:fs';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { CommetError, EXIT } from '../core/errors.js';
 import { guessRoot, parseRoots, type RootGuess } from '../core/roots.js';
 import { printable } from '../core/summary.js';
+import { readScanPair } from '../state/chart.js';
 import { readSavedRoots, saveRoots } from '../state/config.js';
 import { stateDir } from '../state/io.js';
 import type { HeadTree } from '../scan/index.js';
@@ -18,13 +21,39 @@ export type RootFlags = { kind: 'set'; roots: string[] } | { kind: 'none' } | { 
 const HOW = 'change with --root <dir>, --no-root or `commet scan --ask`';
 const list = (roots: readonly string[]) => (roots.length === 0 ? 'none' : roots.map(printable).join(', '));
 const share = (g: RootGuess) => `${printable(g.root)} holds ${g.sharePct}% of the code`;
+const goneNote = (gone: readonly string[]) => (gone.length > 0 ? `; ${list(gone)} no longer a folder at HEAD, left out` : '');
+
+/** The roots the last scan's layout used, or why they can't be kept; null when there is no layout yet. */
+type LastRoots = { roots: string[] } | { unusable: string } | null;
+
+/**
+ * The last scan's roots (#73), from the state dir's layout through the pair reader (#64), so they come
+ * from a layout that matches its snapshot. Its head may be older than this scan's; its repo must be
+ * this one. A damaged, unpaired or other-repo layout gives no roots, and says why (Rule 1).
+ */
+async function lastRoots(dir: string, repoId: string): Promise<LastRoots> {
+  try {
+    lstatSync(join(dir, 'layout.json'));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+  }
+  try {
+    const { snapshot, roots } = await readScanPair(dir);
+    return snapshot.repo.repoId === repoId ? { roots } : { unusable: 'the last scan is of another repository, its roots not kept' };
+  } catch {
+    // Any failure (damaged, unpaired, or unreadable such as EACCES) keeps the scan going: it replaces these files.
+    return { unusable: 'the last scan\'s layout is unreadable, its roots not kept' };
+  }
+}
 
 /**
  * The roots for this scan, from HEAD's files and folders. Prints exactly one `roots:` line saying which and
- * whether it was saved. A bad --root is a usage error (exit 2); a damaged config.json is a state
- * error (exit 5). `ask` is present only at a terminal.
+ * whether it was saved. Only a flag or the human's answer is saved; with neither, nor a saved answer, the
+ * last scan's roots are kept, so planets never move unless you choose (#73), and the guess is used only
+ * without them. A bad --root is a usage error (exit 2); a damaged config.json is a state error (exit 5).
+ * `ask` is present only at a terminal.
  */
-export async function chooseRoots(flags: RootFlags, { commonDir, files, folders }: HeadTree, out: (text: string) => void,
+export async function chooseRoots(flags: RootFlags, { commonDir, repoId, files, folders }: HeadTree, out: (text: string) => void,
   ask: Ask | undefined): Promise<string[]> {
   const dir = () => stateDir(commonDir);
   const say = (roots: readonly string[], how: string) => out(`roots: ${list(roots)} (${how})\n`);
@@ -44,8 +73,7 @@ export async function chooseRoots(flags: RootFlags, { commonDir, files, folders 
   // --ask needs someone to answer: without a terminal it is said, and the scan goes on.
   const unasked = flags.kind === 'ask' && !ask ? 'not asked: no terminal; ' : '';
   const fromSaved = () => {
-    const note = gone.length > 0 ? `; ${list(gone)} no longer a folder at HEAD, left out` : '';
-    say(kept!, `${unasked}saved${note}; ${HOW}`);
+    say(kept!, `${unasked}saved${goneNote(gone)}; ${HOW}`);
     return kept!;
   };
   if (kept !== null && flags.kind !== 'ask') return fromSaved();
@@ -57,12 +85,26 @@ export async function chooseRoots(flags: RootFlags, { commonDir, files, folders 
     return answer;
   }
   if (kept !== null) return fromSaved();
+  // Nothing saved and nothing answered: never saved here, so a hook, CI or an agent can't answer for the human (#73).
+  const confirm = ask ? 'confirm with `commet scan --ask`' : 'confirm with `commet scan --ask` in a terminal';
+  const unsaved = `not saved: ${confirm}, or pass --root <dir> or --no-root`;
+  const last = await lastRoots(dir(), repoId);
+  // Kept roots that all left HEAD say so and fall through to the guess; a layout recorded as none stays none.
+  let goneAll = '';
+  if (last !== null && 'roots' in last) {
+    const roots = last.roots.filter((r) => folders.has(r));
+    if (roots.length > 0 || last.roots.length === 0) {
+      say(roots, `${unasked}kept from the last scan${goneNote(last.roots.filter((r) => !folders.has(r)))}; ${unsaved}`);
+      return roots;
+    }
+    goneAll = `; ${list(last.roots)} no longer a folder at HEAD`;
+  }
+  const unusable = goneAll || (last === null || 'roots' in last ? '' : `; ${last.unusable}`);
   if (guess === null) {
-    say([], `${unasked}no main folder to suggest; set one with --root <dir>`);
+    say([], `${unasked}no main folder to suggest${unusable}; set one with --root <dir>`);
     return [];
   }
-  const confirm = ask ? 'confirm with `commet scan --ask`' : 'confirm with `commet scan --ask` in a terminal';
-  say([guess.root], `${unasked}guessed: ${share(guess)}; not saved: ${confirm}, or pass --root <dir> or --no-root`);
+  say([guess.root], `${unasked}guessed: ${share(guess)}${unusable}; ${unsaved}`);
   return [guess.root];
 }
 

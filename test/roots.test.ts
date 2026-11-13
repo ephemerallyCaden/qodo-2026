@@ -1,6 +1,7 @@
 // Issue #71: content roots. The planet rule shared by layout and fog, the guess, roots as typed,
 // choosing them (flags, the saved answer, the prompt with the terminal injected) and the scan's output.
-import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -90,7 +91,7 @@ describe('#71 C4 and C10: roots as typed', () => {
 const FILES = [['src/core/a.ts', 5], ['src/scan/b.ts', 5], ['src/cli.ts', 3], ['web/w.ts', 2], ['docs/d.md', 1], ['test/a.test.ts', 9]]
   .map(([path, loc]) => ({ path: path as string, loc: loc as number }));
 const QUESTION = 'Use src as the system root? [Y/n/other] ';
-const head = (files: { path: string; loc: number }[], commonDir: string) => ({ commonDir, files, folders: foldersOf(files.map((f) => f.path)) });
+const head = (files: { path: string; loc: number }[], commonDir: string) => ({ commonDir, repoId: 'test-repo', files, folders: foldersOf(files.map((f) => f.path)) });
 
 /** chooseRoots on FILES in a fresh state dir: what it returned, printed and saved. */
 async function choose(flags: RootFlags, ask?: Ask, saved?: string) {
@@ -373,5 +374,118 @@ describe('#71 through commet scan', () => {
     for (const text of [config, r.out, r.err, ask.asked.join('\n')]) {
       for (const abs of [repo.dir, homedir(), realpathSync(tmpdir())]) expect(text.includes(abs)).toBe(false);
     }
+  });
+});
+
+describe('#73 unattended scans keep the last layout\'s roots and never save a guess', () => {
+  const NO_LOGS = { CLAUDE_CONFIG_DIR: realTempDir('commet-roots73-claude-') };
+  const at = (n: number) => `2026-01-0${n}T00:00:00Z`;
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `l${i}`);
+  const state = (repo: MiniRepo, file: string) => join(repo.dir, '.git/commet', file);
+  const rootsLine = (out: string) => out.split('\n').filter((l) => l.startsWith('roots: '));
+  const layoutRoots = (repo: MiniRepo) => (JSON.parse(readFileSync(state(repo, 'layout.json'), 'utf8')) as LayoutV1).source.roots;
+  const exists = (path: string) => {
+    try {
+      lstatSync(path);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  // src is the biggest folder with two code subfolders, so it is guessed.
+  const srcRepo = () => miniRepo([
+    { id: 'a', at: at(1), path: 'src/core/a.ts', lines: lines(10) },
+    { id: 'b', at: at(2), path: 'src/scan/b.ts', lines: lines(10) },
+    { id: 'c', at: at(3), path: 'web/w.ts', lines: lines(2) },
+  ]);
+  const overtake = (repo: MiniRepo) => {
+    for (const p of ['lib/x/big.ts', 'lib/y/big.ts']) {
+      mkdirSync(join(repo.dir, p, '..'), { recursive: true });
+      writeFileSync(join(repo.dir, p), lines(200).join('\n') + '\n');
+    }
+    execFileSync('git', ['add', 'lib'], { cwd: repo.dir });
+    execFileSync('git', ['commit', '-q', '-m', 'test: lib overtakes src'], { cwd: repo.dir,
+      env: { ...process.env, GIT_AUTHOR_DATE: at(4), GIT_COMMITTER_DATE: at(4) } });
+  };
+
+  it('AC5, AC1, AC3: another folder overtakes the guess in LOC, and the next unattended scan keeps src', async () => {
+    const repo = srcRepo();
+    const first = await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS);
+    expect(first.code).toBe(0);
+    expect(rootsLine(first.out)).toEqual([expect.stringMatching(/^roots: src \(guessed: src holds \d+% of the code; not saved: /)]);
+    overtake(repo);
+    const second = await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS);
+    expect(second.code).toBe(0);
+    expect(layoutRoots(repo)).toEqual(['src']);
+    expect(rootsLine(second.out)).toEqual([expect.stringMatching(
+      /^roots: src \(kept from the last scan; not saved: confirm with `commet scan --ask` in a terminal, or pass --root <dir> or --no-root\)$/)]);
+  });
+
+  it('AC2, AC6: an unattended scan leaves config.json absent, and a later terminal scan still asks (and saves only its answer)', async () => {
+    const repo = srcRepo();
+    for (let i = 0; i < 2; i++) expect((await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS)).code).toBe(0);
+    expect(exists(state(repo, 'config.json'))).toBe(false);
+    const ask = scripted(['n']);
+    expect((await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS, ask)).code).toBe(0);
+    expect(ask.asked).toEqual([QUESTION]);
+    expect(JSON.parse(readFileSync(state(repo, 'config.json'), 'utf8'))).toEqual({ roots: [] });
+    expect(layoutRoots(repo)).toEqual([]);
+  });
+
+  it('AC4: the first terminal scan guesses, asks, and saves only the answer', async () => {
+    const repo = srcRepo();
+    const ask = scripted(['y']);
+    expect((await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS, ask)).code).toBe(0);
+    expect(ask.asked).toEqual([QUESTION]);
+    expect(JSON.parse(readFileSync(state(repo, 'config.json'), 'utf8'))).toEqual({ roots: ['src'] });
+  });
+
+  it('--no-root on the last scan is kept as none even once config.json is gone',async () => {
+    const repo = srcRepo();
+    expect((await cli(['scan', '--no-ingest', '--no-root'], repo.dir, NO_LOGS)).code).toBe(0);
+    rmSync(state(repo, 'config.json'));
+    const r = await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS);
+    expect(rootsLine(r.out)).toEqual([expect.stringMatching(/^roots: none \(kept from the last scan; not saved:/)]);
+    expect(exists(state(repo, 'config.json'))).toBe(false);
+  });
+
+  it('a damaged layout is said so and the guess is used; nothing is saved', async () => {
+    const repo = srcRepo();
+    expect((await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS)).code).toBe(0);
+    writeFileSync(state(repo, 'layout.json'), '{"nope":');
+    const r = await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS);
+    expect(r.code).toBe(0);
+    expect(rootsLine(r.out)).toEqual([expect.stringMatching(/^roots: src \(guessed: .*; the last scan's layout is unreadable, its roots not kept; not saved:/)]);
+    expect(exists(state(repo, 'config.json'))).toBe(false);
+  });
+  it.skipIf(process.getuid?.() === 0)('an unreadable prior layout is said so and the guess is used, never an internal error', async () => {
+    const repo = srcRepo();
+    expect((await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS)).code).toBe(0);
+    chmodSync(state(repo, 'layout.json'), 0);
+    try {
+      const r = await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS);
+      expect(r.code).toBe(0);
+      expect(rootsLine(r.out)).toEqual([expect.stringMatching(/^roots: src \(guessed: .*; the last scan's layout is unreadable, its roots not kept; not saved:/)]);
+      expect(exists(state(repo, 'config.json'))).toBe(false);
+    } finally {
+      chmodSync(state(repo, 'layout.json'), 0o600);
+    }
+  });
+  it('B2: when every kept root has left HEAD the guess is used and says so, so the scan does not freeze at none', async () => {
+    const repo = srcRepo();
+    expect((await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS)).code).toBe(0);
+    execFileSync('git', ['rm', '-rq', 'src'], { cwd: repo.dir });
+    for (const p of ['lib/x/a.ts', 'lib/y/b.ts']) {
+      mkdirSync(join(repo.dir, p, '..'), { recursive: true });
+      writeFileSync(join(repo.dir, p), lines(10).join('\n') + '\n');
+    }
+    execFileSync('git', ['add', 'lib'], { cwd: repo.dir });
+    execFileSync('git', ['commit', '-q', '-m', 'test: src replaced by lib'], { cwd: repo.dir, env: { ...process.env, GIT_AUTHOR_DATE: at(4), GIT_COMMITTER_DATE: at(4) } });
+    const first = await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS);
+    expect(rootsLine(first.out)).toEqual([expect.stringMatching(/^roots: lib \(guessed: lib holds \d+% of the code; src no longer a folder at HEAD; not saved:/)]);
+    expect(layoutRoots(repo)).toEqual(['lib']);
+    // The new layout's roots are now the ones kept.
+    expect(rootsLine((await cli(['scan', '--no-ingest'], repo.dir, NO_LOGS)).out)).toEqual([expect.stringMatching(/^roots: lib \(kept from the last scan; not saved:/)]);
+    expect(exists(state(repo, 'config.json'))).toBe(false);
   });
 });
