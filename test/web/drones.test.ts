@@ -8,6 +8,7 @@ import { palette } from '../../src/core/palette.js';
 import { parseDrones } from '../../web/src/data/client.js';
 import { checkDrones } from '../../web/src/drones/check.js';
 import { DRONE_TURNS, placeDrone } from '../../web/src/drones/place.js';
+import { pick } from '../../web/src/camera/pose.js';
 import { DRONE_CAP, droneLabels, droneRows, droneStatus, entryOf, selectDrones } from '../../web/src/drones/select.js';
 import { LOOP_FRAMES } from '../../web/src/model/motion.js';
 import { systemModel } from '../../web/src/model/system.js';
@@ -58,6 +59,13 @@ describe('which drones are drawn (AC 5)', () => {
     const s = selectDrones(old, all);
     expect(s.shown).toEqual([]);
     expect(droneStatus(s)).toBe('rescan to place drones (2 sessions not placed)');
+  });
+
+  it('orders by instant, whatever the fractional precision of the times', () => {
+    const v = droneView(HEAD, [
+      session(1, 'star', { endedAt: '2026-11-10T12:00:00Z' }), session(2, 'star', { endedAt: '2026-11-10T12:00:00.500Z' }), session(3, 'star', { endedAt: '2026-11-10T11:59:59.900Z' }),
+    ]);
+    expect(selectDrones(v, all).shown.map((s) => s.key)).toEqual([session(2, 'star').key, session(1, 'star').key, session(3, 'star').key]);
   });
 
   it('is a pure function of the view: the same view gives the same drones and entries', () => {
@@ -150,6 +158,18 @@ describe('orbits (AC 5, Rule 4)', () => {
     expect(dist(at(0).centre, [c, 0, 0])).toBeGreaterThan(planet.radius);
     expect(at(0, 1).centre).not.toEqual(at(0, 2).centre);
     expect(placeDrone(model, 'd_nowhere', 1, 0)).toBeNull();
+  });
+});
+
+describe('picking a drone (Qodo PR #127 r1)', () => {
+  const pose = { target: [0, 0, 0] as [number, number, number], yaw: 0, pitch: 0, dist: 100 };
+  const small = [{ centre: [0, 0, 0] as [number, number, number], radius: 0.28 }];
+
+  it("a click well beside a far drone misses it with the drone floor but hit it with the planets' floor", () => {
+    const beside = { x: 0.015, y: 0 }; // 1.5% of half the width off: about 2 px at 320 x 180
+    expect(pick(pose, beside, small, [], 0.04)).toBe(0);
+    expect(pick(pose, beside, small, [], 0.015)).toBeNull();
+    expect(pick(pose, { x: 0.005, y: 0 }, small, [], 0.015)).toBe(0);
   });
 });
 

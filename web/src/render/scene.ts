@@ -10,7 +10,7 @@ import { fileFogAt, foggedBy, planetPulse, planetTally, type FogEvent } from '..
 import { loopPhase } from '../model/motion.js';
 import { frameWidth } from '../model/pixels.js';
 import { mulberry32 } from '../model/prng.js';
-import { MOONLET_RADIUS, moonletPosition, planetCentre, type SystemModel } from '../model/system.js';
+import { MOON_RADIUS, MOONLET_RADIUS, moonOffset, moonletPosition, planetCentre, type SystemModel } from '../model/system.js';
 import { add, scale, type Sphere, type Vec3 } from '../model/vec.js';
 import { LIGHT_VIEW, orbitingSpheres, placeSpheres, ramp, shaderMaterial, SHARED, toonMaterial } from './materials.js';
 import { FOG_SHARED, moonFogAttribute, setMoonFog } from './fog.js';
@@ -133,6 +133,12 @@ export class SystemScene {
   /** The planets as spheres at a frame, in model order (picking, labels, focus). */
   spheres(frame: number): Sphere[] {
     return this.model.planets.map((p) => ({ centre: planetCentre(p, frame), radius: p.radius }));
+  }
+
+  /** Moons and moonlets as spheres at a frame: they hide what is behind them (picking drones). */
+  smallBodies(frame: number): Sphere[] {
+    const moons = this.model.planets.flatMap((p) => p.moons.map((m) => ({ centre: add(planetCentre(p, frame), moonOffset(m, frame)), radius: MOON_RADIUS })));
+    return [...moons, ...this.model.star.moonlets.map((m) => ({ centre: moonletPosition(m, frame), radius: MOONLET_RADIUS }))];
   }
 
   /** Poses everything for exactly this frame, camera pose and internal height. */

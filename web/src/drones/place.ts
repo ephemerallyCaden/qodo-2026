@@ -16,8 +16,8 @@ const CLEARANCE = 0.35;
 const LANE = 0.15;
 /** The most an orbit plane tilts from the system's plane (radians). */
 const MAX_TILT = 0.35;
-/** A drone's picking radius: the lab drone's body is about 0.2 lab units across. */
-export const DRONE_PICK_RADIUS = 0.22 * DRONE_SCALE;
+/** A drone's picking radius: its body (about 0.2 lab units across) plus the drift and bob that move it off its orbit's centre. */
+export const DRONE_PICK_RADIUS = 0.35 * DRONE_SCALE;
 
 export interface DronePlacement {
   centre: Vec3;

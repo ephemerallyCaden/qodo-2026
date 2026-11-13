@@ -94,6 +94,12 @@ test.describe('drones', () => {
     expect(view.errors).toEqual([]);
   });
 
+  test("refuses drones of another scan's head, as the live view does", async ({ page }) => {
+    const view = await openView(page, systemView());
+    const other = { ...repo, head: 'f'.repeat(40) };
+    await expect(render(view, withDrones({}, other), [0])).rejects.toThrow(/different scans/);
+  });
+
   test('two loads of the same inputs give identical frames', async ({ page }) => {
     const view = await openView(page, systemView());
     const first = await render(view, withDrones(), [0, 90]);

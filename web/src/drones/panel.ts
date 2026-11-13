@@ -18,7 +18,7 @@ export class DronePanel {
     });
   }
 
-  show(session: DroneSession, homeName: string): void {
+  show(session: DroneSession, homeName: string, takeFocus = true): void {
     const title = document.createElement('h2');
     title.textContent = 'agent session';
     const close = document.createElement('button');
@@ -38,7 +38,7 @@ export class DronePanel {
     }
     this.root.replaceChildren(top, list);
     this.root.hidden = false;
-    close.focus({ preventScroll: true });
+    if (takeFocus) close.focus({ preventScroll: true });
   }
 
   hide(): void {

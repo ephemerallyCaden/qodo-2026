@@ -23,7 +23,8 @@ export interface DroneSelection {
 /** `known(home)`: whether the drawn layout has that body (a planet's DirId, or 'star'). */
 export function selectDrones(view: DroneView, known: (home: string) => boolean, cap: number = DRONE_CAP): DroneSelection {
   const placed = view.needsRescan ? [] : view.sessions.filter((s) => s.home !== null && known(s.home));
-  const ordered = [...placed].sort((a, b) => byCodepoint(b.endedAt, a.endedAt) || byCodepoint(a.key, b.key));
+  // by instant, not by string: the validator accepts times with and without fractional seconds
+  const ordered = [...placed].sort((a, b) => Date.parse(b.endedAt) - Date.parse(a.endedAt) || byCodepoint(a.key, b.key));
   const shown = ordered.slice(0, Math.max(0, cap));
   return { shown, hidden: placed.length - shown.length, unplaced: view.sessions.length - placed.length, total: view.sessions.length, needsRescan: view.needsRescan, cap };
 }

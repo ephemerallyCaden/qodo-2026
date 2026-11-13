@@ -26,11 +26,12 @@ export function renderHook(view: View, viewport: () => { w: number; h: number; d
       if (next.drones) {
         const d = checkDrones(next.drones);
         if (!d.ok) throw new Error(`invalid drones: ${d.errors.join('; ')}`);
+        if (d.value.head !== checked.value.source.head) throw new Error(`drones are of ${d.value.head.slice(0, 7)} but the layout of ${checked.value.source.head.slice(0, 7)} (different scans)`);
         const planets = new Set<string>(checked.value.planets.map((p) => p.dirId));
         drones = selectDrones(d.value, (h) => h === 'star' || planets.has(h)).shown;
       }
       await view.load(checked.value, next.fog ?? null, { animate: false }); // no fronts: a frame is a pure function of (input, n)
-      await view.setDrones(drones.map(entryOf));
+      await view.setDrones(drones.map(entryOf), checked.value.source.head);
       const vp = viewport();
       view.showHelp = false;
       view.depthFade = next.depthFade ?? true;

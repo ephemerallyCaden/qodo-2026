@@ -49,37 +49,37 @@ export class Drones {
     const had = this.data?.head === head ? this.data : null;
     if (got instanceof Error) {
       this.host.announce(`drones unavailable: ${describe(got)}`);
-      await this.apply(had);
+      await this.apply(had, head, gen);
     } else if (got.head !== head) {
       this.host.announce(`drones not applied: they are of ${short(got.head)} but the layout of ${short(head)} (different scans); waiting for the next update`);
-      await this.apply(had);
-    } else await this.apply(got);
+      await this.apply(had, head, gen);
+    } else await this.apply(got, head, gen);
   }
 
-  /** Draws `data` (null: no drones), after the layout or the drones changed. */
-  private async apply(data: DroneView | null): Promise<void> {
+  /** Draws `data` (null: no drones) over the layout of `head`. Does nothing if a newer refresh began or the layout changed meanwhile. */
+  private async apply(data: DroneView | null, head: string, gen: number): Promise<void> {
     const model = this.host.view.model;
-    this.data = data;
-    if (!model || !data) {
-      this.shown = [];
-      this.line.textContent = data ? '' : 'drones: none loaded';
-      await this.host.view.setDrones([]).catch(() => {});
-      this.deselect();
-      this.host.redraw();
-      return;
-    }
-    const planets = new Set<string>(model.planets.map((p) => p.dirId));
-    const sel = selectDrones(data, (h) => h === 'star' || planets.has(h));
+    const sel = model && data ? selectDrones(data, (h) => h === 'star' || model.planets.some((p) => p.dirId === h)) : null;
+    let drawn: boolean;
     try {
-      await this.host.view.setDrones(sel.shown.map(entryOf));
+      drawn = await this.host.view.setDrones(sel ? sel.shown.map(entryOf) : [], head);
     } catch (e) {
-      this.host.announce(`drones not drawn: ${describe(e)}`);
+      if (gen === this.gen) this.host.announce(`drones not drawn: ${describe(e)}`);
       return;
     }
-    this.shown = sel.shown;
-    this.line.textContent = droneStatus(sel);
-    if (this.host.view.selectedDrone && !sel.shown.some((s) => s.key === this.host.view.selectedDrone)) this.deselect();
+    if (!drawn || gen !== this.gen) return; // stale: a newer refresh or a layout reload owns the state now
+    this.data = data;
+    this.shown = sel ? sel.shown : [];
+    this.line.textContent = sel ? droneStatus(sel) : 'drones: none loaded';
+    const open = this.shown.find((s) => s.key === this.host.view.selectedDrone);
+    if (open) this.showPanel(open, false); // the refresh may have changed what the open panel says
+    else this.deselect();
     this.host.redraw();
+  }
+
+  private showPanel(s: DroneSession, takeFocus = true): void {
+    const home = s.home === 'star' || s.home === null ? 'the star' : this.host.view.model?.planets.find((p) => p.dirId === s.home)?.path ?? 'unknown';
+    this.panel.show(s, home, takeFocus);
   }
 
   /** A click on the view: selects the drone under it and opens its panel. False when none is there. */
@@ -88,8 +88,7 @@ export class Drones {
     const s = key === null ? undefined : this.shown.find((d) => d.key === key);
     if (!s) return false;
     this.host.view.selectedDrone = s.key;
-    const home = s.home === 'star' || s.home === null ? 'the star' : this.host.view.model?.planets.find((p) => p.dirId === s.home)?.path ?? 'unknown';
-    this.panel.show(s, home);
+    this.showPanel(s);
     this.host.announce(`selected a ${s.tool} agent session`);
     this.host.redraw();
     return true;

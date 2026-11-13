@@ -14,11 +14,16 @@ import { SHARED } from './render/materials.js';
 import { PixelPass } from './render/pixel.js';
 import type { FleetEntry } from './render/drone-fleet.js';
 import { SystemScene } from './render/scene.js';
+
+/** A drone's smallest clickable size, as a share of half the frame height (a planet's is 0.04). */
+const DRONE_MIN_NDC = 0.015;
 import { UI_COLOURS } from './ui/colours.js';
 import type { Sphere } from './model/vec.js';
 
 /** At most this many labels per frame (system design §7). */
 export const MAX_LABELS = 50;
+/** Of them, at most this many go to drones. */
+const MAX_DRONE_LABELS = 8;
 
 const starSphere = (s: SystemScene): Sphere => ({ centre: [0, 0, 0], radius: s.model.star.radius });
 
@@ -34,6 +39,9 @@ export class View {
   onFog?: (fog: FogView | null) => void;
   /** The drones drawn (#80), kept across layout reloads, and the selected one's session key. */
   private drones: readonly FleetEntry[] = [];
+  /** The head the kept drones belong to, and the head of the layout drawn: drones only ever show over their own scan's layout. */
+  private dronesHead: string | null = null;
+  private layoutHead: string | null = null;
   selectedDrone: string | null = null;
   /** The per-pixel depth fade (RenderInput.depthFade); off leaves only palette colours. */
   depthFade = true;
@@ -101,7 +109,7 @@ export class View {
     const animate = opts.animate !== false && !this.reduced;
     const next = new SystemScene(systemModel(layout));
     try {
-      next.fleet.set(this.drones);
+      next.fleet.set(this.dronesHead === layout.source.head ? this.drones : []);
       next.pose(0, startPose(next.model), this.pass.height);
       // Compile every program up front, hidden ones (small planets' cloud shadows) included, and force
       // three's error check, which it otherwise defers to a program's first draw.
@@ -117,6 +125,7 @@ export class View {
     }
     this.system?.dispose();
     this.system = next;
+    this.layoutHead = layout.source.head;
     // The fog already drawn stays when it is newer than this load's, but only for the same scan;
     // fronts in progress carry over, by file.
     const dropped = this.fogs.setLayout(layout.source.head, animate);
@@ -124,10 +133,15 @@ export class View {
     if (!this.applyWith(fog, ticket, animate) && dropped) this.onFog?.(null);
   }
 
-  /** Draws these drones (#80), compiling their shader first; a failure throws a ViewError and keeps the old ones. */
-  async setDrones(entries: readonly FleetEntry[]): Promise<void> {
+  /**
+   * Draws these drones (#80), which belong to the scan `head`, compiling their shader first. Returns false,
+   * changing nothing, when the drawn layout is of another scan or was replaced while compiling (the
+   * caller's answer is then stale). A compile failure throws a ViewError and keeps the old drones.
+   */
+  async setDrones(entries: readonly FleetEntry[], head: string): Promise<boolean> {
     const s = this.system;
-    if (!s) { this.drones = entries; return; }
+    if (!s) { this.drones = entries; this.dronesHead = head; return true; }
+    if (head !== this.layoutHead) return false;
     const before = s.fleet.entries;
     s.fleet.set(entries);
     try {
@@ -140,10 +154,13 @@ export class View {
         if (failed.length > 0) throw new ViewError('The view could not compile the drone shader.', failed);
       }
     } catch (e) {
-      s.fleet.set(before);
+      if (this.system === s) s.fleet.set(before);
       throw e;
     }
+    if (this.system !== s || head !== this.layoutHead) return false; // a layout reload replaced the scene meanwhile
     this.drones = entries;
+    this.dronesHead = head;
+    return true;
   }
 
   /** Fits the view to the space available (CSS px) at the device pixel ratio. */
@@ -172,10 +189,12 @@ export class View {
     const out: Label[] = [];
     infoLines(s.model, focus, this.fogs.fog).forEach((text, k) => out.push({ text, x: 2 * px, y: 2 * px + k * lh, align: 'left', colour: k === 0 && focus !== null ? mark : ink }));
     if (this.showHelp) out.push({ text: HELP, x: 2 * px, y: H - lh, align: 'left', colour: dim });
-    for (const l of placeLabels(pose, s.spheres(frame), [starSphere(s)], W, H, 2 * px, MAX_LABELS - out.length)) {
+    // drone labels come first in the budget (a few at most), so a busy system never drops a selected drone's name
+    const drones = this.droneLabels(s, frame, pose, W, H, 2 * px, MAX_DRONE_LABELS);
+    for (const l of placeLabels(pose, s.spheres(frame), [starSphere(s)], W, H, 2 * px, MAX_LABELS - out.length - drones.length)) {
       out.push({ text: s.model.planets[l.i]!.path, x: l.x, y: l.y, align: 'centre', colour: l.i === focus ? mark : ink });
     }
-    out.push(...this.droneLabels(s, frame, pose, W, H, 2 * px, MAX_LABELS - out.length));
+    out.push(...drones);
     return out;
   }
 
@@ -203,7 +222,11 @@ export class View {
     return pick(pose, ndc, s.spheres(frame), [starSphere(s)]); // the star hides what is behind it
   }
 
-  /** The session key of the drone under a point of the view canvas, or null. A planet or the star in front of it hides it. */
+  /**
+   * The session key of the drone under a point of the view canvas, or null. Everything drawn in front hides it
+   * (planets, moons, moonlets, the star, at their real size), and a drone is only as clickable as its own
+   * pick sphere plus a small screen minimum: the planets' bigger floor would let a click beside it select it.
+   */
   pickDroneAt(cssX: number, cssY: number, pose: OrbitPose, frame: number): string | null {
     const s = this.system;
     if (!s || s.fleet.entries.length === 0) return null;
@@ -211,8 +234,8 @@ export class View {
     const ndc = { x: (cssX / c.width) * 2 - 1, y: 1 - (cssY / c.height) * 2 };
     const at = s.fleet.spheres(s.model, frame);
     const drawn = at.flatMap((d, i) => (d ? [i] : []));
-    const hit = pick(pose, ndc, [...drawn.map((i) => at[i]!), ...s.spheres(frame)], [starSphere(s)]);
-    return hit !== null && hit < drawn.length ? s.fleet.entries[drawn[hit]!]!.key : null;
+    const hit = pick(pose, ndc, drawn.map((i) => at[i]!), [starSphere(s), ...s.spheres(frame), ...s.smallBodies(frame)], DRONE_MIN_NDC);
+    return hit === null ? null : s.fleet.entries[drawn[hit]!]!.key;
   }
 
   /** What focusing planet i targets: its sphere at this frame (the hero framing fills 45% of the frame with it). */

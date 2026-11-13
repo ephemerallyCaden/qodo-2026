@@ -90,7 +90,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     },
     selectedDrone: null as string | null,
     drawn: [] as readonly FleetEntry[],
-    setDrones: async (e: readonly FleetEntry[]) => { view.drawn = e; },
+    setDrones: async (e: readonly FleetEntry[]) => { view.drawn = e; return true; },
     pickDroneAt: () => null,
     resize: () => {},
     draw: () => ({}),
@@ -286,5 +286,18 @@ describe('drones in live mode (#80)', () => {
     l.send({ type: 'snapshot', head: HEAD });
     await vi.waitFor(() => expect(hud()).toMatch(/^rescan to place drones/));
     expect(l.view.drawn).toEqual([]);
+  });
+
+  it('an older drone answer that lands after a newer one changes nothing', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    const slow = deferred<DroneView>();
+    l.droneAnswers.push(() => slow.promise, async () => droneView(HEAD, [session(1, a!), session(2, 'star')]));
+    l.send({ type: 'snapshot', head: HEAD });
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.view.drawn.length).toBe(2));
+    slow.resolve(droneView(HEAD, [session(9, a!)]));
+    await settle();
+    expect(l.view.drawn.length).toBe(2);
+    expect(hud()).toMatch(/^2 drones shown/);
   });
 });

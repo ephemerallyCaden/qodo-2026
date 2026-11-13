@@ -299,7 +299,11 @@ export const DRONE_FRAG = /* glsl */ `
         float pix = dz * uPixK;
         float dx = abs(dot(off, R)) / pix, dy = abs(dot(off, Up)) / pix;
         bool on = uSparkS[i] < 1.5 ? (dx < 0.5 && dy < 0.5) : ((dx < 0.5 && dy < 1.5) || (dy < 0.5 && dx < 1.5));
-        if (on) { c = uSmoke[2]; have = true; }
+        if (on) {
+          c = uSmoke[2]; have = true;
+          vec4 sp = uViewProj * (uModel * vec4(ro + rd * (dz / dot(rd, F)), 1.0)); // the sparkle's own depth
+          depth = sp.z / sp.w * 0.5 + 0.5;
+        }
       }
     }
     if (!have) discard;
