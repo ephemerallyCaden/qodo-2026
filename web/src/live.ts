@@ -175,8 +175,9 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
 
   const input = new Input(view.pass.canvas, {
     wake: () => loop.wake(),
-    click: (x, y) => { if (!loaded || drones.pick(x, y, rig.pose(), shown())) return; const i = view.pickAt(x, y, rig.pose(), shown()); if (i !== null) setFocus(i); },
+    click: (x, y) => { if (!loaded || drones.pick(x, y, rig.pose(), shown())) return; const i = view.pickAt(x, y, rig.pose(), shown()); if (i !== null) { drones.deselect(); setFocus(i); } },
     cycle: (dir) => {
+      drones.deselect();
       const n = view.model?.planets.length ?? 0;
       if (n === 0) return;
       setFocus(focus === null ? (dir > 0 ? 0 : n - 1) : (focus + dir + n) % n);

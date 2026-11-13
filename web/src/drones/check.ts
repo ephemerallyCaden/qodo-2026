@@ -27,7 +27,7 @@ function checkSession(v: unknown, at: string, errors: string[]): void {
   if (v['kind'] !== 'main' && v['kind'] !== 'subagent') bad('kind', 'must be main or subagent');
   if (v['parentKey'] !== null && (typeof v['parentKey'] !== 'string' || !KEY.test(v['parentKey']))) bad('parentKey', 'must be a session key or null');
   text('agentType', true);
-  for (const f of ['startedAt', 'endedAt']) if (typeof v[f] !== 'string' || !ISO.test(v[f])) bad(f, 'must be a UTC time');
+  for (const f of ['startedAt', 'endedAt']) if (typeof v[f] !== 'string' || !ISO.test(v[f]) || !Number.isFinite(Date.parse(v[f]))) bad(f, 'must be a UTC time');
   text('branch', true);
   text('model', true);
   if (typeof v['inferred'] !== 'boolean') bad('inferred', 'must be a boolean');

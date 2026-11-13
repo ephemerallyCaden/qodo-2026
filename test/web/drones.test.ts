@@ -120,6 +120,7 @@ describe('the validator (AC 10)', () => {
     expect(bad((v) => { v.placed = 0; })).toMatch(/placed/);
     expect(bad((v) => { v.sessions[0]!.seed = -1; })).toMatch(/seed/);
     expect(bad((v) => { v.sessions[0]!.startedAt = 'yesterday'; })).toMatch(/startedAt/);
+    expect(bad((v) => { v.sessions[0]!.endedAt = '2026-13-45T25:61:61Z'; })).toMatch(/endedAt/);
     expect(bad((v) => { v.sessions[0]!.kind = 'x' as never; })).toMatch(/kind/);
     expect(bad((v) => { v.sessions[0]!.tool = ''; })).toMatch(/tool/);
     expect(bad((v) => { v.needsRescan = true; })).toMatch(/needsRescan/);
