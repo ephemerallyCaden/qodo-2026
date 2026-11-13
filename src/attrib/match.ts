@@ -1,7 +1,7 @@
 import { byCodepoint } from '../core/canonical-json.js';
 import { classify } from '../core/classify.js';
 import { u32 } from '../core/hash.js';
-import type { CommitAttribution, Session, SessionKey } from '../core/snapshot/types.js';
+import type { CommitAttribution, FileId, Session, SessionKey } from '../core/snapshot/types.js';
 import { isoUtc } from '../core/time.js';
 import type { EditEvent, SessionMeta } from './parsers/claude.js';
 
@@ -17,6 +17,8 @@ export interface MatchCommit {
   partial: boolean;
   /** Countable added-line hashes per non-excluded path (empty before the logs begin). */
   added: Map<string, string[]>;
+  /** Its patch couldn't be read completely (#38), so `added` may be missing lines: never human. */
+  patchIncomplete: boolean;
   /** Sessions whose `git commit` output named this commit. */
   ranBy: Set<SessionKey>;
   /** Sessions running a commit-creating git command when this commit was made (Qodo PR6 #2). */
@@ -70,7 +72,7 @@ export function matchCommits(commits: MatchCommit[], events: EditEvent[]): Map<s
     const share = counted > 0 ? Math.floor((matched * 1000) / counted) : 0;
     // Matched lines are evidence wherever they fall; only "human" needs the logs to have been watching.
     const cls = classify({ counted, shareMilli: share, matched, ranCommit, isMerge: c.isMerge,
-      isSelf: c.isSelf, covered: c.covered, partial: c.partial });
+      isSelf: c.isSelf, covered: c.covered, partial: c.partial, patchIncomplete: c.patchIncomplete });
     const evidence: CommitAttribution['evidence'] = [];
     if (matched > 0) evidence.push({ kind: 'transcript_match', detail: 'verbatim' });
     // One agent_ran_commit entry: the SHA in the command's output when there is one, else the command's window.
@@ -94,7 +96,7 @@ export function matchCommits(commits: MatchCommit[], events: EditEvent[]): Map<s
 
 /** Session records for sessions that touched this repo; commits are listed in window order. */
 export function buildSessions(metas: Iterable<SessionMeta>, commitOrder: string[],
-  results: Map<string, MatchResult>): Session[] {
+  results: Map<string, MatchResult>, fileIds: ReadonlyMap<string, FileId>): Session[] {
   const commitsOf = new Map<SessionKey, string[]>();
   for (const sha of commitOrder) {
     for (const s of results.get(sha)?.attribution.sessions ?? []) {
@@ -107,8 +109,13 @@ export function buildSessions(metas: Iterable<SessionMeta>, commitOrder: string[
   for (const { firstTs, lastTs, files, ...rest } of metas) {
     const commits = commitsOf.get(rest.key) ?? [];
     if (files.size === 0 && commits.length === 0) continue;
+    const ids = new Set<FileId>();
+    for (const path of files) {
+      const id = fileIds.get(path);
+      if (id) ids.add(id);
+    }
     sessions.push({ ...rest, tool: 'claude-code', startedAt: isoUtc(firstTs), endedAt: isoUtc(lastTs),
-      filesTouched: files.size, commits, inferred: false, seed: u32(rest.key) });
+      filesTouched: files.size, files: [...ids].sort(byCodepoint), filesOutside: files.size - ids.size, commits, inferred: false, seed: u32(rest.key) });
   }
   return sessions.sort((a, b) => byCodepoint(a.startedAt, b.startedAt) || byCodepoint(a.key, b.key));
 }

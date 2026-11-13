@@ -13,18 +13,31 @@
 
 ## Build & Test
 Node ≥ 20.19, npm. From the repo (or worktree) root:
-- `npm ci`: install (lockfile-exact).
-- `npm run build`: `tsc` to `dist/` (the bin is `dist/cli.js`).
-- `npm run typecheck`: strict `tsc --noEmit` over `src/` and `test/`.
-- `npm run lint`: ESLint. Bans `Math.random`, `Date.now`, `performance.now`, `crypto.randomUUID`, `new Date()` and `localeCompare` in `src/{core,scan,attrib}`, and Node built-ins in `src/core`.
-- `npm test`: Vitest (unit, golden, privacy canaries, lint rules). Golden snapshots live in `test/golden/`; regenerate only deliberately with `UPDATE_GOLDEN=1 npm test` and a `Golden-Update: <reason>` line in the commit.
-- `node dist/cli.js scan [--window <months>] [--no-ingest] [--out <file>]`: run inside a clone. Writes `<git-common-dir>/commet/snapshot.json`. Exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error. `CLAUDE_CONFIG_DIR` overrides `~/.claude`.
+- `npm ci`: install (lockfile-exact). In a new sandbox whose `package-lock.json` matches the session worktree's, clone instead: `cp -cR <session-worktree>/node_modules .` (seconds, no network, no extra disk on APFS).
+- `npm run build`: `tsc` to `dist/` (the bin is `dist/cli.js`), then `vite build --config web/vite.config.ts` to `dist/web/` (the view `commet open` serves).
+- The view's fog (#74): `view.fogTicket()` is taken before any request that returns fog, and `view.applyFog(fog, ticket)` is the single entry point (a stale ticket returns false; `View.load()` takes one too). Unknown or unusable fog draws everything fogged (Rule 1).
+- `npx vite --config web/vite.config.ts`: the view's dev server on 127.0.0.1, with fixtures via `?fixture=mini|empty|invalid|missing`. Render test mode is `?test=1` (`window.__commet`).
+- `npm run typecheck`: strict `tsc --noEmit` over `src/`, `test/` and `factory/`, plus `test/render` and `test/web/dom` with the DOM lib, and `web/`.
+- `npm run lint`: ESLint. Bans `Math.random`, `Date.now`, `performance.now`, `crypto.randomUUID`, `new Date()` and `localeCompare` in `src/{core,scan,attrib}`, `web/src` and the render stand-in, Node built-ins in `src/core`, and U+0001 / `%x01` git-output framing in `src/{scan,attrib}` (AGENTS.md Rule 7).
+- `npm run test:render`: Playwright + SwiftShader render tests (R8). A global setup builds `dist/web` first, so the specs always drive the current view. Goldens are authoritative only in CI's pinned container; locally the golden compare is informational (`test/render/README.md`).
+- While working, run only the tests you touched (`npx vitest run <files>`), then typecheck and lint before you report. CI on the task PR is the full gate. Full local runs (no PR, or CI down) go through `lockf -k /tmp/commet-fullsuite.lock <cmd>`. See AGENTS.md Testing.
+- `npm test`: Vitest (unit, golden, privacy canaries, lint rules). Test temp dirs only via `test/fixtures/tmp.ts` (`tempDir()`), cleaned per file and checked per run (#53). Golden snapshots live in `test/golden/`; regenerate only deliberately with `UPDATE_GOLDEN=1 npm test` and a `Golden-Update: <reason>` line in the commit.
+- `node dist/cli.js scan [--window <months>] [--no-ingest] [--out <file>] [--root <dir>]... [--no-root] [--ask]`: run inside a clone. Writes `<git-common-dir>/commet/snapshot.json` and `layout.json` (`--out x.json` writes `x.json` plus `x.layout.json`). Exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error. `CLAUDE_CONFIG_DIR` overrides `~/.claude`.
+- `node dist/cli.js open [--port <n>] [--no-open]`: serves the view, its layout, live fog and the drone view (`GET /api/drones`, #80: one entry per agent session with its home planet; an old snapshot without `Session.files` answers `needsRescan: true` and no homes, so rescan to place drones), and accepts chart writes (`POST /api/chart`, recorded at the head the view saw, #58), on 127.0.0.1 only (R14, `docs/contracts/phase2.md`). It prints `http://127.0.0.1:<port>/#t=<token>` once and needs a snapshot first (exit 5 otherwise). `--no-open` keeps the token out of process lists. Exit 6: server bind failure.
+  - The view also has a review panel (#75): `GET /api/unseen` and `GET /api/diff` (read-only, same gates) list and show a file's unseen diff; charting posts the viewed head as `at`.
+- `node dist/cli.js hook install|remove [--yes] [--git-only|--claude-only]` (R7, #77): consent first; chains an existing git hook as `<hook>.commet-chained`; refuses a `core.hooksPath` outside the repo's git dir (this Mac's git-defender) and says what still works (`--claude-only`, manual `scan`). Records hashed edit events to `.git/commet/events.jsonl` (deduped; scan doesn't read it yet, #94). Exit 7 means not confirmed, nothing written. Every scan publishes its snapshot/layout pair under `publish.lock` (waits up to 5 s, else exit 5).
+- `node dist/cli.js chart status | baseline [--undo] | [--] <file>`: fog of war and chart state (R5). Chart state lives in `<git-common-dir>/commet/chart.json` (ids and SHAs only, mode 0600), with `chart.lock` as its write lock. A bad path or a folder exits 2; damaged or symlinked state, or a snapshot and layout from different scans (#64), exits 5 and is never reset. `commet open` answers fog and chart requests over such a pair with a 500 carrying the same message.
+- `npm run factory -- labels|install|uninstall|tick [--once|--dry-run [--issue N]]`: the agent runner (`factory/`, built separately, not in the published package; see AGENTS.md "Agent runner"). The lead runs `install --interval 900 --base <current session branch>` itself (no human step) after any `factory/` change merges, and again whenever the session branch changes; see AGENTS.md "Agent runner". Runner state (lock, `ticks.jsonl`, `runs/`, the installed copy) lives in `<git-common-dir>/factory/`, never in the work tree.
+- `npm run factory -- sweep [--dry-run] [--seed-through <PR>] [--max-calls <n>]`: the findings sweep by hand (`docs/features/repeat-findings.md`). Every tick also runs it: Qodo findings from the owner's PRs and local review exports go into a ledger in `<git-common-dir>/factory/findings/`, and a mistake seen 3 times across 2 tickets opens one `rule-proposal` issue for the human. `labels` creates the `rule-proposal` label.
 
-The design mockups live on `feature/hype-gif` under `mockups/asset-viewer/` (`npm install && npm test` there). They are throwaway prototypes, not product code.
+The design mockups live on `feature/asset-library` (the art line) under `mockups/`: the asset viewer (the reference implementation), the asset library (the playground), and the drone, debris and health-looks labs. Each folder is its own npm project (`npm ci && npm test` there; that branch's CLAUDE.md has the details). They are throwaway prototypes, not product code.
 
-## Layout (planned)
-- `snapshot.v1.json` produced by `commet scan`; local state in `.git/commet/` (snapshot, chart state, beacons, events).
-- `layout(snapshot) → positions` is a pure function. Space mapping: repo = system, top-level dirs = planets, second-level dirs = moons, files = surface features.
+## Layout
+- Drones (#80): `palette.drone.{generic,claude}` in `src/core/palette.ts` hold the drone ramps (BLK 36 only; the face screen and glow reuse `crew.visor`/`glint` and `accent.teal`). The drone art is `web/src/render/drone*.ts` (ported from the drone lab), the view logic `web/src/drones/`. At most 16 drones are drawn, the most recently ended placed sessions.
+- `snapshot.json` and `layout.json` produced by `commet scan`; local state in `.git/commet/` (snapshot, layout, `config.json` with the saved content roots, `chart.json` + `chart.lock`, beacons, events).
+- `layout(snapshot, history)` (`src/core/layout`) is a pure function. `history` comes from the full lineage replay, so layout.json can't be rebuilt from snapshot.json alone. Shape: `LayoutV1` in `src/core/contract/layout.ts`.
+- Space mapping (#18): repo = star; top-level folders holding a non-test, non-test-data file = planets; second-level folders = continents; files = settlements; test files = moons of the planet they test; root files and unmatched tests = moonlets; test data is counted on the star, never drawn.
+- Content roots (#71): the first `scan` in a terminal guesses the main code folder (e.g. `src`) and asks to confirm; the answer is saved in `config.json`. Each root's subfolders become content planets (slots 0–7); other top-level folders are outer planets (from slot 9). Files directly in a root are star moonlets. Without a TTY, the scan uses the saved answer, else the last layout's roots (#73), else the guess, and never asks or saves. `--root`, `--no-root` and `--ask` override.
 
 ## Rules
 - Read files before editing. Don't guess what exists.
@@ -32,7 +45,7 @@ The design mockups live on `feature/hype-gif` under `mockups/asset-viewer/` (`np
 - **Determinism:** no `Math.random` in pipeline, layout or render code; use the pinned seeded PRNG and hash. No wall-clock time in snapshots.
 - **Privacy:** never copy code, prompt text or absolute paths from agent logs into any output. Never read `originalFile`, `last-prompt`, `history.jsonl`, `file-history/`, `api-request*` or `attachment` records (see `docs/research/agent-attribution.md`).
 - **Golden and property tests** are updated deliberately with a reason, never regenerated just to pass. Render tests must fail on empty output.
-- Run build/test after changes. Fix what you break.
+- Test what you change as you go; CI runs the full gate on the PR. Fix what you break.
 - **Stage explicit paths only.** Never `git add -A` or `git add .`; other sessions write files in this checkout.
 - New dependencies need a one-line justification in the PR description.
 
@@ -52,7 +65,7 @@ The design mockups live on `feature/hype-gif` under `mockups/asset-viewer/` (`np
 - Compact after finishing research, a bug fix or a feature, not during active implementation or debugging.
 
 ## Agent auto-routing
-- After writing code that changes behaviour: run `/verify`.
+- Before you report a finished task: typecheck, lint and the touched tests (no `/verify` after every edit, no `/simplify` sweeps).
 - When a build or test fails: run `/fix` with the error output.
 - Before committing: review `git diff --cached` for debug code, secrets and stray files.
 - When exploring unfamiliar code: use the `explorer` agent.

@@ -15,7 +15,7 @@ const BANDS: Pick<ClassifyInput, 'counted' | 'shareMilli' | 'matched'>[] = [
   { counted: 2000, shareMilli: 900, matched: 1800 },
   { counted: 2000, shareMilli: 1000, matched: 2000 },
 ];
-const FLAGS = ['ranCommit', 'isMerge', 'isSelf', 'covered', 'partial'] as const;
+const FLAGS = ['ranCommit', 'isMerge', 'isSelf', 'covered', 'partial', 'patchIncomplete'] as const;
 
 function* allInputs(): Generator<ClassifyInput> {
   for (const band of BANDS) {
@@ -33,7 +33,7 @@ const TABLE: [Cond, CommitClass][] = [
   [{ counted: (n) => n === 0 }, 'unknown'],
   [{ shareMilli: (n) => n >= 900 }, 'agent'],
   [{ shareMilli: (n) => n >= 300 }, 'mixed'],
-  [{ isSelf: true, covered: true, partial: false, ranCommit: false }, 'human'],
+  [{ isSelf: true, covered: true, partial: false, ranCommit: false, patchIncomplete: false }, 'human'],
   [{}, 'unknown'],
 ];
 
@@ -51,15 +51,15 @@ describe('classify', () => {
       tally[classify(i)]++;
       n++;
     }
-    // 8 bands × 32 flag sets. Human: the 3 countable bands under 300‰, each with one flag set.
-    // Agent and mixed: 2 bands each × the 16 non-merge flag sets.
-    expect(n).toBe(256);
-    expect(tally).toEqual({ agent: 32, mixed: 32, human: 3, unknown: 189 });
+    // 8 bands × 64 flag sets. Human: the 3 countable bands under 300‰, each with one flag set.
+    // Agent and mixed: 2 bands each × the 32 non-merge flag sets.
+    expect(n).toBe(512);
+    expect(tally).toEqual({ agent: 64, mixed: 64, human: 3, unknown: 381 });
   });
 
   it('encodes the Issue #5 decisions', () => {
     const base: ClassifyInput = { counted: 10, shareMilli: 0, matched: 0, ranCommit: false, isMerge: false,
-      isSelf: true, covered: true, partial: false };
+      isSelf: true, covered: true, partial: false, patchIncomplete: false };
     expect(classify(base)).toBe('human');
     // Decision 1: a share under 300‰ with matched lines stays human (with traces).
     expect(classify({ ...base, shareMilli: 299, matched: 3 })).toBe('human');
@@ -72,11 +72,16 @@ describe('classify', () => {
     expect(classify({ ...base, partial: true })).toBe('unknown');
     expect(classify({ ...base, covered: false })).toBe('unknown');
     expect(classify({ ...base, isSelf: false })).toBe('unknown');
+    // #38: a patch that couldn't be read completely may be missing lines, so it can't be human;
+    // the lines it did read are still agent evidence.
+    expect(classify({ ...base, patchIncomplete: true })).toBe('unknown');
+    expect(classify({ ...base, patchIncomplete: true, shareMilli: 900, matched: 9 })).toBe('agent');
     // Enough matched lines are agent evidence wherever they fall.
-    expect(classify({ ...base, covered: false, isSelf: false, ranCommit: true, partial: true, shareMilli: 900, matched: 9 })).toBe('agent');
+    expect(classify({ ...base, covered: false, isSelf: false, ranCommit: true, partial: true, patchIncomplete: true, shareMilli: 900, matched: 9 }))
+      .toBe('agent');
   });
 
-  it('property: human implies self, covered, fully parsed, not a merge, not agent-run, countable and under 300‰', () => {
+  it('property: human implies self, covered, fully parsed, patch fully read, not a merge, not agent-run, countable and under 300‰', () => {
     // mulberry32: a seeded PRNG keeps the property run reproducible (determinism rule).
     let seed = 0x5eed;
     const rand = () => {
@@ -90,11 +95,12 @@ describe('classify', () => {
     for (let k = 0; k < 20_000; k++) {
       // Inputs are deliberately not always consistent (matched > counted, share without matches).
       const i: ClassifyInput = { counted: int(3) === 0 ? 0 : int(5000), shareMilli: int(1000), matched: int(5000),
-        ranCommit: rand() < 0.5, isMerge: rand() < 0.5, isSelf: rand() < 0.5, covered: rand() < 0.5, partial: rand() < 0.5 };
+        ranCommit: rand() < 0.5, isMerge: rand() < 0.5, isSelf: rand() < 0.5, covered: rand() < 0.5, partial: rand() < 0.5,
+        patchIncomplete: rand() < 0.5 };
       const cls = classify(i);
       if (cls !== 'human') continue;
       humans++;
-      expect(i.isSelf && i.covered && !i.partial && !i.isMerge && !i.ranCommit && i.counted > 0 && i.shareMilli < 300,
+      expect(i.isSelf && i.covered && !i.partial && !i.patchIncomplete && !i.isMerge && !i.ranCommit && i.counted > 0 && i.shareMilli < 300,
         JSON.stringify(i)).toBe(true);
     }
     expect(humans).toBeGreaterThan(50); // guards against a vacuous pass

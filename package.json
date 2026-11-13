@@ -14,20 +14,27 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json && vite build --config web/vite.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/render/tsconfig.json --noEmit && tsc -p test/web/dom/tsconfig.json --noEmit && tsc -p web/tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:render": "playwright test",
+    "factory:build": "tsc -p factory/tsconfig.json",
+    "factory": "npm run -s factory:build && node factory/dist/bin.js"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "1.65.0",
     "@types/node": "^20.19.43",
+    "@types/three": "0.187.0",
     "eslint": "^9.39.5",
+    "three": "0.187.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.1",
+    "vite": "^7.3.7",
     "vitest": "^3.2.7"
   }
 }

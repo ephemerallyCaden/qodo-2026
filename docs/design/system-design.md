@@ -245,7 +245,7 @@ Determinism applies throughout:
    - For each added line on file F in commit C, the candidates are events on F's lineage paths whose ts is ≤ `C.committerDate + 1 s`. Event ts is the tool-call record's time, not the result's. **There is no lower bound:** with parallel worktrees and fast-forward integration, the previous commit to F is often authored after C's edits. *(As built on Day 1; Qodo PR #3 #1 removed the author-date fallback.)*
    - **Last writer wins:** the owner is the max ts, with ties broken by `eventId` ascending.
 6. **Line class (v1):** `verbatim` or `unmatched`. **Deferred:** `agent-modified`, through a keyed 64-bit SimHash per line (`addedSimhash?` is reserved in the schema), behind its own property test.
-7. **Commit class.** One pure function, `classify()` in `src/core/classify.ts`, decides it from `counted`, `shareMilli`, `matched`, `ranCommit`, `isMerge`, `isSelf`, `covered` and `partial`. It has an exhaustive decision-table test and a property test. The first matching row wins:
+7. **Commit class.** One pure function, `classify()` in `src/core/classify.ts`, decides it from `counted`, `shareMilli`, `matched`, `ranCommit`, `isMerge`, `isSelf`, `covered`, `partial` and `patchIncomplete` (the commit's `-U0` patch couldn't be read completely, #38). It has an exhaustive decision-table test and a property test. The first matching row wins:
 
    | Condition | Class | Tier |
    |---|---|---|
@@ -255,8 +255,8 @@ Determinism applies throughout:
    | No countable added lines | `unknown` | none |
    | Share ≥ 900‰ | `agent` | high |
    | Share 300–899‰ | `mixed` | high |
-   | Share under 300‰, author is self, `covered`, not `partial`, and no session ran it (no output SHA, no git command window) | `human` (any matched line means "with traces") | high |
-   | Share under 300‰, anything else: not self (R6), outside coverage, in a blind or partial span, or `agent_ran_commit` | `unknown`, never `human` | none |
+   | Share under 300‰, author is self, `covered`, not `partial`, its patch read completely, and no session ran it (no output SHA, no git command window) | `human` (any matched line means "with traces") | high |
+   | Share under 300‰, anything else: not self (R6), outside coverage, in a blind or partial span, a patch Commet couldn't fully read, or `agent_ran_commit` | `unknown`, never `human` | none |
 
    An agent-run commit with share 0 (the agent wrote it with a heredoc, `sed -i` or codegen, then ran `git commit`) is `unknown` and keeps its `agent_ran_commit` evidence and session. The UI can show it as "committed by an agent session; authorship unverified" (Issue #5). **Residual risk, accepted:** an agent heredoc that a human later commits leaves no allowlisted signal, so it can still be `human`.
 
@@ -502,7 +502,8 @@ These live as `test/server/security.test.ts`, and the PR description lists the r
 - **Golden images:**
   - Playwright runs in a pinned `mcr.microsoft.com/playwright@sha256:…` image with `--use-gl=swiftshader`. It reads the 320×180 internal canvas (not a page screenshot) at fixed frames 0, 180 and 360 for each camera mode.
   - Tolerance is 0 pixels in the pinned container. If flakes appear, allow ≤ 0.1% with a written justification.
-  - **Anti-empty asserts:** ≥ 12 unique colours, and ≥ 5% of pixels that aren't space.
+  - **Anti-empty asserts:** ≥ 12 unique colours, and ≥ 5% of pixels that aren't space. These are the render tests' blank-frame checks on the test fixtures (`mini` and the stand-in), not a readability rule for a real system's overview (human, 2026-11-11, #59). A wide system's start pose can be well under 5%: Commet's own repo with `--root src` is about 1%.
+  - **Overview readability** (human, 2026-11-11, #59): at a system's start pose, the farthest planet on screen fades by at most 0.72, and its health band still separates from the next band (≥ 0.05 in OKLab, the health-looks lab's glance floor). `test/render/overview.spec.ts` checks it on two self-like layouts, without and with a content root. The depth fade's reach scales with the system to meet it (art direction §5).
   - Each test also asserts off-palette pixels = 0 with the depth fade off.
 - **Budgets:** draw calls ≤ 100, triangles ≤ 500k and instances ≤ 50k, read from `renderer.info`, plus scan time (§11).
 - **CI** (`.github/workflows/ci.yml`):
@@ -559,7 +560,7 @@ Everything else is mode-agnostic. **Decided (human, 2026-11-04): perspective fre
 
 1. **Palette post-pass and dithering.** `technical-risks.md` §3 and the day1-hype mockup use a palette-quantisation post-pass with Bayer dithering. Art direction bans dithering and makes the per-pixel *smooth* depth fade the default, and that fade is off-palette by design. The asset viewer already proved the alternative: no post-pass, with shaders emitting palette colours directly. **Recommendation: adopt the asset viewer approach. No global quantise pass.**
 2. **Depth fade default.** The asset viewer README says `pixel-stepped` is the default. Art direction (and the JOURNAL, 2026-11-04) say `pixel-smooth`. **Art direction wins.**
-3. **Data in visual properties.** The asset viewer biome table gives biomes health meanings and says a wide ring means "shared lib". Failure audit D5 says craters mean bug-fix churn and rings mean tests. All of these conflict with "biomes are decorative". **Recommendation: biomes and rings are both hash-picked and decorative.**
+3. **Data in visual properties.** The asset viewer biome table gives biomes health meanings and says a wide ring means "shared lib". Failure audit D5 says craters mean bug-fix churn and rings mean tests. All of these conflict with "biomes are decorative". **Recommendation: biomes and rings are both hash-picked and decorative.** **Superseded (human, 2026-11-06 and 2026-11-09):** planet looks encode code health, debris owns stale work, and rings' meaning is open. See art-direction §6, "What a planet tells you".
 4. **Orbit radius.** D5 says orbit radius should encode coupling. R3 and technical-risks say radius comes from the first-seen bucket. **The feature doc wins: radius is time-based, and co-change is shown as constellation lines (R9).**
 5. **Hype GIF.** It draws labels inside the pixel pass and shows a "PR QUALITY 34→92" meter. That breaks principle 2 (no scores) and principle 4 (labels outside the pixel pass). **Don't port either.**
 6. **`repo_root` in the event schema.** The research `AgentEditEvent` stores `repo_root`, which is an absolute path. **Replace it with `repo_id`.**

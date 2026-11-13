@@ -1,0 +1,373 @@
+{
+  "constants": {
+    "maxPlanetRadiusMilli": 12000,
+    "moonCap": 24,
+    "slotSpacingMilli": 24000
+  },
+  "planets": [
+    {
+      "biomeSeed": 1234567,
+      "bornSeq": 1,
+      "dirId": "d_00000000000a",
+      "health": {
+        "band": "healthy",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 0,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 1200,
+      "moonOverflow": 0,
+      "moons": [
+        {
+          "fileId": "f_0000000000a1",
+          "slot": 0,
+          "testOf": "f_00000000000a"
+        }
+      ],
+      "partner": null,
+      "path": "src",
+      "radiusMilli": 10000,
+      "slot": {
+        "index": 0,
+        "phaseMilliturn": 0,
+        "radiusMilli": 30000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_00000000000a",
+            "parent": null,
+            "seedCell": 0
+          },
+          {
+            "dirId": "d_00000000000b",
+            "parent": "d_00000000000a",
+            "seedCell": 21
+          }
+        ],
+        "grid": {
+          "cells": 64,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_00000000000a",
+            "fileId": "f_00000000000a",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 600,
+            "size": 4
+          },
+          {
+            "cell": 13,
+            "dirId": "d_00000000000a",
+            "fileId": "f_00000000000b",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 300,
+            "size": 3
+          },
+          {
+            "cell": 21,
+            "dirId": "d_00000000000b",
+            "fileId": "f_00000000000c",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 300,
+            "size": 3
+          }
+        ]
+      },
+      "zone": "outer"
+    },
+    {
+      "biomeSeed": 7654321,
+      "bornSeq": 4,
+      "dirId": "d_00000000000c",
+      "health": {
+        "band": "toxic",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 9000,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 400,
+      "moonOverflow": 2,
+      "moons": [
+        {
+          "fileId": "f_0000000000b0",
+          "slot": 0,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000b1",
+          "slot": 1,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000b2",
+          "slot": 2,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000b3",
+          "slot": 3,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000b4",
+          "slot": 4,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000b5",
+          "slot": 5,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000b6",
+          "slot": 6,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000b7",
+          "slot": 7,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000b8",
+          "slot": 8,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000b9",
+          "slot": 9,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000ba",
+          "slot": 10,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000bb",
+          "slot": 11,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000bc",
+          "slot": 12,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000bd",
+          "slot": 13,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000be",
+          "slot": 14,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000bf",
+          "slot": 15,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000c0",
+          "slot": 16,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000c1",
+          "slot": 17,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000c2",
+          "slot": 18,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000c3",
+          "slot": 19,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000c4",
+          "slot": 20,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000c5",
+          "slot": 21,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000c6",
+          "slot": 22,
+          "testOf": "f_00000000000d"
+        },
+        {
+          "fileId": "f_0000000000c7",
+          "slot": 23,
+          "testOf": "f_00000000000d"
+        }
+      ],
+      "partner": "d_00000000000a",
+      "path": "web",
+      "radiusMilli": 7000,
+      "slot": {
+        "index": 1,
+        "phaseMilliturn": 250,
+        "radiusMilli": 54000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_00000000000c",
+            "parent": null,
+            "seedCell": 0
+          }
+        ],
+        "grid": {
+          "cells": 64,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_00000000000c",
+            "fileId": "f_00000000000d",
+            "health": {
+              "band": "toxic",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 9000,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 400,
+            "size": 3
+          }
+        ]
+      },
+      "zone": "outer"
+    },
+    {
+      "biomeSeed": 42,
+      "bornSeq": 2,
+      "dirId": "d_00000000000d",
+      "health": {
+        "band": "ash",
+        "debtUnknownFiles": 1,
+        "markersPerKlocMilli": 3000,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 200,
+      "moonOverflow": 0,
+      "moons": [],
+      "partner": null,
+      "path": "docs",
+      "radiusMilli": 5000,
+      "slot": {
+        "index": 2,
+        "phaseMilliturn": 600,
+        "radiusMilli": 78000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_00000000000d",
+            "parent": null,
+            "seedCell": 0
+          }
+        ],
+        "grid": {
+          "cells": 2,
+          "kind": "fibonacci"
+        },
+        "overflow": 1,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_00000000000d",
+            "fileId": "f_00000000000e",
+            "health": {
+              "band": "ash",
+              "debtUnknownFiles": 1,
+              "markersPerKlocMilli": 3000,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 120,
+            "size": 2
+          },
+          {
+            "cell": 1,
+            "dirId": "d_00000000000d",
+            "fileId": "f_00000000000f",
+            "health": {
+              "band": "ash",
+              "debtUnknownFiles": 1,
+              "markersPerKlocMilli": 3000,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 80,
+            "size": 2
+          }
+        ]
+      },
+      "zone": "outer"
+    }
+  ],
+  "schemaVersion": "layout.1",
+  "source": {
+    "head": "1111111111111111111111111111111111111111",
+    "repoId": "r_000000000001",
+    "roots": []
+  },
+  "star": {
+    "moonletOverflow": 0,
+    "moonlets": [
+      {
+        "fileId": "f_000000000001",
+        "kind": "root-file",
+        "slot": 0
+      },
+      {
+        "fileId": "f_000000000002",
+        "kind": "root-file",
+        "slot": 1
+      },
+      {
+        "fileId": "f_000000000003",
+        "kind": "unmatched-test",
+        "slot": 2
+      }
+    ],
+    "repoId": "r_000000000001",
+    "testData": 2
+  }
+}

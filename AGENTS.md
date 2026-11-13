@@ -15,15 +15,33 @@ npm ci && npm run build      # CLI entry: dist/cli.js
 ```
 
 ## Testing
-CI runs `npm ci` → build → typecheck → lint → test on Node 20 and 22. Run the same before committing:
+CI runs `npm ci` → build → typecheck → lint → test on Node 20 and 22, plus render and goldens, in about a minute on every PR and session-branch push. **CI is the full gate.** Locally, check only what you touched:
 ```sh
-npm run build && npm run typecheck && npm run lint && npm test
+npx vitest run test/<file>.test.ts     # the tests you touched or added
+npm run typecheck && npm run lint      # fast; before you report
 node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 ```
+- Don't run the full `npm test` or `test:render` locally when a PR will follow: the lead pushes the branch, opens the task PR, and CI runs everything. If CI fails, the task goes back to the agent. (On 2026-11-11, 8 full suites queued behind the shared lock at load average 28, while CI took a minute.)
+- A full local run is for work that gets no PR (a debugger's reproduction) or when CI is down. Use `lockf -k /tmp/commet-fullsuite.lock npm test` then, and never put targeted runs under that lock.
+- If a file times out under load, re-run that file alone, not the suite.
 - One test: `npx vitest run -t "<name>"`.
+- **Never run `commet scan`, `commet chart`, `commet open` or `commet hook` against this repo from a worktree or sandbox** without a throwaway clone. `--out <file>` is NOT enough: `--root`, `--no-root` and `--ask` still save to `.git/commet/config.json`, and `--out` without `--no-ingest` still reads your agent logs. Run scans for experiments in a temp clone. Every worktree shares the main repo's `.git/commet/`, which is the human's own state (saved roots, chart progress, events). Check `git rev-parse --git-common-dir` first; use a temp repo or a clone for experiments.
+- Test temp dirs come only from `tempDir()` / `realTempDir()` in `test/fixtures/tmp.ts` (ESLint bans direct `mkdtemp` under `test/`). Each file's dirs are removed after it, pass or fail; a run fails if any is left (in CI, also on any other new `commet-*` dir). The hook timeout is a 300 s hard cap (`vitest.config.ts`).
 - Goldens (`test/golden/`) change only on purpose: `UPDATE_GOLDEN=1 npm test`, plus a `Golden-Update: <reason>` commit line.
-- Before a PR, run `qodo review --base "$(git merge-base HEAD "$BASE")" --json`, where `BASE` is the PR's base branch (e.g. `BASE=origin/session/week1`). Resolve `action_required` findings as in the review loop below for **at most 3 local rounds**, then open the PR anyway, listing any still-unresolved findings in its description. The loop continues in the PR review, and the merge gate (no unresolved `action_required`) applies there. (On #16, six local rounds took over 2 hours.)
+- No local `qodo review` when a task PR follows: the PR review is the gate, as for the agent runner. Run one local round only for work that won't get a PR. (On #16, six local rounds took over 2 hours, and the PR review ran anyway.)
 - `commet scan` exit codes: 0 ok, 1 internal, 2 usage, 3 shallow clone, 4 not a repo / no HEAD, 5 state error.
+
+## Working efficiently
+For the lead and every agent. Each rule replaced a measured cost (triage, 2026-11-11).
+- **No warmup turns.** Put the task in the spawn prompt. Warmups wait for MCP tools to load, and these agents use the `gh` and `qodo` CLIs. On Day 6 each one cost a 2–3 minute round-trip and a duplicate report.
+- **Point, don't paste.** Spawn prompts name files and line ranges. Agents read the last ~40 lines of `JOURNAL.md`, or `grep` it for their ticket, never the whole file. The lead keeps it to the current day and moves older entries to `.archive/journal/`. (It had grown to 196 KB, about 50K tokens a read.)
+- **One report.** Send the final report once with SendMessage, then end the turn with one line: the idle notice repeats your last message.
+- **Sandboxes without the network.** If `package-lock.json` matches the session worktree's, `cp -cR <session-worktree>/node_modules .` (5.6 s, no extra disk on APFS) instead of `npm ci`. Network outages stalled agents mid-install on 11-07, 11-09 and 11-11, and 11 sandboxes left about 5 GB free.
+- **No review sweeps inside a task.** Skip `/simplify`, `/code-review` and other multi-agent reviews: each one starts four more agents on an already loaded machine, and Qodo reviews the PR anyway.
+- **One agent per Qodo finding.** A finding with a file and line goes to one agent, which proves it with a failing test and fixes it in the same sandbox. A separate debugger is for symptoms with no known cause, like a human's bug report or a failure nobody can explain.
+- **The lead trusts CI after a fast-forward.** A `--ff-only` merge publishes the commit CI already tested on the PR, so the lead doesn't re-run the suite locally; the session-branch CI run covers it. Re-run locally only after the lead rebased or resolved a conflict.
+- **Close in one step.** When a completion report says nothing is pending, the lead merges and sends the shutdown in the same turn. Later corrections are a new task.
+- **Journal entries are one or two lines.** 174 entries ran over 400 characters.
 
 ## Dev tips
 - `JOURNAL.md` and `.archive/` are gitignored and missing from worktrees. Use the main checkout: `$(git rev-parse --path-format=absolute --git-common-dir)/..`.
@@ -36,18 +54,48 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 - Qodo can't see images. Report visual results in PRs as text: test output, pixel and colour counts.
 - A skipped review looks like a clean one. Before merging, confirm the head commit was reviewed: `qodo read pr-review-session findings --pr-url <url> --extended` must list a `review_runs[]` entry with `commit_sha` equal to the head, `status: completed` and `review_effort` other than `skip`. `review_complete` is not a signal. PR #9 and PR #27 were merged on `skip` runs.
 - Keep `ignore_bot_pr = false`, or agent PRs go unreviewed.
+- Fix every finding from one review round in one push. Each push starts a new PR review (10–20 minutes), so fixing findings one at a time costs a review each.
+- Don't post `/review` to refresh a finding that's already fixed. Record the evidence and ask the human for a waiver (PR #67: two re-runs repeated the stale text).
 - **Run the review loop after every push to a PR.** Start a background watcher for Qodo's review of the exact head SHA (`gh pr view <N>`, or `get-pr-review-findings` via `qodo read`). Give it a 30-minute timeout. On a timeout or a failed command, report "review incomplete", never "clean". An empty findings list counts only once the review is confirmed complete on that SHA. Then, for each finding:
   1. **Validate it first.** Qodo is sometimes wrong. Confirm it with a failing test or a concrete trace through the code (the `qodo-review-resolver` workflow does this with citations).
   2. **Real:** fix it with a test that fails without the fix, amend the PR's commit, and `git push --force-with-lease` to the same PR.
   3. **Wrong or out of scope:** record a reason and the evidence (`false_positive`, `intentional`, `deferred`, `rejected`); deferred findings get an issue, and if unsure, ask `@qodo`. Agents may dismiss recommendations themselves. Dismissing an `action_required` finding needs the human's approval, recorded in JOURNAL.
   4. Repeat until the latest head's completed review has no `action_required` finding that isn't fixed or human-approved, then report. Recommendations are optional.
 - Export findings to `.archive/docs/hackathon/evidence/pr<N>-qodo-review-r<round>-comments.json`.
-- A finding seen twice becomes a proposed rule here or a Qodo review standard.
+- **A repeated finding becomes a rule proposal; the human decides.** Each runner tick records the Qodo findings on the owner's PRs and the local `qodo review --json` exports in `.archive/docs/hackathon/evidence/`, and groups them by the mistake they make. Name an export `t<N>-local-r<round>.json` for ticket N, or `<branch>-local-r<round>.json`, so it counts as its ticket's. When one mistake reaches 3 findings from at least 2 tickets, the runner opens one `rule-proposal` issue: the findings, the shared mistake, a draft rule, any Qodo rule that already covers it, and acceptance criteria for the AGENTS.md change. Later findings of that mistake comment on it. The human adopts it by labelling it `ready-for-agent` (the runner then writes the change as a PR) or rejects it by closing it. An agent whose local review repeats a mistake it has already seen here still says so in its report.
+
+## Agent runner (`factory/`)
+Dev tooling, not Commet: Rule 2's "no GitHub posts" covers the product, not this. The runner's only GitHub writes, all made with the human's own gh login:
+- labels on issues the owner opened and labelled (`ready-for-agent` → `agent-working` → `agent-done` / `agent-needs-help`);
+- comments on that issue and on the PR the run opened;
+- pushes to `agent/<N>-<slug>` and one PR per run against the session branch;
+- `rule-proposal` issues for repeated findings (the only issues it creates) and comments on them (see "Working with Qodo").
+
+It never merges, pushes `main` or a session branch, force-pushes, or edits repo settings or secrets. It never edits AGENTS.md or Qodo rules, never closes a proposal or removes its `rule-proposal` label, and never adds `ready-for-agent` to anything; a proposal the human labels `ready-for-agent` is a ticket like any other (runtime guard: `factory/guard.ts`). It keeps Rule 2's local-data rules: no absolute paths in output or posts, an agent's Bash commands kept only as regex categories, logs only under `.git/factory/`.
+
+The agent runs sandboxed (`factory/sandbox.ts`). Its Bash commands, and everything they start, run in Claude Code's sandbox, passed with `--settings`. The runner's own `npm ci`, install scripts and checks get the same limits under `sandbox-exec`. Both deny:
+- reads of `~/.midway`, `~/.aws`, `~/.ssh`, `~/.qodo`, `~/.config/ada`, the gh config dir, `~/.npmrc`, `~/.netrc`, git's credential files, and Claude Code's credential and account files;
+- network access except localhost (`npm ci` runs with `--ignore-scripts`, so no repo code runs while the registry is reachable);
+- writes outside the worktree, temp dirs and the shared `.git`, and always to `.git/factory/` (the runner's state and installed copy), the worktree's `.git` file, the shared `.git`'s `commondir` and `config.worktree`, and each worktree's `commondir`, `gitdir` and `config.worktree` (which would point git at a config the agent wrote).
+
+The file tools have Read deny rules for the same paths and can't write outside the worktree. Agent calls load only the user's own settings, none from the worktree. So does the findings sweep's judge, a tool-less call run from HOME, never from the temp dirs agent-run code can write. The runner's own git in the worktree runs sandboxed too, pinned to the git dir it recorded before the agent ran. Only the push runs outside the sandbox: from the main checkout, of the verified commit by SHA. The agent gets an allowlisted environment, with no tokens, keys or agent sockets. Before claiming a ticket, the runner proves both sandboxes with a canary file it creates. If that self-test fails, or an agent call can't start its sandbox, the ticket gets `agent-needs-help` and a reason; nothing ever runs unsandboxed.
+
+Installing it is the lead's job, without asking the human. Whenever a change to `factory/` merges into the session branch, the lead runs `npm run factory -- install --interval 900 --base <current session branch>` from an up-to-date checkout of that branch (with `npm ci` first). The job ticks every 15 minutes, and `--base` is the only week-specific setting: when work moves to a new session branch, reinstall with the new `--base`. The installed copy in `.git/factory/bin` only updates on install, so skipping this leaves an old runner ticking. The human may still uninstall it at any time.
+
+Where it differs from the review loop above:
+- Fix rounds add new commits and never force-push.
+- No local `qodo review` before the PR: the PR review is the gate.
+- Findings and dispositions live in the run log and one PR comment per fix round.
+- An `action_required` finding the agent rejects stops the run with `agent-needs-help` for the human's decision.
 
 ## Daily Discussion posts
-- Draft each day's post at `.archive/docs/hackathon/day<N>-discussion-post.md`, following that day's template. Create it if missing.
+- Each day has one post file, `.archive/docs/hackathon/day<N>-discussion-post.md`, following that day's template. Create it if missing.
+- The file has a `#` title, a `>` note on what to paste and what's still pending, the post between two `----` lines, then `## Notes`.
+- When asked to write the post or change it, edit that file in place. Never start a second copy (`-paste`, `-short`, `-v2`): copies drift, and Day 4 ended up with several. Supporting files (a GIF's on-screen text, a draft ticket) can sit beside it as `day<N>-<what>.md`.
+- Never delete, rename or overwrite a post file without first diffing it against what you keep and carrying the human's edits over. The human edits these files in their editor, and an unsaved editor tab doesn't survive a rename.
 - After each change, add to its `## Notes`: the biggest Qodo lesson, a telling number, anything on the day's theme.
 - Never post it. Posting needs the human.
+- Review: one blind-reader round with at most two readers, then one fix pass. A second round only if the human asks. Charts and images get one brief and one revision. (Day 3 took four text rounds and seven chart versions; Day 6 took five rounds across two attempts.)
 
 ## Coding rules
 
@@ -65,7 +113,7 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
 
 ### Rule 2: Private by construction
 *Read agent logs only through the field allowlist, output no prompts, code or absolute paths, and send nothing off the machine.*
-- **Applies to:** `src/attrib/parsers/**` and any new log reader, all output (snapshot, stdout, stderr, status messages), and the future `src/server/**`.
+- **Applies to:** `src/attrib/parsers/**` and any new log reader, all output (snapshot, stdout, stderr, status messages), and the future `src/server/**`. Not `factory/**`: dev tooling, not Commet. See 'Agent runner' below.
 - **Rule:**
   - Read only named fields. Never read, store, hash or output prompt or message text, `originalFile`, `last-prompt`, `history.jsonl`, `file-history/`, `attachment` or `api-request*`. Bash commands may only be regex-tested, then discarded.
   - Refuse symlinks before reading; re-check the realpath against the deny list.
@@ -82,7 +130,7 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
   - No `Math.random`, `Date.now`, `new Date()`, `performance.now` or `localeCompare`. Use the seeded PRNG; sort by codepoint.
   - Same repo and logs → byte-identical snapshot. Same snapshot, camera and frame → identical pixels.
 - **Why:** the factory verifies the product with goldens, and a planet that moves between runs breaks the user's mental map.
-- **Checked by:** ESLint bans in `src/core`, `src/scan` and `src/attrib` (render and layout code is review-only until lint covers it), golden byte compares, a scan-twice SHA-256 test.
+- **Checked by:** ESLint bans in `src/core`, `src/scan`, `src/attrib`, `web/src` and the render stand-in, golden byte compares, render goldens (`npm run test:render`), and a scan-twice SHA-256 test.
 
 ### Rule 7: NUL-framed git output
 *A repository path can hold any byte except NUL, so git output that lists paths is read with `-z` and parsed by position on `\0`, never framed by another byte; patch text, which can hold NUL too, is parsed by its hunk counts.*
@@ -94,8 +142,8 @@ node dist/cli.js scan --out /tmp/snap.json   # manual smoke test in any clone
   - Only a final header field may lack its closing NUL (an empty last commit has no paths after it), and only when it is complete and well-formed (e.g. a full 40-hex SHA); a malformed final header or any other unterminated token is a cut-off record, refused or counted under Rule 1, never half-read.
   - Patch text (`-p`) can't be NUL-framed, because a text diff can itself hold NUL (past git's 8,000-byte binary check, or under a `diff` attribute) and U+0001: it is read line by line, the `@@` hunk counts tell content from headers, and paths come from the C-quoted `+++ b/…` header via `headerPath`, or from the `--- a/…` header when `+++` is `/dev/null` (a deleted file).
   - Each new parser of path-bearing output gets a failing-first test whose filename contains U+0001, a newline and a tab.
-- **Why:** git-output framing broke parsing 5 times in 3 days, all caught by Qodo: three U+0001 splits (PR #3, #16 local r2 and r4), a stripped leading newline (#16 local r1) and a dropped final record (PR #20 r2). The first fix missed its sibling in the same file (#24, still open), and two new parsers copied the `%x01` pattern two days later.
-- **Checked by:** the U+0001 fixtures in the scan tests; in review, any path-listing git call without `-z`, or `%x01` / `'\x01'` framing. Not yet in lint: once #24 lands, `npm run lint` will also ban `\x01` and `%x01` in `src/scan` and `src/attrib`.
+- **Why:** git-output framing broke parsing 5 times in 3 days, all caught by Qodo: three U+0001 splits (PR #3, #16 local r2 and r4), a stripped leading newline (#16 local r1) and a dropped final record (PR #20 r2). The first fix missed its sibling in the same file (#24), and two new parsers copied the `%x01` pattern two days later.
+- **Checked by:** the U+0001 fixtures in the scan tests; `npm run lint`, which bans a U+0001 string, template or regex (`'\x01'`, `'\u0001'`, the raw byte) and a `%x01` format in `src/scan` and `src/attrib` (`test/lint.test.ts`); in review, any path-listing git call without `-z`.
 
 ## Art rules
 These cover the main 3D view; the 2D map, terminal mode and status card have their own specs.

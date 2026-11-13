@@ -41,7 +41,7 @@ describe('matchCommits', () => {
   const ev = (eventId: string, sessionKey: `s_${string}`, ts: number, hashes: string[]): EditEvent =>
     ({ eventId, sessionKey, ts, path: 'f.ts', hashes });
   const commit = (over: Partial<MatchCommit>): MatchCommit => ({ sha: 'c', dateMs: 10_000, isSelf: true, isMerge: false,
-    covered: true, partial: false, added: new Map([['f.ts', ['h1', 'h2', 'h3', 'h4']]]), ranBy: new Set(),
+    covered: true, partial: false, added: new Map([['f.ts', ['h1', 'h2', 'h3', 'h4']]]), patchIncomplete: false, ranBy: new Set(),
     ranByCommand: new Set(), ...over });
 
   it('last writer before the commit owns the line; later edits do not count', () => {
@@ -58,6 +58,8 @@ describe('matchCommits', () => {
     expect(cls({ added: new Map([['f.ts', ['h1', 'h2', 'h3']]]) })).toBe('mixed');
     expect(cls({ isSelf: false })).toBe('unknown');
     expect(cls({ covered: false })).toBe('unknown');
+    // #38: a patch read incompletely never comes out human.
+    expect(cls({ patchIncomplete: true })).toBe('unknown');
   });
 });
 

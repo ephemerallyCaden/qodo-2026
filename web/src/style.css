@@ -1,0 +1,56 @@
+/* Colours are palette custom properties (virtual:commet-palette.css, generated from
+   src/core/palette.ts), never literals (AGENTS.md Rule 5). */
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--space); color: var(--ink); }
+body { display: grid; place-items: center; }
+#stage { position: relative; line-height: 0; }
+#view { display: block; image-rendering: pixelated; outline: none; touch-action: none; }
+#view:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#labels { position: absolute; left: 0; top: 0; pointer-events: none; image-rendering: pixelated; }
+#hud { position: fixed; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+#hud label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+#hud input { accent-color: var(--accent); margin: 0; }
+#hud input[type=range] { width: 120px; }
+canvas.bitmap, #error canvas { display: block; image-rendering: pixelated; }
+/* Drones (#80): the HUD's count line, top centre (the review panel owns the right edge, the planet info the left) and the selected session's panel, DOM text outside the pixel pass. */
+#drones-hud { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); margin: 0; width: max-content; max-width: min(44ch, 40vw); text-align: center; pointer-events: none; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink); }
+#drones-hud:empty { display: none; }
+#drone-panel { position: fixed; left: 8px; bottom: 40px; box-sizing: border-box; width: min(40ch, 90vw); padding: 6px; background: var(--space); border: 1px solid var(--rule); color: var(--ink); font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+#drone-panel[hidden] { display: none; }
+#drone-panel h2 { margin: 0; font-size: 12px; }
+#drone-panel .top { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px; }
+#drone-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 8px; margin: 0; }
+#drone-panel dt { color: var(--dim); }
+#drone-panel dd { margin: 0; overflow-wrap: anywhere; }
+#drone-panel button { background: var(--space); color: var(--ink); border: 1px solid var(--rule); padding: 2px 5px; cursor: pointer; font: inherit; }
+#drone-panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Review panel (#75): crisp DOM outside the pixel pass. Bitmap titles and buttons; diff text monospace. */
+#panel { position: fixed; right: 8px; top: 56px; max-height: calc(100vh - 64px); box-sizing: border-box; width: min(64ch, 42vw); display: flex; flex-direction: column; gap: 6px;
+  padding: 8px; overflow: auto; background: var(--space); border: 1px solid var(--rule); line-height: normal; }
+#panel[hidden] { display: none; }
+#panel canvas { display: block; image-rendering: pixelated; max-width: 100%; }
+#panel h2, #panel h3, #panel ul, #panel p { margin: 0; padding: 0; }
+#panel .top, #panel .actions, #panel .baseline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#panel .top { justify-content: space-between; }
+#panel ul { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+#panel li { display: flex; flex-direction: column; gap: 2px; }
+#panel button { background: var(--space); color: var(--ink); border: 1px solid var(--rule); padding: 3px 5px; cursor: pointer;
+  max-width: 100%; overflow: hidden; text-align: left; }
+#panel button:disabled { cursor: default; }
+#panel button:focus-visible, #panel .diff:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#panel .note, #panel .cmd, #panel .diff { font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink); }
+#panel .dim { color: var(--dim); }
+#panel .cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; border: 1px dashed var(--rule); padding: 4px; }
+#panel .diff { margin: 0; padding: 4px; overflow: auto; flex: 1 1 auto; min-height: 8em; border-top: 1px solid var(--rule); white-space: pre; tab-size: 4; }
+#panel .diff .add { color: var(--added); }
+#panel .diff .del { color: var(--removed); }
+#panel .diff .meta, #panel .diff .sec { color: var(--dim); }
+#panel .review { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1 1 auto; }
+/* Only the diff gives way when the panel is full; notes, the command and buttons keep their height. */
+#panel > *, #panel .review > * { flex-shrink: 0; }
+#panel .review > button { align-self: flex-start; }
+#panel > .review, #panel .review > .diff { flex-shrink: 1; }
+@media (max-width: 720px) { #panel { top: auto; bottom: 8px; left: 8px; width: auto; max-height: 50vh; } }
+#error { position: fixed; inset: 0; display: grid; place-content: center; gap: 4px; background: var(--space); }
+#error[hidden], #hud[hidden] { display: none; }
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
