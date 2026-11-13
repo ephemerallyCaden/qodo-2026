@@ -3,11 +3,12 @@
 // renderer and camera, posed and depth-tinted by its own helpers (poseWorld, depthLevelAt,
 // setDepthLevel, applyDepth), in the order the viewer's frame() uses. Nothing here writes a
 // shader. Exploration variants (A-J) come from the astronaut lab's own renderer, and drones from
-// the drone lab's own drone (makeDrone, posed as its renderTile does: drones.js), read-only.
+// the drone lab's own drone (makeDrone, posed as its renderTile does: drones.js), read-only. A planet
+// with fog is the viewer's makePlanet({ fog }), set by its driveFog each frame, as the viewer's hero.
 import * as THREE from 'three';
 import {
   makePlanet, makeAstronaut, makeStar, makeSky, makeStars, setDepthLevel, depthLevelAt, poseWorld, setLoop, applyDepth,
-  setPixelSize, setViewSize, frameWidth, retint, resolve, renderer, camera, controls, VIEWS, BIOMES, CREW_SPOT,
+  setPixelSize, setViewSize, frameWidth, retint, resolve, renderer, camera, controls, VIEWS, BIOMES, CREW_SPOT, driveFog,
 } from '../asset-viewer/viewer.js';
 import { eyesFor } from '../asset-viewer/faces.js';
 import { makeAstronaut as makeLabAstronaut } from '../explorations/astronaut-lab/astronaut.js';
@@ -18,6 +19,11 @@ import { makeDrone, layout as droneLayout, extents as droneExtents } from '../dr
 import { contributorKey, eyeGlowKey } from './palette.js';
 import { droneLook, droneCell, droneCamera, pixK, ZOOM } from './drones.js';
 import { debrisSpec } from './debris-spec.js';
+import { fogDrive } from './fog-spec.js';
+// The fog lab's looks (A-E, A2, D2a-D2e) register with the viewer's fog on import, before any fog spec
+// is made, so a fogged planet's shader holds them all (the history draws them live); its fogSpec is
+// the viewer's plus the lab's one extra uniform. D2d draws pixel-identical to the viewer's either way.
+import { fogSpec } from '../fog-lab/fog.js';
 
 export { renderer, camera, controls, frameWidth };
 
@@ -59,6 +65,7 @@ export class Stage {
     this.stars = makeStars();
     this.scene.add(this.sky, this.stars);
     this.slots = [];
+    this.view = [320, 180]; // the drawing-buffer size of the next render (a fogged planet's moons need it)
   }
 
   /** Builds or reconfigures every item. pal: the active palette object (palette.activate). */
@@ -66,9 +73,10 @@ export class Stage {
     while (this.slots.length > items.length) this.scene.remove(this.slots.pop().group);
     items.forEach((it, i) => {
       let s = this.slots[i];
-      if (!s || s.kind !== it.kind) {
+      const fog = it.kind === 'planet' && it.fog.on; // a fogged planet has its own shaders (makePlanet({ fog }))
+      if (!s || s.kind !== it.kind || !!s.fog !== fog) {
         if (s) this.scene.remove(s.group);
-        s = this.slots[i] = this.make(it.kind);
+        s = this.slots[i] = this.make(it.kind, fog);
         this.scene.add(s.group);
       }
       s.item = it;
@@ -84,9 +92,10 @@ export class Stage {
     this.sky.visible = this.stars.visible = !this.labSpace;
   }
 
-  make(kind) {
-    const obj = kind === 'planet' ? makePlanet() : kind === 'astronaut' ? makeAstronaut('coral') : kind === 'drone' ? makeDrone() : kind === 'star' ? makeStar() : makeLabAstronaut({ color: 'mint', eyes: 0 });
-    return { kind, obj, group: obj.group };
+  make(kind, fogged = false) {
+    const fog = fogged ? fogSpec() : null;
+    const obj = kind === 'planet' ? makePlanet({ fog }) : kind === 'astronaut' ? makeAstronaut('coral') : kind === 'drone' ? makeDrone() : kind === 'star' ? makeStar() : makeLabAstronaut({ color: 'mint', eyes: 0 });
+    return { kind, obj, group: obj.group, fog };
   }
 
   syncDrone(d, it) {
@@ -139,6 +148,15 @@ export class Stage {
   pose(t, render) {
     this.stars.position.copy(camera.position);
     const by = (k) => this.slots.filter((s) => s.kind === k);
+    // fog first, as the viewer's frame(): the veil mixes toward the active palette's space, and its
+    // fogged limb is the halo colour
+    for (const s of by('planet')) {
+      if (!s.fog) continue;
+      s.fog.view.value.set(...this.view);
+      s.fog.uniforms.uFogSpace.value.set(resolve('space'));
+      s.fog.uniforms.uFogRim.value.set(resolve('halo'));
+      driveFog(s.fog, fogDrive(s.item, t, render.period));
+    }
     poseWorld(t, { planets: by('planet').map((s) => s.obj), astronauts: by('astronaut').map((s) => s.obj), suns: by('star').map((s) => s.obj), spin: render.spin, lavaTime: render.lavaTime });
     for (const s of by('lab')) s.obj.update(t, { yaw: s.item.yaw, sway: s.item.sway ? 1 : 0 });
     // drones as the drone lab's renderTile poses them (their own shader: no viewer depth fade)
@@ -195,6 +213,7 @@ export function renderToCanvas(stage, t, render, w, h) {
     canvas = { w, h };
     setPixelSize(w, h, [stage.sky]);
   } else setViewSize(w, h, [stage.sky]);
+  stage.view = [w, h];
   controls.update();
   stage.pose(t, render);
   renderer.setClearColor(stage.clearColor());
@@ -222,6 +241,7 @@ export function renderToImage(stage, t, render, w, h, cam) {
   camera.lookAt(TMP.set(...cam.target));
   camera.updateMatrixWorld(true);
   setViewSize(w, h, [stage.sky]);
+  stage.view = [w, h];
   stage.pose(t, render);
   renderer.setRenderTarget(rt);
   renderer.setClearColor(stage.clearColor());

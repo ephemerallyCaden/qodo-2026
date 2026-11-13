@@ -17,6 +17,7 @@
 import { showcaseScene, GROUPS } from './catalogue.js';
 import { LOSPEC_ORDER } from '../asset-viewer/palettes.js';
 import { BRANDS } from './drones.js';
+import { DIRECTIONS as FOG_DIRECTIONS } from '../fog-lab/variants.js';
 
 // ---------------------------------------------------------------- vendored palettes
 // f4ceea0 viewer.js: the suit shared by v1 and v2 there (the cool white approved in revision 1)
@@ -146,9 +147,17 @@ const lineup = () => ({
 });
 
 // The debris family: 8 of the viewer's demo items on the lush hero, in a debris-lab direction
+const CHANGED_11_11 = ['google', 'qodo']; // the drones the 2026-11-11 step changed
 const DEBRIS_NAMES = { A: 'derelicts', B: 'junkyard', C: 'scrap blocks', D: 'tagged canisters', E: 'wake' };
 const debrisOf = (direction) => ({ on: true, count: 8, mix: 'mixed', direction });
 const debrisView = (direction) => solo({ ...LUSH, ring: 'off', debris: debrisOf(direction) });
+
+// The fog family: the lush hero at 50% charted, in a fog-lab direction (its looks register with the
+// viewer's fog: engine.js imports the lab's fog.js), or D2d at each charted share
+const fogName = (id) => FOG_DIRECTIONS.find((d) => d.id === id).name;
+const fogOf = (look, charted = 0.5) => ({ on: true, charted, look });
+const fogView = (look) => solo({ ...LUSH, ring: 'off', fog: fogOf(look) });
+const fogOptions = (ids) => ({ label: 'direction', list: ids.map((id) => ({ id, label: `${id} · ${fogName(id)}`, item: { fog: fogOf(id) } })) });
 
 // ---------------------------------------------------------------- families
 export const FAMILIES = [
@@ -310,6 +319,28 @@ export const FAMILIES = [
     ],
   },
   {
+    // fog of war (R5), drawn live: the fog lab's directions are registered with the viewer's fog. The
+    // lab's history is one commit on this branch (1eaa3ef, squashed); the dates are its steps'.
+    id: 'fog', title: 'Fog', note: 'the files you haven\'t reviewed: five directions and A2, D refined toward "unseen", two dark veils, then D2d',
+    steps: [
+      { date: '2026-11-11 03:52', rev: '1eaa3ef', title: 'five directions, A–E', exploration: true, live: { ...fogView('A'), options: fogOptions(['A', 'B', 'C', 'D', 'E']) },
+        changed: 'One fog shader path on #18\'s 256-cell grid, five looks: A glyph field (a 5×5 glyph per fogged cell), B unlit (the terrain two steps darker), C unrendered (a coarse lattice of flat tiles), D survey parcels (flat cells, each file\'s footprint outlined), E mist (streaks drifting west). Each file clears with a teal front and refogs with a rolling edge.',
+        why: 'Fog of war (R5): code you haven\'t reviewed stays fogged until you chart it. Measured against F1–F8: per file, coverage readable, health through the fog, clear and refog events, the house rules, and debris beside it. The human picked D.' },
+      { date: '2026-11-11 03:52', rev: '1eaa3ef', title: 'A2: glyph parcels', exploration: true, live: fogView('A2'),
+        changed: 'A\'s glyph field with D\'s outlines, so each file\'s footprint reads.', why: 'A refined: the code layer\'s glyphs, drawn per file.' },
+      { date: '2026-11-11 09:56', rev: '1eaa3ef', title: 'D2: three strengths of "unseen"', exploration: true, live: { ...fogView('D2c'), options: fogOptions(['D2a', 'D2b', 'D2c']) },
+        changed: 'D refined: D2a blank map (each parcel one flat tone, shaded only by the light band), D2b terra incognita (plus sparse drifting hatching), D2c veiled (the light softened, dashed hatching and a "?" on half the big parcels).',
+        why: 'The human picked D, then asked for it to read more clearly as unseen. The human picked D2c, then asked for much darker fog.' },
+      { date: '2026-11-11 19:25', rev: '1eaa3ef', title: 'D2e: dark veil + band edges', exploration: true, live: fogView('D2e'),
+        changed: 'D2c\'s parcels pushed close to space, each outlined in the middle step of the band\'s own ramp, so the band reads from the parcel edges.',
+        why: 'The dark pass: fog that\'s unmistakably hidden. D2e kept a hint of health at the edges; the human picked D2d, where health doesn\'t read through fog at all.' },
+      { date: '2026-11-11 23:03', rev: '12588f7', title: 'D2d · dark veil', final: true,
+        live: { ...fogView('D2d'), options: { label: 'charted', list: [0, 0.25, 0.5, 0.75, 1].map((c) => ({ id: String(c), label: `${Math.round(c * 100)}% charted`, item: { fog: fogOf('D2d', c) } })) } },
+        changed: 'Each fogged file a parcel in a cool blue-plum veil whatever its band, with faint drifting hatching, a dim outline, a "?" on half the big parcels and a halo-coloured limb; the lit-limb haze is fogged too. Ported into the viewer as fog on the hero planet.',
+        why: 'The human: "you can\'t see the health of code you haven\'t reviewed", so health reads on charted land only. The veil is cool, never lava crust\'s warm darks (a false worst-band signal), and the limb is one step above space so the silhouette holds.' },
+    ],
+  },
+  {
     id: 'palettes', title: 'Palettes', note: 'Planetarium pastels, v2, 25 published palettes, BLK 36, research ×2, then BLK 36 crew + v2 world',
     steps: [
       { date: '2026-11-03 11:33', rev: '6e287db', title: 'v1: Planetarium pastels', live: { ...showcase('depth'), palette: { set: VENDORED.v1.set } },
@@ -377,7 +408,7 @@ export const FAMILIES = [
     ],
   },
   {
-    id: 'drones', title: 'Drones', note: 'agent sessions: six directions, five head-is-body drones, then D-final (drone lab, feature/drone-lab)',
+    id: 'drones', title: 'Drones', note: 'agent sessions: six directions, five head-is-body drones, D-final, a drone per provider, then the Gemini sparkle (drone lab, feature/drone-lab)',
     steps: [
       { date: '2026-11-06 21:41', rev: '90d28e5', title: 'six directions, A–F',
         changed: 'One raymarched drone driven by parameters (head shape, screen, rotors or jets, antenna, arms, a five-slot palette), in six directions.',
@@ -391,11 +422,17 @@ export const FAMILIES = [
         changed: 'While working, the eyes blink shut and the screen types hashed 5×7 ASCII glyphs in the teal glow ramp, then scrambles back to the eyes.', why: 'A face for "busy" in the code layer\'s glyph vocabulary.' },
       { date: '2026-11-06 23:29', rev: 'a79516d', title: 'D-final', img: '10-drones/final-with-crew.png',
         changed: 'The base drone is D (the saucer scout) with the human\'s exact parameters; A–E stay as explorations.', why: 'The human picked D.' },
-      { date: '2026-11-10 15:47', rev: '4b60da3', title: 'a drone per provider', final: true,
+      { date: '2026-11-10 15:47', rev: '4b60da3', title: 'a drone per provider',
+        // live with today's drones, so without Google and Qodo, which changed the next day
         live: { items: [{ kind: 'drone', provider: 'generic', yaw: -0.5 }], framing: 'drone',
-          options: { label: 'provider', list: BRANDS.map((b) => ({ id: b.id, label: b.name, item: { provider: b.id } })) } },
+          options: { label: 'provider', list: BRANDS.filter((b) => !CHANGED_11_11.includes(b.id)).map((b) => ({ id: b.id, label: b.name, item: { provider: b.id } })) } },
         changed: 'D-final, adapted into a drone for each approved provider, plus generic (D-final itself) and the unknown agent (the generic drone, its own label). Each is a parameter set and a BLK 36 palette, with seeded details per session. Copilot and Claude Code keep D-final\'s shape and add goggles and legs, Codex\'s head is one smooth cloud, and Qodo wears sunglasses.',
         why: 'The human (2026-11-10): one drone per agent provider (a5ff3e9), then four changes the same afternoon. Every pair stays distinct at the crew close-up and system distance (A4).' },
+      { date: '2026-11-11 21:42', rev: '968bc0c', title: 'Google becomes the Gemini sparkle; Qodo loses its eyes', final: true,
+        live: { items: [{ kind: 'drone', provider: 'google', yaw: -0.5 }], framing: 'drone',
+          options: { label: 'provider', list: BRANDS.map((b) => ({ id: b.id, label: b.name, item: { provider: b.id } })) } },
+        changed: 'Google\'s drone is the Gemini sparkle (G1, of five Gemini-inspired options), in its green with the four Gemini tint ramps, replacing the Jules octopus. Qodo\'s snout ends in a purple nose tip and its teal eyes are gone, so its face is the sunglasses; while reviewing, a white glint sweeps the lenses.',
+        why: 'The human (2026-11-11) picked G1 and kept its green, and asked for Qodo\'s nose tip and no eyes (8aa33ee). Every pair still stays distinct (A4): Google\'s closest is generic, Qodo\'s is Kiro.' },
     ],
   },
 ];

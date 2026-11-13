@@ -1,15 +1,16 @@
 // Fog of war on the hero planet (fog.js, D2d · dark veil; fog-layout.js):
 //  1. off is off: fog toggled on and off leaves no trace, and a fully charted planet is the planet itself
 //  2. on every biome, fogged pixels are only the veil's own colours (VEIL: cool blue-plum darks, never
-//     a band or lava-crust colour) and the halo colour on the fogged limb; no teal at rest; the render
-//     fails on empty output (fog must change the disc)
+//     a band or lava-crust colour) and the halo colour on the fogged limb; the lit-limb haze (ocean,
+//     ice, toxic) is gone over fogged land, so nothing band-coloured rims a fogged planet; no teal at
+//     rest; the render fails on empty output (fog must change the disc)
 //  3. teal appears only during an event: "chart all" shows it while the fronts run, then none, and
 //     the planet ends as the fully charted planet
 //  4. deterministic and loop-locked with fog on
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openViewer } from '../debug/repro-hollow-clouds.mjs';
-import { ACCENTS } from '../planet-ramps.js';
+import { ACCENTS, V2_PLANET_RAMPS } from '../planet-ramps.js';
 import { VEIL } from '../fog.js';
 import { demoLayout, stateAt, allFogged, EVENT } from '../fog-layout.js';
 
@@ -48,11 +49,18 @@ test('fog: off leaves no trace; fogged pixels are only the veil and the halo lim
     for (const biome of Object.keys(RAMPS)) {
       const ok = allowed(biome);
       const off = await frame(page, { ...BASE, biome });
+      assert.equal(diffs(await frame(page, { ...BASE, biome, fog: true, fogCharted: 1 }), off), 0, `${biome}: a fully charted planet (haze included) differs from fog off`);
       for (const fogCharted of [0, 0.5]) {
         const on = await frame(page, { ...BASE, biome, fog: true, fogCharted });
         const changed = on.filter((p, i) => !same(p, off[i]));
         assert.ok(changed.length > (fogCharted === 0 ? 1500 : 300), `${biome} ${fogCharted}: fog changed only ${changed.length} px`);
-        const stray = changed.filter((p) => !near(p, ok));
+        // where the haze was, fog shows what's behind it (the fogged limb, space, a star)
+        const haze = V2_PLANET_RAMPS.haze[biome] && rgb(V2_PLANET_RAMPS.haze[biome]);
+        const stray = on.filter((p, i) => !same(p, off[i]) && !(haze && same(off[i], haze))).filter((p) => !near(p, ok));
+        if (haze && fogCharted === 0) {
+          const hazy = (f) => f.filter((p) => same(p, haze)).length;
+          assert.ok(hazy(off) > 40 && hazy(on) <= 0.05 * hazy(off), `${biome}: the haze shows over a fully fogged planet (${hazy(on)} of ${hazy(off)} px)`);
+        }
         assert.equal(stray.length, 0, `${biome} ${fogCharted}: ${stray.length} fog px outside the veil and the halo, e.g. ${JSON.stringify(stray.slice(0, 3))}`);
         assert.equal(on.filter(isTeal).length, 0, `${biome} ${fogCharted}: teal at rest`);
         // the fogged limb is the halo colour (the clear planet's clouds have it too: their shadow tone)

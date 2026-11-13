@@ -11,6 +11,7 @@ import * as P from './palette.js';
 import * as H from './history.js';
 import { TRIALS, trialOf, trialFor } from './trials.js';
 import { DEBRIS_COUNTS, AGE_MIXES, AGES, CLASSES as DEBRIS_CLASSES, CLASS_LABEL, AGE_NAMES, MAX_DEBRIS, FINAL_DIRECTION, itemsOf, nextSweep, ageName, directionOf } from './debris-spec.js';
+import { FOG_COVERAGES, FINAL_FOG_LOOK, fogLookOf, fogStatus, chartEvents } from './fog-spec.js';
 import { BRANDS, PARAMS as DRONE_PARAMS, DRONE_VARIANTS, DRONE_VIEWS, ZOOM, brandName, variantOf, droneLook } from './drones.js';
 
 const $ = (id) => document.getElementById(id);
@@ -378,10 +379,11 @@ function planetControls(it, patch) {
   const orbit = (i, key) => (v) => patch({ moonOrbits: it.moonOrbits.map((o, j) => (j === i ? { ...o, [key]: v } : o)) }, live);
   const layer = (key) => (v) => patch({ layers: { ...it.layers, [key]: v } });
   const order = {
-    planet: ['planet', 'ring', 'clouds', 'moons', 'debris', 'fx', 'look'], moon: ['moons', 'planet', 'look', 'ring', 'clouds', 'debris', 'fx'], ring: ['ring', 'planet', 'look', 'moons', 'clouds', 'debris', 'fx'],
-    clouds: ['clouds', 'planet', 'look', 'ring', 'moons', 'debris', 'fx'], fx: ['fx', 'planet', 'ring', 'clouds', 'moons', 'debris', 'look'], debris: ['debris', 'planet', 'look', 'ring', 'moons', 'clouds', 'fx'],
+    planet: ['planet', 'ring', 'clouds', 'moons', 'debris', 'fog', 'fx', 'look'], moon: ['moons', 'planet', 'look', 'ring', 'clouds', 'debris', 'fog', 'fx'], ring: ['ring', 'planet', 'look', 'moons', 'clouds', 'debris', 'fog', 'fx'],
+    clouds: ['clouds', 'planet', 'look', 'ring', 'moons', 'debris', 'fog', 'fx'], fx: ['fx', 'planet', 'ring', 'clouds', 'moons', 'debris', 'fog', 'look'], debris: ['debris', 'planet', 'look', 'ring', 'moons', 'clouds', 'fog', 'fx'],
+    fog: ['fog', 'planet', 'look', 'ring', 'moons', 'clouds', 'debris', 'fx'],
   }[state.mode === 'scene' ? 'planet' : state.focus];
-  const lead = order.slice(0, 2).map((k) => ({ planet: 'planet', ring: 'ring', clouds: 'clouds', moons: 'moons', fx: 'artefacts', look: 'layers and look', debris: 'debris' })[k]);
+  const lead = order.slice(0, 2).map((k) => ({ planet: 'planet', ring: 'ring', clouds: 'clouds', moons: 'moons', fx: 'artefacts', look: 'layers and look', debris: 'debris', fog: 'fog' })[k]);
   const open = (title) => lead.includes(title);
   const groups = {
     planet: () => section('planet', open('planet'),
@@ -420,6 +422,7 @@ function planetControls(it, patch) {
       slider('sectors', it.artCount, { min: 1, max: 5, step: 1, fmt: String, disabled: !it.artefacts || it.artAuto }, (v) => patch({ artCount: v }, live)),
       check('teal accent', it.artTeal, (v) => patch({ artTeal: v }), { disabled: !it.artefacts })),
     debris: () => debrisControls(it, patch, open('debris')),
+    fog: () => fogControls(it, patch, open('fog')),
     look: () => section('layers and look', open('layers and look'),
       check('body', it.layers.surface, layer('surface'), { title: 'the planet surface; off shows moons, ring or clouds on their own' }),
       check('haze', it.layers.haze, layer('haze'), { disabled: !BIOMES[it.biome].haze }),
@@ -458,6 +461,31 @@ function debrisControls(it, patch, isOpen) {
     select('selected', d.selected ?? '', [['', 'none'], ...items.map((x, i) => [x.id, `${i + 1} · ${CLASS_LABEL[x.cls]} · ${ageName(x.age)}`])], (v) => set({ selected: v || null }), { disabled: off }),
     note('the selected piece glows [OIII] teal (an event); neutral grey metal and the red outline are debris\'s approved exceptions'),
     off ? null : h('div', { class: 'pieces' }, items.map(piece)));
+}
+
+/** Fog of war on a planet (fog-spec.js): on/off, the charted share, the layout seed, and the viewer's chart buttons. */
+function fogControls(it, patch, isOpen) {
+  const f = it.fog;
+  const set = (p, opts) => patch({ fog: { ...f, ...p } }, opts);
+  const off = !f.on;
+  const { charted } = fogStatus(it, now());
+  // a chart button adds the viewer's events at the current time and plays them (as the sweep does)
+  const press = (kind) => () => {
+    const add = chartEvents(it, kind, Math.round(now() * 100) / 100);
+    if (add) update((n) => { const pl = n.mode === 'scene' ? n.scene.items[n.scene.selected] : n.asset; pl.fog.events.push(...add.events); pl.fog.moonEvents.push(...add.moonEvents); n.render.play = true; });
+  };
+  return section(`fog${f.on ? ` (${Math.round(charted * 100)}% charted)` : ''}`, isOpen,
+    f.look === FINAL_FOG_LOOK ? null : note(`exploration, not final: the fog lab's direction ${f.look}, ${fogLookOf(f.look).name}`, 'warn'),
+    f.look === FINAL_FOG_LOOK ? null : buttons(btn(`${FINAL_FOG_LOOK} (final)`, () => set({ look: FINAL_FOG_LOOK }))),
+    check('fog', f.on, (v) => set({ on: v }), { title: 'fog of war (R5): the files you haven\'t reviewed are veiled until you chart them' }),
+    select('charted', String(f.charted), FOG_COVERAGES.map((c) => [String(c), `${Math.round(c * 100)}%`]), (v) => set({ charted: +v, events: [], moonEvents: [] }), { disabled: off }),
+    slider('seed', f.seed ?? it.seed, { min: 1, max: 999, step: 1, fmt: (v) => (f.seed === null ? `${v} (planet)` : String(v)), disabled: off, title: 'the demo files\' layout (null: the planet\'s seed, as the viewer)' }, (v) => set({ seed: v, events: [], moonEvents: [] }, live)),
+    buttons(
+      btn('chart one', press('one'), { disabled: off, title: 'the next file in charting order clears (the stage plays)' }),
+      btn('refog one', press('refog'), { disabled: off, title: 'the last charted file refogs' }),
+      btn('chart all', press('all'), { disabled: off, title: 'every fogged file and moon clears, then the planet-clear pulse' }),
+      btn('reset', () => set({ events: [], moonEvents: [] }), { disabled: off || (!f.events.length && !f.moonEvents.length), title: 'drop the chart events: the charted share again' })),
+    note('health doesn\'t read through fogged land, by design: it reads on charted land. [OIII] teal shows only while a file is being charted'));
 }
 
 /** Current <-> trial on the same seed (trials.js), and the side-by-side comparison. */

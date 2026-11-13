@@ -10,6 +10,7 @@ import { FAMILY_IDS, family as historyFamily } from './history.js';
 import { TRIALS } from './trials.js';
 import { DRONE_PROVIDERS, DRONE_VARIANTS, DRONE_FACES, PARAMS as DRONE_PARAMS } from './drones.js';
 import { DEBRIS_DEFAULTS, MAX_DEBRIS, AGE_MIXES, CLASSES as DEBRIS_CLASSES, DEBRIS_DIRECTIONS, itemsOf } from './debris-spec.js';
+import { FOG_DEFAULTS, FOG_COVERAGES, FOG_LOOKS, MAX_FOG_EVENTS, layoutOf as fogLayoutOf } from './fog-spec.js';
 
 export const VERSION = 1;
 export const BIOME_KEYS = ['lush', 'ocean', 'ice', 'desert', 'lava', 'gas', 'moon', 'toxic'];
@@ -22,7 +23,7 @@ export const EYE_COUNT = 10;
 export const CONTRIBUTOR_PRESETS = ['coral', 'mint', 'lilac'];
 export const LAB_VARIANTS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 // Inspector foci for a planet item: which control group leads and what the stage isolates.
-export const FOCI = ['planet', 'moon', 'ring', 'clouds', 'fx', 'debris'];
+export const FOCI = ['planet', 'moon', 'ring', 'clouds', 'fx', 'debris', 'fog'];
 // Camera framings. Planet ones are the viewer's VIEWS; astronaut ones are offsets around the figure.
 export const FRAMINGS = { planet: ['planet', 'clouds-zoom', 'top'], astronaut: ['body', 'crew', 'face'], lab: ['lab'], drone: ['drone', 'drone-close'], star: ['star'], scene: ['depth', 'crew', 'system'] };
 export const MAX_ITEMS = 16;
@@ -42,6 +43,7 @@ export const PLANET_DEFAULTS = {
   artefacts: false, artAuto: true, artCount: 3, artTeal: false, lavaMode: 'layered',
   trial: null, // a trial look (trials.js) for this biome, or null: the shipped look
   debris: DEBRIS_DEFAULTS, // space debris (debris-spec.js): stale items near the planet
+  fog: FOG_DEFAULTS, // fog of war (fog-spec.js): the files not yet reviewed, veiled
   layers: { surface: true, haze: true, clouds: true, ring: true }, // the library's isolation toggles
   pos: [0, 0, 0],
 };
@@ -94,6 +96,20 @@ export function normaliseDebris(raw) {
   return out;
 }
 
+const FOG_KINDS = ['clear', 'refog'];
+/** A planet's fog: on/off, the charted share, a layout seed (null: the planet's), file and moon events, and a look. */
+export function normaliseFog(raw, planetSeed) {
+  const r = isObj(raw) ? raw : {};
+  const d = FOG_DEFAULTS;
+  const seed = r.seed === null || r.seed === undefined ? null : int(r.seed, 1, 9999, null);
+  const ids = new Set(fogLayoutOf({ seed: planetSeed, fog: { seed } }).planet.files.map((f) => f.id));
+  const events = (Array.isArray(r.events) ? r.events : []).filter((e) => isObj(e) && ids.has(e.file) && FOG_KINDS.includes(e.kind)).slice(0, MAX_FOG_EVENTS)
+    .map((e) => ({ file: e.file, kind: e.kind, at: num(e.at, 0, 3600, 0) }));
+  const moonEvents = (Array.isArray(r.moonEvents) ? r.moonEvents : []).filter((e) => isObj(e) && (e.moon === 0 || e.moon === 1) && FOG_KINDS.includes(e.kind)).slice(0, MAX_FOG_EVENTS)
+    .map((e) => ({ moon: e.moon, kind: e.kind, at: num(e.at, 0, 3600, 0) }));
+  return { on: bool(r.on, d.on), charted: oneOf(r.charted, FOG_COVERAGES, d.charted), seed, events, moonEvents, look: oneOf(r.look, FOG_LOOKS, d.look) };
+}
+
 export function normalisePlanet(raw) {
   const r = isObj(raw) ? raw : {};
   const d = PLANET_DEFAULTS;
@@ -123,6 +139,7 @@ export function normalisePlanet(raw) {
     lavaMode: oneOf(r.lavaMode, LAVA_MODES, d.lavaMode),
     trial: TRIALS[r.trial]?.biome === oneOf(r.biome, BIOME_KEYS, d.biome) ? r.trial : null,
     debris: normaliseDebris(r.debris),
+    fog: normaliseFog(r.fog, int(r.seed, 1, 9999, d.seed)),
     layers: Object.fromEntries(Object.entries(d.layers).map(([k, v]) => [k, bool(layers[k], v)])),
     pos: vec3(r.pos, 60, d.pos),
   };

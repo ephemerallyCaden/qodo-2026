@@ -1,4 +1,6 @@
-// The fog lab's looks: every direction but D2d (A-E, A2, D, D2a-D2c, D2e), registered into the asset
+// The fog lab's looks: every direction but D2d (A-E, A2, D, D2a-D2c, D2e), and D2d before its last two
+// fixes for their before/afters (D2d-warm: before the cool veil; D2d-haze: before its haze was
+// fogged), registered into the asset
 // viewer's fog (../asset-viewer/fog.js registerFogLook), so they all draw through the viewer's one
 // shader path: its grid search, event fronts, pulse, cell texture and uniforms. D2d, the human's pick,
 // is the viewer's own look. The GLSL below is the lab's, unchanged since the pick; it uses the
@@ -227,6 +229,12 @@ const MOON_GLSL = /* glsl */ `
     if (abs(p.y) / px < 1.0) return uRamp[3];
     return mix(uRamp[0], uFogSpace, b >= 1 ? ${glsl(DARK.lit)} : ${glsl(DARK.night)});
   }
+  // D2d before the cool veil (D2d-warm): the moon's darkest step mixed toward space, as fogDark level 1
+  vec3 moonDarkWarm(vec3 p, int b, vec3 c, bool thin, float px, vec3 ink) {
+    if (thin) return (abs(p.y) / px < 1.0) ? ink : c;
+    if (abs(p.y) / px < 1.0) return mix(uRamp[0], uFogSpace, ${glsl(DARK.line)});
+    return mix(uRamp[0], uFogSpace, b >= 1 ? ${glsl(DARK.lit)} : ${glsl(DARK.night)});
+  }
   vec3 moonE(vec3 p, vec3 c, bool thin) {
     float m = sin(p.y * 7.0 + p.x * 2.0 + uFogPhase * 6.2831853);
     return thin ? (m > 0.3 ? mstep(c, 1) : c) : mstep(c, m > 0.3 ? 2 : 1);
@@ -244,6 +252,12 @@ const LOOKS = [
   ['D2b', 'fogD2(c, b, i, st, a1, i2, a2, thin, 2)', 'moonD2(p, b, c, thin, px, 2)'],
   ['D2c', 'fogD2(c, b, i, st, a1, i2, a2, thin, 3)', 'moonD2(p, b, c, thin, px, 3)'],
   ['D2e', 'fogDark(p, c, b, i, st, a1, i2, a2, thin, 2)', 'moonDarkEdge(p, b, c, thin, px, ink)'],
+  // D2d as the human picked it, before the cool veil (art direction §9): the ramp's darkest step mixed
+  // toward space, which on lava's neighbours read as crust. Kept for the before/after (lab.mjs veil).
+  ['D2d-warm', 'fogDark(p, c, b, i, st, a1, i2, a2, thin, 1)', 'moonDarkWarm(p, b, c, thin, px, ink)'],
+  // D2d before its haze was fogged: the lit-limb haze (ocean, ice, toxic) still drawn over fogged
+  // cells, a band-coloured rim. Kept for the before/after (lab.mjs haze).
+  ['D2d-haze', 'fogVeil(p, c, b, i, st, a1, i2, a2, thin)', 'moonVeil(p, b, c, thin, px, ink)'],
 ];
 LOOKS.forEach(([id, call, moonCall], k) => registerFogLook({ id, call, moonCall, glsl: k === 0 ? LAB_GLSL : '', moonGlsl: k === 0 ? MOON_GLSL : '' }));
 

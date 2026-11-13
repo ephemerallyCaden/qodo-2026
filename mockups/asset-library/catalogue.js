@@ -5,6 +5,7 @@
 // replaces the final badge: a library extra, or a look whose meaning is open (R9). Pure data, no DOM.
 import { BRANDS, DRONE_VARIANTS, variantOf } from './drones.js';
 import { DEBRIS_COUNTS, CLASSES, CLASS_LABEL, AGES, AGE_NAMES } from './debris-spec.js';
+import { FOG_COVERAGES, FOG_DEFAULTS, chartEvents } from './fog-spec.js';
 
 const astro = (title, sub, asset, extra = {}) => ({ title, sub, final: true, state: { focus: 'astronaut', framing: 'body', asset: { kind: 'astronaut', ...asset } }, ...extra });
 const planet = (title, sub, asset, { camera = null, ...extra } = {}) => ({ title, sub, final: true, state: { focus: 'planet', framing: 'planet', camera, asset: { kind: 'planet', ...asset } }, ...extra });
@@ -42,6 +43,13 @@ export const TRIAL_TAG = 'trial';
 const HERO_POS = [1.92, 1.12, 6.69];
 const MID_POS = HERO_POS.map((x) => Math.round(((x * 12) / Math.hypot(...HERO_POS)) * 1e4) / 1e4);
 const debrisTile = (title, sub, asset, debris) => focus('debris')(planet(title, sub, { ring: 'off', ...asset, debris: { on: true, ...debris } }));
+const fogTile = (title, sub, asset, fog, extra = {}) => focus('fog')(planet(title, sub, { ring: 'off', ...asset, fog: { ...FOG_DEFAULTS, on: true, ...fog } }, extra));
+/** A fog tile caught mid-event: the chart button `kind` ('one', 'refog' or 'all') pressed at `at`, shown at t. */
+const fogEventTile = (title, sub, asset, charted, kind, at, t) => {
+  const it = { seed: 7, ...asset, fog: { ...FOG_DEFAULTS, on: true, charted } };
+  return fogTile(title, sub, asset, { charted, ...chartEvents(it, kind, at) }, { t });
+};
+const pct = (x) => `${Math.round(x * 100)}%`;
 const trialTile = (title, sub, asset, camera = null) => planet(title, sub, { ...asset, trial: 'dusty-ash' }, { final: false, tag: TRIAL_TAG, camera });
 
 /** The star's spot in the viewer's system view (viewer.js SYSTEM_STAR; test/star.test.mjs checks): up and back, upper left. */
@@ -133,6 +141,19 @@ export const GROUPS = [
       ...[['lava', 11, 'worst band'], ['toxic', 13, 'second-worst band'], ['desert', 3, 'ash band'], ['lush', 7, 'healthy'], ['ocean', 42, 'healthy'], ['ice', 21, 'healthy']]
         .map(([biome, seed, band]) => debrisTile(`debris on ${biome}`, `8 items · ${band}`, { biome, seed }, { count: 8 })),
       debrisTile('debris alone', 'host body hidden · 8 items', { biome: 'lush', seed: 7, layers: HOST_HIDDEN }, { count: 8 }),
+    ],
+  },
+  {
+    // fog of war (R5; the fog lab's D2d · dark veil): every band at every charted share, the chart buttons, and fog with debris
+    id: 'fog', title: 'Fog', note: 'the files you haven\'t reviewed, under a dark veil: every band at 0, 25, 50, 75 and 100% charted; chart one, refog one, chart all; fog with debris',
+    items: [
+      ...[['lava', 11, 'worst band'], ['toxic', 13, 'second-worst band'], ['desert', 3, 'ash band'], ['lush', 7, 'healthy'], ['ocean', 42, 'healthy'], ['ice', 21, 'healthy']]
+        .flatMap(([biome, seed, band]) => FOG_COVERAGES.map((charted) => fogTile(`fog · ${biome} ${pct(charted)}`, `${pct(charted)} charted · ${band}`, { biome, seed }, { charted }))),
+      // chosen so the file is on the visible hemisphere: at 50% the next file is never in view on this planet
+      fogEventTile('chart one', 'the next file clears · 25% charted, 0.3 s in', { biome: 'lush', seed: 7 }, 0.25, 'one', 10.7, 11),
+      fogEventTile('refog one', 'the last charted file refogs · 1.2 s in', { biome: 'lush', seed: 7 }, 0.5, 'refog', 5.8, 7),
+      fogEventTile('chart all', 'every fogged file clears · 0.7 s in', { biome: 'lush', seed: 7 }, 0, 'all', 2.3, 3),
+      fogTile('fog with debris', '50% charted · 8 debris pieces', { biome: 'lush', seed: 7, debris: { on: true, count: 8 } }, { charted: 0.5 }),
     ],
   },
   {

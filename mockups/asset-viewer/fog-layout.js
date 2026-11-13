@@ -372,6 +372,23 @@ export function shares(planet, foot, fogged) {
 export const MOON_CHARTED_FROM = [0.5, 0.75];
 
 /**
+ * Moon i's fog at time t: { fogged (at rest), kind (0 none, 1 clear, 2 refog), progress }. Before its
+ * first event a moon is in that event's starting state (a clear starts fogged); otherwise it's fogged
+ * below MOON_CHARTED_FROM[i].
+ */
+export function moonStateAt(i, { coverage = 0.5, moonEvents = [], t = 0 } = {}) {
+  const evs = moonEvents.filter((x) => x.moon === i).sort((p, q) => p.at - q.at);
+  let fogged = evs.length ? evs[0].kind === 'clear' : coverage < MOON_CHARTED_FROM[i], kind = 0, progress = 0;
+  for (const e of evs) {
+    const s = (t - e.at) / EVENT[e.kind];
+    if (s < 0) continue;
+    if (s < 1) [kind, progress] = [e.kind === 'clear' ? 1 : 2, s];
+    else [fogged, kind] = [e.kind !== 'clear', 0];
+  }
+  return { fogged: kind ? false : fogged, kind, progress };
+}
+
+/**
  * The viewer's chart buttons, deterministic: the next fogged file in charting order (`chart one`),
  * the last charted one (`refog one`), and every fogged file (`chart all`). Files already in an event
  * are skipped.

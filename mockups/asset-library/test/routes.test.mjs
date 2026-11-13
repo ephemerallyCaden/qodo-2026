@@ -97,6 +97,20 @@ test('the debris lab: its top-level modules only, never its outputs, tests, scri
   ]) assert.equal((await route('GET', p)).status, 404, p);
 });
 
+test('the fog lab: its top-level modules only, never its outputs, measures, tests, scripts or node_modules', async () => {
+  for (const m of ['fog.js', 'variants.js', 'glyphs.js', 'mock.js', 'surface.js', 'lab.js']) {
+    const r = await route('GET', `/fog-lab/${m}`);
+    assert.deepEqual([r.status, r.type], [200, 'text/javascript'], m);
+  }
+  for (const p of [
+    '/fog-lab/out/lineup-D2d.png', '/fog-lab/out/loop-D2d.gif', '/fog-lab/out/haze-measures.json', '/fog-lab/measures.json', '/fog-lab/measures.md',
+    '/fog-lab/test/pure.test.mjs', '/fog-lab/test/viewer-fidelity.test.mjs', '/fog-lab/node_modules/three/build/three.module.js',
+    '/fog-lab/lab.mjs', '/fog-lab/serve.mjs', '/fog-lab/routes.mjs', '/fog-lab/checks.mjs', '/fog-lab/harness.mjs', '/fog-lab/stats.mjs', '/fog-lab/report.mjs',
+    '/fog-lab/README.md', '/fog-lab/package.json', '/fog-lab/package-lock.json', '/fog-lab/index.html', '/fog-lab/', '/fog-lab',
+    '/fog-lab/../asset-library/routes.mjs', '/fog-lab/%2e%2e/drone-lab/serve.mjs', '/fog-lab/out%2floop-D2d.gif', '/fog-lab/test%2fpure.test.mjs',
+  ]) assert.equal((await route('GET', p)).status, 404, p);
+});
+
 test('the drone lab: its top-level modules only, never its outputs, tests, scripts or node_modules', async () => {
   for (const m of ['drone.js', 'brands.js', 'params.js', 'palette.js', 'variants.js']) {
     const r = await route('GET', `/drone-lab/${m}`);

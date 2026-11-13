@@ -1,6 +1,7 @@
 // The fog lab's runner: renders every output in out/ and the numbers in measures.json / measures.md.
-// node lab.mjs [names...]   names: lineups compare closeups reasons footprint coexist loops events
-//                            measures report (no names = all; report only rewrites measures.md).
+// node lab.mjs [names...]   names: lineups compare d2 closeups reasons footprint coexist loops events
+//                            dark final veil haze measures report (no names = all; report only
+//                            rewrites measures.md).
 // One headless Chromium (SwiftShader) page, served by request interception from routes.mjs: no
 // socket, no network. GIFs need ffmpeg (FFMPEG=... or /opt/homebrew/bin/ffmpeg).
 import { spawn } from 'node:child_process';
@@ -25,7 +26,7 @@ import { writeReport } from './report.mjs';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
 const FFMPEG = process.env.FFMPEG ?? '/opt/homebrew/bin/ffmpeg';
-const ALL = ['lineups', 'compare', 'd2', 'closeups', 'reasons', 'footprint', 'coexist', 'loops', 'events', 'dark', 'final', 'measures'];
+const ALL = ['lineups', 'compare', 'd2', 'closeups', 'reasons', 'footprint', 'coexist', 'loops', 'events', 'dark', 'final', 'veil', 'haze', 'measures'];
 // The first round (A-E and A2) keeps its lineups and comparison sheet; the human picked D, so the
 // motion, close-ups and coexistence outputs are D and its refinements D2a-D2c; the events are D and the
 // recommended D2c (EVENT_DIRS).
@@ -34,6 +35,11 @@ const PICKED = ['D', 'D2a', 'D2b', 'D2c'].map(direction);
 const EVENT_DIRS = ['D', 'D2c'].map(direction);
 // The human's darker pass on D2c: D2d and D2e, measured and shown beside D2c.
 const DARK_DIRS = ['D2c', 'D2d', 'D2e'].map(direction);
+// the cool veil's before/after: D2d as picked (warm: lava's neighbours read as crust) and as shipped
+const VEIL_DIRS = [{ id: 'D2d-warm', name: 'dark veil, before (warm)' }, { ...direction('D2d'), name: 'dark veil, after (cool)' }];
+// the fogged haze's before/after: D2d with the lit-limb haze drawn over fogged cells, and as shipped
+const HAZE_DIRS = [{ id: 'D2d-haze', name: 'before: haze drawn' }, { id: 'D2d', name: 'after: haze fogged' }];
+const HAZE_LOOKS = LOOKS.filter((l) => V2_PLANET_RAMPS.haze[l.biome]);
 const args = process.argv.slice(2);
 const wanted = args.filter((a, k) => !a.startsWith('--') && args[k - 1] !== '--dirs');
 const names = wanted.length ? wanted : ALL;
@@ -282,6 +288,78 @@ async function final() {
   await sheet({ title: 'D2d: charting the planet\'s last three files then the pulse, and two files refogging: every 0.2 s', scale: 2, rows }, 'final-events-strip.png');
 }
 
+/**
+ * The cool veil (art direction §9), before and after: D2d as the human picked it (each parcel its
+ * ramp's darkest step mixed toward space: warm on lava's neighbours) against the cool veil it shipped
+ * as, on every look at 0% and 50% charted and fully fogged at far, and 2.4x closer. Writes the dark
+ * measures for both to out/veil-measures.json.
+ */
+async function veil() {
+  const cols = [0, 0.5].flatMap((coverage) => VEIL_DIRS.map((d) => [`${d.id === 'D2d' ? 'cool' : 'warm'} ${pct(coverage)}`, { dir: d.id, coverage }]));
+  const far = VEIL_DIRS.map((d) => [`${d.id === 'D2d' ? 'cool' : 'warm'} 0%, far`, { dir: d.id, coverage: 0, cam: { d: 21.3 } }]);
+  await sheet({
+    title: 'D2d before and after the cool veil: warm (as picked) against cool (as shipped)',
+    note: `Warm: each parcel is its ramp's darkest step mixed toward space, so next to lava every fogged parcel read as lava's dark crust.\nCool: ${direction('D2d').rest}.\nThe src planet at t = ${LINEUP_T} s. The last two columns are fully fogged at depth level 2 (fade 0.72).`,
+    colLabels: [...cols, ...far].map((c) => c[0]),
+    scale: 2,
+    rows: LOOKS.map((l) => ({ label: `${l.look}\n(${l.band})`, cells: [...cols.map(([, c]) => tile({ ...c, biome: l.biome, seed: l.seed, moons: false }, CROP.disc)), ...far.map(([, c]) => tile({ ...c, biome: l.biome, seed: l.seed, moons: false }, [130, 60, 60, 60]))] })),
+  }, 'veil-before-after.png');
+  const close = [['lava', 11], ['toxic', 7], ['lush', 7], ['ice', 7]];
+  await sheet({
+    title: 'D2d before and after the cool veil, 2.4x closer at 50% charted (moons on)',
+    colLabels: close.map((c) => c[0]),
+    scale: 2,
+    rows: VEIL_DIRS.map((d) => ({ label: `${d.id} · ${d.name}`, cells: close.map(([biome, seed]) => ({ dir: d.id, biome, seed, coverage: 0.5, t: LINEUP_T, cam: 'close', crop: [70, 20, 180, 140] })) })),
+  }, 'veil-closeups.png');
+  const rows = await measureDark(VEIL_DIRS);
+  await writeFile(path.join(OUT, 'veil-measures.json'), `${JSON.stringify(rows, (k, v) => (typeof v === 'number' && !Number.isInteger(v) ? Number(v.toFixed(5)) : v))}\n`);
+  for (const ck of ['hero', 'far']) for (const d of VEIL_DIRS) {
+    const mine = rows.filter((r) => r.cond === ck && r.dir === d.id);
+    const worst = (key, keep) => Math.max(...mine.filter(keep).map((r) => r[key]));
+    console.log(`\n  ${ck} ${d.id}: near crust (non-lava, worst) ${pct(worst('crust', (r) => r.look !== 'lava'))}, near space ${pct(worst('space', () => true))}, limb ring near space ${pct(worst('limbNearSpace', () => true))}`);
+  }
+}
+
+/**
+ * The fogged haze, before and after: the looks with a lit-limb haze (ocean, ice, toxic) under D2d with
+ * the haze drawn over fogged cells (a band-coloured rim: a hint at health) and hidden there, at 0% and
+ * 50% charted and fully fogged at far, and 2.4x closer. Writes the dark measures (the limb against
+ * space) and the haze-coloured pixel counts for both to out/haze-measures.json.
+ */
+async function haze() {
+  const tag = (d) => (d.id === 'D2d' ? 'after' : 'before');
+  const cols = [0, 0.5].flatMap((coverage) => HAZE_DIRS.map((d) => [`${tag(d)} ${pct(coverage)}`, { dir: d.id, coverage }]));
+  const far = HAZE_DIRS.map((d) => [`${tag(d)} 0%, far`, { dir: d.id, coverage: 0, cam: { d: 21.3 } }]);
+  await sheet({
+    title: 'D2d\'s lit-limb haze, before and after: drawn over fogged cells, and fogged with them',
+    note: `Ocean, ice and toxic have a haze, a thin crescent of the band's own colour on the lit limb. Before, it showed over fogged land, so a fully fogged planet still said ocean, ice or toxic.\nAfter, the haze is hidden wherever the cell under it is fogged, and returns as each file is charted. The src planet at t = ${LINEUP_T} s. The last two columns are fully fogged at depth level 2 (fade 0.72).`,
+    colLabels: [...cols, ...far].map((c) => c[0]),
+    scale: 2,
+    rows: HAZE_LOOKS.map((l) => ({ label: `${l.look}\n(${l.band})`, cells: [...cols.map(([, c]) => tile({ ...c, biome: l.biome, seed: l.seed, moons: false }, CROP.disc)), ...far.map(([, c]) => tile({ ...c, biome: l.biome, seed: l.seed, moons: false }, [130, 60, 60, 60]))] })),
+  }, 'haze-before-after.png');
+  await sheet({
+    title: 'D2d\'s haze before and after, 2.4x closer, fully fogged and at 50% charted',
+    colLabels: HAZE_LOOKS.flatMap((l) => [`${l.look} 0%`, `${l.look} 50%`]),
+    scale: 2,
+    rows: HAZE_DIRS.map((d) => ({ label: `${d.id}\n${d.name}`, cells: HAZE_LOOKS.flatMap((l) => [0, 0.5].map((coverage) => ({ dir: d.id, biome: l.biome, seed: l.seed, coverage, t: LINEUP_T, cam: 'close', moons: false, crop: [70, 20, 180, 140] }))) })),
+  }, 'haze-closeups.png');
+  const rows = (await measureDark(HAZE_DIRS)).filter((r) => HAZE_LOOKS.some((l) => l.look === r.look));
+  // haze-coloured pixels anywhere in the frame (depth off), fully fogged and fully charted
+  for (const r of rows) {
+    const l = lookOf(r.look), h = hexToOklab(V2_PLANET_RAMPS.haze[l.biome]);
+    const cam = heroCam(CONDITIONS.find((c) => c.key === r.cond));
+    const count = async (coverage) => (await frames({ dir: r.dir, biome: l.biome, seed: l.seed, moons: false, coverage, cam }, [3, 9], ['flat'])).reduce((n, f) => {
+      for (let p = 0; p < f.flat.data.length; p += 4) if (dE(labAt(f.flat.data, p), h) < 0.05) n++;
+      return n;
+    }, 0);
+    r.hazePx = await count(0);
+    r.hazePxCharted = await count(1);
+  }
+  await writeFile(path.join(OUT, 'haze-measures.json'), `${JSON.stringify(rows, (k, v) => (typeof v === 'number' && !Number.isInteger(v) ? Number(v.toFixed(5)) : v))}\n`);
+  console.log('');
+  for (const r of rows) console.log(`  ${r.cond} ${r.look} ${r.dir}: haze px ${r.hazePx} (charted ${r.hazePxCharted}), limb median dE from space ${r.limbFog.toFixed(3)} (clear ${r.limbClear.toFixed(3)}), ring near space ${pct(r.limbNearSpace)}`);
+}
+
 // ---------------------------------------------------------------- measures
 const heroCam = (cond) => ({ pos: camPos(cond), target: [0, 0, 0] });
 
@@ -513,7 +591,7 @@ async function measureF8() {
  *   limb: the outer 2 px ring of the disc, its median OKLab distance from space, fogged and clear,
  *   and the share of the ring within 0.03 of space.
  */
-async function measureDark() {
+async function measureDark(dirs = DARK_DIRS) {
   const out = [];
   const space = hexToOklab(SPACE);
   const crust = V2_PLANET_RAMPS.crust.map(hexToOklab);
@@ -524,7 +602,7 @@ async function measureDark() {
     for (const l of LOOKS) {
       const night = BIOME_RAMPS[l.biome].map((k) => hexToOklab(V2_PLANET_RAMPS[k][0]));
       const clear = await frames({ biome: l.biome, seed: l.seed, moons: false, coverage: 1, cam }, [3, 9], ['final']);
-      for (const d of DARK_DIRS) {
+      for (const d of dirs) {
         const fr = await frames({ dir: d.id, biome: l.biome, seed: l.seed, moons: false, coverage: 0, cam }, [3, 9], ['final', 'flat', 'mask-clouds']);
         let n = 0, nSpace = 0, nNight = 0, nCrust = 0;
         const limbF = [], limbC = [];
@@ -589,7 +667,7 @@ if (names.length === 1 && names[0] === 'report') {
   const browser = await launch();
   try {
     page = await openLab(browser);
-    const run = { lineups, compare, d2, closeups, reasons, footprint, coexist, loops, events, dark, final, measures };
+    const run = { lineups, compare, d2, closeups, reasons, footprint, coexist, loops, events, dark, final, veil, haze, measures };
     for (const n of names) {
       if (!run[n] && n !== 'report') throw new Error(`unknown output ${n}`);
       if (n === 'report') continue;

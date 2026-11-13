@@ -52,6 +52,11 @@ const SHOTS = {
   'debris-catalogue': { viewport: { width: 1920, height: 1800 }, open: 'debris-3', act: async (page) => {
     await page.evaluate(() => document.querySelector('[data-id="debris-0"]').scrollIntoView({ block: 'start' }));
   } },
+  // fog of war (R5): the inspector's fog section on the lush hero at 50% charted, and the Fog group
+  'inspector-fog': { open: 'fog-17' },
+  'fog-catalogue': { viewport: { width: 1920, height: 1800 }, open: 'fog-17', act: async (page) => {
+    await page.evaluate(() => document.querySelector('[data-id="fog-0"]').scrollIntoView({ block: 'start' }));
+  } },
   // the star (star-art.md): the inspector with moonlets, the star system scene in the composer, and the Star group
   'inspector-star': { open: 'star-2' },
   'star-system': { open: 'star-3' },
@@ -70,9 +75,10 @@ const SHOTS = {
   'history-depth': { set: history('depth', 2, 5), archive: true }, // the reverted colour budgets beside pixel-smooth
   'history-planets': { set: history('planets', 5), archive: true }, // the health bands, worst to best
   'history-lab': { set: history('crew', 7, -1, { option: 2 }), archive: true }, // lab variant C, live
-  'history-drones': { set: history('drones', 5, 4, { option: 2 }), archive: true }, // the live Copilot drone beside D-final (archived)
+  'history-drones': { set: history('drones', 6, 4, { option: 2 }), archive: true }, // the live Copilot drone beside D-final (archived)
   'history-no-archive': { set: history('crew', 3) }, // the same view without the archive
   'history-debris': { set: history('debris', 0, 2, { option: 1 }), archive: true }, // direction B (junkyard), live through the debris lab's kits, beside the final A3
+  'history-fog': { set: history('fog', 2, 4, { option: 2 }), archive: true }, // D2c (veiled), live through the fog lab's looks, beside the final D2d
 };
 
 const wanted = process.argv.slice(2);

@@ -672,12 +672,14 @@ const SHADOW_FRAG = PLANET_FRAG.replace(/void main\(\) \{[\s\S]*\}\s*$/, `in vec
 // Fog hook (the fog lab, mockups/fog-lab/; off by default). A fog spec's GLSL is spliced in before a
 // shader's main() and wraps the body's colour: it defines vec3 fog(vec3 p, int b, vec3 c), with p
 // the point on the unit sphere in the body's own frame, b its light band and c its colour before the
-// depth fade. The planet surface and its cloud shadow get spec.glsl, each moon spec.moon.glsl.
+// depth fade. The planet surface and its cloud shadow get spec.glsl, each moon spec.moon.glsl; the
+// haze gets spec.haze.glsl, which defines bool fogHaze(vec3 w) (true: discard the haze pixel at world w).
 // Without a spec, makePlanet() builds the shipped shaders byte for byte.
 const FOG_SPLICE = {
   surface: ['vec4(artefacts(p, b, surface(p, b)), 1.0)', 'vec4(fog(p, b, artefacts(p, b, surface(p, b))), 1.0)'],
   shadow: ['depthFade(surface(p, b - 1), vPosW, 1.0)', 'depthFade(fog(p, b - 1, surface(p, b - 1)), vPosW, 1.0)'],
   moon: ['depthFade(uRamp[band(normalize(vNormalW))], vPosW, 1.0)', 'depthFade(fog(normalize(vLocal), band(normalize(vNormalW)), uRamp[band(normalize(vNormalW))]), vPosW, 1.0)'],
+  haze: ['gl_FragColor = vec4(depthFade(uHaze, vPosW, 1.0), 1.0);', 'if (fogHaze(vPosW)) discard;\n    gl_FragColor = vec4(depthFade(uHaze, vPosW, 1.0), 1.0);'],
 };
 function withFog(frag, glsl, [from, to]) {
   const at = frag.lastIndexOf('void main()');
@@ -923,7 +925,7 @@ export const DEBRIS_COUNTS = [0, 1, 3, 8, 24];
 export const { makeStar } = starFactory({ vert: VERT, noise: NOISE, depthGlsl: DEPTH_GLSL, depthUniforms, loop: LOOP, moonMaterial, moonGeo: MOON_GEO });
 export { STAR, STAR_DEFAULTS };
 
-/** fog: null (the default) or the fog lab's spec { glsl, uniforms, moon: { glsl, uniforms: [one per moon] } } (FOG_SPLICE). */
+/** fog: null (the default) or a fog spec (fog.js fogSpec: { glsl, uniforms, moon: { glsl, uniforms: [one per moon] }, haze: { glsl } }, FOG_SPLICE). */
 export function makePlanet({ fog = null } = {}) {
   const group = new THREE.Group();
   group.userData.depthFamily = 'planet'; // planet tint slot of the per-pixel depth fade
@@ -941,7 +943,7 @@ export function makePlanet({ fog = null } = {}) {
   spin.add(surface);
   group.add(spin);
 
-  const hazeMat = paletteMaterial(HAZE_FRAG, { uHaze: 'glint' });
+  const hazeMat = fog ? paletteMaterial(withFog(HAZE_FRAG, fog.haze.glsl, FOG_SPLICE.haze), { uHaze: 'glint' }, { ...fog.uniforms }) : paletteMaterial(HAZE_FRAG, { uHaze: 'glint' });
   const haze = new THREE.Mesh(PLANET_GEO, hazeMat);
   haze.scale.setScalar(1.06);
   group.add(haze);
@@ -972,6 +974,7 @@ export function makePlanet({ fog = null } = {}) {
     vertexShader: SHADOW_VERT, fragmentShader: fog ? withFog(SHADOW_FRAG, fog.glsl, FOG_SPLICE.shadow) : SHADOW_FRAG, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     uniforms: { ...surfaceMat.uniforms, uCenter: { value: new THREE.Vector3() }, uRadius: { value: 1 }, uToSurface: { value: new THREE.Matrix4() } },
   });
+  if (fog) hazeMat.uniforms.uToSurface = shadowMat.uniforms.uToSurface; // the fogged haze finds its cell in the surface's frame
   const shadow = new THREE.InstancedMesh(puffGeo, shadowMat, MAX_PUFFS);
   shadow.instanceMatrix = puffs.instanceMatrix;
   shadow.frustumCulled = puffs.frustumCulled = false; // instances span the whole planet

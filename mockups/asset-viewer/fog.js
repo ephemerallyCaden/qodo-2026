@@ -22,7 +22,8 @@
 // charted land and in the planet's label. The parcel has faint drifting hatching, a dim outline (the
 // human's fog-only exception to §3's no-outlines rule, in the planet's own darks, gone once the file
 // is charted) and, on half the big parcels, a "?". Its limb is the halo colour, one step above space,
-// so a fully fogged planet's silhouette never merges into space. The veil's mixes are new colours,
+// so a fully fogged planet's silhouette never merges into space. The lit-limb haze (ocean, ice, toxic) is hidden
+// over fogged cells, so no band-coloured rim gives the band away. The veil's mixes are new colours,
 // the human's exception to the filter rule (§9); the only other colour fog adds is teal, on events.
 // Fog sits on top of artefacts: an artefact sector in a fogged cell is fogged too.
 //
@@ -30,7 +31,7 @@
 // look draws through this one shader path; a planet's shader holds the looks registered when its
 // spec was made, and uFogDir picks one.
 import * as THREE from 'three';
-import { SURFACE_CELLS, TEX_ROWS, COVER_256, stateAt, cellData, fibonacciCell, MOON_CHARTED_FROM, EVENT } from './fog-layout.js';
+import { SURFACE_CELLS, TEX_ROWS, COVER_256, stateAt, cellData, fibonacciCell, moonStateAt } from './fog-layout.js';
 import { ACCENTS } from './planet-ramps.js';
 
 /** Cells searched either side of p's latitude: 1.7 covering radii (the second-nearest cell too, for the outlines). */
@@ -63,22 +64,9 @@ export const glsl = (x) => x.toFixed(4);
 /** '#rrggbb' -> a GLSL vec3 literal (exact bytes: these colours reach the screen untouched, before the depth fade). */
 const vec3Of = (hex) => `vec3(${[1, 3, 5].map((i) => (parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(6)).join(', ')})`;
 
-// Uses PLANET_FRAG's surface(), band(), snoise(), gPx, gRadiusPx, uViewSize, uA/uB/uC/uG and uBiome,
-// and artefacts.js's invL(), aluma() and ah().
-const FOG_CORE = /* glsl */ `
-  uniform int uFogOn;              // 0: fog() returns c untouched
-  uniform int uFogDir;             // the look (registerFogLook order; 0 is D2d)
-  uniform int uFogDebug;           // 1: stage colours (r rest, g thin, b rim/core); 2: cell ids
-  uniform highp sampler2D uFogCells; // ${SURFACE_CELLS} x ${TEX_ROWS} RGBA float (fog-layout.js cellData)
-  uniform float uFogPhase;         // the shared loop's phase, 0..1 (ambient drift: whole cycles per loop)
-  uniform vec4 uFogPulse;          // the planet-clear pulse: xyz origin (planet frame), w progress (0: none)
-  uniform vec3 uFogAcc[4];         // [OIII] teal, events only
-  uniform vec3 uFogSpace;          // the space colour (the dark veil mixes toward it)
-  uniform vec3 uFogRim;            // one step above space (the halo colour): the fogged limb
+// The cell texture lookup and the grid search (needs uFogCells): the planet's fog and its haze's.
+const FOG_GRID = /* glsl */ `
   const int FOG_N = ${SURFACE_CELLS}, FOG_WIN = ${FOG_WINDOW};
-  const int FOG_QMARK = ${mask(QMARK)};
-  const vec3 VEIL_NIGHT = ${vec3Of(VEIL.night)}, VEIL_LIT = ${vec3Of(VEIL.lit)}, VEIL_LINE = ${vec3Of(VEIL.line)}, VEIL_HATCH = ${vec3Of(VEIL.hatch)}, VEIL_MARK = ${vec3Of(VEIL.mark)};
-
   vec4 fogTex(int i, int row) { return texelFetch(uFogCells, ivec2(i, row), 0); }
 
   // The nearest grid cell to p, and the second nearest (angles in rad). The cells within the grid's
@@ -96,7 +84,24 @@ const FOG_CORE = /* glsl */ `
     a2 = acos(clamp(b2, -1.0, 1.0));
     return i1;
   }
+`;
 
+// Uses PLANET_FRAG's surface(), band(), snoise(), gPx, gRadiusPx, uViewSize, uA/uB/uC/uG and uBiome,
+// and artefacts.js's invL(), aluma() and ah().
+const FOG_CORE = /* glsl */ `
+  uniform int uFogOn;              // 0: fog() returns c untouched
+  uniform int uFogDir;             // the look (registerFogLook order; 0 is D2d)
+  uniform int uFogDebug;           // 1: stage colours (r rest, g thin, b rim/core); 2: cell ids
+  uniform highp sampler2D uFogCells; // ${SURFACE_CELLS} x ${TEX_ROWS} RGBA float (fog-layout.js cellData)
+  uniform float uFogPhase;         // the shared loop's phase, 0..1 (ambient drift: whole cycles per loop)
+  uniform vec4 uFogPulse;          // the planet-clear pulse: xyz origin (planet frame), w progress (0: none)
+  uniform vec3 uFogAcc[4];         // [OIII] teal, events only
+  uniform vec3 uFogSpace;          // the space colour (the dark veil mixes toward it)
+  uniform vec3 uFogRim;            // one step above space (the halo colour): the fogged limb
+  const int FOG_QMARK = ${mask(QMARK)};
+  const vec3 VEIL_NIGHT = ${vec3Of(VEIL.night)}, VEIL_LIT = ${vec3Of(VEIL.lit)}, VEIL_LINE = ${vec3Of(VEIL.line)}, VEIL_HATCH = ${vec3Of(VEIL.hatch)}, VEIL_MARK = ${vec3Of(VEIL.mark)};
+
+${FOG_GRID}
   vec3 fogRamp(int r, int i) { return r == 0 ? uA[i] : r == 1 ? uB[i] : r == 2 ? uC[i] : uG[min(i, 2)]; }
   // c moved k distinct steps along the ramp it came from (darker < 0 < lighter), stopping at the ends.
   // A colour in no ramp (an artefact's inverted cell) comes back unchanged.
@@ -286,28 +291,53 @@ ${looks.map((l, k) => `    if (uFogDir == ${k}) return ${l.moonCall};`).join('\n
   }
 `;
 
+// The lit-limb haze (ocean, ice and toxic have one) over a fogged cell: the band's haze colour would
+// show through the fog, a hint at the planet's health, so for looks that hide health (hidesHaze: D2d)
+// it's discarded there. The cell is the one under the haze pixel, straight down to the surface
+// (uToSurface: world -> the turning surface's frame, the cloud shadow's). An event's front is the
+// surface's, eased the same way, without its px-wide bands and wobble (the haze is a few px wide).
+const hazeMain = (looks) => /* glsl */ `
+  uniform int uFogOn;
+  uniform int uFogDir;
+  uniform highp sampler2D uFogCells;
+  uniform mat4 uToSurface;
+${FOG_GRID}
+  bool fogHaze(vec3 w) {
+    if (uFogOn == 0 || !(${looks.flatMap((l, k) => (l.hidesHaze ? [`uFogDir == ${k}`] : [])).join(' || ') || 'false'})) return false;
+    vec3 p = normalize((uToSurface * vec4(w, 1.0)).xyz);
+    float a1, a2;
+    int i2;
+    int i = fogNearest(p, a1, i2, a2);
+    vec4 st = fogTex(i, 0), ev = fogTex(i, 1);
+    if (ev.x < 0.5) return st.x > 0.5;
+    float d = acos(clamp(dot(p, fogTex(int(st.z), 2).xyz), -1.0, 1.0)), s = ev.y;
+    return d > st.w * (ev.x < 1.5 ? 1.0 - (1.0 - s) * (1.0 - s) : 1.0 - s * s * (3.0 - 2.0 * s));
+  }
+`;
+
 // ---------------------------------------------------------------- looks
 const LOOKS = [];
 /**
- * Adds a fog look to every fog spec made from now on. look: { id, call, glsl?, moonCall, moonGlsl? }:
- * glsl defines the look's functions (after the core helpers), call is the GLSL expression fog()
- * returns for it; the same for moons. Returns its index (uFogDir). Registering an id twice is a no-op.
+ * Adds a fog look to every fog spec made from now on. look: { id, call, glsl?, moonCall, moonGlsl?,
+ * hidesHaze? }: glsl defines the look's functions (after the core helpers), call is the GLSL
+ * expression fog() returns for it; the same for moons. hidesHaze: the planet's lit-limb haze is hidden
+ * over fogged cells (fogHaze). Returns its index (uFogDir). Registering an id twice is a no-op.
  */
 export function registerFogLook(look) {
   const k = LOOKS.findIndex((l) => l.id === look.id);
   if (k >= 0) return k;
-  LOOKS.push({ glsl: '', moonGlsl: '', ...look });
+  LOOKS.push({ glsl: '', moonGlsl: '', hidesHaze: false, ...look });
   return LOOKS.length - 1;
 }
 /** The uFogDir of a registered look (-1 if none). */
 export const fogLookIndex = (id) => LOOKS.findIndex((l) => l.id === id);
 export const fogLookIds = () => LOOKS.map((l) => l.id);
-registerFogLook({ id: 'D2d', call: 'fogVeil(p, c, b, i, st, a1, i2, a2, thin)', moonCall: 'moonVeil(p, b, c, thin, px, ink)' });
+registerFogLook({ id: 'D2d', call: 'fogVeil(p, c, b, i, st, a1, i2, a2, thin)', moonCall: 'moonVeil(p, b, c, thin, px, ink)', hidesHaze: true });
 
 // ---------------------------------------------------------------- specs and driving
 /**
  * A fog spec for makePlanet({ fog }): the GLSL of every look registered so far, the uniforms of one
- * planet (shared by its surface and cloud shadow) and its two moons, and the cell texture. The caller
+ * planet (shared by its surface, cloud shadow and haze) and its two moons, and the cell texture. The caller
  * owns the uniform objects; driveFog() writes them. extra: more uniforms for registered looks.
  */
 export function fogSpec({ extra = {} } = {}) {
@@ -325,6 +355,7 @@ export function fogSpec({ extra = {} } = {}) {
     glsl: FOG_CORE + looks.map((l) => l.glsl).join('\n') + fogMain(looks),
     uniforms,
     moon: { glsl: MOON_CORE + looks.map((l) => l.moonGlsl).join('\n') + moonMain(looks), uniforms: moons },
+    haze: { glsl: hazeMain(looks) }, // its uniforms: the planet's (uniforms) and the cloud shadow's uToSurface
     data, tex, view, looks: looks.map((l) => l.id),
   };
 }
@@ -350,16 +381,8 @@ export function driveFog(spec, { layout, coverage = 0.5, fogged = null, events =
     U.uFogPulse.value.set(...fibonacciCell(anchor, SURFACE_CELLS), Math.max(1e-4, st.pulse.progress));
   } else U.uFogPulse.value.w = 0;
   spec.moon.uniforms.forEach((u, i) => {
-    const evs = moonEvents.filter((x) => x.moon === i).sort((p, q) => p.at - q.at);
-    // a moon's state before its first event is that event's starting state (a clear starts fogged)
-    let fog = evs.length ? (evs[0].kind === 'clear' ? 1 : 0) : coverage < MOON_CHARTED_FROM[i] ? 1 : 0, kind = 0, progress = 0;
-    for (const e of evs) {
-      const s = (t - e.at) / EVENT[e.kind];
-      if (s < 0) continue;
-      if (s < 1) [kind, progress] = [e.kind === 'clear' ? 1 : 2, s];
-      else [fog, kind] = [e.kind === 'clear' ? 0 : 1, 0];
-    }
-    u.uMoonFog.value.set(kind ? 0 : fog, kind, progress, 0);
+    const m = moonStateAt(i, { coverage, moonEvents, t });
+    u.uMoonFog.value.set(m.fogged ? 1 : 0, m.kind, m.progress, 0);
   });
   return st;
 }

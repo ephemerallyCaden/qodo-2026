@@ -45,7 +45,7 @@ test('R9: no Nov 3 meanings and no acid lime outside the history view', () => {
 });
 
 test('R10: every family is a dated timeline, oldest to final, each step saying what changed and why', () => {
-  assert.deepEqual(H.FAMILY_IDS, ['crew', 'planets', 'toxic', 'lava', 'clouds', 'rings', 'debris', 'palettes', 'depth', 'fx', 'drones']);
+  assert.deepEqual(H.FAMILY_IDS, ['crew', 'planets', 'toxic', 'lava', 'clouds', 'rings', 'debris', 'fog', 'palettes', 'depth', 'fx', 'drones']);
   const rows = [];
   for (const f of H.FAMILIES) {
     assert.ok(f.title && f.note, f.id);

@@ -3,7 +3,8 @@
 // decision (route()). URL paths mirror mockups/: the page is /asset-library/, and it imports the
 // asset viewer's modules (../asset-viewer/*.js), the astronaut lab's
 // (../explorations/astronaut-lab/*.js), the drone lab's (../drone-lab/*.js) and the debris lab's
-// (../debris-lab/*.js: its exploration kits, for the history) read-only. three comes from this package's own
+// (../debris-lab/*.js: its exploration kits, for the history) and the fog lab's (../fog-lab/*.js: its
+// fog looks, for the history) read-only. three comes from this package's own
 // node_modules (the same pinned 0.187.0).
 //
 // The local art archive (R11) is served read-only at /art-archive/<path>: only the images the
@@ -22,7 +23,7 @@ export const MIME = { '.html': 'text/html', '.js': 'text/javascript' };
 export const IMAGE_MIME = { '.png': 'image/png', '.gif': 'image/gif' };
 export const ARCHIVE_PREFIX = '/art-archive/';
 
-// Allowed path patterns (relative to mockups/). Top-level module files only for the four
+// Allowed path patterns (relative to mockups/). Top-level module files only for the five
 // read-only imports, so their tests, debug probes, outputs and node_modules are never served.
 const ALLOW = [
   /^asset-library\/(index\.html|[\w-]+\.js)$/,
@@ -31,6 +32,7 @@ const ALLOW = [
   /^explorations\/astronaut-lab\/[\w-]+\.js$/,
   /^drone-lab\/[\w-]+\.js$/,
   /^debris-lab\/[\w-]+\.js$/,
+  /^fog-lab\/[\w-]+\.js$/,
 ];
 
 /** A URL pathname -> an absolute file under mockups/, or null when it isn't allowed. */
