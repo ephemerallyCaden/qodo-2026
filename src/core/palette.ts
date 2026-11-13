@@ -22,6 +22,7 @@ interface PaletteShape {
   readonly world: { readonly [role: string]: Hex | Ramp | readonly DepthStep[] | { readonly [biome: string]: Hex } };
   readonly crew: { readonly [role: string]: Hex | Ramp | { readonly [key: string]: Ramp } };
   readonly accent: { readonly teal: Ramp };
+  readonly drone: { readonly [look: string]: { readonly [role: string]: Ramp } };
 }
 
 const PALETTE = {
@@ -82,6 +83,29 @@ const PALETTE = {
       coral: ['#3f233c', '#872a38', '#cc5250', '#ff6866'],
       mint: ['#14665b', '#22896e', '#42bc7f', '#8cff9b'],
       lilac: ['#643499', '#8c51cc', '#b991f2', '#a5e6ff'],
+    },
+  },
+  /**
+   * Agent drones (docs/features/agent-drones.md), BLK 36 only, from the drone lab's palettes. Each look is
+   * four-band ramps (dark → light) for the shell, trim, accent (legs) and smoke; the face screen takes
+   * `crew.visor` and `crew.glint`, and the glow is `accent.teal`.
+   */
+  drone: {
+    generic: {
+      shell: ['#293268', '#464b8c', '#6b74b2', '#909edd'],
+      trim: ['#6b74b2', '#909edd', '#c1d9f2', '#ffffff'],
+      accent: ['#36277f', '#354ab2', '#4185d8', '#5ab9e5'],
+      smoke: ['#909edd', '#c1d9f2', '#ffffff'],
+    },
+    // Clawd's terracotta sits between BLK 36's reds and its orange: the lit front takes the orange, turned faces the red.
+    claude: {
+      shell: ['#3f233c', '#872a38', '#cc5250', '#ff965f'],
+      trim: ['#3f233c', '#872a38', '#cc5250', '#ff6866'],
+      accent: ['#3f233c', '#872a38', '#cc5250', '#ff965f'],
+      smoke: ['#ff965f', '#ffe091', '#ffffff'],
+      // Seeded per-session trims (the lab's brands.js `trims`): `trim`, then these two.
+      trimB: ['#3f233c', '#872a38', '#cc5250', '#ff965f'],
+      trimC: ['#872a38', '#cc5250', '#ff965f', '#ffe091'],
     },
   },
   /** [OIII] teal: code-layer events only (reveals, HUD marks), under ~10% of the frame. */
