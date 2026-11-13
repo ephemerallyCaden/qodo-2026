@@ -5,7 +5,9 @@ import { lstatSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJson } from '../core/canonical-json.js';
 import type { ChartResult } from '../core/contract/api.js';
+import type { DroneView } from '../core/contract/drones.js';
 import type { ChartAction, ChartUnknownHead, FogView } from '../core/contract/fog.js';
+import { droneView } from '../core/drones.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import {
   applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges, type ChartState, type FogBase,
@@ -309,4 +311,10 @@ export async function applyChart(repoDir: string, body: unknown): Promise<ChartR
   if (!action) return { ok: false, error: 'not a chart action' };
   const r = await writeChart(await openFogSource(repoDir), action);
   return r.ok ? { ok: true, fog: fogFrom(r.base, r.chart) } : r;
+}
+
+/** GET /api/drones (#80): the drone view, placed with the same file-to-planet map as the fog. State errors throw CommetError. */
+export async function readDrones(repoDir: string): Promise<DroneView> {
+  const { base } = await openFogSource(repoDir);
+  return droneView(base.snapshot, base.home);
 }

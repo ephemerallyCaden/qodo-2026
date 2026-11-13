@@ -2,6 +2,7 @@
 // Host-checked, token-gated data routes, no CORS. Surface: docs/contracts/phase2.md.
 import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from 'node:http';
 import { API, TOKEN_HEADER, type ChartResult, type DiffQuery, type DiffResult, type LiveEvent, type UnseenQuery, type UnseenResult } from '../core/contract/api.js';
+import type { DroneView } from '../core/contract/drones.js';
 import type { ChartAction, FogView } from '../core/contract/fog.js';
 import { CommetError } from '../core/errors.js';
 import { CHART_FILE } from '../state/chart.js';
@@ -26,6 +27,8 @@ export interface ServerOptions {
    * state error is a 500 with its user-facing message only.
    */
   chart?: (action: ChartAction) => Promise<ChartResult>;
+  /** #80: the drone view, from the same snapshot/layout pair as the fog. Without it, `GET /api/drones` answers 501. */
+  drones?: () => Promise<DroneView>;
   /** #75: a planet's or the star's fogged files. Without it, `GET /api/unseen` answers 501. */
   unseen?: (q: UnseenQuery) => Promise<UnseenResult>;
   /**
@@ -102,6 +105,12 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
       handle: async (_req, res) => o.fog
         ? sendJson(res, 200, await o.fog())
         : sendJson(res, 501, { error: 'fog view not available yet: fog lands with R5' }),
+    }],
+    [API.drones, {
+      method: 'GET',
+      handle: async (_req, res) => o.drones
+        ? sendJson(res, 200, await o.drones())
+        : sendJson(res, 501, { error: 'drone view not available' }),
     }],
     [API.chart, { method: 'POST', handle: (req, res) => chart(req, res) }],
     [API.beacon, {

@@ -2,6 +2,7 @@
 // JSON twins next to this file; test/contract.test.ts keeps them byte-equal to these values.
 // Three planets: src (healthy, no partner), web (toxic, partner src, moon overflow), docs
 // (ash, debt partly unknown, surface overflow). Root files and an unmatched test are moonlets.
+import type { DroneView } from '../../../src/core/contract/drones.js';
 import type { FogView } from '../../../src/core/contract/fog.js';
 import type { Health, LayoutV1 } from '../../../src/core/contract/layout.js';
 
@@ -100,4 +101,32 @@ export const miniFog: FogView = {
     { dirId: 'd_00000000000d', total: 3, fogged: 0 },
   ],
   star: { total: 5, fogged: 1 },
+};
+
+// Drone view of the same repo: a placed main session (on the src planet) with an inheriting subagent,
+// a star drone, and an unplaced session. Sorted by key; counts match.
+export const miniDrones: DroneView = {
+  schemaVersion: 'drones.1',
+  head: HEAD,
+  sessions: [
+    {
+      key: 's_aaaaaaaaaaaa', seed: 2864434397, tool: 'claude-code', kind: 'main', parentKey: null, agentType: null,
+      startedAt: '2026-10-01T09:00:00Z', endedAt: '2026-10-01T10:30:00Z', branch: 'main', model: 'claude-opus-4', inferred: false, home: 'd_00000000000a',
+    },
+    {
+      key: 's_aaaaaaaaaaaa.sub1', seed: 305419896, tool: 'claude-code', kind: 'subagent', parentKey: 's_aaaaaaaaaaaa', agentType: 'Explore',
+      startedAt: '2026-10-01T09:10:00Z', endedAt: '2026-10-01T09:20:00Z', branch: 'main', model: null, inferred: false, home: 'd_00000000000a',
+    },
+    {
+      key: 's_bbbbbbbbbbbb', seed: 1, tool: 'claude-code', kind: 'main', parentKey: null, agentType: null,
+      startedAt: '2026-10-02T09:00:00Z', endedAt: '2026-10-02T09:05:00Z', branch: null, model: null, inferred: false, home: 'star',
+    },
+    {
+      key: 's_cccccccccccc', seed: 4294967295, tool: 'claude-code', kind: 'main', parentKey: null, agentType: null,
+      startedAt: '2026-10-03T09:00:00Z', endedAt: '2026-10-03T09:05:00Z', branch: 'feature/x', model: null, inferred: false, home: null,
+    },
+  ],
+  total: 4,
+  placed: 3,
+  needsRescan: false,
 };

@@ -5,10 +5,10 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/core/canonical-json.js';
 import { fibonacciCell } from '../src/core/contract/layout.js';
-import { miniFog, miniLayout } from './fixtures/contract/mini.js';
+import { miniDrones, miniFog, miniLayout } from './fixtures/contract/mini.js';
 
 const DIR = join(import.meta.dirname, 'fixtures/contract');
-const twins = [['mini.layout.json', miniLayout], ['mini.fog.json', miniFog]] as const;
+const twins = [['mini.layout.json', miniLayout], ['mini.fog.json', miniFog], ['mini.drones.json', miniDrones]] as const;
 
 describe('Phase 2 contract fixtures', () => {
   for (const [name, value] of twins) {
@@ -40,6 +40,16 @@ describe('Phase 2 contract fixtures', () => {
     const total = miniFog.star.total + miniFog.planets.reduce((n, p) => n + p.total, 0);
     expect(total).toBe(ids.length);
     for (const f of miniFog.files) expect(f.reasons.length > 0).toBe(f.state === 'fogged');
+  });
+
+  it('drones are sorted, counted, and carry no counts or paths (Rules 2 and 6)', () => {
+    const keys = miniDrones.sessions.map((s) => s.key);
+    expect(keys).toEqual([...keys].sort());
+    expect(miniDrones.total).toBe(keys.length);
+    expect(miniDrones.placed).toBe(miniDrones.sessions.filter((s) => s.home !== null).length);
+    const homes = new Set<string>([...miniLayout.planets.map((p) => p.dirId), 'star']);
+    for (const s of miniDrones.sessions) expect(s.home === null || homes.has(s.home)).toBe(true);
+    expect(JSON.stringify(miniDrones)).not.toMatch(/filesTouched|linesAdded|linesRemoved|commits|"path"|subject/);
   });
 
   it('fibonacciCell gives unit vectors from the north pole down', () => {

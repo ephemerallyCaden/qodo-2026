@@ -189,7 +189,7 @@ describe('R14 server on a real socket', () => {
   describe('AC 3: token on every data and write route', () => {
     it('refuses a missing, wrong, or URL-borne token on every API route', async () => {
       const wrong = `${f.token.slice(0, -1)}${f.token.endsWith('A') ? 'B' : 'A'}`;
-      const routes: [string, string][] = [[API.snapshot, 'GET'], [API.layout, 'GET'], [API.fog, 'GET'], [API.events, 'GET'],
+      const routes: [string, string][] = [[API.snapshot, 'GET'], [API.layout, 'GET'], [API.fog, 'GET'], [API.drones, 'GET'], [API.events, 'GET'],
         [API.chart, 'POST'], [API.beacon, 'POST'], [`${API.unseen}?home=star&at=${AT}`, 'GET'],
         [`${API.diff}?fileId=f_000000000001&at=${AT}`, 'GET'], ['/api/nope', 'GET']];
       for (const [path, method] of routes) {
@@ -238,7 +238,7 @@ describe('R14 server on a real socket', () => {
 
     it('refuses every other method on every route', async () => {
       const cases: [string, string, number][] = [
-        ['POST', API.snapshot, 405], ['PUT', API.layout, 405], ['DELETE', API.fog, 405], ['GET', API.chart, 405], ['PUT', API.chart, 405],
+        ['POST', API.snapshot, 405], ['PUT', API.layout, 405], ['DELETE', API.fog, 405], ['POST', API.drones, 405], ['PUT', API.drones, 405], ['DELETE', API.drones, 405], ['GET', API.chart, 405], ['PUT', API.chart, 405],
         ['GET', API.beacon, 405], ['POST', API.events, 405], ['PATCH', API.snapshot, 405], ['HEAD', API.snapshot, 405],
         ['OPTIONS', API.snapshot, 405], ['GET', '/api', 404], ['GET', '/api/state', 404], ['GET', '/api/snapshot/', 404],
         ['POST', API.diff, 405], ['PUT', API.diff, 405], ['DELETE', API.unseen, 405], ['POST', API.unseen, 405], ['GET', `${API.diff}/`, 404],
