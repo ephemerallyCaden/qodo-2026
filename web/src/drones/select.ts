@@ -55,6 +55,13 @@ export function droneLabels(s: DroneSession): { label: string | null; selectedLa
 /** What the scene draws for a placed session. */
 export const entryOf = (s: DroneSession): FleetEntry => ({ key: s.key, seed: s.seed, tool: s.tool, home: s.home!, ...droneLabels(s) });
 
+/** At most `max` of the placed labels (nearest first), the selected drone's always among them when it has one. */
+export function capLabels<T>(placed: readonly T[], isSelected: (p: T) => boolean, max: number): T[] {
+  const chosen = placed.filter(isSelected).slice(0, Math.max(0, max));
+  for (const p of placed) if (chosen.length < max && !isSelected(p)) chosen.push(p);
+  return placed.filter((p) => chosen.includes(p)); // keep the nearest-first order
+}
+
 /** `2026-11-13T09:30:00.000Z` → `2026-11-13 09:30:00 UTC`. */
 export const utc = (iso: string): string => iso.replace('T', ' ').replace(/\.\d+Z$|Z$/, '') + ' UTC';
 

@@ -9,7 +9,7 @@ import { parseDrones } from '../../web/src/data/client.js';
 import { checkDrones } from '../../web/src/drones/check.js';
 import { DRONE_TURNS, placeDrone } from '../../web/src/drones/place.js';
 import { pick } from '../../web/src/camera/pose.js';
-import { DRONE_CAP, droneLabels, droneRows, droneStatus, entryOf, selectDrones } from '../../web/src/drones/select.js';
+import { capLabels, DRONE_CAP, droneLabels, droneRows, droneStatus, entryOf, selectDrones } from '../../web/src/drones/select.js';
 import { LOOP_FRAMES } from '../../web/src/model/motion.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { miniDrones, miniLayout } from '../fixtures/contract/mini.js';
@@ -158,6 +158,24 @@ describe('orbits (AC 5, Rule 4)', () => {
     expect(dist(at(0).centre, [c, 0, 0])).toBeGreaterThan(planet.radius);
     expect(at(0, 1).centre).not.toEqual(at(0, 2).centre);
     expect(placeDrone(model, 'd_nowhere', 1, 0)).toBeNull();
+  });
+});
+
+describe('drone labels and duplicate keys (Qodo PR #127 r2)', () => {
+  it("keeps the selected drone's label when more nearer drones have one than the budget allows", () => {
+    const placed = Array.from({ length: 12 }, (_, i) => ({ i }));
+    const got = capLabels(placed, (p) => p.i === 11, 8);
+    expect(got).toHaveLength(8);
+    expect(got.map((p) => p.i)).toEqual([0, 1, 2, 3, 4, 5, 6, 11]);
+    expect(capLabels(placed, () => false, 3).map((p) => p.i)).toEqual([0, 1, 2]);
+    expect(capLabels(placed, () => false, 0)).toEqual([]);
+  });
+
+  it('refuses a view with two sessions of one key, so a click never opens another session', () => {
+    const v = structuredClone(droneView(HEAD, [session(1, 'star'), session(2, 'star')]));
+    v.sessions[1]!.key = v.sessions[0]!.key;
+    const c = checkDrones(v);
+    expect(c.ok ? '' : c.errors.join(';')).toMatch(/unique/);
   });
 });
 

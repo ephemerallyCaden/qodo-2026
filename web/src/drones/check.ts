@@ -41,6 +41,8 @@ export function checkDrones(v: unknown): Checked<DroneView> {
   if (typeof v['head'] !== 'string' || !HEX.test(v['head'])) errors.push('head must be a full commit SHA');
   const sessions = Array.isArray(v['sessions']) ? v['sessions'] : (errors.push('sessions must be an array'), []);
   sessions.forEach((s, i) => checkSession(s, `sessions[${i}]`, errors));
+  const keys = sessions.flatMap((s) => (isObj(s) && typeof s['key'] === 'string' ? [s['key']] : []));
+  if (new Set(keys).size !== keys.length) errors.push('session keys must be unique');
   const homed = sessions.filter((s) => isObj(s) && s['home'] !== null).length;
   if (v['total'] !== sessions.length) errors.push('total must be the number of sessions');
   if (v['placed'] !== homed) errors.push('placed must be the number of sessions with a home');

@@ -13,6 +13,7 @@ import { placeLabels } from './labels/place.js';
 import { SHARED } from './render/materials.js';
 import { PixelPass } from './render/pixel.js';
 import type { FleetEntry } from './render/drone-fleet.js';
+import { capLabels } from './drones/select.js';
 import { SystemScene } from './render/scene.js';
 
 /** A drone's smallest clickable size, as a share of half the frame height (a planet's is 0.04). */
@@ -206,7 +207,8 @@ export class View {
     const wanted = entries.flatMap((e, i) => (at[i] && (e.label !== null || e.key === this.selectedDrone) ? [i] : []));
     const spheres = wanted.map((i) => at[i]!);
     const blockers = [...s.spheres(frame), starSphere(s)];
-    return placeLabels(pose, spheres, blockers, W, H, gap, max).map((l) => {
+    const selected = (l: { i: number }) => entries[wanted[l.i]!]!.key === this.selectedDrone;
+    return capLabels(placeLabels(pose, spheres, blockers, W, H, gap, spheres.length), selected, max).map((l) => {
       const e = entries[wanted[l.i]!]!;
       const sel = e.key === this.selectedDrone;
       return { text: sel ? e.selectedLabel : e.label!, x: l.x, y: l.y, align: 'centre', colour: sel ? UI_COLOURS.accent : UI_COLOURS.ink };

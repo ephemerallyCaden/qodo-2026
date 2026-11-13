@@ -36,9 +36,10 @@ export class DronePanel {
       dd.textContent = value;
       list.append(dt, dd);
     }
+    const hadFocus = this.root.contains(document.activeElement); // a refresh rebuilds the panel: the keyboard stays on its button
     this.root.replaceChildren(top, list);
     this.root.hidden = false;
-    if (takeFocus) close.focus({ preventScroll: true });
+    if (takeFocus || hadFocus) close.focus({ preventScroll: true });
   }
 
   hide(): void {
