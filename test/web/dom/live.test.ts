@@ -14,6 +14,9 @@ import type { Hud } from '../../../web/src/ui/hud.js';
 import type { View } from '../../../web/src/view.js';
 import { miniFog, miniLayout } from '../../fixtures/contract/mini.js';
 
+// The review panel (#75) needs a DOM and is tested in the render suite: a no-op here.
+vi.mock('../../../web/src/ui/panel.js', () => ({ Panel: class { setFog() {} select() {} scale() {} } }));
+
 const HEAD = miniLayout.source.head;
 const OTHER = 'b'.repeat(40);
 const layoutAt = (head: string): LayoutV1 => ({ ...miniLayout, source: { ...miniLayout.source, head } });
@@ -47,6 +50,9 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     layout: () => layouts.shift()!(),
     fog: () => { fogCalls++; return fogs.shift()!(); },
     follow: (e) => { onEvent = e; return () => {}; },
+    unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
+    diff: async () => ({ ok: false, error: 'no-such-file' }),
+    chart: async () => ({ ok: false, error: 'not used' }),
   };
   let model: SystemModel | null = null;
   const view = {
@@ -54,7 +60,17 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     labels: { px: 2 },
     fog: null as FogView | null,
     get model() { return model; },
-    async load(layout: LayoutV1, fog: FogView | null = null) { model = systemModel(layout); view.fog = fog; },
+    onFog: null as ((f: FogView | null) => void) | null,
+    tickets: 0,
+    applied: 0,
+    fogTicket() { return ++view.tickets; },
+    applyFog(f: FogView | null, t: number) {
+      if (t < view.applied) return false;
+      view.applied = t; view.fog = f; view.onFog?.(f); return true;
+    },
+    async load(layout: LayoutV1, fog: FogView | null = null, opts: { ticket?: number } = {}) {
+      model = systemModel(layout); view.applyFog(fog, opts.ticket ?? view.fogTicket());
+    },
     resize: () => {},
     draw: () => ({}),
     focusTarget: () => null,
