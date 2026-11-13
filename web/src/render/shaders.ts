@@ -412,7 +412,7 @@ export const SHADOW_FRAG = /* glsl */ `${SURFACE}
     setScreenScale(p);
     int b = band(normalize(vHitW));
     if (b == 0) discard;
-    gl_FragColor = vec4(depthFade(fog(p, b - 1, surface(p, b - 1)), vPosW, 1.0), 1.0); // a shadow never uncovers fogged ground
+    gl_FragColor = vec4(depthFade(fog(p, b, surface(p, b - 1)), vPosW, 1.0), 1.0); // a shadow never uncovers fogged ground: the veil is the surface's own (band b)
   }
 `;
 
@@ -437,6 +437,8 @@ export const CLOUD_VERT = /* glsl */ `
 export const CLOUD_FRAG = /* glsl */ `
   ${BANDS}
   ${DEPTH}
+  ${FOG_HAZE}
+  uniform float uSmoke; // 1: lava smoke, which rises from the fissures and so hints at the ground's health (#74)
   uniform vec3 uRamp[4];
   uniform vec3 uCenter;
   in vec3 vNormalW;
@@ -444,6 +446,7 @@ export const CLOUD_FRAG = /* glsl */ `
   in vec3 vAnchorW;
   in float vMass;
   void main() {
+    if (uSmoke > 0.5 && fogHidesHaze(vPosW)) discard; // no smoke over a fogged or changing cell (fog hides health)
     vec3 g = normalize(vNormalW), r = normalize(vPosW - uCenter), m = normalize(vPosW - vAnchorW);
     float rg = dot(r, g), mg = dot(m, g);
     if (rg < 0.0) r -= rg * g;

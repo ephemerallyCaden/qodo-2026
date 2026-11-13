@@ -213,6 +213,7 @@ export class FogLedger {
     this.fog = null;
     this.mismatch = true;
     this.events = [];
+    this.change = { cleared: 0, refogged: 0 }; // the earlier change was of the fog just dropped: never announce it again
     return true;
   }
 

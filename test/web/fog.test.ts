@@ -224,6 +224,16 @@ describe('the view\'s fog ledger (tickets, the head check, fronts)', () => {
     expect(l.fog).toBeNull();
   });
 
+  it('forgets the last change when a new layout drops its fog, so a reload never announces it again (Qodo local r1)', () => {
+    const l = new FogLedger();
+    l.setLayout(HEAD, true);
+    l.apply(miniFog, l.ticket(), ids, 0, true);
+    l.apply(charted, l.ticket(), ids, 40, true);
+    expect(l.change).toEqual({ cleared: 1, refogged: 0 });
+    expect(l.setLayout('3'.repeat(40), true)).toBe(true);
+    expect(l.change).toEqual({ cleared: 0, refogged: 0 });
+  });
+
   it('starts fronts at the frame seen, only when animating, and counts the change either way', () => {
     const l = new FogLedger();
     l.setLayout(HEAD, true);

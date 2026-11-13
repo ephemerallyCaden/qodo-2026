@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { startPose } from '../../web/src/camera/pose.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { SystemScene } from '../../web/src/render/scene.js';
-import { HAZE_FRAG } from '../../web/src/render/shaders.js';
+import { CLOUD_FRAG, HAZE_FRAG } from '../../web/src/render/shaders.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
 
 const VERTEX = 35633, FRAGMENT = 35632;
@@ -93,6 +93,7 @@ describe('fog in the GLSL three submits (#74)', () => {
     for (const f of surfaces) expect(f).toMatch(/fog\(p, b(?: - 1)?, (?:c|surface\(p, b - 1\))\)/);
     expect(HAZE_FRAG).toContain('if (fogHidesHaze(vPosW)) discard;'); // mini may draw no hazy look
     expect(fragments.filter((f) => f.includes('uniform vec3 uHaze')).every((f) => f.includes('if (fogHidesHaze(vPosW)) discard;'))).toBe(true);
+    expect(CLOUD_FRAG).toContain('if (uSmoke > 0.5 && fogHidesHaze(vPosW)) discard;'); // lava smoke hints at health
     const toon = fragments.filter((f) => f.includes('moonFog('));
     expect(toon.length).toBeGreaterThanOrEqual(1);
     expect(vertices.some((v) => v.includes('in vec3 aFog;') && v.includes('flat out vec3 vFog;'))).toBe(true);
