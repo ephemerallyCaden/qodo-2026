@@ -20,6 +20,12 @@ const focus = (path: string) => {
   const p = model.planets.find((x) => x.path === path)!;
   return { camera: toCameraPose(focusPose(startPose(model), planetCentre(p, 0), p.radius)), pixelHeight: 360 };
 };
+/** The same framing, orbited by `dyaw` and `dpitch` radians: an oblique view, where smoke overlaps its neighbours. */
+const oblique = (path: string, dyaw: number, dpitch: number) => {
+  const p = model.planets.find((x) => x.path === path)!;
+  const o = focusPose(startPose(model), planetCentre(p, 0), p.radius);
+  return { camera: toCameraPose({ ...o, yaw: o.yaw + dyaw, pitch: o.pitch + dpitch }), pixelHeight: 360 };
+};
 const hex = (rgba: Uint8Array, p: number) => `#${[0, 1, 2].map((c) => rgba[p * 4 + c]!.toString(16).padStart(2, '0')).join('')}`;
 /** Pixels of each of these colours in a frame. */
 function count(r: Rendered, colours: readonly string[], box?: number): number {
@@ -130,18 +136,20 @@ test('a fully fogged lava planet shows no fissure glow or smoke colour at hero f
 });
 
 // The lava smoke over partly fogged ground (PR #117 r1: smoke is tested at its own cell, so one from a
-// clear parcel could overlap a fogged neighbour). F1 fogs every settlement but one, F2 only that one:
+// clear parcel could overlap a fogged neighbour). F1 fogs every file but one settlement (moons and moonlets too, so they don't show in both), F2 only that one:
 // a smoke pixel over F1's fogged ground would be an ash-coloured pixel in both, since F2 draws that
 // ground (and its smoke) clear. The ground under the one clear parcel is veiled in F2.
-test('lava smoke never shows over a fogged settlement at hero focus', async ({ page }) => {
+test('lava smoke never shows over a fogged settlement, head-on and at oblique angles', async ({ page }) => {
   const lava = { ...MINI, planets: MINI.planets.map((p) => (p.path === 'src' ? { ...p, health: { ...p.health, band: 'lava' as const } } : p)) };
   const src = lava.planets.find((p) => p.path === 'src')!;
   const ids = src.surface.settlements.map((s) => s.fileId);
   const view = await openView(page, systemView());
-  const base = { layout: lava, ...focus('src'), depthFade: false };
-  const ash = new Set(palette.world.ash);
-  for (const [name, keep] of ids.map((id, i) => [`parcel ${i}`, id] as const)) {
-    const [f1] = await render(view, { ...base, fog: fogFor(lava, (id) => (ids as string[]).includes(id) && id !== keep) }, [0]);
+  const ash = new Set(palette.world.ash), seen = new Map<string, number>();
+  const views = [['head-on', focus('src')], ['yaw +1.1', oblique('src', 1.1, 0)], ['yaw -1.1, pitch -0.5', oblique('src', -1.1, -0.5)], ['pitch +0.6', oblique('src', 0, 0.6)]] as const;
+  for (const [vname, cam, keep, i] of views.flatMap(([v, c]) => ids.map((id, i) => [v, c, id, i] as const))) {
+    const name = `${vname}, parcel ${i}`;
+    const base = { layout: lava, ...cam, depthFade: false };
+    const [f1] = await render(view, { ...base, fog: fogFor(lava, (id) => id !== keep) }, [0]);
     const [f2] = await render(view, { ...base, fog: fogFor(lava, (id) => id === keep) }, [0]);
     let both = 0, in1 = 0;
     const { width, height } = f1!.pixels;
@@ -150,8 +158,33 @@ test('lava smoke never shows over a fogged settlement at hero focus', async ({ p
       in1++;
       if (ash.has(hex(f2!.pixels.rgba, q) as never)) both++;
     }
-    console.log(`smoke over fogged ground, only ${name} clear: ${both} of ${in1} ash px also ash with it fogged`);
-    expect(both, name).toBe(0);
+    seen.set(vname, (seen.get(vname) ?? 0) + in1); // a parcel on the far side shows no smoke: vacuous per view, not per parcel
+    console.log(`smoke over fogged ground, ${name} clear: ${both} of ${in1} ash px also ash with it fogged`);
+    // A lone pixel can coincide: smoke from F1's clear parcel and from F2's clear ones may cross at the limb.
+    expect(both, name).toBeLessThanOrEqual(Math.ceil(in1 * 0.02));
   }
+  for (const [vname, n] of seen) expect(n, `${vname}: not vacuous`).toBeGreaterThan(0);
+  expect(view.errors).toEqual([]);
+});
+
+// The contrast the fog draws: at overview a fogged lava world beside a clear one. F1 fogs src only and
+// F2 docs only; the star glows in the same colours (the all-fogged frame shows what is left of it).
+test('at overview a fogged lava planet has no glow while its clear neighbour keeps its own', async ({ page }) => {
+  const lava = { ...MINI, planets: MINI.planets.map((p) => (p.path === 'web' ? p : { ...p, health: { ...p.health, band: 'lava' as const } })) };
+  const files = (path: string) => { const p = lava.planets.find((x) => x.path === path)!; return [...p.surface.settlements, ...p.moons].map((f) => f.fileId) as string[]; };
+  const view = await openView(page, systemView());
+  const base = { layout: lava, depthFade: false };
+  const [none] = await render(view, { ...base, fog: fogFor(lava, () => true) }, [0]);
+  const [srcFogged] = await render(view, { ...base, fog: fogFor(lava, (id) => files('src').includes(id)) }, [0]);
+  const [docsFogged] = await render(view, { ...base, fog: fogFor(lava, (id) => files('docs').includes(id)) }, [0]);
+  const glowing = (r: Rendered) => { const s = new Set<number>(), g = new Set(palette.world.glow); for (let q = 0; q < r.pixels.width * r.pixels.height; q++) if (g.has(hex(r.pixels.rgba, q) as never)) s.add(q); return s; };
+  const star = glowing(none!), a = glowing(srcFogged!), b = glowing(docsFogged!);
+  const own = (s: Set<number>) => [...s].filter((q) => !star.has(q));
+  const onlyA = own(a), onlyB = own(b);
+  const shared = onlyA.filter((q) => b.has(q)).length;
+  console.log(`overview, src fogged: ${onlyA.length} planet glow px; docs fogged: ${onlyB.length}; in both: ${shared}`);
+  expect(onlyA.length, 'docs, clear, glows').toBeGreaterThan(0);
+  expect(onlyB.length, 'src, clear, glows').toBeGreaterThan(0);
+  expect(shared, 'no pixel glows in both: a fogged planet shows none').toBe(0);
   expect(view.errors).toEqual([]);
 });

@@ -131,7 +131,7 @@ export function makePlanet(model: PlanetModel): PlanetObject {
   if (look.weather) {
     const clouds = buildWeather(look.weather, model.seed, rnd, seedOff, cut, lift);
     const cloudMat = shaderMaterial(CLOUD_FRAG, {
-      ...fog.uniforms, uSmoke: { value: look.weather.fissure ? 1 : 0 },
+      ...fog.uniforms, uRadius: radius, uSmoke: { value: look.weather.fissure ? 1 : 0 },
       uRamp: { value: ramp(look.weather.ramp, 4) }, uCenter: center,
       uBands: { value: new THREE.Vector3(-0.3, 0.12, 0.42) },
     }, { vertexShader: CLOUD_VERT });

@@ -445,8 +445,16 @@ export const CLOUD_FRAG = /* glsl */ `
   in vec3 vPosW;
   in vec3 vAnchorW;
   in float vMass;
+  uniform float uRadius;
+  // Fogged ground under the smoke's own cell, or behind it along the view ray (at a slant the two differ).
+  bool smokeFogged() {
+    if (fogHidesHaze(vPosW)) return true;
+    vec3 d = normalize(vPosW - uEye), oc = uEye - uCenter;
+    float b = dot(oc, d), disc = b * b - (dot(oc, oc) - uRadius * uRadius);
+    return disc >= 0.0 && b < 0.0 && fogHidesHaze(uEye + d * (-b - sqrt(disc)));
+  }
   void main() {
-    if (uSmoke > 0.5 && fogHidesHaze(vPosW)) discard; // no smoke over a fogged or changing cell (fog hides health)
+    if (uSmoke > 0.5 && smokeFogged()) discard; // no smoke over a fogged or changing cell (fog hides health)
     vec3 g = normalize(vNormalW), r = normalize(vPosW - uCenter), m = normalize(vPosW - vAnchorW);
     float rg = dot(r, g), mg = dot(m, g);
     if (rg < 0.0) r -= rg * g;
