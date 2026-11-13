@@ -39,7 +39,7 @@ export function droneStatus(s: DroneSelection): string {
 
 /** Text from outside the view (a tool name, a branch): printable only, and short. */
 export function plain(text: string, max = 60): string {
-  const t = text.replace(/\p{Cc}/gu, ' ').trim();
+  const t = text.replace(/[\p{Cc}\p{Cf}]/gu, ' ').trim();
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }
 

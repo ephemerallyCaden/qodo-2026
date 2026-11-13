@@ -91,6 +91,12 @@ describe('labels and the panel (AC 6, 8, 10)', () => {
     expect(Object.fromEntries(droneRows(session(2, 'star'), 'the star'))['kind']).toBe('main');
   });
 
+  it('strips bidirectional and other format characters, so a folder name cannot reorder the panel (Qodo)', () => {
+    const rows = Object.fromEntries(droneRows(session(1, 'star', { branch: 'a\u202Eb\u200Bc' }), 'src\u202Efdp.exe'));
+    expect(rows['home']).toBe('src fdp.exe');
+    expect(rows['branch']).toBe('a b c');
+  });
+
   it('shows no line, file or commit count (Rule 6) and strips control characters from outside text', () => {
     const text = droneRows(session(1, 'star', { branch: 'a\u001b[31mb\nc' }), 'x').flat().join(' ');
     expect(text).not.toMatch(/\b(?:lines?|files?|commits?)\b/i);
