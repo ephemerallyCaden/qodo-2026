@@ -1,6 +1,7 @@
 // Phase 2 contract (#29): the local HTTP surface of `commet open` (#32) and the deterministic render
 // hook the view (#30) exposes to the render tests (#31). See docs/contracts/phase2.md.
 import type { DirId, FileId, Sha } from '../snapshot/types.js';
+import type { DroneView } from './drones.js';
 import type { ChartUnknownHead, FogReason, FogView } from './fog.js';
 import type { LayoutV1 } from './layout.js';
 
@@ -117,6 +118,8 @@ export interface CameraPose {
 export interface RenderInput {
   layout: LayoutV1;
   fog?: FogView | null;
+  /** The drone view to draw (#80); the view draws at most 16 of its placed sessions. Default: none. */
+  drones?: DroneView | null;
   reducedMotion?: boolean;
   /** Internal resolution height in pixels, 120..480. Default 180. */
   pixelHeight?: number;

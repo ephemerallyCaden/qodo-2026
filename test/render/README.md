@@ -10,6 +10,8 @@ each view:
 | The real system view (`web/`, #30), built into `dist/web` | `view.spec.ts` | `view-mini-f0`, `view-mini-f0-reduced`, `view-mini-f180`, `view-mini-f180-reduced` |
 | The stand-in (`standin/`, below) | `standin.spec.ts` | `standin-mini-f0`, `standin-mini-f180`, `standin-mini-f180-reduced` |
 
+`drones.spec.ts` (#80) renders a repo-sized fixture (11 planets, 90 sessions) with `RenderInput.drones`: drones add at most 16 draw calls and the frame stays in budget, both looks draw in palette colours, frames are pure and reduced motion freezes the idle. Its goldens (`drones-*`) skip locally until committed from CI's artifact.
+
 `review.spec.ts` (#75) isn't a render check: it drives the review panel in the same built view against a real `startServer` on a temp repo (keyboard focus, request ordering), because Vitest has no DOM.
 
 Both render the contract's `mini` fixture from the view's own start pose, and every check below runs

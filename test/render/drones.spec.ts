@@ -1,8 +1,7 @@
 // The agent drones on the real view (#80 AC 5-7): a fixture the size of this repo (11 planets, 90
 // sessions) adds at most DRONE_CAP draw calls and stays inside the frame budget; the Claude and the
 // generic drone both draw, in palette colours only; a frame is a pure function of (input, n); reduced
-// motion freezes the idle. The drone view reaches the hook as an extra `drones` field of its input
-// (web/src/hook.ts HookInput), because the contract's RenderInput is locked.
+// motion freezes the idle. The drone view reaches the hook as `RenderInput.drones`.
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -24,7 +23,7 @@ import { paletteProblems, type RenderEnv } from './twin.js';
 
 const model = systemModel(selfLikeRoots);
 const repo = repoDrones(selfLikeRoots);
-const withDrones = (extra: Partial<RenderInput> = {}, drones = repo): RenderInput => ({ layout: selfLikeRoots, drones, ...extra }) as RenderInput;
+const withDrones = (extra: Partial<RenderInput> = {}, drones = repo): RenderInput => ({ layout: selfLikeRoots, drones, ...extra });
 /** The closeup frames are mostly space: they need only a drone's worth of pixels, not the golden fixtures' 5%. */
 const CLOSEUP_MIN = 0.02;
 

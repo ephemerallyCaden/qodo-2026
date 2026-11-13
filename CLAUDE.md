@@ -33,6 +33,7 @@ Node ≥ 20.19, npm. From the repo (or worktree) root:
 The design mockups live on `feature/asset-library` (the art line) under `mockups/`: the asset viewer (the reference implementation), the asset library (the playground), and the drone, debris and health-looks labs. Each folder is its own npm project (`npm ci && npm test` there; that branch's CLAUDE.md has the details). They are throwaway prototypes, not product code.
 
 ## Layout
+- Drones (#80): `palette.drone.{generic,claude}` in `src/core/palette.ts` hold the drone ramps (BLK 36 only; the face screen and glow reuse `crew.visor`/`glint` and `accent.teal`). The drone art is `web/src/render/drone*.ts` (ported from the drone lab), the view logic `web/src/drones/`. At most 16 drones are drawn, the most recently ended placed sessions.
 - `snapshot.json` and `layout.json` produced by `commet scan`; local state in `.git/commet/` (snapshot, layout, `config.json` with the saved content roots, `chart.json` + `chart.lock`, beacons, events).
 - `layout(snapshot, history)` (`src/core/layout`) is a pure function. `history` comes from the full lineage replay, so layout.json can't be rebuilt from snapshot.json alone. Shape: `LayoutV1` in `src/core/contract/layout.ts`.
 - Space mapping (#18): repo = star; top-level folders holding a non-test, non-test-data file = planets; second-level folders = continents; files = settlements; test files = moons of the planet they test; root files and unmatched tests = moonlets; test data is counted on the star, never drawn.

@@ -64,6 +64,7 @@
 - **Test mode:** only with `?test=1` (`TEST_MODE_PARAM`). There is no animation loop, and `window.__commet: RenderHook` is exposed. Without the parameter, the hook doesn't exist.
 - **Calls:** `load(input)`, then `renderFrame(n)`, which draws exactly frame `n` and returns `renderer.info` draw calls and triangles. `lowResPixels()` returns the internal target before upscale, so goldens can sit near a 0 threshold.
 - **Determinism:** a frame is a pure function of (`RenderInput`, frame number), per principle 3.
+- **Drones (amended 2026-11-13, #80):** `RenderInput.drones` (a `DroneView`, default none) is drawn like the live view draws it: at most 16 placed sessions, the most recently ended, each circling its home. The hook checks it with the view's validator and refuses a bad one.
 - **Palette check (amended 2026-11-10):** `RenderInput.depthFade` (default true) switches the per-pixel depth fade. With it off, off-palette pixels must be 0 (system-design §10), because the fade is the only off-palette output.
 
 ## Directory ownership in Phase 2

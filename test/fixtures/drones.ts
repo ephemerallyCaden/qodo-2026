@@ -1,6 +1,6 @@
 // Drone view fixtures (#80): typed builders for the contract's DroneView (src/core/contract/drones.ts).
-// `miniDrones` is the source of test/fixtures/contract/mini.drones.json (the dev server's `?fixture=`
-// view); test/drones-view.test.ts keeps the two equal. `repoDrones` is the size of this repo: 11 planets, 90 sessions.
+// `viewDrones` is the mini layout with every look the view draws (the contract twin, `miniDrones` in
+// contract/mini.ts, is only the server's shape). `repoDrones` is the size of this repo: 11 planets, 90 sessions.
 import type { DroneSession, DroneView } from '../../src/core/contract/drones.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import type { DirId, SessionKey } from '../../src/core/snapshot/types.js';
@@ -27,8 +27,8 @@ export function droneView(head: string, sessions: DroneSession[], needsRescan = 
 
 const homes = (l: LayoutV1): DirId[] => l.planets.map((p) => p.dirId);
 
-/** The mini layout's drones: Claude on two planets and the star, a named tool, a subagent, an inferred session and one unplaced. */
-export function miniDrones(l: LayoutV1): DroneView {
+/** The mini layout's drones for the view: Claude on two planets and the star, a named tool, a subagent, an inferred session and one unplaced. */
+export function viewDrones(l: LayoutV1): DroneView {
   const [a, b, c] = homes(l);
   return droneView(l.source.head, [
     session(1, a!),

@@ -11,8 +11,8 @@ import { DRONE_TURNS, placeDrone } from '../../web/src/drones/place.js';
 import { DRONE_CAP, droneLabels, droneRows, droneStatus, entryOf, selectDrones } from '../../web/src/drones/select.js';
 import { LOOP_FRAMES } from '../../web/src/model/motion.js';
 import { systemModel } from '../../web/src/model/system.js';
-import { miniLayout } from '../fixtures/contract/mini.js';
-import { droneView, miniDrones, repoDrones, session } from '../fixtures/drones.js';
+import { miniDrones, miniLayout } from '../fixtures/contract/mini.js';
+import { droneView, repoDrones, session, viewDrones } from '../fixtures/drones.js';
 import { selfLikeRoots } from '../fixtures/overview.js';
 
 const BLK_36: string[] = JSON.parse(readFileSync(join(import.meta.dirname, '../fixtures/blk-36.published.json'), 'utf8')).colors;
@@ -92,7 +92,8 @@ describe('labels and the panel (AC 6, 8, 10)', () => {
 
 describe('the validator (AC 10)', () => {
   it('accepts the contract fixture and a session with inferred: true', () => {
-    expect(checkDrones(miniDrones(miniLayout)).ok).toBe(true);
+    expect(checkDrones(miniDrones).ok).toBe(true);
+    expect(checkDrones(viewDrones(miniLayout)).ok).toBe(true);
     const v = droneView(HEAD, [session(1, 'star', { inferred: true })]);
     const c = checkDrones(JSON.parse(JSON.stringify(v)));
     expect(c.ok).toBe(true);
@@ -101,7 +102,7 @@ describe('the validator (AC 10)', () => {
 
   it('refuses a malformed document with reasons, never half-drawing it', () => {
     const bad = (mutate: (v: DroneView) => void): string => {
-      const v = structuredClone(miniDrones(miniLayout));
+      const v = structuredClone(miniDrones);
       mutate(v);
       const c = checkDrones(v);
       return c.ok ? 'ok' : c.errors.join('; ');
@@ -119,9 +120,9 @@ describe('the validator (AC 10)', () => {
     expect(() => parseDrones('{}', 'test')).toThrow(/invalid/);
   });
 
-  it('the dev fixture file is the typed fixture', () => {
-    const file = JSON.parse(readFileSync(join(import.meta.dirname, '../fixtures/contract/mini.drones.json'), 'utf8')) as unknown;
-    expect(file).toEqual(JSON.parse(JSON.stringify(miniDrones(miniLayout))));
+  it('the dev fixture file (the contract twin) passes the view\'s validator', () => {
+    const text = readFileSync(join(import.meta.dirname, '../fixtures/contract/mini.drones.json'), 'utf8');
+    expect(parseDrones(text, 'fixture')).toEqual(miniDrones);
   });
 });
 
