@@ -140,6 +140,9 @@ class Sweep {
       await this.readPrs();
       this.readExports();
       this.seed();
+      // Groups already at the threshold go first, so a judging backlog can't use up the call cap
+      // before they are drafted; judging gets what's left, then groups it completed get their turn.
+      if (!this.s.seeding) await this.propose();
       await this.judge();
       if (!this.s.seeding) await this.propose();
     } catch (e) {

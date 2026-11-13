@@ -60,7 +60,7 @@ Day 5 challenge, "Make your factory self-improve". Since Day 2, AGENTS.md has sa
 Runner tick → (existing ticket work) → sweep:
 1. List the owner's PRs whose Qodo review changed, plus any new local review exports.
 2. Read the findings (`qodo read … findings` per PR) and add new ids to the ledger.
-3. Judge each new finding against the existing groups, and add it to one or start a new group.
+3. Propose first for groups already at the threshold (step 4), so a judging backlog can never starve proposing. Then judge each new finding against the existing groups, and add it to one or start a new group, with the calls that remain. Groups that judging completes are proposed in the same sweep.
 4. When a group reaches 3 findings from 2 sources, run Qodo's rule search, then open a `rule-proposal` issue, or comment on the group's open issue.
 5. Update the ledger and the log.
 

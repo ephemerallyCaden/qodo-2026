@@ -302,10 +302,11 @@ describe('the human decides (R6, R7)', () => {
     l.groups['g-a1']!.reported = [];
     writeFileSync(ledgerFile(w.config()), JSON.stringify(l));
     w.addOwnerPr(30, [kinded('a4', 'framing')], { ticket: 25 });
+    // The adopt comes first (only a1-a3 are in its body); a4 is judged next and goes out as a comment.
     await w.sweep();
-    expect(ledger(w).groups['g-a1']).toMatchObject({ issue: 200, reported: ['a1', 'a2', 'a3'] });
-    await w.sweep();
+    expect(proposals(w)).toHaveLength(1);
     expect(w.issues.get(200)!.comments.at(-1)).toContain('`a4`');
+    expect(ledger(w).groups['g-a1']).toMatchObject({ issue: 200, reported: ['a1', 'a2', 'a3', 'a4'] });
   });
 
   it('adopts the issue a lost ledger write left behind instead of opening a second', async () => {
@@ -534,10 +535,13 @@ describe('fail closed (R4)', () => {
     w.rules = null;
     await w.sweep();
     expect(ledger(w).groups['g-a1']!.draft).toEqual(DRAFT);
-    w.rules = [];
+    // The rule search stays down until the judge has broadened the group, so the cached draft isn't posted first.
     w.addOwnerPr(30, [finding('wide')], { ticket: 25 });
-    w.judge = (wd, call) => (call.schema.properties?.['rule'] ? judgeOut({ ...DRAFT, rule: { ...DRAFT.rule, name: 'The broader rule' } })
-      : judgeOut({ assignments: [{ finding: 'wide', group: 'g-a1', mistake: 'A broader mistake.' }] }));
+    w.judge = (wd, call) => {
+      w.rules = [];
+      return call.schema.properties?.['rule'] ? judgeOut({ ...DRAFT, rule: { ...DRAFT.rule, name: 'The broader rule' } })
+        : judgeOut({ assignments: [{ finding: 'wide', group: 'g-a1', mistake: 'A broader mistake.' }] });
+    };
     await w.sweep();
     expect(proposals(w)[0]!.title).toBe('Rule proposal: The broader rule');
   });
@@ -635,9 +639,10 @@ describe('fail closed (R4)', () => {
     await w.sweep();
     expect(ledger(w).groups['g-a1']!.draft).toEqual(DRAFT);
     // Next sweep: the draft is cached, but judging a new finding takes past the 20-minute budget.
-    w.rules = [];
+    // The rule search stays down until the slow judge call, so the cached draft isn't posted before it.
     w.addOwnerPr(30, [finding('slow')], { ticket: 25 });
     w.judge = (wd, call) => {
+      w.rules = [];
       wd.now += 25 * 60_000;
       return kindJudge(wd, call);
     };
@@ -744,6 +749,30 @@ describe('cost and scope (R1, R3, R10)', () => {
     expect(sweepEvents(w).find((e) => e['event'] === 'findings-cap')).toMatchObject({ maxCalls: 1, left: 3, retry: 'next sweep' });
     const s2 = await w.sweep({}, { sweepMaxCalls: 5, judgeBatch: 2 });
     expect(s2).toMatchObject({ calls: 2, judged: 3, waiting: 0, capped: false });
+  });
+
+  it('proposes a group already at the threshold before judging a backlog with what is left of the cap', async () => {
+    const w = world();
+    w.startLedger();
+    framing(w);
+    // One call judges the 3 framing findings and uses the whole cap: the group meets the threshold, unproposed.
+    expect(await w.sweep({}, { sweepMaxCalls: 1 })).toMatchObject({ calls: 1, judged: 3, proposed: [], capped: true });
+    w.addOwnerPr(30, ['x1', 'x2', 'x3', 'x4', 'x5', 'x6'].map((id) => kinded(id, 'other')), { ticket: 25 });
+    const s = await w.sweep({}, { sweepMaxCalls: 3, judgeBatch: 1 });
+    expect(s).toMatchObject({ proposed: [200], calls: 3, judged: 2, waiting: 4, capped: true });
+    expect(proposals(w)).toHaveLength(1);
+    // The draft came first; judging used the 2 calls left.
+    expect(w.callsTo('claude').map((c) => c.args.includes('--json-schema'))).toHaveLength(4);
+    expect(ledger(w).groups['g-a1']!.issue).toBe(200);
+  });
+
+  it('a group completed by this sweep\'s judging is proposed in the same sweep', async () => {
+    const w = world();
+    w.startLedger();
+    framing(w);
+    expect(await w.sweep()).toMatchObject({ proposed: [200], calls: 2 });
+    expect(proposals(w)).toHaveLength(1);
+    expect(await w.sweep()).toMatchObject({ proposed: [], calls: 0 });
   });
 
   it('asks for up to 1000 PRs and logs when the list may be cut off (Qodo local r1 569eabea)', async () => {
