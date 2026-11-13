@@ -22,10 +22,14 @@ const focus = (path: string) => {
 };
 const hex = (rgba: Uint8Array, p: number) => `#${[0, 1, 2].map((c) => rgba[p * 4 + c]!.toString(16).padStart(2, '0')).join('')}`;
 /** Pixels of each of these colours in a frame. */
-function count(r: Rendered, colours: readonly string[]): number {
-  const want = new Set(colours);
+function count(r: Rendered, colours: readonly string[], box?: number): number {
+  const want = new Set(colours), { width, height } = r.pixels;
   let n = 0;
-  for (let p = 0; p < r.pixels.width * r.pixels.height; p++) if (want.has(hex(r.pixels.rgba, p))) n++;
+  for (let p = 0; p < width * height; p++) {
+    // box: only the middle of the frame, `box` x the height wide each side of the centre (the hero planet, not the star)
+    if (box !== undefined && Math.abs((p % width) - width / 2) > box * height) continue;
+    if (want.has(hex(r.pixels.rgba, p))) n++;
+  }
   return n;
 }
 const VEILS = Object.values(palette.fog.veil).flatMap((v) => [v.lit, v.night, v.hatch, v.line]);
@@ -96,6 +100,58 @@ test('fog adds no draw call and no triangle', async ({ page }) => {
     for (const fog of [fogFor(MINI), MINI_FOG, null]) stats.push((await render(view, { layout: MINI, fog, ...extra }, [0]))[0]!.stats);
     expect(stats[1]).toEqual(stats[0]);
     expect(stats[2]).toEqual(stats[0]);
+  }
+  expect(view.errors).toEqual([]);
+});
+
+// Fog hides health (#74, Qodo local r1 and PR #117 r1): a fully fogged lava world shows none of the
+// lava look's own colours, neither its glowing fissures nor its smoke, so the ground, the shadow pass
+// and the clouds all say the same thing. The fade is off, so every pixel is a palette colour.
+test('a fully fogged lava planet shows no fissure glow or smoke colour at hero focus; charted looks like clear', async ({ page }) => {
+  const lava = { ...MINI, planets: MINI.planets.map((p) => (p.path === 'src' ? { ...p, health: { ...p.health, band: 'lava' as const } } : p)) };
+  const view = await openView(page, systemView());
+  const base = { layout: lava, ...focus('src'), depthFade: false };
+  // The fissure glow and the smoke (the ash ramp). The crust is the ground itself: the "?" glyph is inked in one of its steps.
+  const LAVA = [...palette.world.glow, ...palette.world.ash];
+  const [clear] = await render(view, { ...base, fog: fogFor(lava) }, [0, 90]);
+  const [fogged, fogged90] = await render(view, { ...base, fog: fogFor(lava, () => true) }, [0, 90]);
+  const [charted] = await render(view, { ...base, fog: { ...fogFor(lava), files: fogFor(lava).files.map((f) => ({ ...f, state: 'charted' as const })) } }, [0]);
+  for (const r of [clear, fogged, charted]) assertRendered(r!.pixels, r!.stats);
+  // The star glows in the same colours, so only the middle of the frame, where the planet is, is counted.
+  const BOX = 0.3;
+  const glow = (r: Rendered) => count(r, palette.world.glow, BOX), all = (r: Rendered) => count(r, LAVA, BOX);
+  console.log(`lava hero, clear: ${glow(clear!)} glow px, ${all(clear!)} glow+ash px; fogged: ${glow(fogged!)} glow, ${all(fogged!)} glow+ash px (f90: ${all(fogged90!)})`);
+  expect(glow(clear!), 'not vacuous: a clear lava planet glows').toBeGreaterThan(0);
+  expect(all(clear!), 'not vacuous: smoke and ash ground show').toBeGreaterThan(glow(clear!));
+  expect(all(fogged!), 'fogged: no glow or smoke colour').toBe(0);
+  expect(all(fogged90!), 'fogged, a later frame').toBe(0);
+  expect(diffPixels(clear!.pixels, charted!.pixels)).toBe(0);
+  expect(view.errors).toEqual([]);
+});
+
+// The lava smoke over partly fogged ground (PR #117 r1: smoke is tested at its own cell, so one from a
+// clear parcel could overlap a fogged neighbour). F1 fogs every settlement but one, F2 only that one:
+// a smoke pixel over F1's fogged ground would be an ash-coloured pixel in both, since F2 draws that
+// ground (and its smoke) clear. The ground under the one clear parcel is veiled in F2.
+test('lava smoke never shows over a fogged settlement at hero focus', async ({ page }) => {
+  const lava = { ...MINI, planets: MINI.planets.map((p) => (p.path === 'src' ? { ...p, health: { ...p.health, band: 'lava' as const } } : p)) };
+  const src = lava.planets.find((p) => p.path === 'src')!;
+  const ids = src.surface.settlements.map((s) => s.fileId);
+  const view = await openView(page, systemView());
+  const base = { layout: lava, ...focus('src'), depthFade: false };
+  const ash = new Set(palette.world.ash);
+  for (const [name, keep] of ids.map((id, i) => [`parcel ${i}`, id] as const)) {
+    const [f1] = await render(view, { ...base, fog: fogFor(lava, (id) => ids.includes(id) && id !== keep) }, [0]);
+    const [f2] = await render(view, { ...base, fog: fogFor(lava, (id) => id === keep) }, [0]);
+    let both = 0, in1 = 0;
+    const { width, height } = f1!.pixels;
+    for (let q = 0; q < width * height; q++) {
+      if (Math.abs((q % width) - width / 2) > 0.3 * height || !ash.has(hex(f1!.pixels.rgba, q) as never)) continue;
+      in1++;
+      if (ash.has(hex(f2!.pixels.rgba, q) as never)) both++;
+    }
+    console.log(`smoke over fogged ground, only ${name} clear: ${both} of ${in1} ash px also ash with it fogged`);
+    expect(both, name).toBe(0);
   }
   expect(view.errors).toEqual([]);
 });
