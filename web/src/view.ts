@@ -16,10 +16,11 @@ import { DroneFleet, type FleetEntry } from './render/drone-fleet.js';
 import { capLabels } from './drones/select.js';
 import { SystemScene } from './render/scene.js';
 
-/** A drone's smallest clickable size, as a share of half the frame height (a planet's is 0.04). */
-const DRONE_MIN_NDC = 0.015;
 import { UI_COLOURS } from './ui/colours.js';
 import type { Sphere } from './model/vec.js';
+
+/** A drone's smallest clickable size, as a share of half the frame height (a planet's is 0.04). */
+const DRONE_MIN_NDC = 0.015;
 
 /** At most this many labels per frame (system design §7). */
 export const MAX_LABELS = 50;
@@ -144,9 +145,10 @@ export class View {
     if (!s) { this.drones = entries; this.dronesHead = head; return true; }
     if (head !== this.layoutHead) return false;
     // Compile on a fleet that isn't in the scene, so a failure (or a stale answer) never reaches a drawn frame.
-    if (entries.length > 0) {
-      const probe = new DroneFleet();
-      try {
+    // The probe lives until the real fleet exists: its materials keep the compiled program alive for them.
+    const probe = new DroneFleet();
+    try {
+      if (entries.length > 0) {
         probe.set(entries);
         this.pass.takeShaderErrors();
         probe.group.traverse((o) => { o.visible = true; });
@@ -154,12 +156,12 @@ export class View {
         for (const program of this.pass.renderer.info.programs ?? []) program.getUniforms();
         const failed = this.pass.takeShaderErrors();
         if (failed.length > 0) throw new ViewError('The view could not compile the drone shader.', failed);
-      } finally {
-        probe.dispose();
       }
+      if (this.system !== s || head !== this.layoutHead) return false; // a layout reload replaced the scene meanwhile
+      s.fleet.set(entries);
+    } finally {
+      probe.dispose();
     }
-    if (this.system !== s || head !== this.layoutHead) return false; // a layout reload replaced the scene meanwhile
-    s.fleet.set(entries);
     this.drones = entries;
     this.dronesHead = head;
     return true;
