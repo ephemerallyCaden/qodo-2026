@@ -141,7 +141,7 @@ test('lava smoke never shows over a fogged settlement at hero focus', async ({ p
   const base = { layout: lava, ...focus('src'), depthFade: false };
   const ash = new Set(palette.world.ash);
   for (const [name, keep] of ids.map((id, i) => [`parcel ${i}`, id] as const)) {
-    const [f1] = await render(view, { ...base, fog: fogFor(lava, (id) => ids.includes(id) && id !== keep) }, [0]);
+    const [f1] = await render(view, { ...base, fog: fogFor(lava, (id) => (ids as string[]).includes(id) && id !== keep) }, [0]);
     const [f2] = await render(view, { ...base, fog: fogFor(lava, (id) => id === keep) }, [0]);
     let both = 0, in1 = 0;
     const { width, height } = f1!.pixels;
