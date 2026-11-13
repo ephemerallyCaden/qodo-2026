@@ -30,6 +30,8 @@ export class Drones {
   private data: DroneView | null = null;
   private shown: DroneSession[] = [];
   private gen = 0;
+  /** Why the latest refresh didn't apply, shown beside the counts until a matching one does. */
+  private note = '';
 
   constructor(private readonly host: DronesHost) {
     this.panel.onClose = () => { this.deselect(); host.release(); };
@@ -48,12 +50,14 @@ export class Drones {
     if (gen !== this.gen) return; // a newer refresh is on its way
     const had = this.data?.head === head ? this.data : null;
     if (got instanceof Error) {
+      this.note = `update failed: ${describe(got)}`;
       this.host.announce(`drones unavailable: ${describe(got)}`);
       await this.apply(had, head, gen);
     } else if (got.head !== head) {
+      this.note = `update of ${short(got.head)} not applied: other scan`;
       this.host.announce(`drones not applied: they are of ${short(got.head)} but the layout of ${short(head)} (different scans); waiting for the next update`);
       await this.apply(had, head, gen);
-    } else await this.apply(got, head, gen);
+    } else { this.note = ''; await this.apply(got, head, gen); }
   }
 
   /** Draws `data` (null: no drones) over the layout of `head`. Does nothing if a newer refresh began or the layout changed meanwhile. */
@@ -70,7 +74,7 @@ export class Drones {
     if (!drawn || gen !== this.gen) return; // stale: a newer refresh or a layout reload owns the state now
     this.data = data;
     this.shown = sel ? sel.shown : [];
-    this.line.textContent = sel ? droneStatus(sel) : 'drones: none loaded';
+    this.line.textContent = (sel ? droneStatus(sel) : 'drones: none loaded') + (this.note ? ` (${this.note})` : '');
     const open = this.shown.find((s) => s.key === this.host.view.selectedDrone);
     if (open) this.showPanel(open, false); // the refresh may have changed what the open panel says
     else this.deselect();

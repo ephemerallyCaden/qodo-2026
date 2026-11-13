@@ -270,6 +270,7 @@ describe('drones in live mode (#80)', () => {
     await vi.waitFor(() => expect(l.last()).toMatch(/drones unavailable: .*500/));
     expect(l.view.model).not.toBeNull();
     expect(l.view.drawn.length).toBe(1);
+    expect(hud()).toMatch(/^1 drone shown.*\(update failed: .*500/); // visible, not only announced
   });
 
   it('drones of another scan are not applied over this layout, and the HUD says so', async () => {
