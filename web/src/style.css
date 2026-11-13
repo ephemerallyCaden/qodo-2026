@@ -11,8 +11,8 @@ body { display: grid; place-items: center; }
 #hud input { accent-color: var(--accent); margin: 0; }
 #hud input[type=range] { width: 120px; }
 canvas.bitmap, #error canvas { display: block; image-rendering: pixelated; }
-/* Drones (#80): the HUD's count line and the selected session's panel, DOM text outside the pixel pass. */
-#drones-hud { position: fixed; right: 8px; bottom: 8px; margin: 0; max-width: 44ch; text-align: right; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink); }
+/* Drones (#80): the HUD's count line, top centre (the review panel owns the right edge, the planet info the left) and the selected session's panel, DOM text outside the pixel pass. */
+#drones-hud { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); margin: 0; width: max-content; max-width: min(44ch, 40vw); text-align: center; pointer-events: none; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink); }
 #drones-hud:empty { display: none; }
 #drone-panel { position: fixed; left: 8px; bottom: 40px; box-sizing: border-box; width: min(40ch, 90vw); padding: 6px; background: var(--space); border: 1px solid var(--rule); color: var(--ink); font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 #drone-panel[hidden] { display: none; }
