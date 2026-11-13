@@ -17,6 +17,8 @@ export const CANARIES = {
   // Bash commands are only tested against the git-commit regex, never stored (Qodo PR6 #2).
   command: 'CANARY_COMMAND_8c4e',
   home: '/Users/canary-home',
+  // An in-repo file the session edited that is not in the snapshot: counted, never named (#80).
+  editedFile: 'CANARY_EDITED_FILE_5a1e',
   code: 'const CANARY_CODE = 1;',
   // Path-shaped metadata (Qodo #3): each must be dropped, never output.
   metaModel: 'canary-model',
@@ -59,6 +61,8 @@ export function writeClaudeFixture(repo: FixtureRepo, o: { fileSymlink?: boolean
       toolUseResult: { type: 'create', filePath: at('docs/notes.md'), content: NOTES.join('\n') } },
     { ...base, type: 'api-request', uuid: 'api', timestamp: '2026-10-04T09:00:01.000Z', body: CANARIES.apiRequest,
       toolUseResult: { type: 'create', filePath: at('docs/notes.md'), content: NOTES.join('\n') } },
+    result('u8', 'a6', '2026-10-03T09:40:00.000Z', { type: 'create', filePath: at(`src/${CANARIES.editedFile}.ts`), content: 'export const e = 1;',
+      structuredPatch: [] }),
     // An edit outside the repo is dropped.
     result('u9', 'a6', '2026-10-04T09:10:00.000Z', { type: 'create', filePath: `${CANARIES.home}/secret.ts`, content: CANARIES.code }),
     // Written after c6 was committed (but before its later author date): must not count.

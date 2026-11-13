@@ -53,6 +53,10 @@ export interface Session {
   model?: string | undefined;
   toolVersion?: string | undefined;
   filesTouched: number;
+  /** Sorted, unique ids of the snapshot files this session edited. */
+  files: FileId[];
+  /** Edited paths with no snapshot file (deleted since, excluded, another branch); filesTouched = files.length + filesOutside. */
+  filesOutside: number;
   linesAdded: number;
   linesRemoved: number;
   commits: Sha[];

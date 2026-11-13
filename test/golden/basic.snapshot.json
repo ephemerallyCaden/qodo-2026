@@ -591,11 +591,20 @@
         "3cf0531849a196cc532f1e92be34bb126af9651b"
       ],
       "endedAt": "2026-10-09T09:30:00Z",
-      "filesTouched": 6,
+      "files": [
+        "f_00b4e89d4aaa",
+        "f_033ecd338eec",
+        "f_089cedd9e904",
+        "f_49cc4f090941",
+        "f_b651e26a9c88",
+        "f_ba1a4e79419f"
+      ],
+      "filesOutside": 1,
+      "filesTouched": 7,
       "inferred": false,
       "key": "s_559f47d70d1b76",
       "kind": "main",
-      "linesAdded": 17,
+      "linesAdded": 18,
       "linesRemoved": 0,
       "model": "claude-opus-4-1",
       "seed": 2699774684,
@@ -606,6 +615,8 @@
     {
       "commits": [],
       "endedAt": "2026-10-05T09:00:00Z",
+      "files": [],
+      "filesOutside": 1,
       "filesTouched": 1,
       "inferred": false,
       "key": "s_55122ccca33a3d",
@@ -619,6 +630,8 @@
     {
       "commits": [],
       "endedAt": "2026-10-05T09:10:00Z",
+      "files": [],
+      "filesOutside": 1,
       "filesTouched": 1,
       "inferred": false,
       "key": "s_64ff865a6c4b0c",
@@ -637,6 +650,10 @@
         "d2ef4727742e1cf0d06cb5a03236de5213179e3e"
       ],
       "endedAt": "2026-10-06T09:59:58Z",
+      "files": [
+        "f_04ac967ba698"
+      ],
+      "filesOutside": 0,
       "filesTouched": 1,
       "inferred": false,
       "key": "s_e06dbb9b23fc4a",
@@ -654,6 +671,8 @@
       "branch": "main",
       "commits": [],
       "endedAt": "2026-10-25T09:00:00Z",
+      "files": [],
+      "filesOutside": 1,
       "filesTouched": 1,
       "inferred": false,
       "key": "s_e163aeda659596",

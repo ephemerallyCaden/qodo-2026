@@ -37,6 +37,22 @@ it('no canary, cwd or absolute path reaches the snapshot, the layout, stdout or 
   }
 });
 
+it('sessions[].files holds only f_ ids; other edited paths are counted, never named (#80)', () => {
+  const snap = JSON.parse(outputs['snapshot']!) as SnapshotV02;
+  const ids = new Set(snap.files.map((f) => f.id));
+  const withFiles = snap.sessions.filter((s) => s.files.length > 0);
+  expect(withFiles.length).toBeGreaterThan(0);
+  for (const s of snap.sessions) {
+    for (const id of s.files) expect(id, id).toMatch(/^f_/);
+    for (const id of s.files) expect(ids.has(id), id).toBe(true);
+    expect(s.files).toEqual([...new Set(s.files)].sort());
+    expect(s.filesTouched).toBe(s.files.length + s.filesOutside);
+  }
+  // The canary-named edit is in the repo but not in the snapshot; the outside-the-repo one is dropped.
+  expect(snap.sessions.some((s) => s.filesOutside > 0)).toBe(true);
+  expect(outputs['snapshot']).not.toContain(CANARIES.editedFile);
+});
+
 it('metadata fields reject path-shaped values but keep branch names (Qodo #3, Issue #5 case 6)', () => {
   const ok = ['main', 'feature/x', 'session/day1-ideation', 'claude-opus-4-1', 'general-purpose', 'plugin:agent', 'fix/tmp-cleanup',
     // Whole segments only: a home dir glued onto another segment no longer names the dir.

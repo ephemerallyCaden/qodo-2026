@@ -58,7 +58,7 @@ describe('scan', () => {
     const byKey = new Map(snapshot.sessions.map((s) => [s.key, s]));
     const [mainS, subS] = [byKey.get(mainKey), byKey.get(subKey)];
     expect([mainS?.kind, mainS?.parentKey, subS?.kind, subS?.parentKey]).toEqual(['main', undefined, 'subagent', mainKey]);
-    expect(mainS).toMatchObject({ linesAdded: 17, filesTouched: 6, model: 'claude-opus-4-1', commits: ['c1', 'c2', 'c7', 'c8'].map((id) => repo.commits[id]!.sha) });
+    expect(mainS).toMatchObject({ linesAdded: 18, filesTouched: 7, filesOutside: 1, model: 'claude-opus-4-1', commits: ['c1', 'c2', 'c7', 'c8'].map((id) => repo.commits[id]!.sha) });
     expect(subS).toMatchObject({ agentType: 'general-purpose', commits: [repo.commits['c5']!.sha] });
     const c5 = snapshot.commits.find((c) => c.sha === repo.commits['c5']!.sha)!;
     expect(c5.attribution.sessions).toEqual([{ sessionKey: subKey, lines: 2 }]);
