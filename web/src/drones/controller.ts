@@ -45,6 +45,11 @@ export class Drones {
   async refresh(head: string | null): Promise<void> {
     if (head === null) return;
     const gen = ++this.gen;
+    if (this.data && this.data.head !== head) { // a layout of another scan: its sessions are gone from the scene, so are their details
+      this.data = null;
+      this.shown = [];
+      this.deselect();
+    }
     let got: DroneView | Error;
     try { got = await this.host.client.drones(); } catch (e) { got = e instanceof Error ? e : new Error(String(e)); }
     if (gen !== this.gen) return; // a newer refresh is on its way

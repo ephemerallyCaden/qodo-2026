@@ -387,4 +387,17 @@ describe('drones in live mode (#80)', () => {
     expect(l.view.selectedDrone).toBeNull();
     expect((l.view.pass.canvas as unknown as { focused: number }).focused).toBe(before);
   });
+
+  it('a layout of another scan closes the selected drone at once, before its drone view arrives', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await openPanel(l);
+    const slow = deferred<DroneView>();
+    l.droneAnswers.push(() => slow.promise);
+    l.layouts.push(async () => layoutAt(OTHER));
+    l.fogs.push(async () => fogAt(OTHER));
+    l.send({ type: 'layout', head: OTHER });
+    await vi.waitFor(() => expect(l.layouts.length).toBe(0));
+    await vi.waitFor(() => expect(l.view.selectedDrone).toBeNull());
+    slow.resolve(droneView(OTHER, []));
+  });
 });
