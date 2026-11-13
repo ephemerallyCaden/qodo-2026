@@ -14,6 +14,7 @@ import { MOONLET_RADIUS, moonletPosition, planetCentre, type SystemModel } from 
 import { add, scale, type Sphere, type Vec3 } from '../model/vec.js';
 import { LIGHT_VIEW, orbitingSpheres, placeSpheres, ramp, shaderMaterial, SHARED, toonMaterial } from './materials.js';
 import { FOG_SHARED, moonFogAttribute, setMoonFog } from './fog.js';
+import { DroneFleet } from './drone-fleet.js';
 import { MOON_GEO, makePlanet, type PlanetObject } from './planet.js';
 import { STAR_FRAG, STARFIELD_FRAG, STARFIELD_VERT } from './shaders.js';
 
@@ -48,6 +49,8 @@ export class SystemScene {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(FOV_DEG, ASPECT, NEAR, FAR);
   readonly planets: PlanetObject[];
+  /** The agent drones (#80): at most DRONE_CAP, one draw call each. */
+  readonly fleet = new DroneFleet();
   private readonly starfield = makeStarfield();
   private readonly moonlets: THREE.InstancedMesh | null;
   private readonly moonletFog: THREE.InstancedBufferAttribute | null;
@@ -63,6 +66,7 @@ export class SystemScene {
   constructor(readonly model: SystemModel) {
     this.depth = systemDepth(model);
     this.scene.add(this.starfield);
+    this.scene.add(this.fleet.group);
     this.disposables.push(this.starfield.geometry, this.starfield.material as THREE.Material);
 
     const starMat = shaderMaterial(STAR_FRAG, { uGlow: { value: ramp(palette.world.glow, 3) } });
@@ -153,10 +157,12 @@ export class SystemScene {
       const c = centres[i]!, at = project(view, c);
       p.update(frame, c, at ? projectedRadius(p.model.radius, at.depth, fovOf(view)) * (pixelHeight / 2) : 0);
     });
+    this.fleet.pose(this.model, frame, fovOf(view), pixelHeight);
     if (this.moonlets) placeSpheres(this.moonlets, this.model.star.moonlets.map((m) => moonletPosition(m, frame)), MOONLET_RADIUS);
   }
 
   dispose(): void {
+    this.fleet.dispose();
     for (const p of this.planets) p.dispose();
     for (const d of this.disposables) d.dispose();
   }
