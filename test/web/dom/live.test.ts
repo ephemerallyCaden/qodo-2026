@@ -61,6 +61,8 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     fog: null as FogView | null,
     get model() { return model; },
     onFog: null as ((f: FogView | null) => void) | null,
+    reducedMotion: false,
+    fogChange: { cleared: 0, refogged: 0 },
     tickets: 0,
     applied: 0,
     fogTicket() { return ++view.tickets; },
