@@ -5,6 +5,7 @@ import type { FogView } from '../../src/core/contract/fog.js';
 import { PARKED_POSE, startPose } from './camera/pose.js';
 import { FreeFlightRig } from './camera/rig.js';
 import { ViewError, type DataClient } from './data/client.js';
+import { Drones } from './drones/controller.js';
 import { startLoop } from './loop.js';
 import { planetLines, summaryText } from './model/describe.js';
 import { effectiveFrame } from './model/motion.js';
@@ -103,6 +104,8 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     if (m) hud.summary(summaryText(m, focus, view.fog));
     redraw();
   };
+  // #80: the agent drones, refetched with every layout load and snapshot event.
+  const drones = new Drones({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }) });
 
   const fetchFog = (): Promise<Fetched> => client.fog().then((fog) => ({ fog }), (error: unknown) => ({ error }));
   const loadOnce = async () => {
@@ -134,6 +137,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       say();
       if (fogChanged) hud.announce(fogChanged); // what the reload's fog changed (a rescan's refogs), not overwritten by say()
       if (paired.notice) hud.announce(paired.notice); // after say(), so the status line keeps it
+      void drones.refresh(drawnHead);
       redraw();
     } catch (e) {
       const err = describeError(e);
@@ -171,13 +175,13 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
 
   const input = new Input(view.pass.canvas, {
     wake: () => loop.wake(),
-    click: (x, y) => { if (!loaded) return; const i = view.pickAt(x, y, rig.pose(), shown()); if (i !== null) setFocus(i); },
+    click: (x, y) => { if (!loaded || drones.pick(x, y, rig.pose(), shown())) return; const i = view.pickAt(x, y, rig.pose(), shown()); if (i !== null) setFocus(i); },
     cycle: (dir) => {
       const n = view.model?.planets.length ?? 0;
       if (n === 0) return;
       setFocus(focus === null ? (dir > 0 ? 0 : n - 1) : (focus + dir + n) % n);
     },
-    release: () => setFocus(null),
+    release: () => { drones.deselect(); setFocus(null); },
     home: () => { if (view.model) { rig.reset(startPose(view.model)); setFocus(null); } },
   });
 
@@ -216,6 +220,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   let paused = false;
   client.follow((ev) => {
     if (ev.type === 'layout' || ev.type === 'fog') void update(ev.type);
+    else if (ev.type === 'snapshot') void drones.refresh(drawnHead);
   }, (status) => {
     // The server keeps no backlog, so a change made while the stream was down (or before it first
     // connected) would be lost: every (re)connect reloads. A resumed stream is announced once.

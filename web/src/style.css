@@ -11,6 +11,19 @@ body { display: grid; place-items: center; }
 #hud input { accent-color: var(--accent); margin: 0; }
 #hud input[type=range] { width: 120px; }
 canvas.bitmap, #error canvas { display: block; image-rendering: pixelated; }
+/* Drones (#80): the HUD's count line and the selected session's panel, DOM text outside the pixel pass. */
+#drones-hud { position: fixed; right: 8px; bottom: 8px; margin: 0; max-width: 44ch; text-align: right; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink); }
+#drones-hud:empty { display: none; }
+#drone-panel { position: fixed; left: 8px; bottom: 40px; box-sizing: border-box; width: min(40ch, 90vw); padding: 6px; background: var(--space); border: 1px solid var(--rule); color: var(--ink); font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+#drone-panel[hidden] { display: none; }
+#drone-panel h2 { margin: 0; font-size: 12px; }
+#drone-panel .top { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px; }
+#drone-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 8px; margin: 0; }
+#drone-panel dt { color: var(--dim); }
+#drone-panel dd { margin: 0; overflow-wrap: anywhere; }
+#drone-panel button { background: var(--space); color: var(--ink); border: 1px solid var(--rule); padding: 2px 5px; cursor: pointer; font: inherit; }
+#drone-panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 /* Review panel (#75): crisp DOM outside the pixel pass. Bitmap titles and buttons; diff text monospace. */
 #panel { position: fixed; right: 8px; top: 56px; max-height: calc(100vh - 64px); box-sizing: border-box; width: min(64ch, 42vw); display: flex; flex-direction: column; gap: 6px;
   padding: 8px; overflow: auto; background: var(--space); border: 1px solid var(--rule); line-height: normal; }

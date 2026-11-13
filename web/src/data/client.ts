@@ -2,8 +2,10 @@
 // per-launch token in TOKEN_HEADER (contract). Nothing here talks to any other origin.
 import { API, STAR_HOME, TOKEN_HEADER, type ChartResult, type DiffResult, type LiveEvent, type UnseenResult } from '../../../src/core/contract/api.js';
 import type { ChartAction, FogView } from '../../../src/core/contract/fog.js';
+import type { DroneView } from '../../../src/core/contract/drones.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
 import type { DirId, FileId, Sha } from '../../../src/core/snapshot/types.js';
+import { checkDrones } from '../drones/check.js';
 import { checkChartResult, checkDiff, checkFog, checkLayout, checkUnseen, type Checked } from '../model/validate.js';
 import { EventStreamParser } from './sse.js';
 
@@ -20,6 +22,8 @@ export interface DataClient {
   fog(): Promise<FogView>;
   /** Follows live updates until the returned stop() is called. */
   follow(onEvent: (ev: LiveEvent) => void, onStatus: (status: string) => void): () => void;
+  /** #80: every agent session, placed on a body where it can be. A failure is announced, not fatal. */
+  drones(): Promise<DroneView>;
   /** #75: the fogged files of a planet (null: the star) at the head the view shows; a refusal comes back, not thrown. */
   unseen(home: DirId | null, at: Sha): Promise<UnseenResult>;
   /** #75: a file's unseen diff at the head the view shows. Held in memory only, never stored. */
@@ -61,6 +65,7 @@ function parseChecked<T>(text: string, what: string, source: string, check: (v: 
 }
 export const parseLayout = (text: string, source: string): LayoutV1 => parseChecked(text, 'layout', source, checkLayout);
 export const parseFog = (text: string, source: string): FogView => parseChecked(text, 'fog view', source, checkFog);
+export const parseDrones = (text: string, source: string): DroneView => parseChecked(text, 'drone view', source, checkDrones);
 
 /** Statuses whose JSON body is an answer the view acts on (a refusal it can explain), not an error. */
 const ANSWERS = [200, 400, 404, 409];
@@ -98,6 +103,7 @@ export function serverClient(token: string): DataClient {
   return {
     layout: async () => parseLayout(await get(API.layout), API.layout),
     fog: async () => parseFog(await get(API.fog), API.fog),
+    drones: async () => parseDrones(await get(API.drones), API.drones),
     unseen: (home, at) => answer(`${API.unseen}?${new URLSearchParams({ home: home ?? STAR_HOME, at })}`, API.unseen, 'unseen list', checkUnseen),
     diff: (fileId, at) => answer(`${API.diff}?${new URLSearchParams({ fileId, at })}`, API.diff, 'diff', checkDiff),
     chart: (action) => answer(API.chart, API.chart, 'chart answer', checkChartResult, JSON.stringify(action)),

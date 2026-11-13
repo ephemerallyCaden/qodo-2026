@@ -12,6 +12,7 @@ import { LabelLayer, lineHeight, type Label } from './labels/overlay.js';
 import { placeLabels } from './labels/place.js';
 import { SHARED } from './render/materials.js';
 import { PixelPass } from './render/pixel.js';
+import type { FleetEntry } from './render/drone-fleet.js';
 import { SystemScene } from './render/scene.js';
 import { UI_COLOURS } from './ui/colours.js';
 import type { Sphere } from './model/vec.js';
@@ -31,6 +32,9 @@ export class View {
   private reduced = false;
   /** Called once each time a fog is applied (applyFog, or load()'s own fog when it wins), never for a stale one. */
   onFog?: (fog: FogView | null) => void;
+  /** The drones drawn (#80), kept across layout reloads, and the selected one's session key. */
+  private drones: readonly FleetEntry[] = [];
+  selectedDrone: string | null = null;
   /** The per-pixel depth fade (RenderInput.depthFade); off leaves only palette colours. */
   depthFade = true;
   showHelp = true;
@@ -97,6 +101,7 @@ export class View {
     const animate = opts.animate !== false && !this.reduced;
     const next = new SystemScene(systemModel(layout));
     try {
+      next.fleet.set(this.drones);
       next.pose(0, startPose(next.model), this.pass.height);
       // Compile every program up front, hidden ones (small planets' cloud shadows) included, and force
       // three's error check, which it otherwise defers to a program's first draw.
@@ -117,6 +122,28 @@ export class View {
     const dropped = this.fogs.setLayout(layout.source.head, animate);
     this.pushFog();
     if (!this.applyWith(fog, ticket, animate) && dropped) this.onFog?.(null);
+  }
+
+  /** Draws these drones (#80), compiling their shader first; a failure throws a ViewError and keeps the old ones. */
+  async setDrones(entries: readonly FleetEntry[]): Promise<void> {
+    const s = this.system;
+    if (!s) { this.drones = entries; return; }
+    const before = s.fleet.entries;
+    s.fleet.set(entries);
+    try {
+      if (entries.length > 0) {
+        this.pass.takeShaderErrors();
+        s.fleet.group.traverse((o) => { o.visible = true; });
+        await this.pass.renderer.compileAsync(s.fleet.group, s.camera);
+        for (const program of this.pass.renderer.info.programs ?? []) program.getUniforms();
+        const failed = this.pass.takeShaderErrors();
+        if (failed.length > 0) throw new ViewError('The view could not compile the drone shader.', failed);
+      }
+    } catch (e) {
+      s.fleet.set(before);
+      throw e;
+    }
+    this.drones = entries;
   }
 
   /** Fits the view to the space available (CSS px) at the device pixel ratio. */
@@ -148,7 +175,23 @@ export class View {
     for (const l of placeLabels(pose, s.spheres(frame), [starSphere(s)], W, H, 2 * px, MAX_LABELS - out.length)) {
       out.push({ text: s.model.planets[l.i]!.path, x: l.x, y: l.y, align: 'centre', colour: l.i === focus ? mark : ink });
     }
+    out.push(...this.droneLabels(s, frame, pose, W, H, 2 * px, MAX_LABELS - out.length));
     return out;
+  }
+
+  /** Labels for the drones that have one (the generic drone's tool, "inferred") and the selected drone, under each. */
+  private droneLabels(s: SystemScene, frame: number, pose: OrbitPose, W: number, H: number, gap: number, max: number): Label[] {
+    const entries = s.fleet.entries;
+    if (!entries.some((e) => e.label !== null || e.key === this.selectedDrone)) return [];
+    const at = s.fleet.spheres(s.model, frame); // null: its home isn't in this layout, so it isn't drawn and has no label
+    const wanted = entries.flatMap((e, i) => (at[i] && (e.label !== null || e.key === this.selectedDrone) ? [i] : []));
+    const spheres = wanted.map((i) => at[i]!);
+    const blockers = [...s.spheres(frame), starSphere(s)];
+    return placeLabels(pose, spheres, blockers, W, H, gap, max).map((l) => {
+      const e = entries[wanted[l.i]!]!;
+      const sel = e.key === this.selectedDrone;
+      return { text: sel ? e.selectedLabel : e.label!, x: l.x, y: l.y, align: 'centre', colour: sel ? UI_COLOURS.accent : UI_COLOURS.ink };
+    });
   }
 
   /** The planet under a point of the view canvas (CSS px from its top-left), or null. */
@@ -158,6 +201,18 @@ export class View {
     const c = this.pass.canvas.getBoundingClientRect();
     const ndc = { x: (cssX / c.width) * 2 - 1, y: 1 - (cssY / c.height) * 2 };
     return pick(pose, ndc, s.spheres(frame), [starSphere(s)]); // the star hides what is behind it
+  }
+
+  /** The session key of the drone under a point of the view canvas, or null. A planet or the star in front of it hides it. */
+  pickDroneAt(cssX: number, cssY: number, pose: OrbitPose, frame: number): string | null {
+    const s = this.system;
+    if (!s || s.fleet.entries.length === 0) return null;
+    const c = this.pass.canvas.getBoundingClientRect();
+    const ndc = { x: (cssX / c.width) * 2 - 1, y: 1 - (cssY / c.height) * 2 };
+    const at = s.fleet.spheres(s.model, frame);
+    const drawn = at.flatMap((d, i) => (d ? [i] : []));
+    const hit = pick(pose, ndc, [...drawn.map((i) => at[i]!), ...s.spheres(frame)], [starSphere(s)]);
+    return hit !== null && hit < drawn.length ? s.fleet.entries[drawn[hit]!]!.key : null;
   }
 
   /** What focusing planet i targets: its sphere at this frame (the hero framing fills 45% of the frame with it). */

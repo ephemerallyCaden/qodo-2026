@@ -12,15 +12,23 @@ import { runLive } from '../../../web/src/live.js';
 import { systemModel, type SystemModel } from '../../../web/src/model/system.js';
 import type { Hud } from '../../../web/src/ui/hud.js';
 import type { View } from '../../../web/src/view.js';
+import type { DroneView } from '../../../src/core/contract/drones.js';
+import type { FleetEntry } from '../../../web/src/render/drone-fleet.js';
 import { miniFog, miniLayout } from '../../fixtures/contract/mini.js';
+import type { DirId } from '../../../src/core/snapshot/types.js';
+import { droneView, session } from '../../fixtures/drones.js';
 
 // The review panel (#75) needs a DOM and is tested in the render suite: a no-op here.
 vi.mock('../../../web/src/ui/panel.js', () => ({ Panel: class { setFog() {} select() {} scale() {} } }));
+vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} } }));
 
 const HEAD = miniLayout.source.head;
 const OTHER = 'b'.repeat(40);
 const layoutAt = (head: string): LayoutV1 => ({ ...miniLayout, source: { ...miniLayout.source, head } });
 const fogAt = (head: string, baseline: string | null = null): FogView => ({ ...miniFog, head, baseline });
+
+/** The page's elements by id, as the drone controller finds them. */
+const els = new Map<string, { textContent: string; hidden: boolean }>();
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {} })); // reduced motion: the loop sleeps
@@ -28,6 +36,8 @@ beforeEach(() => {
   vi.stubGlobal('innerWidth', 640);
   vi.stubGlobal('innerHeight', 360);
   vi.stubGlobal('addEventListener', () => {});
+  els.clear();
+  vi.stubGlobal('document', { getElementById: (id: string) => { if (!els.has(id)) els.set(id, { textContent: '', hidden: true }); return els.get(id); } }); // the drone HUD line and panel host
   vi.stubGlobal('requestAnimationFrame', () => 1);
   vi.stubGlobal('cancelAnimationFrame', () => {});
 });
@@ -42,14 +52,19 @@ function deferred<T>() {
 
 /** runLive against fakes: `layouts` and `fogs` answer each request in turn (a function may wait or throw). */
 async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
+  let head: string = first.layout.source.head;
   const layouts: (() => Promise<LayoutV1>)[] = [async () => first.layout];
+  /** Answers for the drone view, in turn; with none queued, an empty one of the layout's head. */
+  const droneAnswers: (() => Promise<DroneView>)[] = [];
+  let droneCalls = 0;
   const fogs: (() => Promise<FogView>)[] = [async () => { if (first.fog instanceof Error) throw first.fog; return first.fog; }];
   let fogCalls = 0;
   let onEvent: (ev: LiveEvent) => void = () => {};
   const client: DataClient = {
-    layout: () => layouts.shift()!(),
+    layout: () => layouts.shift()!().then((l) => { head = l.source.head; return l; }),
     fog: () => { fogCalls++; return fogs.shift()!(); },
     follow: (e) => { onEvent = e; return () => {}; },
+    drones: () => { droneCalls++; return (droneAnswers.shift() ?? (async () => droneView(head, [])))(); },
     unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }),
     chart: async () => ({ ok: false, error: 'not used' }),
@@ -73,6 +88,10 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     async load(layout: LayoutV1, fog: FogView | null = null, opts: { ticket?: number } = {}) {
       model = systemModel(layout); view.applyFog(fog, opts.ticket ?? view.fogTicket());
     },
+    selectedDrone: null as string | null,
+    drawn: [] as readonly FleetEntry[],
+    setDrones: async (e: readonly FleetEntry[]) => { view.drawn = e; },
+    pickDroneAt: () => null,
     resize: () => {},
     draw: () => ({}),
     focusTarget: () => null,
@@ -89,7 +108,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     await vi.waitFor(() => expect(layouts.length + fogs.length).toBe(0));
     await new Promise((r) => setTimeout(r, 10));
   };
-  return { view, status, layouts, fogs, emit, send: (ev: LiveEvent) => onEvent(ev), fogCalls: () => fogCalls, last: () => status.at(-1) ?? '' };
+  return { view, status, layouts, fogs, droneAnswers, droneCalls: () => droneCalls, emit, send: (ev: LiveEvent) => onEvent(ev), fogCalls: () => fogCalls, last: () => status.at(-1) ?? '' };
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 10));
@@ -210,5 +229,62 @@ describe('live mode applies a fog only over its own scan\'s layout (#64)', () =>
     const l = await live({ layout: miniLayout, fog: new ViewError('/api/fog answered 500.', ['state error: run `commet scan`']) });
     expect(l.view.fog).toBeNull();
     expect(l.last()).toMatch(/^fog view unavailable: \/api\/fog answered 500\.[\s\S]*run `commet scan`/);
+  });
+});
+
+describe('drones in live mode (#80)', () => {
+  const [a] = miniLayout.planets.map((p) => p.dirId);
+  const hud = () => els.get('drones-hud')!.textContent;
+
+  it('draws the placed sessions of the drawn layout and says the three counts', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!), session(2, 'star'), session(3, 'd_does_not_exist' as DirId), session(4, null)]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.view.drawn.length).toBe(2));
+    expect(hud()).toBe('2 drones shown, 0 placed sessions hidden by the cap of 16, 2 sessions could not be placed');
+    expect(l.view.drawn.map((e) => e.home).sort()).toEqual([a, 'star'].sort());
+  });
+
+  it('refetches on a snapshot event and on a layout event, not on a fog event', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    const first = l.droneCalls();
+    expect(first).toBe(1); // the first load
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.droneCalls()).toBe(first + 1));
+    l.layouts.push(async () => miniLayout);
+    l.fogs.push(async () => fogAt(HEAD));
+    await l.emit({ type: 'layout', head: HEAD });
+    expect(l.droneCalls()).toBe(first + 2);
+    l.fogs.push(async () => fogAt(HEAD));
+    await l.emit({ type: 'fog', head: HEAD });
+    expect(l.droneCalls()).toBe(first + 2);
+  });
+
+  it('a failed fetch is announced, the map stays and the drones of this scan stay', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!)]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.view.drawn.length).toBe(1));
+    l.droneAnswers.push(() => Promise.reject(new ViewError('/api/drones answered 500.')));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.last()).toMatch(/drones unavailable: .*500/));
+    expect(l.view.model).not.toBeNull();
+    expect(l.view.drawn.length).toBe(1);
+  });
+
+  it('drones of another scan are not applied over this layout, and the HUD says so', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    l.droneAnswers.push(async () => droneView(OTHER, [session(1, a!)]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.last()).toMatch(new RegExp(`drones not applied.*${OTHER.slice(0, 7)}.*${HEAD.slice(0, 7)}`)));
+    expect(l.view.drawn).toEqual([]);
+  });
+
+  it('an old snapshot says "rescan to place drones" and draws none', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, null), session(2, null)], true));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(hud()).toMatch(/^rescan to place drones/));
+    expect(l.view.drawn).toEqual([]);
   });
 });
