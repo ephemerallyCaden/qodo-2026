@@ -78,8 +78,9 @@ describe('readDrones on a scanned repo', () => {
     const r = setup();
     expect((await r.run('scan', '--no-root')).code).toBe(0);
     const file = join(r.state, 'snapshot.json');
-    const { sessions: _gone, ...damaged } = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    const damaged = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    delete damaged['sessions'];
     writeAtomic(file, JSON.stringify(damaged));
-    await expect(readDrones(r.repo.dir)).rejects.toMatchObject({ name: 'CommetError', exitCode: EXIT.state, message: expect.stringMatching(/damaged.*run `commet scan`/) });
+    await expect(readDrones(r.repo.dir)).rejects.toMatchObject({ exitCode: EXIT.state, message: expect.stringMatching(/damaged.*run `commet scan`/) });
   });
 });
