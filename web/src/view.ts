@@ -29,6 +29,26 @@ export class View {
   /** The per-pixel depth fade (RenderInput.depthFade); off leaves only palette colours. */
   depthFade = true;
   showHelp = true;
+  /** Told of every fog applyFog takes (#75: the review panel follows it). */
+  onFog: ((fog: FogView | null) => void) | null = null;
+  private fogTickets = 0;
+  private fogApplied = 0;
+
+  /** Take one before sending any request whose answer carries a FogView (GET /api/fog, POST /api/chart). Minimal until #74. */
+  fogTicket(): number { return ++this.fogTickets; }
+
+  /**
+   * The one entry point for a fog answer. Returns false, changing nothing, when an answer to a later
+   * ticket was already applied, so an older GET never lands over a newer chart result. #74 adds the
+   * clear and refog fronts.
+   */
+  applyFog(fog: FogView | null, ticket: number): boolean {
+    if (ticket < this.fogApplied) return false;
+    this.fogApplied = ticket;
+    this.fog = fog;
+    this.onFog?.(fog);
+    return true;
+  }
 
   constructor(viewCanvas: HTMLCanvasElement, labelCanvas: HTMLCanvasElement) {
     this.pass = new PixelPass(viewCanvas);
@@ -37,8 +57,13 @@ export class View {
 
   get model(): SystemModel | null { return this.system?.model ?? null; }
 
-  /** Builds the scene for a layout and compiles its shaders, so the first frame draws fully. */
-  async load(layout: LayoutV1, fog: FogView | null = null): Promise<void> {
+  /**
+   * Builds the scene for a layout and compiles its shaders, so the first frame draws fully.
+   * `opts.ticket` is the fog ticket taken before `fog` was requested: the fog goes through applyFog, so one
+   * fetched before a newer fog was applied never replaces it (PR #108 r1 #1). Default: a fresh ticket.
+   */
+  async load(layout: LayoutV1, fog: FogView | null = null, opts: { ticket?: number } = {}): Promise<void> {
+    const ticket = opts.ticket ?? this.fogTicket();
     const next = new SystemScene(systemModel(layout));
     try {
       next.pose(0, startPose(next.model), this.pass.height);
@@ -56,7 +81,7 @@ export class View {
     }
     this.system?.dispose();
     this.system = next;
-    this.fog = fog;
+    this.applyFog(fog, ticket);
   }
 
   /** Fits the view to the space available (CSS px) at the device pixel ratio. */

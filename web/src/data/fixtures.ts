@@ -31,5 +31,9 @@ export function fixtureClient(name: string): DataClient {
     },
     fog: async () => parseFog(await file('mini.fog.json'), `fixture ${name}`),
     follow: (_onEvent, onStatus) => { onStatus(`dev fixture ${name}`); return () => {}; },
+    // Reviewing needs a repository: the fixtures have no paths or diffs (#75).
+    unseen: () => Promise.reject(new ViewError('Reviewing needs `commet open`: the dev fixtures have no diffs.')),
+    diff: () => Promise.reject(new ViewError('Reviewing needs `commet open`: the dev fixtures have no diffs.')),
+    chart: () => Promise.reject(new ViewError('Charting needs `commet open`: the dev fixtures have no chart state.')),
   };
 }

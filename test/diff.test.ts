@@ -1,14 +1,14 @@
 // #75: one file's diff between two commits (src/scan/diff.ts). The parsers on crafted output, then
 // fileDiff on a real repo: hostile file names, a literal pathspec, a followed rename, binary, cut-off.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { DIFF_LIMITS } from '../src/core/contract/api.js';
 import { cutAt, fileDiff, firstParent, parsePatch, parseRaw } from '../src/scan/diff.js';
 import { gitRunner } from '../src/scan/git.js';
 import { EMPTY_TREE } from '../src/scan/repo.js';
+import { realTempDir } from './fixtures/tmp.js';
 
 /** U+0001, a newline and a tab: the bytes that broke git-output framing before (AGENTS.md Rule 7). */
 const HOSTILE = `odd${String.fromCharCode(1)}name\nwith\ttab.ts`;
@@ -90,7 +90,7 @@ describe('fileDiff on a real repo', () => {
   const runner = () => gitRunner(dir);
 
   beforeAll(() => {
-    dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-diff-')));
+    dir = realTempDir('commet-diff-');
     git('init', '-q', '-b', 'main');
     for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false'], ['core.autocrlf', 'false']]) git('config', k!, v!);
     write('src/a.ts', 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n');
@@ -112,7 +112,6 @@ describe('fileDiff on a real repo', () => {
     write('lib/a.ts', 'one\ntwo\nthree\nFOUR\nfive\nsix\nseven\nEIGHT');
     commit(); // 2
   });
-  afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
   it('a file named like a glob means only itself (--literal-pathspecs)', async () => {
     const d = await fileDiff(runner(), sha[0]!, sha[1]!, ['*.ts']);

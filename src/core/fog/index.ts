@@ -321,7 +321,10 @@ export function unseenRange(base: FogBase, chart: ChartState, fileId: FileId): U
   // A fogged file has a change in the window, so the window has a first commit.
   const [start, startSeq]: [RangeStart, number] = below ? [{ sha: below.sha }, below.seq] : [{ parentOf: first!.sha }, first!.seq - 1];
   const n = [...base.names.values()].flat().find((x) => x.file === i && x.from <= startSeq && startSeq <= x.to);
-  return { path, oldPath: n && n.path !== path ? n.path : null, since, start };
+  // An old path another file now holds isn't diffed: git would show that file's change too. Without it
+  // the file shows whole, as added: more than unseen, never less (PR #108 r1 #12).
+  const taken = n !== undefined && base.files.some((f) => f.path === n.path);
+  return { path, oldPath: n && n.path !== path && !taken ? n.path : null, since, start };
 }
 
 /**

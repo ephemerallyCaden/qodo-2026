@@ -1,9 +1,10 @@
 // The view's data source. Live: the hardened local server (#32), every request carrying the
 // per-launch token in TOKEN_HEADER (contract). Nothing here talks to any other origin.
-import { API, TOKEN_HEADER, type LiveEvent } from '../../../src/core/contract/api.js';
-import type { FogView } from '../../../src/core/contract/fog.js';
+import { API, STAR_HOME, TOKEN_HEADER, type ChartResult, type DiffResult, type LiveEvent, type UnseenResult } from '../../../src/core/contract/api.js';
+import type { ChartAction, FogView } from '../../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
-import { checkFog, checkLayout, type Checked } from '../model/validate.js';
+import type { DirId, FileId, Sha } from '../../../src/core/snapshot/types.js';
+import { checkChartResult, checkDiff, checkFog, checkLayout, checkUnseen, type Checked } from '../model/validate.js';
 import { EventStreamParser } from './sse.js';
 
 /** A failure the view shows as text: a title and the reasons (AC9: a readable error, never a blank canvas). */
@@ -19,6 +20,12 @@ export interface DataClient {
   fog(): Promise<FogView>;
   /** Follows live updates until the returned stop() is called. */
   follow(onEvent: (ev: LiveEvent) => void, onStatus: (status: string) => void): () => void;
+  /** #75: the fogged files of a planet (null: the star) at the head the view shows; a refusal comes back, not thrown. */
+  unseen(home: DirId | null, at: Sha): Promise<UnseenResult>;
+  /** #75: a file's unseen diff at the head the view shows. Held in memory only, never stored. */
+  diff(fileId: FileId, at: Sha): Promise<DiffResult>;
+  /** #75: one chart write; the answer carries the new fog, or a refusal. */
+  chart(action: ChartAction): Promise<ChartResult>;
 }
 
 const HINTS: Record<number, string> = {
@@ -55,24 +62,45 @@ function parseChecked<T>(text: string, what: string, source: string, check: (v: 
 export const parseLayout = (text: string, source: string): LayoutV1 => parseChecked(text, 'layout', source, checkLayout);
 export const parseFog = (text: string, source: string): FogView => parseChecked(text, 'fog view', source, checkFog);
 
+/** Statuses whose JSON body is an answer the view acts on (a refusal it can explain), not an error. */
+const ANSWERS = [200, 400, 404, 409];
+
 const RETRY_MS = [1000, 2000, 5000, 10_000, 30_000];
 
 export function serverClient(token: string): DataClient {
   // Every request: the token header, no caching, same origin only, no redirects.
   const init = { headers: { [TOKEN_HEADER]: token }, cache: 'no-store', credentials: 'same-origin', redirect: 'error' } as const;
-  const get = async (path: string): Promise<string> => {
-    let res: Response;
+  /** One request; an unreachable server is a readable error, named by `label` (the route, never its query). */
+  const send = async (path: string, label: string, extra: RequestInit = {}): Promise<Response> => {
     try {
-      res = await fetch(path, init);
+      return await fetch(path, { ...init, ...extra });
     } catch {
-      throw new ViewError(`Couldn't reach the Commet server for ${path}.`, ['Is `commet open` still running?']);
+      throw new ViewError(`Couldn't reach the Commet server for ${label}.`, ['Is `commet open` still running?']);
     }
+  };
+  const get = async (path: string): Promise<string> => {
+    const res = await send(path, path);
     if (!res.ok) throw httpError(path, res.status, await res.text().catch(() => ''));
     return res.text();
+  };
+  /** A route whose refusals are answers: their body is parsed and checked like a success. */
+  const answer = async <T>(path: string, label: string, what: string, check: (v: unknown) => Checked<T>, post?: string): Promise<T> => {
+    const res = await send(path, label, post === undefined ? {}
+      : { method: 'POST', headers: { ...init.headers, 'content-type': 'application/json' }, body: post });
+    if (!ANSWERS.includes(res.status)) {
+      // The server's own fixed text (busy, too slow, a state error) says more than the status.
+      const said = await res.json().then((b: unknown) => (b as { error?: unknown } | null)?.error, () => undefined);
+      const e = httpError(label, res.status);
+      throw typeof said === 'string' && said.length <= 200 ? new ViewError(e.title, [said, ...e.detail]) : e;
+    }
+    return parseChecked(await res.text(), what, label, check);
   };
   return {
     layout: async () => parseLayout(await get(API.layout), API.layout),
     fog: async () => parseFog(await get(API.fog), API.fog),
+    unseen: (home, at) => answer(`${API.unseen}?${new URLSearchParams({ home: home ?? STAR_HOME, at })}`, API.unseen, 'unseen list', checkUnseen),
+    diff: (fileId, at) => answer(`${API.diff}?${new URLSearchParams({ fileId, at })}`, API.diff, 'diff', checkDiff),
+    chart: (action) => answer(API.chart, API.chart, 'chart answer', checkChartResult, JSON.stringify(action)),
     follow(onEvent, onStatus) {
       const abort = new AbortController();
       let attempt = 0;

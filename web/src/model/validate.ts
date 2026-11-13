@@ -1,6 +1,7 @@
 // The view's input boundary: layout.json and the fog view arrive as untrusted JSON (from the local
 // server or a dev fixture). Every field the renderer reads is checked here, and a bad document is
 // refused with a readable reason (AC9) instead of half-drawing. Pure: no three.js, no DOM.
+import type { ChartResult, DiffResult, UnseenResult } from '../../../src/core/contract/api.js';
 import type { FogView } from '../../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
 
@@ -192,5 +193,77 @@ export function checkFog(v: unknown): Checked<FogView> {
   });
   const star = c.obj(f['star'], 'fog.star');
   if (star) c.counts(star, 'fog.star');
+  return c.result(v);
+}
+
+// ---- #75: the unseen list, the diff and chart write results ----
+
+const DIFF_STATUSES = ['modified', 'added', 'deleted', 'renamed', 'mode'];
+const LINE_MARKS = [' ', '+', '-', '\\'];
+
+/** A refusal the view acts on: `unknown-head` (409, with the current head) or a fixed error (400/404). */
+function refusal(c: Checker, o: Obj, at: string): void {
+  c.str(o['error'], `${at}.error`);
+  if (o['head'] !== undefined) c.str(o['head'], `${at}.head`);
+}
+
+export function checkUnseen(v: unknown): Checked<UnseenResult> {
+  const c = new Checker();
+  const o = c.obj(v, 'unseen');
+  if (!o) return c.result(v);
+  if (o['ok'] !== true) { refusal(c, o, 'unseen'); return c.result(v); }
+  c.str(o['at'], 'unseen.at');
+  c.nullableStr(o['home'], 'unseen.home');
+  c.arr(o['files'], 'unseen.files').forEach((x, i) => {
+    const at = `unseen.files[${i}]`;
+    const f = c.obj(x, at);
+    if (!f) return;
+    c.str(f['fileId'], `${at}.fileId`, 'f_');
+    c.str(f['path'], `${at}.path`);
+    c.str(f['since'], `${at}.since`);
+    c.arr(f['reasons'], `${at}.reasons`).forEach((r, k) => c.oneOf(r, `${at}.reasons[${k}]`, FOG_REASONS));
+  });
+  return c.result(v);
+}
+
+export function checkDiff(v: unknown): Checked<DiffResult> {
+  const c = new Checker();
+  const o = c.obj(v, 'diff');
+  if (!o) return c.result(v);
+  if (o['ok'] !== true) { refusal(c, o, 'diff'); return c.result(v); }
+  c.str(o['fileId'], 'diff.fileId', 'f_');
+  c.str(o['at'], 'diff.at');
+  c.nullableStr(o['since'], 'diff.since');
+  c.nullableStr(o['base'], 'diff.base');
+  if (typeof o['truncated'] !== 'boolean') c.fail('diff.truncated', 'must be a boolean');
+  c.int(o['shownLines'], 'diff.shownLines');
+  c.arr(o['sections'], 'diff.sections').forEach((x, i) => {
+    const at = `diff.sections[${i}]`;
+    const s = c.obj(x, at);
+    if (!s) return;
+    c.oneOf(s['status'], `${at}.status`, DIFF_STATUSES);
+    c.str(s['path'], `${at}.path`);
+    c.nullableStr(s['oldPath'], `${at}.oldPath`);
+    if (typeof s['binary'] !== 'boolean') c.fail(`${at}.binary`, 'must be a boolean');
+    c.arr(s['hunks'], `${at}.hunks`).forEach((y, k) => {
+      const h = c.obj(y, `${at}.hunks[${k}]`);
+      if (!h) return;
+      c.str(h['header'], `${at}.hunks[${k}].header`, '@@');
+      c.arr(h['lines'], `${at}.hunks[${k}].lines`).forEach((l, n) => {
+        if (typeof l !== 'string' || !LINE_MARKS.includes(l[0] ?? '')) c.fail(`${at}.hunks[${k}].lines[${n}]`, 'must start with a diff mark');
+      });
+    });
+  });
+  return c.result(v);
+}
+
+/** A chart write's answer: the new fog (checked like any fog view), or a refusal. */
+export function checkChartResult(v: unknown): Checked<ChartResult> {
+  const c = new Checker();
+  const o = c.obj(v, 'chart');
+  if (!o) return c.result(v);
+  if (o['ok'] !== true) { refusal(c, o, 'chart'); return c.result(v); }
+  const fog = checkFog(o['fog']);
+  if (!fog.ok) fog.errors.forEach((e) => c.fail('chart.fog:', e));
   return c.result(v);
 }

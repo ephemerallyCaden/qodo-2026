@@ -11,7 +11,9 @@ import { effectiveFrame } from './model/motion.js';
 import { PIXEL_HEIGHT } from './model/pixels.js';
 import type { Hud } from './ui/hud.js';
 import { Input } from './ui/input.js';
+import { Panel } from './ui/panel.js';
 import type { View } from './view.js';
+import type { DirId } from '../../src/core/snapshot/types.js';
 
 const REDUCE = '(prefers-reduced-motion: reduce)';
 
@@ -56,6 +58,10 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   /** A fog was refused or failed and the HUD said so (pairFog). */
   let fogHeld = false;
   const rig = new FreeFlightRig(PARKED_POSE); // replaced by the start pose once a layout loads
+  // #75: review and chart the focused planet's unseen files (the star's in free flight).
+  const panel = new Panel({ client, fogTicket: () => view.fogTicket(), applyFog: (f, t) => view.applyFog(f, t),
+    announce: (t) => hud.announce(t), release: () => view.pass.canvas.focus({ preventScroll: true }) });
+  view.onFog = (f) => { panel.setFog(f); redraw(); };
 
   /** Something changed that needs a redraw: mark it and wake the loop. */
   const redraw = () => { dirty = true; loop.wake(); };
@@ -63,6 +69,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     const dpr = devicePixelRatio || 1;
     view.resize(pixelHeight, innerWidth, innerHeight, dpr);
     hud.scale(view.labels.px, dpr);
+    panel.scale(view.labels.px, dpr);
     redraw();
   };
 
@@ -77,6 +84,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     focus = i;
     focusId = i === null ? null : view.model?.planets[i]?.dirId ?? null;
     rig.focus(i === null ? null : view.focusTarget(i, shown()), reduced);
+    panel.select(focusId as DirId | null, i === null ? null : view.model?.planets[i]?.path ?? null);
     say();
     dirty = true;
   };
@@ -84,10 +92,11 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   const fetchFog = (): Promise<Fetched> => client.fog().then((fog) => ({ fog }), (error: unknown) => ({ error }));
   const loadOnce = async () => {
     try {
+      const ticket = view.fogTicket(); // before the request: a fog applied while this loads wins (PR #108 r1 #1)
       const fog = fetchFog(); // in parallel with the layout
       const layout = await client.layout();
       const paired = pairFog(layout.source.head, await fog, view.fog, fogHeld);
-      await view.load(layout, paired.fog);
+      await view.load(layout, paired.fog, { ticket });
       drawnHead = layout.source.head;
       fogHeld = paired.held;
       hud.clearError();
@@ -102,6 +111,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       if (kept >= 0) {
         // still there: keep the user's framing (zoom, angle) and only follow the planet's centre
         focus = kept;
+        panel.select(focusId as DirId, model.planets[kept]!.path);
         const t = view.focusTarget(kept, shown());
         if (t) rig.track(t);
       } else if (focus !== null) setFocus(null);
@@ -116,8 +126,9 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   /** A fog event: the fog, paired with the drawn layout. Before any is drawn, the first load fetches its own. */
   const refreshOnce = async () => {
     if (drawnHead === null) return;
+    const ticket = view.fogTicket();
     const paired = pairFog(drawnHead, await fetchFog(), view.fog, fogHeld);
-    view.fog = paired.fog;
+    view.applyFog(paired.fog, ticket);
     fogHeld = paired.held;
     if (paired.notice) hud.announce(paired.notice);
   };
@@ -158,7 +169,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     if (!loaded) return;
     const now = shown();
     let changed = rig.step(input.take(), dtMs);
-    if (focus !== null && !rig.focused()) { focus = focusId = null; say(); } // flying away left the focus
+    if (focus !== null && !rig.focused()) { focus = focusId = null; panel.select(null, null); say(); } // flying away left the focus
     if (focus !== null) {
       const t = view.focusTarget(focus, now);
       if (t) changed = rig.track(t) || changed;

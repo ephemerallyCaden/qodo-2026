@@ -71,6 +71,16 @@ describe('#75 unseenRange', () => {
     // Without history a rename can't be followed: the path at HEAD only, so git shows the whole file.
     expect(unseenRange(fogBase(m.snapshot(), null), emptyChart(), fileIdOf('lib/z.ts'))!.oldPath).toBeNull();
   });
+
+  it('never diffs an old path another file now holds (PR #108 r1 #12)', () => {
+    const m = base();
+    m.commit(AGENT, [{ op: 'rename', from: 'src/a.ts', to: 'src/moved.ts', edit: true }]);
+    m.commit(AGENT, [{ op: 'add', path: 'src/a.ts' }]);
+    // git would show the new src/a.ts as a modified file next to src/moved.ts; without the old path,
+    // src/moved.ts shows whole, as added: more than unseen, never another file's change.
+    expect(unseenRange(fogBase(m.snapshot(), m.history()), emptyChart(), fileIdOf('src/moved.ts'))).toEqual({
+      path: 'src/moved.ts', oldPath: null, since: m.sha(2), start: { sha: m.sha(1) } });
+  });
 });
 
 describe('#75 unseenFiles', () => {

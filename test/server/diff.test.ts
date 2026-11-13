@@ -3,7 +3,7 @@
 // it; diffs are never written anywhere; and the gates hold for the new routes.
 import { execFileSync } from 'node:child_process';
 import { request } from 'node:http';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -16,16 +16,8 @@ import { applyChart, readFog } from '../../src/state/chart.js';
 import { readDiff, readUnseen } from '../../src/state/diff.js';
 import { cli } from '../fixtures/cli.js';
 import { req, waitFor } from '../fixtures/http.js';
+import { realTempDir } from '../fixtures/tmp.js';
 
-const made: string[] = [];
-const tempDir = (prefix: string) => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
-  made.push(dir);
-  return dir;
-};
-afterAll(() => {
-  for (const dir of made) rmSync(dir, { recursive: true, force: true });
-});
 // No session logs: every commit's attribution is unknown, so every change fogs (Rule 1).
 const env = { ...process.env, CLAUDE_CONFIG_DIR: join(tmpdir(), 'commet-no-claude-75') };
 
@@ -33,7 +25,7 @@ const env = { ...process.env, CLAUDE_CONFIG_DIR: join(tmpdir(), 'commet-no-claud
 const CANARY = 'diff-content-canary-7f3a';
 
 function repo() {
-  const dir = tempDir('commet-diff75-');
+  const dir = realTempDir('commet-diff75-');
   const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
   git('init', '-q', '-b', 'main');
   for (const [k, v] of [['user.name', 'Mate'], ['user.email', 'mate@example.com'], ['commit.gpgsign', 'false'], ['core.autocrlf', 'false']]) git('config', k!, v!);
