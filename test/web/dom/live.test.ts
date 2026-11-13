@@ -121,6 +121,16 @@ describe('live mode applies a fog only over its own scan\'s layout (#64)', () =>
     expect(l.last()).not.toMatch(/not applied/);
   });
 
+  it('says what a rescan\'s fog changed after the reload\'s own status text, and a refused fog through the panel\'s path (Qodo PR #117 r4)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    l.view.fogChange = { cleared: 0, refogged: 2 };
+    l.layouts.push(async () => miniLayout);
+    l.fogs.push(async () => fogAt(HEAD, HEAD));
+    await l.emit({ type: 'layout', head: HEAD });
+    expect(l.status.join('\n')).toMatch(/2 files refogged/);
+    expect(l.status.slice(-2).join('\n')).toMatch(/2 files refogged/); // after say()'s "free flight"
+  });
+
   it('keeps the fog it had when the next one is of another scan, and drops it with a layout of another head', async () => {
     const fog = fogAt(HEAD);
     const l = await live({ layout: miniLayout, fog });

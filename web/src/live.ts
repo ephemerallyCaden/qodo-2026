@@ -89,12 +89,16 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     dirty = true;
   };
 
+  /** What the last applied fog changed, in words; a reload says it again after its own status text overwrites it. */
+  let fogChanged = '';
   // Fog (#74): every applied fog redraws and refreshes the text; a front starts on the next frame.
   // What changed is announced, since a front can be on the far side, or not drawn under reduced motion.
   view.onFog = (f) => {
     panel.setFog(f); // the review panel follows every applied fog (#75)
     const { cleared, refogged } = view.fogChange;
-    if (cleared || refogged) hud.announce([cleared ? `charted ${files(cleared)}` : '', refogged ? `${files(refogged)} refogged` : ''].filter(Boolean).join(', '));
+    const notice = view.fogNotice;
+    if (cleared || refogged) hud.announce(fogChanged = [cleared ? `charted ${files(cleared)}` : '', refogged ? `${files(refogged)} refogged` : ''].filter(Boolean).join(', '));
+    else if (notice && notice !== 'no fog view') hud.announce(`${notice}: every file is drawn uncharted until the next update`); // a fog refused through the panel's path
     const m = view.model;
     if (m) hud.summary(summaryText(m, focus, view.fog));
     redraw();
@@ -107,6 +111,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       const fog = fetchFog(); // in parallel with the layout
       const layout = await client.layout();
       const paired = pairFog(layout.source.head, await fog, view.fog, fogHeld);
+      fogChanged = '';
       await view.load(layout, paired.fog, { ticket });
       drawnHead = layout.source.head;
       fogHeld = paired.held;
@@ -127,6 +132,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
         if (t) rig.track(t);
       } else if (focus !== null) setFocus(null);
       say();
+      if (fogChanged) hud.announce(fogChanged); // what the reload's fog changed (a rescan's refogs), not overwritten by say()
       if (paired.notice) hud.announce(paired.notice); // after say(), so the status line keeps it
       redraw();
     } catch (e) {
