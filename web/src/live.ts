@@ -20,6 +20,7 @@ const REDUCE = '(prefers-reduced-motion: reduce)';
 const describeError = (e: unknown): ViewError =>
   e instanceof ViewError ? e : new ViewError('The view hit an internal error.', [e instanceof Error ? e.message : String(e)]);
 const short = (head: string) => head.slice(0, 7);
+const files = (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`;
 
 /** A fog fetch's outcome: it never rejects, so a fetch running beside the layout's is never unhandled. */
 type Fetched = { fog: FogView } | { error: unknown };
@@ -61,7 +62,6 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   // #75: review and chart the focused planet's unseen files (the star's in free flight).
   const panel = new Panel({ client, fogTicket: () => view.fogTicket(), applyFog: (f, t) => view.applyFog(f, t),
     announce: (t) => hud.announce(t), release: () => view.pass.canvas.focus({ preventScroll: true }) });
-  view.onFog = (f) => { panel.setFog(f); redraw(); };
 
   /** Something changed that needs a redraw: mark it and wake the loop. */
   const redraw = () => { dirty = true; loop.wake(); };
@@ -77,8 +77,8 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   const say = () => {
     const m = view.model;
     const p = focus === null ? null : m?.planets[focus];
-    hud.announce(p ? `focused ${planetLines(p).join(', ')}` : 'free flight');
-    if (m) hud.summary(summaryText(m, focus));
+    hud.announce(p ? `focused ${planetLines(p, view.fog).join(', ')}` : 'free flight');
+    if (m) hud.summary(summaryText(m, focus, view.fog));
   };
   const setFocus = (i: number | null) => {
     focus = i;
@@ -89,10 +89,21 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     dirty = true;
   };
 
+  // Fog (#74): every applied fog redraws and refreshes the text; a front starts on the next frame.
+  // What changed is announced, since a front can be on the far side, or not drawn under reduced motion.
+  view.onFog = (f) => {
+    panel.setFog(f); // the review panel follows every applied fog (#75)
+    const { cleared, refogged } = view.fogChange;
+    if (cleared || refogged) hud.announce([cleared ? `charted ${files(cleared)}` : '', refogged ? `${files(refogged)} refogged` : ''].filter(Boolean).join(', '));
+    const m = view.model;
+    if (m) hud.summary(summaryText(m, focus, view.fog));
+    redraw();
+  };
+
   const fetchFog = (): Promise<Fetched> => client.fog().then((fog) => ({ fog }), (error: unknown) => ({ error }));
   const loadOnce = async () => {
     try {
-      const ticket = view.fogTicket(); // before the request: a fog applied while this loads wins (PR #108 r1 #1)
+      const ticket = view.fogTicket(); // taken before the fetch, so a newer fog applied meanwhile wins
       const fog = fetchFog(); // in parallel with the layout
       const layout = await client.layout();
       const paired = pairFog(layout.source.head, await fog, view.fog, fogHeld);
@@ -128,7 +139,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     if (drawnHead === null) return;
     const ticket = view.fogTicket();
     const paired = pairFog(drawnHead, await fetchFog(), view.fog, fogHeld);
-    view.applyFog(paired.fog, ticket);
+    if (paired.fog !== view.fog) view.applyFog(paired.fog, ticket); // a kept fog isn't applied again
     fogHeld = paired.held;
     if (paired.notice) hud.announce(paired.notice);
   };
@@ -182,6 +193,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
 
   const setReduced = (on: boolean) => {
     reduced = on;
+    view.reducedMotion = on; // fog changes snap; a front in progress ends
     if (on) rig.settle(); // a glide already running cuts to its end
     hud.setReducedMotion(on);
     redraw();
@@ -189,6 +201,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   hud.onPixelHeight = (h) => { pixelHeight = h; fit(); }; // the pixel pass clamps it
   hud.onReducedMotion = (on) => { userSetMotion = true; setReduced(on); };
   hud.setReducedMotion(reduced);
+  view.reducedMotion = reduced;
   media.addEventListener('change', () => { if (!userSetMotion) setReduced(media.matches); });
   addEventListener('resize', fit);
   fit();

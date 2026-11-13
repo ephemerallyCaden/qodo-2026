@@ -5,6 +5,7 @@ import type { FogView } from '../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { pick, startPose, type OrbitPose } from './camera/pose.js';
 import { ViewError } from './data/client.js';
+import { FogLedger } from './model/fog.js';
 import { infoLines, HELP } from './model/describe.js';
 import { systemModel, type SystemModel } from './model/system.js';
 import { LabelLayer, lineHeight, type Label } from './labels/overlay.js';
@@ -24,32 +25,15 @@ export class View {
   readonly pass: PixelPass;
   readonly labels: LabelLayer;
   private system: SystemScene | null = null;
-  /** Accepted but not drawn yet: fog visuals aren't designed (#30 scope). */
-  fog: FogView | null = null;
+  /** The fog drawn, the fronts in progress and the fog tickets (model/fog.ts). */
+  private readonly fogs = new FogLedger();
+  private lastFrame = 0;
+  private reduced = false;
+  /** Called once each time a fog is applied (applyFog, or load()'s own fog when it wins), never for a stale one. */
+  onFog?: (fog: FogView | null) => void;
   /** The per-pixel depth fade (RenderInput.depthFade); off leaves only palette colours. */
   depthFade = true;
   showHelp = true;
-  /** Told of every fog applyFog takes (#75: the review panel follows it). */
-  onFog: ((fog: FogView | null) => void) | null = null;
-  private fogTickets = 0;
-  private fogApplied = 0;
-
-  /** Take one before sending any request whose answer carries a FogView (GET /api/fog, POST /api/chart). Minimal until #74. */
-  fogTicket(): number { return ++this.fogTickets; }
-
-  /**
-   * The one entry point for a fog answer. Returns false, changing nothing, when an answer to a later
-   * ticket was already applied, so an older GET never lands over a newer chart result. #74 adds the
-   * clear and refog fronts.
-   */
-  applyFog(fog: FogView | null, ticket: number): boolean {
-    if (ticket < this.fogApplied) return false;
-    this.fogApplied = ticket;
-    this.fog = fog;
-    this.onFog?.(fog);
-    return true;
-  }
-
   constructor(viewCanvas: HTMLCanvasElement, labelCanvas: HTMLCanvasElement) {
     this.pass = new PixelPass(viewCanvas);
     this.labels = new LabelLayer(labelCanvas);
@@ -57,13 +41,60 @@ export class View {
 
   get model(): SystemModel | null { return this.system?.model ?? null; }
 
+  /** The fog drawn: the last one applied. null: no usable fog view, so every file is drawn fogged (Rule 1). */
+  get fog(): FogView | null { return this.fogs.fog; }
+
+  /** What the last applied fog changed for the files drawn (announced even under reduced motion, which draws no front). */
+  get fogChange(): { cleared: number; refogged: number } { return this.fogs.change; }
+
+  /** Why the fog isn't drawn from a view (every file drawn fogged), for the status line; null when it is. */
+  get fogNotice(): string | null {
+    if (this.fogs.fog) return null;
+    return this.fogs.mismatch ? 'the fog and the layout come from different scans' : 'no fog view';
+  }
+
   /**
-   * Builds the scene for a layout and compiles its shaders, so the first frame draws fully.
-   * `opts.ticket` is the fog ticket taken before `fog` was requested: the fog goes through applyFog, so one
-   * fetched before a newer fog was applied never replaces it (PR #108 r1 #1). Default: a fresh ticket.
+   * Reduced motion (art-direction §7): fog changes snap to their end, with no fronts, and turning it
+   * on ends any front in progress.
    */
-  async load(layout: LayoutV1, fog: FogView | null = null, opts: { ticket?: number } = {}): Promise<void> {
+  set reducedMotion(on: boolean) {
+    this.reduced = on;
+    if (on && this.fogs.settle()) this.pushFog();
+  }
+
+  /** Take one before sending any request whose answer carries a FogView (GET /api/fog, POST /api/chart's ChartResult.fog). */
+  fogTicket(): number { return this.fogs.ticket(); }
+
+  /**
+   * Applies a fog answer: the one entry point for every fog change (#74; #75's chart panel calls it
+   * with ChartResult.fog). `fog: null` means no usable fog view, drawn as all fogged (Rule 1), and so
+   * is a fog from another scan than the layout. Files whose state changed get a clear or refog front
+   * from the last drawn frame (none under reduced motion). Returns false, and changes nothing, when
+   * an answer to a later ticket was already applied, so an older answer never lands over a newer
+   * one. Calls onFog when applied; wake the loop afterwards to redraw.
+   */
+  applyFog(fog: FogView | null, ticket: number): boolean {
+    return this.applyWith(fog, ticket, !this.reduced);
+  }
+
+  private applyWith(fog: FogView | null, ticket: number, animate: boolean): boolean {
+    if (!this.fogs.apply(fog, ticket, this.system?.fileIds() ?? [], this.lastFrame, animate)) return false;
+    this.pushFog();
+    this.onFog?.(this.fogs.fog);
+    return true;
+  }
+
+  private pushFog(): void { this.system?.setFog(this.fogs.fog, this.fogs.events); }
+
+  /**
+   * Builds the scene for a layout and compiles its shaders, so the first frame draws fully. `fog` is
+   * the answer to `ticket` (take it before fetching): it goes through applyFog, so a newer fog
+   * already applied wins. `animate: false` (the render hook) snaps any change, so a frame stays a
+   * pure function of its input.
+   */
+  async load(layout: LayoutV1, fog: FogView | null = null, opts: { ticket?: number; animate?: boolean } = {}): Promise<void> {
     const ticket = opts.ticket ?? this.fogTicket();
+    const animate = opts.animate !== false && !this.reduced;
     const next = new SystemScene(systemModel(layout));
     try {
       next.pose(0, startPose(next.model), this.pass.height);
@@ -81,7 +112,11 @@ export class View {
     }
     this.system?.dispose();
     this.system = next;
-    this.applyFog(fog, ticket);
+    // The fog already drawn stays when it is newer than this load's, but only for the same scan;
+    // fronts in progress carry over, by file.
+    const dropped = this.fogs.setLayout(layout.source.head, animate);
+    this.pushFog();
+    if (!this.applyWith(fog, ticket, animate) && dropped) this.onFog?.(null);
   }
 
   /** Fits the view to the space available (CSS px) at the device pixel ratio. */
@@ -96,6 +131,8 @@ export class View {
     const s = this.system;
     if (!s) throw new Error('nothing loaded');
     SHARED.uDepthOn.value = this.depthFade;
+    this.lastFrame = frame;
+    if (this.fogs.prune(frame)) this.pushFog();
     s.pose(frame, pose, this.pass.height);
     const stats = this.pass.render(s.scene, s.camera);
     this.labels.draw(this.labelsFor(s, frame, pose, focus));
@@ -106,7 +143,7 @@ export class View {
     const W = this.pass.canvas.width, H = this.pass.canvas.height, px = this.labels.px, lh = lineHeight(px);
     const { ink, accent: mark, dim } = UI_COLOURS;
     const out: Label[] = [];
-    infoLines(s.model, focus).forEach((text, k) => out.push({ text, x: 2 * px, y: 2 * px + k * lh, align: 'left', colour: k === 0 && focus !== null ? mark : ink }));
+    infoLines(s.model, focus, this.fogs.fog).forEach((text, k) => out.push({ text, x: 2 * px, y: 2 * px + k * lh, align: 'left', colour: k === 0 && focus !== null ? mark : ink }));
     if (this.showHelp) out.push({ text: HELP, x: 2 * px, y: H - lh, align: 'left', colour: dim });
     for (const l of placeLabels(pose, s.spheres(frame), [starSphere(s)], W, H, 2 * px, MAX_LABELS - out.length)) {
       out.push({ text: s.model.planets[l.i]!.path, x: l.x, y: l.y, align: 'centre', colour: l.i === focus ? mark : ink });

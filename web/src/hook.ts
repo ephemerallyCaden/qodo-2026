@@ -20,7 +20,7 @@ export function renderHook(view: View, viewport: () => { w: number; h: number; d
       if (!checked.ok) throw new Error(`invalid layout: ${checked.errors.join('; ')}`);
       const fov = next.camera?.fovDeg;
       if (fov !== undefined && !(fov > 0 && fov < 180)) throw new Error(`invalid camera.fovDeg ${fov}: must be between 0 and 180`);
-      await view.load(checked.value, next.fog ?? null);
+      await view.load(checked.value, next.fog ?? null, { animate: false }); // no fronts: a frame is a pure function of (input, n)
       const vp = viewport();
       view.showHelp = false;
       view.depthFade = next.depthFade ?? true;
