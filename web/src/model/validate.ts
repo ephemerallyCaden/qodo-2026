@@ -14,6 +14,8 @@ const FOG_STATES = ['clear', 'charted', 'fogged'];
 const FOG_REASONS = ['agent', 'mixed', 'self-committed-agent-written', 'teammate', 'unknown', 'lineage-unknown'];
 /** Reasons beyond this many are summarised, so a garbage document still gives a short message. */
 const MAX_ERRORS = 8;
+/** The most cells a planet's grid may have: the fog's territories and neighbour search grow with its square (#18's grids have 256). */
+export const MAX_GRID_CELLS = 4096;
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -106,7 +108,7 @@ function planet(c: Checker, v: unknown, at: string): void {
     const grid = c.obj(surface['grid'], `${at}.surface.grid`);
     if (grid) {
       if (grid['kind'] !== 'fibonacci') c.fail(`${at}.surface.grid.kind`, 'must be "fibonacci"');
-      c.int(grid['cells'], `${at}.surface.grid.cells`, 1);
+      c.int(grid['cells'], `${at}.surface.grid.cells`, 1, MAX_GRID_CELLS);
     }
     c.arr(surface['continents'], `${at}.surface.continents`).forEach((x, i) => {
       const o = c.obj(x, `${at}.surface.continents[${i}]`);

@@ -4,13 +4,21 @@ import { describe, expect, it } from 'vitest';
 import { FONT_HEIGHT, MISSING, glyph, hasGlyph, rasterText } from '../../web/src/labels/font.js';
 import { EventStreamParser, parseLiveEvent } from '../../web/src/data/sse.js';
 import { tokenFromHash } from '../../web/src/data/token.js';
-import { checkFog, checkLayout } from '../../web/src/model/validate.js';
+import { MAX_GRID_CELLS, checkFog, checkLayout } from '../../web/src/model/validate.js';
 import { cellHash, crackMask, crackShare, poolField, snoise, voronoiCells } from '../../web/src/render/noise.js';
 import { miniFog, miniLayout } from '../fixtures/contract/mini.js';
 
 const errorsOf = (v: unknown) => { const c = checkLayout(v); return c.ok ? [] : c.errors; };
 
 describe('checkLayout', () => {
+  it('rejects a grid too big for the fog\'s neighbour search, with a readable error (Qodo PR #117 r5)', () => {
+    const big = structuredClone(miniLayout) as unknown as { planets: { surface: { grid: Record<string, unknown> } }[] };
+    big.planets[0]!.surface.grid['cells'] = MAX_GRID_CELLS + 1;
+    expect(errorsOf(big)).toEqual([`layout.planets[0].surface.grid.cells must be between 1 and ${MAX_GRID_CELLS}`]);
+    big.planets[0]!.surface.grid['cells'] = MAX_GRID_CELLS;
+    expect(errorsOf(big)).toEqual([]);
+  });
+
   it('accepts the contract fixture', () => {
     expect(checkLayout(structuredClone(miniLayout)).ok).toBe(true);
   });

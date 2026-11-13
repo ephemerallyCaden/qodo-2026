@@ -99,6 +99,18 @@ describe('the fogged bit (clear and charted look the same; without evidence a fi
   });
 });
 
+describe('a planet whose settlements are all off its grid (Rule 1, Qodo PR #117 r5)', () => {
+  const plan = surfacePlan({ cells: 64, settlements: [{ fileId: 'f_00000000000a', cell: 99999 }, { fileId: 'f_00000000000b', cell: -3 }] as never });
+  it('owns no cell, so its cells are drawn fogged whenever a file is (and under no fog view, every file is)', () => {
+    expect([...plan.territory.owner].every((k) => k === -1)).toBe(true);
+    const fogged = cellRows(plan, plan.fileIds.map((id) => fileFogAt(foggedBy(null)(id), undefined, 0)));
+    for (let i = 0; i < 64; i++) expect(fogged[i * 4], `cell ${i}`).toBe(1);
+    // not vacuous: with every file known clear, the unowned cells are clear
+    const clear = cellRows(plan, plan.fileIds.map(() => fileFogAt(false, undefined, 0)));
+    for (let i = 0; i < 64; i++) expect(clear[i * 4], `cell ${i}`).toBe(0);
+  });
+});
+
 describe('cell rows (the fog shader\'s data texture)', () => {
   const planet = miniLayout.planets[0]!;
   const plan = surfacePlan({ cells: planet.surface.grid.cells, settlements: planet.surface.settlements });

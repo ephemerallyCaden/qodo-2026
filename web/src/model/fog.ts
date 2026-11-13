@@ -118,10 +118,13 @@ export function cellRows(plan: SurfacePlan, at: readonly FileFogAt[], out?: Floa
   const { territory: t } = plan, n = t.cells;
   const rows = out ?? new Float32Array(n * FOG_TEX_ROWS * 4);
   const c = centresOf(n);
+  // A cell no file owns (every settlement off the grid) is drawn fogged when any file of the planet is, which
+  // includes every file under no usable fog view (Rule 1: unknown never looks clear).
+  const orphanFogged = at.some((f) => f.fogged);
   for (let i = 0; i < n; i++) {
     const k = t.owner[i]!;
     const f = k >= 0 ? at[k]! : null;
-    rows.set([f?.fogged ? 1 : 0, k >= 0 ? t.anchor[k]! : i, k >= 0 ? t.reach[k]! : 0, k >= 0 ? plan.flags[k]! : 0], i * 4);
+    rows.set([(f ? f.fogged : orphanFogged) ? 1 : 0, k >= 0 ? t.anchor[k]! : i, k >= 0 ? t.reach[k]! : 0, k >= 0 ? plan.flags[k]! : 0], i * 4);
     rows.set([f ? f.kind : 0, f ? f.progress : 0, k >= 0 ? t.size[k]! : 0, k >= 0 ? plan.dash[k]! : 0], (n + i) * 4);
     rows.set([c[3 * i]!, c[3 * i + 1]!, c[3 * i + 2]!, k >= 0 ? 1 : 0], (2 * n + i) * 4);
   }

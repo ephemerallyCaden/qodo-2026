@@ -191,3 +191,21 @@ test('at overview a fogged lava planet has no glow while its clear neighbour kee
   expect(shared, 'no pixel glows in both: a fogged planet shows none').toBe(0);
   expect(view.errors).toEqual([]);
 });
+
+// Rule 1 on a layout whose settlements can't be drawn: with no usable fog view the planet is still
+// drawn fogged all over, even when no settlement's cell is on its grid (Qodo PR #117 r5).
+test('a planet whose settlements are all off its grid is drawn fogged without a usable fog view', async ({ page }) => {
+  const off = { ...MINI, planets: MINI.planets.map((p) => (p.path === 'src' ? { ...p, surface: { ...p.surface, settlements: p.surface.settlements.map((s) => ({ ...s, cell: 99_999 })) } } : p)) };
+  const view = await openView(page, systemView());
+  const base = { layout: off, ...focus('src'), depthFade: false };
+  const [unknown] = await render(view, { ...base, fog: null }, [0]);
+  const [stale] = await render(view, { ...base, fog: { ...MINI_FOG, head: '2'.repeat(40) } }, [0]);
+  const [known] = await render(view, { ...base, fog: fogFor(off) }, [0]);
+  for (const r of [unknown, stale, known]) assertRendered(r!.pixels, r!.stats);
+  const veil = (r: Rendered) => count(r, VEILS, 0.3);
+  console.log(`src with no settlement on its grid: ${veil(unknown!)} veil px with no fog view, ${veil(known!)} with every file known clear`);
+  expect(veil(unknown!), 'no fog view: fogged all over').toBeGreaterThan(5000);
+  expect(diffPixels(unknown!.pixels, stale!.pixels)).toBe(0);
+  expect(veil(known!), 'not vacuous: known clear files leave it clear').toBeLessThan(veil(unknown!) / 10);
+  expect(view.errors).toEqual([]);
+});
