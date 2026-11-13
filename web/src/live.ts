@@ -183,7 +183,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       setFocus(focus === null ? (dir > 0 ? 0 : n - 1) : (focus + dir + n) % n);
     },
     release: () => { drones.deselect(); setFocus(null); },
-    home: () => { if (view.model) { rig.reset(startPose(view.model)); setFocus(null); } },
+    home: () => { drones.deselect(); if (view.model) { rig.reset(startPose(view.model)); setFocus(null); } },
   });
 
   const loop = startLoop(({ frame: f, dtMs }) => {
@@ -221,7 +221,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   let paused = false;
   client.follow((ev) => {
     if (ev.type === 'layout' || ev.type === 'fog') void update(ev.type);
-    else if (ev.type === 'snapshot') void drones.refresh(drawnHead);
+    else if (ev.type === 'snapshot' && ev.head === drawnHead) void drones.refresh(drawnHead); // a new head's layout event refetches for itself
   }, (status) => {
     // The server keeps no backlog, so a change made while the stream was down (or before it first
     // connected) would be lost: every (re)connect reloads. A resumed stream is announced once.

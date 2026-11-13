@@ -12,7 +12,7 @@ import { LabelLayer, lineHeight, type Label } from './labels/overlay.js';
 import { placeLabels } from './labels/place.js';
 import { SHARED } from './render/materials.js';
 import { PixelPass } from './render/pixel.js';
-import type { FleetEntry } from './render/drone-fleet.js';
+import { DroneFleet, type FleetEntry } from './render/drone-fleet.js';
 import { capLabels } from './drones/select.js';
 import { SystemScene } from './render/scene.js';
 
@@ -143,22 +143,23 @@ export class View {
     const s = this.system;
     if (!s) { this.drones = entries; this.dronesHead = head; return true; }
     if (head !== this.layoutHead) return false;
-    const before = s.fleet.entries;
-    s.fleet.set(entries);
-    try {
-      if (entries.length > 0) {
+    // Compile on a fleet that isn't in the scene, so a failure (or a stale answer) never reaches a drawn frame.
+    if (entries.length > 0) {
+      const probe = new DroneFleet();
+      try {
+        probe.set(entries);
         this.pass.takeShaderErrors();
-        s.fleet.group.traverse((o) => { o.visible = true; });
-        await this.pass.renderer.compileAsync(s.fleet.group, s.camera);
+        probe.group.traverse((o) => { o.visible = true; });
+        await this.pass.renderer.compileAsync(probe.group, s.camera);
         for (const program of this.pass.renderer.info.programs ?? []) program.getUniforms();
         const failed = this.pass.takeShaderErrors();
         if (failed.length > 0) throw new ViewError('The view could not compile the drone shader.', failed);
+      } finally {
+        probe.dispose();
       }
-    } catch (e) {
-      if (this.system === s) s.fleet.set(before);
-      throw e;
     }
     if (this.system !== s || head !== this.layoutHead) return false; // a layout reload replaced the scene meanwhile
+    s.fleet.set(entries);
     this.drones = entries;
     this.dronesHead = head;
     return true;

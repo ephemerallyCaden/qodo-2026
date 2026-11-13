@@ -101,7 +101,9 @@ export class Drones {
   deselect(): void {
     if (this.host.view.selectedDrone === null && !this.panelOpen()) return;
     this.host.view.selectedDrone = null;
+    const hadFocus = this.panelOpen() && byId('drone-panel').contains(document.activeElement);
     this.panel.hide();
+    if (hadFocus) this.host.release(); // the focused button just went away: keys keep working on the view
     this.host.redraw();
   }
 

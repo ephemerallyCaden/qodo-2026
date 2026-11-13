@@ -18,6 +18,7 @@ import { assertRendered, coverage, diffPixels, hex, LOW_RES, rgbaAt, statsProble
 import { checkGolden, describeEnv, GOLDEN_DIR } from './golden.js';
 import { goldenOptions, openView, render, renderEnv, systemView } from './harness.js';
 import { LATER } from './suite.js';
+import { OVERVIEW } from './thresholds.js';
 import { paletteProblems, type RenderEnv } from './twin.js';
 
 const model = systemModel(selfLikeRoots);
@@ -59,6 +60,7 @@ test.describe('drones', () => {
     expect(drawn).toBe(DRONE_CAP);
     expect(added).toBeGreaterThan(0);
     expect(added).toBeLessThanOrEqual(DRONE_CAP);
+    assertRendered(full!.pixels, full!.stats, LOW_RES, OVERVIEW.minNonSpaceFraction); // not a blank frame
     expect(statsProblems(full!.stats, full!.pixels)).toEqual([]);
     expect(view.errors).toEqual([]);
   });
@@ -104,6 +106,7 @@ test.describe('drones', () => {
     const view = await openView(page, systemView());
     const first = await render(view, withDrones(), [0, 90]);
     const second = await render(view, withDrones(), [90, 0]);
+    assertRendered(first[0]!.pixels, first[0]!.stats, LOW_RES, OVERVIEW.minNonSpaceFraction); // not two blank frames
     expect(diffPixels(first[0]!.pixels, second[1]!.pixels)).toBe(0);
     expect(diffPixels(first[1]!.pixels, second[0]!.pixels)).toBe(0);
   });

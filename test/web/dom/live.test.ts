@@ -325,4 +325,27 @@ describe('drones in live mode (#80)', () => {
     click(l);
     expect(l.view.selectedDrone).toBeNull();
   });
+
+  it('a snapshot event of another head does not refetch drones (its layout event does)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    const before = l.droneCalls();
+    l.send({ type: 'snapshot', head: OTHER });
+    await settle();
+    expect(l.droneCalls()).toBe(before);
+    expect(l.last()).not.toMatch(/drones/);
+  });
+
+  it('Home closes the selected drone', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!)]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.view.drawn.length).toBe(1));
+    l.view.droneAt = session(1, a!).key;
+    const ev = (type: string, init: object) => Object.assign(new Event(type), init);
+    l.view.pass.canvas.dispatchEvent(ev('pointerdown', { button: 0, pointerId: 1, clientX: 5, clientY: 5 }));
+    l.view.pass.canvas.dispatchEvent(ev('pointerup', { button: 0, pointerId: 1, clientX: 5, clientY: 5 }));
+    expect(l.view.selectedDrone).not.toBeNull();
+    l.view.pass.canvas.dispatchEvent(ev('keydown', { key: 'Home', code: 'Home', altKey: false, ctrlKey: false, metaKey: false, preventDefault: () => {} }));
+    expect(l.view.selectedDrone).toBeNull();
+  });
 });
