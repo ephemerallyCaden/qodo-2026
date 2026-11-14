@@ -20,6 +20,9 @@
 | `mockups/drone-lab/` | The provider drones (agent sessions) | 127.0.0.1:5192 |
 | `mockups/debris-lab/` | Space debris directions A–E, A2, A3 (A3 is final and lives in the viewer's `debris*.js`) | 127.0.0.1:5193 |
 | `mockups/health-looks/` | Measurement lab for the planet health looks (H1–H6) | none |
+| `mockups/fog-lab/` | Fog of war directions A–E, A2, D, D2a–e (D2d is final and lives in the viewer's `fog*.js`) | 127.0.0.1:5194 |
+
+The viewer also holds the star (`star.js`), debris (`debris*.js`) and fog (`fog*.js`). The library imports the drone, debris and fog labs' top-level `*.js` read-only (a route-allowlist rule for each; their `out/`, `test/` and `*.mjs` stay 404).
 
 In a mockup folder: `npm ci` (or `npm install`), `npm test` (headless Chromium + SwiftShader, no socket, no network), `npm run dev`, and `npm run shots` or the folder's own render script where it has one. The tests are slow on a busy machine (1–3 minutes per browser test file).
 
@@ -32,7 +35,7 @@ In a mockup folder: `npm ci` (or `npm install`), `npm test` (headless Chromium +
 ## Rules
 - Stack: three.js `WebGLRenderer`, GLSL and plain ES modules. Every asset is live 3D through the pixel pipeline (320×180 default, nearest-neighbour upscale), with no sprite sheets, outlines, anti-aliasing or dithering.
 - **Determinism:** no `Math.random` and no wall-clock time in render code. The same seed and time give the same pixels. Render tests must fail on empty output.
-- **Palettes:** the crew (astronauts, drones) uses BLK 36 exactly; the world uses v2; [OIII] teal is the only accent and marks events only. Rings and clouds reuse planet-family colours. Two debris-only exceptions (human, 2026-11-10): debris metal is a neutral grey outside BLK 36, and debris has a 1 px red outline although outlines are banned everywhere else.
+- **Palettes:** the crew (astronauts, drones) uses BLK 36 exactly; the world uses v2; [OIII] teal is the only accent and marks events only. Rings and clouds reuse planet-family colours. Two debris-only exceptions (human, 2026-11-10): debris metal is a neutral grey outside BLK 36, and debris has a 1 px red outline although outlines are banned everywhere else. Fog-only exceptions (human, 2026-11-11): fog's dark veil mixes toward space (new, cool colours), and fogged parcels have a 2 px line.
 - **Planet looks carry data:** a planet's look shows its code health (see the art direction §6). Nothing decorative may look like a data signal.
 - **Loopback only:** dev servers bind 127.0.0.1, serve a file allowlist, and the page makes no network requests. Downloaded references stay in `.archive/` (gitignored), never in the repo.
 - **Privacy:** never copy code, prompt text or absolute paths from agent logs into any output.
