@@ -52,6 +52,8 @@ Scan → fog view (#33) per file → fogged cells on each planet → you open a 
   - the fogged limb merges toward space (63% of the lava limb ring within 0.03 of space, against 28% clear), so a limb fix is required before the port;
   - dark toxic sits near the lava crust ramp.
 
+**Variant requested (human, 2026-11-14): the fog is the clouds themselves.** "We should try a variant where the fog is the clouds themselves, and the amount of cloud coverage shows the amount of known or unknown there is." Cloud cover rises with the uncharted share (clear planet at 100% charted, overcast at 0%), and charting clears clouds from over that file. Open design questions for the lab: what happens to a planet's ordinary seeded clouds (some bands have none: desert; lava has ash), whether fog clouds look like the normal clouds or a distinct heavier layer, and whether health can show through gaps (which would revive F3 partly). Compared against D2d, the current final.
+
 ## Tasks
 - Exploration lab `mockups/fog-lab/` on `feature/fog-lab` (feature agent): 4–5 distinct fog directions on several bands and coverage levels (0/25/50/75/100% charted), with the clear and refog moments, measured against F3 and F8, for the human to pick.
 
