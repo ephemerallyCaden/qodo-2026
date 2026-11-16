@@ -233,6 +233,9 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     // The server keeps no backlog, so a change made while the stream was down (or before it first
     // connected) would be lost: every (re)connect reloads. A resumed stream is announced once.
     if (status === 'live') {
+      // #95: a failure that still stands is sent again on every connect, right after this, so one
+      // that was cleared while the stream was down isn't said again (Qodo PR #158 61cc96f7).
+      rescanFailed = null;
       void update('layout');
       if (paused) hud.announce('live updates resumed');
       paused = false;

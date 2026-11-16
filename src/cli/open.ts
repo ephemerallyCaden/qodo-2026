@@ -82,7 +82,7 @@ export async function runOpen(argv: string[], io: Io, ctl: OpenControl = {}): Pr
         io.stderr("commet: the web view isn't built yet (dist/web is missing), so the page shows a notice; the data API is running.\n");
       }
       if (args.open) openBrowser(server.url, io);
-      if (live) io.stdout('Watching HEAD and branches: a commit, checkout, merge or rebase rescans, and the view follows.\n');
+      if (live) io.stdout('Watching HEAD and branches: a commit, checkout, merge, rebase or fetch rescans, and the view follows.\n');
       io.stdout('Serving on 127.0.0.1 only. Press Ctrl+C to stop.\n');
       await stopped(ctl.signal);
       await live?.close();
@@ -118,9 +118,11 @@ async function liveRescans(server: CommetServer, io: Io, git: Git, dir: string, 
     server.announce({ type: 'rescan', ok: r.ok, exitCode: r.ok ? 0 : r.exitCode });
   };
   const paths = defaultPaths();
-  const rescans = startRescans({ cwd: io.cwd, env: io.env, stateDir: dir, key: refreshKey(top ? realpathSync.native(top.trim()) : null, commonDir),
+  const rescans = startRescans({ cwd: io.cwd, env: io.env, stateDir: dir, key: refreshKey(top ? realpathSync.native(lineOf(top)) : null, commonDir),
     command: ctl.rescan ?? { node: paths.node, argv: [paths.cli] }, settleMs: ctl.settleMs ?? RESCAN_SETTLE_MS, maxWaitMs: RESCAN_MAX_WAIT_MS, report });
-  const refs = await watchRefs(commonDir, () => rescans.request(), ctl.pollMs);
+  // This worktree's own git dir, for its HEAD (a linked worktree's is <common>/worktrees/<id>).
+  const gitDir = await tryGit(git, ['rev-parse', '--path-format=absolute', '--git-dir']);
+  const refs = await watchRefs(commonDir, () => rescans.request(), ctl.pollMs, gitDir ? realpathSync.native(lineOf(gitDir)) : commonDir);
   return {
     async close() {
       refs.close();
@@ -128,6 +130,9 @@ async function liveRescans(server: CommetServer, io: Io, git: Git, dir: string, 
     },
   };
 }
+
+/** A path git printed on one line: only its newline goes, never a space that belongs to the path (Qodo local 59080452). */
+const lineOf = (out: string) => out.replace(/\n$/, '');
 
 /** Message, code and stack of an error; nothing at all of a thrown non-Error, which could be anything. */
 function debugText(e: unknown): string {
@@ -153,7 +158,7 @@ function bindError(e: NodeJS.ErrnoException, port: number): unknown {
 async function scannedStateDir(git: Git): Promise<{ dir: string; commonDir: string }> {
   const out = await tryGit(git, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
   if (out === null) throw new CommetError('not inside a git repository', EXIT.noRepo);
-  const commonDir = realpathSync.native(out.trim());
+  const commonDir = realpathSync.native(lineOf(out));
   const dir = join(commonDir, 'commet');
   let st: ReturnType<typeof lstatSync>;
   try {

@@ -3,8 +3,10 @@
 // terminal (so it never asks, and keeps or reads the saved roots without writing them, #71/#73), and
 // coalesced through the same lock and request as `commet hook refresh`, so one scan runs at a time.
 import { spawn, type ChildProcess } from 'node:child_process';
+import { join } from 'node:path';
 import { EXIT } from '../core/errors.js';
 import { coalescedRefresh } from '../hooks/refresh.js';
+import { tryLock } from '../state/lock.js';
 
 /** How to run the CLI: `node` with `argv` before `scan` (this package's dist/cli.js; a stand-in in tests). */
 export interface RescanCommand { node: string; argv: string[] }
@@ -40,6 +42,25 @@ export interface Rescans {
 const MAX_DETAIL = 4096;
 /** How long a child gets to exit after SIGTERM at shutdown before SIGKILL. */
 const KILL_GRACE_MS = 2000;
+/**
+ * Takes `lock` once it comes free, or returns null once `gone()` (the child exited by itself) or the
+ * lock can't be taken at all (the state dir went away, so the child can't publish either). It never
+ * gives up while both hold, because a child stopped without the lock could be the one that took it
+ * just after (Qodo PR #158 ac6cc7be). Bounded all the same: a holder keeps it only for a scan's two
+ * renames, and a child kept from it gives up by itself after its own 5 s wait (exit 5).
+ */
+async function lockOrExit(lock: string, gone: () => boolean): Promise<(() => void) | null> {
+  for (;;) {
+    if (gone()) return null;
+    try {
+      const release = tryLock(lock);
+      if (release) return release;
+    } catch {
+      return null;
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 
 export function startRescans(o: RescanOptions): Rescans {
   let closed = false;
@@ -109,11 +130,19 @@ export function startRescans(o: RescanOptions): Rescans {
     async close() {
       closed = true;
       clearTimeout(timer);
-      // child.kill only signals a child that hasn't exited yet, so it can never reach a reused pid.
-      child?.kill('SIGTERM');
-      const hard = setTimeout(() => child?.kill('SIGKILL'), KILL_GRACE_MS);
-      await Promise.allSettled([...rounds]);
-      clearTimeout(hard);
+      // A scan publishes its layout and snapshot as two renames under publish.lock (main.ts writePair).
+      // Holding that lock while the child is stopped means it is never stopped between the two, which
+      // would leave the pair from different scans until the next one (Qodo local 992fb9c8).
+      const release = await lockOrExit(join(o.stateDir, 'publish.lock'), () => child === undefined);
+      try {
+        // child.kill only signals a child that hasn't exited yet, so it can never reach a reused pid.
+        child?.kill('SIGTERM');
+        const hard = setTimeout(() => child?.kill('SIGKILL'), KILL_GRACE_MS);
+        await Promise.allSettled([...rounds]);
+        clearTimeout(hard);
+      } finally {
+        release?.();
+      }
     },
   };
 }

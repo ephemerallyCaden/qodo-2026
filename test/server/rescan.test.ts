@@ -40,28 +40,41 @@ const commit = (dir: string, file = 'src/a.ts', extra: NodeJS.ProcessEnv = {}) =
   return git(dir, ['rev-parse', 'HEAD']);
 };
 
-interface FakeRecord { what: 'start' | 'end'; pid: number; args: string[]; cwd: string; stdinTty: boolean; stdoutTty: boolean; gitConfig: string | null; t: number }
+interface FakeRecord { what: 'start' | 'end' | 'publish-start' | 'publish-end' | 'sigterm'; pid: number; args: string[]; cwd: string; stdinTty: boolean; stdoutTty: boolean; gitConfig: string | null; t: number }
 
 /**
  * A stand-in for `commet scan`: logs its start and end, sleeps $FAKE_DELAY_MS, writes $FAKE_STDERR and
  * exits with the code in $FAKE_EXIT_FILE (0 without one), so a test can change the next run's outcome.
+ * With $FAKE_PUBLISH_DIR it first holds that dir's publish.lock for $FAKE_PUBLISH_MS, as a scan
+ * publishing its pair does (the next slot, holding its pid, then marked released). With
+ * $FAKE_TRAP_TERM it logs a SIGTERM, with its time, before it exits.
  */
 function fakeScan() {
   const dir = tempDir('commet-rescan-cli-');
   const script = join(dir, 'fake-scan.cjs');
   const log = join(dir, 'calls.jsonl');
   const exitFile = join(dir, 'exit');
-  writeFileSync(script, `const { appendFileSync, readFileSync } = require('node:fs');
+  writeFileSync(script, `const { appendFileSync, readFileSync, readdirSync, writeFileSync } = require('node:fs');
+const { join } = require('node:path');
 const rec = (what) => appendFileSync(process.env.FAKE_LOG, JSON.stringify({ what, pid: process.pid, args: process.argv.slice(2), cwd: process.cwd(),
   stdinTty: Boolean(process.stdin.isTTY), stdoutTty: Boolean(process.stdout.isTTY), gitConfig: process.env.GIT_CONFIG_GLOBAL ?? null, t: Date.now() }) + '\\n');
 rec('start');
-setTimeout(() => {
+if (process.env.FAKE_TRAP_TERM) process.on('SIGTERM', () => { rec('sigterm'); process.exit(143); });
+const finish = () => setTimeout(() => {
   rec('end');
   let code = 0;
   try { code = Number(readFileSync(process.env.FAKE_EXIT_FILE, 'utf8')); } catch {}
   if (process.env.FAKE_STDERR) process.stderr.write(process.env.FAKE_STDERR);
   process.exitCode = code;
 }, Number(process.env.FAKE_DELAY_MS || 0));
+const pub = process.env.FAKE_PUBLISH_DIR;
+if (pub) {
+  const taken = readdirSync(pub).map((f) => /^publish\\.lock\\.(\\d+)$/.exec(f)).filter(Boolean).map((m) => Number(m[1]));
+  const slot = join(pub, 'publish.lock.' + (Math.max(0, ...taken) + 1));
+  writeFileSync(slot, String(process.pid), { flag: 'wx' });
+  rec('publish-start');
+  setTimeout(() => { rec('publish-end'); writeFileSync(slot, 'released'); finish(); }, Number(process.env.FAKE_PUBLISH_MS));
+} else finish();
 `);
   const records = (): FakeRecord[] => {
     try {
@@ -91,7 +104,7 @@ function rescansOf(dir: string, fake: ReturnType<typeof fakeScan>, extraEnv: Nod
 }
 
 describe('watching refs (read-only)', () => {
-  it('a commit, checkout, merge, rebase, packed refs and a linked worktree each count; staging, untracked files, state writes and a scan do not', async () => {
+  it('a commit, checkout, merge, rebase, packed refs, a fetch and a new worktree each count; staging, untracked files, state writes, a scan and another worktree\'s HEAD do not', async () => {
     const dir = hookRepo();
     const common = join(dir, '.git');
     let changes = 0;
@@ -123,9 +136,41 @@ describe('watching refs (read-only)', () => {
       commit(dir, 'src/topic.ts');
       await expectChange('rebase', () => git(dir, ['rebase', '-q', 'main']));
       await expectChange('pack-refs', () => git(dir, ['pack-refs', '--all']));
+      // A scan lists remote-tracking branches too, so a fetch that only moves one counts (Qodo PR #158 dae803ce).
+      const remote = hookRepo();
+      git(dir, ['remote', 'add', 'origin', remote]);
+      await expectChange('first fetch', () => git(dir, ['fetch', '-q', 'origin']));
+      commit(remote, 'src/remote.ts');
+      await expectChange('fetch of a moved remote branch', () => git(dir, ['fetch', '-q', 'origin']));
       const wt = join(tempDir('commet-rescan-wt-'), 'wt');
       await expectChange('worktree add', () => git(dir, ['worktree', 'add', '-q', '-b', 'other', wt]));
-      await expectChange('checkout in a linked worktree', () => git(wt, ['checkout', '-q', '--detach']));
+      // Another worktree's HEAD moves no branch this one's scan shows (Qodo PR #158 7d21ad85).
+      git(wt, ['checkout', '-q', '--detach']);
+      await sleep(400);
+      const quiet = changes;
+      git(wt, ['checkout', '-q', 'other']);
+      await sleep(400);
+      expect(changes).toBe(quiet);
+    } finally {
+      w.close();
+    }
+  });
+
+  it('a linked worktree\'s watcher counts its own HEAD, not the main worktree\'s (Qodo PR #158 7d21ad85)', async () => {
+    const dir = hookRepo();
+    const common = join(dir, '.git');
+    const wt = join(tempDir('commet-rescan-wt-'), 'wt');
+    git(dir, ['worktree', 'add', '-q', '-b', 'other', wt]);
+    git(dir, ['branch', 'spare']);
+    let changes = 0;
+    const w = await watchRefs(common, () => changes++, 50, git(wt, ['rev-parse', '--path-format=absolute', '--git-dir']));
+    try {
+      git(dir, ['checkout', '-q', 'spare']);
+      git(dir, ['checkout', '-q', '--detach']);
+      await sleep(400);
+      expect(changes).toBe(0);
+      git(wt, ['checkout', '-q', '--detach']);
+      await waitFor(() => changes > 0, 10_000, 'its own checkout');
     } finally {
       w.close();
     }
@@ -260,6 +305,64 @@ describe('coalesced rescans', () => {
     expect(again).not.toBeNull();
     again!();
   });
+
+  it('close() never signals the scan without holding publish.lock, however long another process holds it (Qodo PR #158 ac6cc7be)', async () => {
+    const dir = hookRepo();
+    const fake = fakeScan();
+    const state = join(dir, '.git', 'commet');
+    const r = rescansOf(dir, fake, { FAKE_DELAY_MS: '60000', FAKE_TRAP_TERM: '1' });
+    r.request();
+    await waitFor(() => fake.starts().length === 1, 10_000, 'the scan');
+    // Another scan publishing, held past the 5 s a scan itself waits for it: a child stopped without
+    // the lock could be the one that takes it next, so close() waits for it, however long.
+    const held = tryLock(join(state, 'publish.lock'))!;
+    const closing = r.close();
+    await sleep(7000);
+    const freed = Date.now();
+    held();
+    await closing;
+    const term = fake.records().filter((x) => x.what === 'sigterm');
+    expect(term).toHaveLength(1);
+    expect(term[0]!.t).toBeGreaterThanOrEqual(freed);
+    expect(r.reports).toEqual([]);
+  }, 30_000);
+
+  it('close() waiting for publish.lock stops waiting when the scan ends by itself, and signals nothing', async () => {
+    const dir = hookRepo();
+    const fake = fakeScan();
+    const state = join(dir, '.git', 'commet');
+    const r = rescansOf(dir, fake, { FAKE_DELAY_MS: '800', FAKE_TRAP_TERM: '1' });
+    r.request();
+    await waitFor(() => fake.starts().length === 1, 10_000, 'the scan');
+    const held = tryLock(join(state, 'publish.lock'))!;
+    try {
+      const t0 = Date.now();
+      await r.close();
+      expect(Date.now() - t0).toBeLessThan(4000); // the scan's own 800 ms, not a wait for the lock
+      expect(fake.records().map((x) => x.what)).toEqual(['start', 'end']);
+      expect(r.reports).toEqual([]);
+    } finally {
+      held();
+    }
+  });
+
+  it('close() never stops a scan halfway through publishing its pair: it waits for publish.lock first (Qodo local 992fb9c8)', async () => {
+    const dir = hookRepo();
+    const fake = fakeScan();
+    const state = join(dir, '.git', 'commet');
+    const r = rescansOf(dir, fake, { FAKE_PUBLISH_DIR: state, FAKE_PUBLISH_MS: '700', FAKE_DELAY_MS: '60000' });
+    r.request();
+    await waitFor(() => fake.records().some((x) => x.what === 'publish-start'), 10_000, 'the publish');
+    const pid = fake.starts()[0]!.pid;
+    await r.close();
+    expect(fake.records().map((x) => x.what)).toEqual(['start', 'publish-start', 'publish-end']);
+    expect(alive(pid)).toBe(false);
+    expect(r.reports).toEqual([]);
+    // The lock close() took to stop the child is free again.
+    const again = tryLock(join(state, 'publish.lock'));
+    expect(again).not.toBeNull();
+    again!();
+  });
 });
 
 /** Runs `commet open` in-process with rescans on, until `stop()`. */
@@ -376,6 +479,25 @@ describe('commet open rescans on its own (#95)', () => {
       expect(await s.stop()).toBe(0);
     }
   }, 240_000);
+
+  it('opens and rescans a repository whose path ends in a space (Qodo local 59080452)', async () => {
+    const dir = join(tempDir('commet-rescan-space-'), 'repo ');
+    mkdirp(dir);
+    git(dir, ['init', '-q', '-b', 'main']);
+    for (const [k, v] of [['user.name', 'Commet Test'], ['user.email', 'test@example.com'], ['commit.gpgsign', 'false']]) git(dir, ['config', k!, v!]);
+    commit(dir, 'src/a.ts');
+    expect((await cli(['scan', '--no-ingest', '--no-root'], dir, env)).code).toBe(0);
+    const fake = fakeScan();
+    const s = await launch(dir, { rescan: fake.command }, fake.env());
+    try {
+      expect(s.err()).toBe('');
+      commit(dir, 'src/b.ts');
+      await waitFor(() => fake.records().some((x) => x.what === 'end'), 20_000, 'the rescan');
+      expect(fake.starts()[0]!.cwd).toBe(dir);
+    } finally {
+      expect(await s.stop()).toBe(0);
+    }
+  });
 
   it('stopping `commet open` stops its running rescan, and a stopped rescan is no failure', async () => {
     const dir = hookRepo();

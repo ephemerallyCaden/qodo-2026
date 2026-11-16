@@ -64,10 +64,11 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
   const fogs: (() => Promise<FogView>)[] = [async () => { if (first.fog instanceof Error) throw first.fog; return first.fog; }];
   let fogCalls = 0;
   let onEvent: (ev: LiveEvent) => void = () => {};
+  let onStatus: (status: string) => void = () => {};
   const client: DataClient = {
     layout: () => layouts.shift()!().then((l) => { head = l.source.head; return l; }),
     fog: () => { fogCalls++; return fogs.shift()!(); },
-    follow: (e) => { onEvent = e; return () => {}; },
+    follow: (e, st) => { onEvent = e; onStatus = st; return () => {}; },
     drones: () => { droneCalls++; return (droneAnswers.shift() ?? (async () => droneView(head, [])))(); },
     unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }),
@@ -115,7 +116,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     await vi.waitFor(() => expect(layouts.length + fogs.length).toBe(0));
     await new Promise((r) => setTimeout(r, 10));
   };
-  return { view, status, layouts, fogs, droneAnswers, droneCalls: () => droneCalls, emit, send: (ev: LiveEvent) => onEvent(ev), fogCalls: () => fogCalls, last: () => status.at(-1) ?? '' };
+  return { view, status, layouts, fogs, droneAnswers, droneCalls: () => droneCalls, emit, send: (ev: LiveEvent) => onEvent(ev), connection: (st: string) => onStatus(st), fogCalls: () => fogCalls, last: () => status.at(-1) ?? '' };
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 10));
@@ -426,5 +427,35 @@ describe('the server\'s own rescans in live mode (#95)', () => {
     await l.emit({ type: 'layout', head: HEAD });
     expect(l.status.join('\n').split('automatic rescan failed').length - 1).toBe(2);
     expect(l.fogCalls()).toBe(calls + 2);
+  });
+
+  it('a failure cleared while the stream was down isn\'t said after the reconnect; one that still stands, which the server sends on connect, is (Qodo PR #158 61cc96f7)', async () => {
+    const FAILED = 'automatic rescan failed (exit 5): showing the last scan; the terminal running `commet open` says why';
+    const fog = fogAt(HEAD);
+    const l = await live({ layout: miniLayout, fog });
+    const reload = async (step: () => void) => {
+      l.layouts.push(async () => miniLayout);
+      l.fogs.push(async () => fog);
+      step();
+      await vi.waitFor(() => expect(l.layouts.length + l.fogs.length).toBe(0));
+      await settle();
+    };
+    l.send({ type: 'rescan', ok: false, exitCode: 5 });
+    await settle();
+    expect(l.last()).toBe(FAILED);
+    // The stream drops, and a rescan works again meanwhile: the server, with no failure standing, sends nothing on connect.
+    l.connection('live updates paused (network error); retrying');
+    const at = l.status.length;
+    await reload(() => l.connection('live'));
+    await reload(() => l.send({ type: 'layout', head: HEAD }));
+    expect(l.status.slice(at)).toContain('live updates resumed');
+    expect(l.status.slice(at)).not.toContain(FAILED);
+    // A failure that still stands is sent right after the connect, and said, after a reload too.
+    l.send({ type: 'rescan', ok: false, exitCode: 5 });
+    l.connection('live updates paused (network error); retrying');
+    await reload(() => { l.connection('live'); l.send({ type: 'rescan', ok: false, exitCode: 5 }); });
+    expect(l.last()).toBe(FAILED);
+    await reload(() => l.send({ type: 'layout', head: HEAD }));
+    expect(l.last()).toBe(FAILED);
   });
 });
