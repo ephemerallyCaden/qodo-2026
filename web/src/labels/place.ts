@@ -1,15 +1,16 @@
 // Where planet labels go: centred under each visible planet's disc, nearest planets first, and
 // never for a planet (or a label) hidden behind a nearer planet or the star. Pure (no DOM), so it's testable.
 import { fovOf, project, projectedRadius, type OrbitPose } from '../camera/pose.js';
-import type { Sphere } from '../model/vec.js';
+import type { Occluder, Sphere } from '../model/vec.js';
 
 export interface Placed { i: number; x: number; y: number }
 
 /**
  * Label anchors in device px for the planets (indexed as given), at most `max`. `occluders` are
- * other discs (the star) that can hide a planet but get no label here.
+ * other discs (the star and its corona) that can hide a planet but get no label here. Every disc is
+ * judged at its centre's depth, which for a flat one facing the eye (the corona) is where it is drawn.
  */
-export function placeLabels(pose: OrbitPose, planets: readonly Sphere[], occluders: readonly Sphere[], W: number, H: number, gap: number, max: number): Placed[] {
+export function placeLabels(pose: OrbitPose, planets: readonly Sphere[], occluders: readonly Occluder[], W: number, H: number, gap: number, max: number): Placed[] {
   const screen = (d: Sphere) => {
     const p = project(pose, d.centre);
     if (!p) return null;

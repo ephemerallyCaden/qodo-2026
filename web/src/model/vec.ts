@@ -3,6 +3,8 @@
 export type Vec3 = [number, number, number];
 /** A body as a sphere: what picking, focus, culling and label occlusion all work with. */
 export interface Sphere { centre: Vec3; radius: number }
+/** Something drawn that hides what is behind it: a sphere, or with `flat` a disc through `centre` that faces the eye (the star's corona). */
+export interface Occluder extends Sphere { flat?: boolean }
 
 export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];

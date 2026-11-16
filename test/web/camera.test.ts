@@ -2,8 +2,11 @@
 import { describe, expect, it } from 'vitest';
 import { FOCUS_FILL, FOV_DEG, eyeOf, focusPose, framingDistance, fromCameraPose, pick, project, projectedRadius, startPose, toCameraPose, type OrbitPose } from '../../web/src/camera/pose.js';
 import { FreeFlightRig, GLIDE_MS, MIN_FOCUS_DIST, type FlyKey } from '../../web/src/camera/rig.js';
+import { STAR } from '../../web/src/render/shaders.js';
 import { placeLabels } from '../../web/src/labels/place.js';
+import { CORONA, starOccluders } from '../../web/src/model/star.js';
 import { planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
+import type { Vec3 } from '../../web/src/model/vec.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
 
 const POSE: OrbitPose = { target: [1, 2, 3], yaw: 0.6, pitch: 0.3, dist: 9 };
@@ -115,6 +118,38 @@ describe('labels', () => {
     expect(placed.map((l) => l.i)).toEqual([1]);
     expect(placed[0]!.y).toBeGreaterThan(H / 2);
     expect(placeLabels(view, [a], [], W, H, 4, 0)).toEqual([]);
+  });
+});
+
+describe('the star hides what its corona covers (Qodo 1ce5dd3d on #155)', () => {
+  // A unit star at the origin, seen from 10 units out on +z: the shader draws its corona in the plane
+  // z = 0 out to CORONA.reach star radii, and a ray that crosses that plane inside it meets the corona.
+  const view: OrbitPose = { target: [0, 0, 0], yaw: 0, pitch: 0, dist: 10 };
+  const W = 1280, H = 720;
+  /** A small planet at depth z whose line of sight crosses the star's plane `at` star radii right of its centre (left if negative). */
+  const seenAt = (at: number, z: number) => ({ centre: [(at * (10 - z)) / 10, 0, z] as Vec3, radius: 0.1 });
+  const band = (1 + CORONA.reach) / 2; // over the corona, past the disc
+  const behind = seenAt(band, -5); // behind the corona: drawn over, so hidden
+  const beside = seenAt(CORONA.reach + 0.15, -5); // behind the star's plane, but clear of the corona
+  const before = seenAt(-band, 0.3); // in front of the corona's plane, over it, yet inside a sphere of the corona's reach
+  const at = (s: { centre: Vec3 }) => { const p = project(view, s.centre)!; return { x: p.x, y: p.y }; };
+
+  it('the corona reaches past the disc and stays inside the star mesh', () => {
+    expect(band).toBeGreaterThan(1);
+    expect(CORONA.reach).toBeLessThan(STAR.span);
+    expect(Math.hypot(...before.centre) - before.radius).toBeGreaterThan(1); // clear of the star itself
+    expect(Math.hypot(...before.centre)).toBeLessThan(CORONA.reach); // so a corona sphere would wrongly hide it
+  });
+
+  it('never picks a planet behind the corona, but still one beside it or in front of it', () => {
+    const blockers = starOccluders(1);
+    expect(pick(view, at(behind), [behind], blockers)).toBeNull();
+    expect(pick(view, at(beside), [beside], blockers)).toBe(0);
+    expect(pick(view, at(before), [before], blockers)).toBe(0);
+  });
+
+  it('labels no planet behind the corona, but still one beside it or in front of it', () => {
+    expect(placeLabels(view, [behind, beside, before], starOccluders(1), W, H, 4, 50).map((l) => l.i).sort()).toEqual([1, 2]);
   });
 });
 

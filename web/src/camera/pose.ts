@@ -5,7 +5,7 @@ import type { CameraPose } from '../../../src/core/contract/api.js';
 import { depthStretch, type DepthStretch } from '../model/depth.js';
 import { TURNS } from '../model/motion.js';
 import { planetCentre, planetReach, type SystemModel } from '../model/system.js';
-import { add, cross, dot, lerp, length, scale, sub, type Sphere, type Vec3 } from '../model/vec.js';
+import { add, cross, dot, lerp, length, scale, sub, type Occluder, type Sphere, type Vec3 } from '../model/vec.js';
 
 /** The asset viewer's perspective camera. */
 export const FOV_DEG = 35;
@@ -156,9 +156,9 @@ export const projectedRadius = (r: number, depth: number, fovDeg: number = FOV_D
 /**
  * The body under a point in normalised device coordinates: the nearest sphere the view ray hits,
  * each grown to at least `minNdc` of half the frame height so a far planet is still clickable.
- * `blockers` (the star) hide what is behind them but are never picked.
+ * `blockers` (the star and its corona) hide what is behind them but are never picked.
  */
-export function pick(p: OrbitPose, ndc: { x: number; y: number }, bodies: readonly Sphere[], blockers: readonly Sphere[] = [], minNdc = 0.04): number | null {
+export function pick(p: OrbitPose, ndc: { x: number; y: number }, bodies: readonly Sphere[], blockers: readonly Occluder[] = [], minNdc = 0.04): number | null {
   const b = basis(p.yaw, p.pitch);
   const tanV = tanHalfV(fovOf(p));
   const eye = eyeOf(p);
@@ -173,11 +173,20 @@ export function pick(p: OrbitPose, ndc: { x: number; y: number }, bodies: readon
     const miss = dot(oc, oc) - t * t;
     return miss > r * r ? Infinity : t - Math.sqrt(r * r - miss);
   };
+  /** Distance along the ray to where it crosses a flat occluder (its plane faces the eye), or Infinity on a miss. */
+  const meet = (s: Occluder) => {
+    const oc = sub(s.centre, eye);
+    const along = dot(oc, dir);
+    if (along <= 0) return Infinity;
+    const t = dot(oc, oc) / along; // the plane through the centre, normal to the line from the eye
+    const off = sub(add(eye, scale(dir, t)), s.centre);
+    return t > NEAR && dot(off, off) <= s.radius * s.radius ? t : Infinity;
+  };
   let best: number | null = null, bestT = Infinity;
   bodies.forEach((body, i) => {
     const t = enter(body, true);
     if (t < bestT) { bestT = t; best = i; }
   });
-  if (blockers.some((s) => enter(s, false) < bestT)) return null;
+  if (blockers.some((s) => (s.flat ? meet(s) : enter(s, false)) < bestT)) return null;
   return best;
 }
