@@ -118,6 +118,13 @@ test.describe('the star (#81)', () => {
     expect(median, 'the star moves over the loop').toBeGreaterThan(0);
     expect(seam, 'the seam is no bigger than a step').toBeLessThanOrEqual(median * 1.5);
     expect(diffPixels(at(0), at(360)), 'half a loop later the granulation has moved').toBeGreaterThan(200);
+    // The granulation wobbles every band edge, the core's too (S1), but never far enough to cool the
+    // centre past cream: |offset| ≤ 0.21 + 0.05 at the centre (limb value 1), cream starts at 0.72.
+    const centres = rs.map((r) => colours(r.pixels)[(r.pixels.height / 2) * r.pixels.width + r.pixels.width / 2]!);
+    const cores = rs.map((r) => { const px = colours(r.pixels); return [meanRadius(r.pixels, px, DISC[4]!), meanRadius(r.pixels, px, DISC[3]!)] as const; });
+    console.log(`star centre over the loop: ${count(centres, [DISC[4]!])} of ${centres.length} frames core, ${count(centres, [DISC[3]!])} cream`);
+    expect(centres.filter((h) => h !== DISC[4] && h !== DISC[3]), 'the centre is the core or cream on every frame').toEqual([]);
+    expect(cores.filter(([core, cream]) => !(core < cream)), 'the core band sits inside the cream band on every frame').toEqual([]);
     expect(view.errors).toEqual([]);
   });
 
