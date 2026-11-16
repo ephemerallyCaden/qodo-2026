@@ -3,7 +3,7 @@
 // bar-raiser never change the checkout. Each case pipes a tool call into the script, as Claude
 // Code does, and checks the exit code: 2 blocks the call, 0 lets it through.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, symlinkSync } from 'node:fs';
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -62,6 +62,7 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
       'eval "git push"',
       'xargs git push < /dev/null',
       'git -c alias.p=push p',
+      'cat <<EOF > /tmp/note\n$(git push)\nEOF',
     ]);
   });
 
@@ -194,31 +195,90 @@ describe('readonly role (scout, bar-raiser): never changes the checkout', () => 
       'git blame -L 1,20 src/cli.ts',
       'git branch',
       'git branch -a --contains abc',
-      'git stash list',
-      'git tag -l',
+      'git branch --list "feature/*"',
       'git worktree list',
-      'git config --get user.name',
-      'git remote -v',
-      'git reflog',
-      'git reflog show -5',
       'git -C ../x log',
+      'git --no-pager log -1 --format=%H',
+      'git rev-parse --path-format=absolute --git-common-dir',
       'gh pr view 150 --comments',
       'gh pr diff 150',
       'gh pr checks 150',
       'gh issue list',
       'gh run view 1 --log-failed',
       'gh api repos/o/r/pulls/150/comments',
-      'npx vitest run test/x.test.ts > /tmp/out.log 2>&1',
+      "gh api -H 'Accept: application/vnd.github.raw' 'search/issues?q=x'",
+      "gh api graphql -f query='query { viewer { login } }'",
+      'gh pr view 150 --json headRefOid -q .headRefOid',
+      'qodo read pr-review-session findings --pr-url https://github.com/o/r/pull/150 --extended',
+      'qodo review status abc --json',
       'ls 2>/dev/null',
-      'npm test 2>&1 | tail -5',
+      'git log -5 2>&1 | tail -5',
+      "rg -n --glob '*.ts' 'git push' src | head -20",
+      'jq -r --arg n x \'.[] | select(.name == $n)\' package.json',
+      'wc -l src/cli.ts && cut -d: -f1 /dev/null | uniq -c',
       'echo x > "$TMPDIR/x"',
       `echo x > ${join(SCRATCH, 'x')}`,
       'grep -rn "git checkout" .claude/agents',
       "sed -n '1,20p' src/cli.ts",
       'sort -u a.txt',
+      'git log --oneline --orderfile=x',
+      "cat <<'EOF' > /tmp/q.txt\n$(not run)\nEOF",
+    ]);
+  });
+
+  it('runs nothing off the list: programs, git and gh verbs, options, abbreviations', () => {
+    expectBlocked('readonly', [
       'curl -s https://example.com',
       "find . -name '*.ts'",
-      'git log --oneline --orderfile=x',
+      'npx vitest run test/x.test.ts',
+      'npm test',
+      'node -e 1',
+      'python3 -c 1',
+      'awk 1 src/cli.ts',
+      'xargs cat < /dev/null',
+      'git stash list',
+      'git config --get user.name',
+      'git remote -v',
+      'git log --out=src/x',
+      'git log --outp src/x',
+      'git diff --ext-diff',
+      'git grep --open x',
+      'git --git-dir=.git log',
+      'rg --pre=sh x src',
+      'rg --pr sh x src',
+      'rg -z x src',
+      'sort --out=src/x a',
+      'sort -T src a',
+      "sed -n '1w src/x' src/cli.ts",
+      "sed -n '1,5p;w src/x' src/cli.ts",
+      'uniq a.txt src/x',
+      'diff -l a b',
+      'gh pr view 150 --web',
+      'gh run download 1',
+      "gh api -H 'X-HTTP-Method-Override: POST' repos/o/r/issues",
+      'gh api --method GET search/issues -f q=x',
+      'gh api repos/o/r/issues --input /tmp/x',
+      "gh api graphql -f query='mutation { x }'",
+      'gh api graphql -F query=@/tmp/q.graphql',
+      'qodo review start',
+    ]);
+  });
+
+  it('refuses words only known at run time, which could turn into options', () => {
+    expectBlocked('readonly', [
+      'git log $(cat /tmp/opts)',
+      'git log "$(cat /tmp/opts)"',
+      'git log `cat /tmp/opts`',
+      'rg x $OPTS',
+      'rg "$X" src',
+      "rg x $'\\x2d-pre=sh'",
+      'rg x *',
+      'rg x ?pre=sh',
+      'rg x {,-}-pre=sh',
+      'rg x ""{,-}-pre=sh',
+      'cat <<EOF\n$(rm -rf src)\nEOF',
+      'OPT=--pre=sh rg x',
+      'cd src && echo x > rel.txt',
     ]);
   });
 
@@ -268,10 +328,11 @@ describe('readonly role (scout, bar-raiser): never changes the checkout', () => 
     expectBlocked('readonly', R3);
   });
 
-  it('redirects into a temp clone', () => {
+  it('treats a checkout in a temp dir as a checkout: no redirect into it', () => {
     const clone = join(SCRATCH, 'clone');
     mkdirSync(join(clone, '.git'), { recursive: true });
-    expectAllowed('readonly', [`git -C ${clone} log > ${join(clone, 'log.txt')}`]);
+    expectBlocked('readonly', [`git -C ${clone} log > ${join(clone, 'log.txt')}`]);
+    expectAllowed('readonly', [`git -C ${clone} log > ${join(SCRATCH, 'log.txt')}`]);
   });
 });
 
@@ -279,7 +340,7 @@ describe('debugger role: writes only under test/ (probes in test/probes/) or a t
   // Inside the guard's own temp dir on purpose: a checkout in a temp dir is still a checkout, on
   // Linux (/tmp) as on macOS (/var/folders). CI on Linux failed when only macOS put it outside.
   const repo = join(SCRATCH, 'repo');
-  mkdirSync(join(repo, '.git'), { recursive: true });
+  spawnSync('git', ['init', '-q', repo], { env: ENV });
   mkdirSync(join(repo, 'test/probes'), { recursive: true });
   mkdirSync(join(repo, 'src'));
   symlinkSync(join(repo, 'src'), join(repo, 'test/srclink'));
@@ -310,11 +371,12 @@ describe('debugger role: writes only under test/ (probes in test/probes/) or a t
     expectBlocked('debugger', R3, repo);
   });
 
-  it('applies the same rule to shell writes, but leaves git and test runs alone', () => {
-    expectBlocked('debugger', ['echo x > src/cli.ts', 'cp /tmp/a src/a.ts', "sed -i '' s/a/b/ src/cli.ts"], repo);
+  it('applies the same rule to redirects', () => {
+    expectBlocked('debugger', ['echo x > src/cli.ts', 'echo x > test/srclink/cli.ts', 'cd src && echo x > ../test/x.ts'], repo);
+    expectAllowed('debugger', ['echo x > test/x.ts', `echo x > ${join(SCRATCH, 'probe.txt')}`], repo);
   });
 
-  it('checks every path a writer touches', () => {
+  it('runs no other writer, even on test paths', () => {
     expectBlocked('debugger', [
       "sed -i 's/a/b/' src/cli.ts /tmp/safe",
       "sed -i '' s/a/b/ test/x.ts src/cli.ts",
@@ -332,20 +394,56 @@ describe('debugger role: writes only under test/ (probes in test/probes/) or a t
       'tar -xf /tmp/a.tar',
       'patch -p1 < /tmp/a.diff',
     ], repo);
-    expectAllowed('debugger', [
+    expectBlocked('debugger', [
       "sed -i '' s/a/b/ test/x.ts",
-      'sed -i.bak -e s/a/b/ test/x.ts test/y.ts',
-      'perl -pi -e s/a/b/ test/x.ts',
       'cp src/cli.ts test/fixtures/cli.ts',
-      'cp -t test/probes /tmp/x src/cli.ts',
-      'mkdir -p test/probes/x /tmp/y',
-    ], repo);
-    expectAllowed('debugger', [
-      'cat > test/probes/p.mjs <<EOF\nconsole.log(1)\nEOF',
+      'mkdir -p test/probes/x',
       'git checkout abc123',
-      'git add test/x.test.ts && git commit -m "test: repro"',
+      'git stash',
+    ], repo);
+  });
+
+  it('runs tests, probes and the locked full run, and nothing else that runs code', () => {
+    expectAllowed('debugger', [
+      "cat > test/probes/p.mjs <<'EOF'\nconsole.log(`${1}`)\nEOF",
+      'node test/probes/p.mjs --flag x',
+      'npx vitest run test/x.test.ts -t "a case"',
+      'npm run typecheck && npm run lint',
       'lockf -k /tmp/commet-fullsuite.lock npm test > /tmp/full.log 2>&1',
     ], repo);
+    expectBlocked('debugger', [
+      'cat > test/probes/p.mjs <<EOF\nconsole.log(`${1}`)\nEOF',
+      'node -e 1',
+      'node src/cli.js',
+      'node test/x.mjs',
+      `node ${join(SCRATCH, 'probe.mjs')}`,
+      'npm test',
+      'npm run build',
+      'npx tsx test/probes/p.ts',
+      'npx vitest run --outputFile=src/x.json',
+      'npx vitest run --coverage',
+      'lockf -k /tmp/commet-fullsuite.lock sh -c "git push"',
+    ], repo);
+  });
+
+  it('stages and commits only test paths', () => {
+    expectAllowed('debugger', ['git add test/x.test.ts test/probes && git commit -m "test: repro"', 'git add -- test/y.ts'], repo);
+    expectBlocked('debugger', [
+      'git add src/cli.ts',
+      'git add test/../src/cli.ts',
+      'git add test/srclink/cli.ts',
+      'git add -A',
+      'git add .',
+      "git add ':/src'",
+      'git commit -am x',
+      'git commit -m x src/cli.ts',
+      'git commit --amend -m x',
+      'git -C /tmp add test/x',
+      'cd test && git commit -m x',
+    ], repo);
+    writeFileSync(join(repo, 'src/a.ts'), 'x\n');
+    spawnSync('git', ['-C', repo, 'add', 'src/a.ts'], { env: ENV });
+    expectBlocked('debugger', ['git commit -m "test: repro"'], repo);
   });
 });
 
