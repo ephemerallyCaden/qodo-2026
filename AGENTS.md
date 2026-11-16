@@ -42,6 +42,7 @@ For the lead and every agent. Each rule replaced a measured cost (triage, 2026-1
 - **The lead trusts CI after a fast-forward.** A `--ff-only` merge publishes the commit CI already tested on the PR, so the lead doesn't re-run the suite locally; the session-branch CI run covers it. Re-run locally only after the lead rebased or resolved a conflict.
 - **Close in one step.** When a completion report says nothing is pending, the lead merges and sends the shutdown in the same turn. Later corrections are a new task.
 - **Journal entries are one or two lines.** 174 entries ran over 400 characters.
+- **Agent bans are hooks, not just prompt text.** `.claude/agents/{feature-agent,debugger,scout,bar-raiser}.md` run `.claude/hooks/agent-guard.mjs` before every Bash (and the debugger's Edit/Write) call: feature agents can't push, merge or open PRs; scouts and bar-raisers run read-only git/gh; debuggers write only under `test/` or temp. It reads the command line only, so a program the agent starts isn't covered; the lead's diff review still is.
 
 ## Dev tips
 - `JOURNAL.md` and `.archive/` are gitignored and missing from worktrees. Use the main checkout: `$(git rev-parse --path-format=absolute --git-common-dir)/..`.
