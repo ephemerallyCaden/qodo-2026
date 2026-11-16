@@ -2,7 +2,7 @@
 name     view-mini-f180
 env      {"arch":"x64","browser":"158.0.8127.18","platform":"linux","playwright":"1.65.0","webgl":"ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"}
 size     320x180 (57600 px)
-rgba     sha256 632f8d0d01ffdee3a688636ccbaca218b43ded799fd28ce903648fa90038a7a5
+rgba     sha256 54f4eebf4561d45e8973e02b332b6bcae6a40877b5df943f7b21db426f8480d5
 stats    drawCalls 14, triangles 143218
 colours  204 (4 palette, 200 off-palette: 4741 px)
 
