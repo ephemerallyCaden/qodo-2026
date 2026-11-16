@@ -83,6 +83,43 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
     ]);
   });
 
+  // Qodo r4 on #150: text handed on to git, gh or npm at run time.
+  it('blocks relays into git, gh and npm: attached -c, positional args, xargs and friends', () => {
+    expectBlocked('feature', [
+      'git -calias.p=push p origin HEAD',
+      'git --config-env=core.pager=PAGER log',
+      'git --config-env core.pager=PAGER log',
+      `bash -c 'git "$@"' _ push`,
+      `sh -c 'git $1' _ push`,
+      `zsh -c 'git $*' _ push`,
+      `dash -c 'git "\${1}"' _ push`,
+      `bash -c '"$0" push' git`,
+      'echo push | xargs git',
+      'echo merge 1 | xargs -n2 gh pr',
+      'echo publish | xargs npm',
+      'echo x | xargs npx y',
+      'echo x | xargs curl',
+      'find push -prune -exec git {} \\;',
+      'find push -prune -execdir git {} +',
+      'find push -prune -ok git {} \\;',
+      "env -S 'git push'",
+      "env --split-string='gh pr merge 1'",
+      'parallel git ::: push',
+      'git $(echo push)',
+      'X=push; git $X',
+      'gh pr $(echo merge) 1',
+      '$(echo git) push',
+      "printf 'git %s' push | sh",
+    ]);
+    expectAllowed('feature', [
+      "bash -c 'npm test'",
+      `sh -c 'echo "$HOME"'`,
+      "git commit -m \"$(cat <<'EOF'\nfix: x\nEOF\n)\"",
+      'find . -name "*.ts" | xargs grep -l TODO',
+      'bash scripts/check.sh',
+    ]);
+  });
+
   it('resolves a repo-local git alias before deciding', () => {
     const repo = realTempDir('commet-guard-alias-');
     spawnSync('git', ['init', '-q', repo], { env: ENV });

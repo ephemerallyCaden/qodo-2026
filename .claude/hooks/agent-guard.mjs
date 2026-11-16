@@ -1,8 +1,9 @@
 // PreToolUse guard for the project agents (`hooks:` in .claude/agents/*.md; Qodo on #150).
 // Usage: node agent-guard.mjs <feature|debugger|readonly>, with Claude Code's hook JSON on stdin.
 // Exit 2 blocks the tool call (the reason goes to the agent on stderr); exit 0 lets it through.
-//   feature   a denylist: no `git push`, `gh pr merge|create|close|reopen`, `gh release` writes, `gh api` writes,
-//             npm publish.
+//   feature   a ban list against accidents, not against an agent set on getting round it: no `git push`,
+//             `gh pr merge|create|close|reopen`, `gh release` writes, `gh api` writes, npm publish, and no text
+//             handed on to git/gh/npm at run time (`git -c alias.…`, `bash -c 'git "$@"' _ push`, `xargs git`).
 //   readonly  (scout, bar-raiser) an allowlist: Bash runs only the programs, subcommands and options in READ;
 //             anything else, an abbreviated option too, is blocked. The one write is a shell redirect into a temp
 //             dir outside any checkout.
@@ -476,14 +477,16 @@ const GIT_VALUED = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace
 
 function gitVerb(args) {
   const conf = [];
+  let configEnv = false;
   for (let j = 0; j < args.length; j++) {
     const a = args[j];
-    if (GIT_VALUED.has(a)) { if (a === '-c' || a === '--config-env') conf.push(args[j + 1] ?? ''); j++; continue; }
-    if (a.startsWith('--config-env=')) conf.push(a.slice(13));
+    if (a === '--config-env' || a.startsWith('--config-env=')) { configEnv = true; if (a === '--config-env') j++; continue; }
+    if (GIT_VALUED.has(a)) { if (a === '-c') conf.push(args[j + 1] ?? ''); j++; continue; }
+    if (/^-c./.test(a)) { conf.push(a.slice(2)); continue; } // -ckey=value, as some git versions take it
     if (a.startsWith('-')) continue;
-    return { verb: a, rest: args.slice(j + 1), conf };
+    return { verb: a, rest: args.slice(j + 1), conf, configEnv };
   }
-  return { verb: null, rest: [], conf };
+  return { verb: null, rest: [], conf, configEnv };
 }
 
 function gitAlias(verb, cwd) {
@@ -496,10 +499,12 @@ const quote = (a) => `'${a.replaceAll("'", "'\\''")}'`;
 const featureMsg = (what) => `feature-agent never pushes, merges or publishes (${what}): the team lead does that (AGENTS.md).`;
 
 function featureGit(args, ctx) {
-  const { verb, rest, conf } = gitVerb(args);
+  const { verb, rest, conf, configEnv } = gitVerb(args);
+  if (configEnv) return '`git --config-env` sets git config from the environment, which can run any command.';
   if (conf.some((c) => /^alias\./i.test(c))) return '`git -c alias.…` can run any command: call the git verb itself.';
   for (const c of conf) { const r = checkFeature(c.slice(c.indexOf('=') + 1), { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
   if (verb === null) return null;
+  if (unknown(verb)) return RUNTIME('a git verb');
   if (verb === 'push') return featureMsg('git push');
   const alias = gitAlias(verb, ctx.cwd);
   if (alias === null) return null;
@@ -537,11 +542,33 @@ function featureGh(args) {
   if (g < 0) return null;
   const group = args[g];
   const verb = args.slice(g + 1).find((a) => !a.startsWith('-'));
-  if (group === 'api') return apiWrites(args.slice(g + 1)) ? featureMsg('a gh api write') : null;
+  if (unknown(group) || (verb !== undefined && unknown(verb))) return RUNTIME('a gh command');
+  if (group === 'api') return args.some(unknown) ? RUNTIME('a gh api argument') : apiWrites(args.slice(g + 1)) ? featureMsg('a gh api write') : null;
   return Object.hasOwn(FEATURE_GH, group) && FEATURE_GH[group].includes(verb) ? featureMsg(`gh ${group} ${verb}`) : null;
 }
 
 const GIT_CONFIG_ENV = /^GIT_CONFIG_(PARAMETERS|COUNT|KEY_\d+|VALUE_\d+)$/;
+const RUNTIME = (what) => `${what} only known at run time ($VAR, $(…), a shell's "$@") could hide a push or publish: spell it out.`;
+// Programs that hand text on to the command after them, and the commands they may not be handed to.
+const RELAYS = new Set(['xargs', 'parallel']);
+const RELAYED = new Set(['git', 'gh', 'npm', 'npx', 'pnpm', 'yarn', 'curl']);
+const POSITIONAL = /\$\{?[@*0-9]/; // $@, $*, $0–$9, ${1}: a shell -c script's arguments
+
+/** Why a wrapper at `k` relays run-time text into git/gh/npm, or null. */
+function relays(words, k) {
+  const name = base(words[k]);
+  const rest = words.slice(k + 1);
+  if (RELAYS.has(name)) return rest.some((w) => RELAYED.has(base(w))) ? `\`${name}\` hands its input to ${rest.find((w) => RELAYED.has(base(w)))}: run the command itself.` : null;
+  if (FIND_EXEC.has(words[k]) && RELAYED.has(base(words[k + 1] ?? ''))) return `\`find ${words[k]}\` runs ${words[k + 1]} on what it finds: run the command itself.`;
+  if (name === 'env') {
+    const i = rest.findIndex((w) => /^(-S|--split-string)/.test(w));
+    if (i < 0) return null;
+    const w = rest[i];
+    const split = w === '-S' || w === '--split-string' ? rest[i + 1] ?? '' : w.replace(/^(-S|--split-string=)/, '');
+    if (parse(split).cmds.flat().some((x) => RELAYED.has(base(x)))) return '`env -S` builds a git/gh/npm command from a string: run the command itself.';
+  }
+  return null;
+}
 
 function featureWords(words, ctx) {
   // VAR=value anywhere (a prefix, env, export): the value may be run as a command (PAGER, GIT_EDITOR, …).
@@ -552,12 +579,19 @@ function featureWords(words, ctx) {
     const r = checkFeature(m[2] ?? '', { ...ctx, depth: ctx.depth + 1 });
     if (r) return r;
   }
+  for (let k = 0; k < words.length; k++) { const r = FIND_EXEC.has(words[k]) ? relays(words, k) : null; if (r) return r; }
   for (const k of commandStarts(words)) {
     const name = base(words[k]);
     const rest = words.slice(k + 1);
+    if (unknown(words[k])) return RUNTIME('a command name');
+    const relay = relays(words, k);
+    if (relay) return relay;
     if (SHELLS.has(name)) {
       const m = rest.findIndex((w) => /^-[A-Za-z]*c[A-Za-z]*$/.test(w));
-      if (m >= 0 && rest[m + 1] !== undefined) { const r = checkFeature(rest[m + 1], { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
+      const script = m >= 0 ? rest[m + 1] : undefined;
+      if (script === undefined && !rest.some((w) => !w.startsWith('-'))) return `\`${name}\` with no script reads one from its input: run the command itself.`;
+      if (script !== undefined && POSITIONAL.test(script.replaceAll(VAR, '$'))) return `\`${name} -c\` with "$@", $* or $1 runs its arguments as code: put the command in the script.`;
+      if (script !== undefined) { const r = checkFeature(script, { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
     }
     if (name === 'eval') { const r = checkFeature(rest.join(' '), { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
   }
@@ -568,7 +602,11 @@ function featureWords(words, ctx) {
     let r = null;
     if (name === 'git') r = featureGit(rest, ctx);
     else if (name === 'gh') r = featureGh(rest);
-    else if (['npm', 'pnpm', 'yarn'].includes(name) && rest.some((a) => a === 'publish' || a === 'unpublish')) r = featureMsg(`${name} publish`);
+    else if (['npm', 'pnpm', 'yarn'].includes(name)) {
+      const own = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest; // after --, the script's arguments
+      if (own.some(unknown)) r = RUNTIME(`an argument to ${name}`);
+      else if (rest.some((a) => a === 'publish' || a === 'unpublish')) r = featureMsg(`${name} publish`);
+    }
     if (r) return r;
   }
   return null;
