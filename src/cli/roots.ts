@@ -1,6 +1,7 @@
 // Choosing the content roots for `commet scan` (#71 C1–C5): flags, the saved answer, or a guess the
 // user confirms at a terminal. Without one (hooks, CI, the agent runner) nothing is asked, nothing is
-// saved, the last scan's roots are kept (#73) and the scan never blocks. Output names repo-relative folders only (C10).
+// saved, the last scan's roots are kept (#73) and the scan never blocks. A `--out` scan never saves
+// either (#115). Output names repo-relative folders only (C10).
 import { lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -19,6 +20,7 @@ export type Ask = (question: string) => Promise<string | null>;
 export type RootFlags = { kind: 'set'; roots: string[] } | { kind: 'none' } | { kind: 'ask' } | { kind: 'default' };
 
 const HOW = 'change with --root <dir>, --no-root or `commet scan --ask`';
+const UNSAVED_OUT = 'not saved: with --out, roots are for this scan only; scan without --out to save them';
 const list = (roots: readonly string[]) => (roots.length === 0 ? 'none' : roots.map(printable).join(', '));
 const share = (g: RootGuess) => `${printable(g.root)} holds ${g.sharePct}% of the code`;
 const goneNote = (gone: readonly string[]) => (gone.length > 0 ? `; ${list(gone)} no longer a folder at HEAD, left out` : '');
@@ -51,20 +53,26 @@ async function lastRoots(dir: string, repoId: string): Promise<LastRoots> {
  * whether it was saved. Only a flag or the human's answer is saved; with neither, nor a saved answer, the
  * last scan's roots are kept, so planets never move unless you choose (#73), and the guess is used only
  * without them. A bad --root is a usage error (exit 2); a damaged config.json is a state error (exit 5).
- * `ask` is present only at a terminal.
+ * `ask` is present only at a terminal. `save` is false for a `--out` scan (#115): its flag or answer is
+ * used for that scan only, and config.json is never written.
  */
 export async function chooseRoots(flags: RootFlags, { commonDir, repoId, files, folders }: HeadTree, out: (text: string) => void,
-  ask: Ask | undefined): Promise<string[]> {
+  ask: Ask | undefined, { save = true }: { save?: boolean } = {}): Promise<string[]> {
   const dir = () => stateDir(commonDir);
   const say = (roots: readonly string[], how: string) => out(`roots: ${list(roots)} (${how})\n`);
+  /** A flag's or answer's roots: saved, or with --out only said to be unsaved (#115). */
+  const chosen = (roots: string[], from: string) => {
+    if (save) saveRoots(dir(), roots);
+    say(roots, `${from}${save ? `saved; ${HOW}` : UNSAVED_OUT}`);
+    return roots;
+  };
   // An explicit choice replaces config.json unread, so it is also the way out of a damaged one; the
-  // write renames over the path, replacing a symlink itself, never writing through it.
+  // write renames over the path, replacing a symlink itself, never writing through it. With --out it
+  // neither reads nor writes it.
   if (flags.kind === 'set' || flags.kind === 'none') {
     const parsed = flags.kind === 'none' ? { roots: [] } : parseRoots(flags.roots, folders);
     if ('error' in parsed) throw new CommetError(`--root: ${parsed.error}`, EXIT.usage);
-    saveRoots(dir(), parsed.roots);
-    say(parsed.roots, `from ${flags.kind === 'none' ? '--no-root' : '--root'}, saved; ${HOW}`);
-    return parsed.roots;
+    return chosen(parsed.roots, `from ${flags.kind === 'none' ? '--no-root' : '--root'}, `);
   }
   const saved = await readSavedRoots(dir());
   // A saved root that is no longer a folder is left out of this scan and said so, never dropped silently (Rule 1).
@@ -79,11 +87,7 @@ export async function chooseRoots(flags: RootFlags, { commonDir, repoId, files, 
   if (kept !== null && flags.kind !== 'ask') return fromSaved();
   const guess = guessRoot(files);
   const answer = ask && (guess !== null || flags.kind === 'ask') ? await prompt(guess, folders, out, ask) : null;
-  if (answer !== null) {
-    saveRoots(dir(), answer);
-    say(answer, `saved; ${HOW}`);
-    return answer;
-  }
+  if (answer !== null) return chosen(answer, save ? '' : 'answered, ');
   if (kept !== null) return fromSaved();
   // Nothing saved and nothing answered: never saved here, so a hook, CI or an agent can't answer for the human (#73).
   const confirm = ask ? 'confirm with `commet scan --ask`' : 'confirm with `commet scan --ask` in a terminal';

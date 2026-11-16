@@ -32,7 +32,7 @@ const USAGE = 'usage: commet scan [--window <months>] [--no-ingest] [--with-qodo
   + HOOK_USAGE
   + '  --with-qodo  opt in to reading this repo\'s Qodo review findings (read-only, over the network via gh and qodo)\n'
   + '  --root <dir> a main folder whose subfolders become planets (repeatable; saved), --no-root: none (saved),\n'
-  + '               --ask: ask again (at a terminal; the first scan there asks too)\n';
+  + '               --ask: ask again (at a terminal; the first scan there asks too); with --out, no roots are saved\n';
 
 interface ScanArgs { window: number; ingest: boolean; withQodo: boolean; out?: string; roots: RootFlags }
 
@@ -145,7 +145,8 @@ async function runScan(rest: string[], io: Io): Promise<number> {
       repoDir: io.cwd, windowMonths: args.window, ingest: args.ingest,
       claudeProjectsDir: join(claudeDir, 'projects'), keyFor: (dir) => loadOrCreateKey(stateDir(dir)),
       qodo: { fetch: args.withQodo, stateDir },
-      roots: (head) => chooseRoots(args.roots, head, io.stdout, io.ask),
+      // A --out scan is an experiment: its roots are for that run only, never saved to config.json (#115).
+      roots: (head) => chooseRoots(args.roots, head, io.stdout, io.ask, { save: !args.out }),
     });
     const out = args.out && resolve(io.cwd, args.out);
     // With --out, the layout goes beside the snapshot (x.json → x.layout.json), so the state dir keeps one scan's pair.

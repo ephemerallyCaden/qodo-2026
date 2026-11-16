@@ -489,3 +489,101 @@ describe('#73 unattended scans keep the last layout\'s roots and never save a gu
     expect(exists(state(repo, 'config.json'))).toBe(false);
   });
 });
+
+describe('#115 a scan with --out never writes config.json', () => {
+  const NO_LOGS = { CLAUDE_CONFIG_DIR: realTempDir('commet-roots115-claude-') };
+  const at = (n: number) => `2026-01-0${n}T00:00:00Z`;
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `l${i}`);
+  const configOf = (repo: MiniRepo) => join(repo.dir, '.git/commet/config.json');
+  const rootsLine = (out: string) => out.split('\n').filter((l) => l.startsWith('roots: '));
+  const UNSAVED = 'not saved: with --out, roots are for this scan only; scan without --out to save them';
+  // A hand-written saved answer in a spelling saveRoots never writes (canonical JSON is indented), so a
+  // rewrite would show in its bytes as well as its inode; and a damaged one, which a write would replace.
+  const SAVED = '{ "roots": [ "web" ] }\n';
+  const DAMAGED = '{"roots":';
+  /** src is guessed (two code subfolders, most of the code); config.json holds `config` when given. */
+  const repoWith = (config?: string) => {
+    const repo = miniRepo([
+      { id: 'a', at: at(1), path: 'src/core/a.ts', lines: lines(10) },
+      { id: 'b', at: at(2), path: 'src/scan/b.ts', lines: lines(10) },
+      { id: 'c', at: at(3), path: 'web/w.ts', lines: lines(2) },
+    ]);
+    if (config !== undefined) {
+      mkdirSync(join(repo.dir, '.git/commet'), { mode: 0o700 });
+      writeFileSync(configOf(repo), config, { mode: 0o600 });
+    }
+    return repo;
+  };
+  /** config.json's bytes and inode, or null when absent: a write renames a new file over it. */
+  const fingerprint = (repo: MiniRepo) => {
+    try {
+      return { bytes: readFileSync(configOf(repo), 'utf8'), ino: lstatSync(configOf(repo)).ino };
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw e;
+    }
+  };
+  /** `commet scan --no-ingest --out <tmp>/snap.json ...args`: the result and the roots of the layout beside the --out file. */
+  const scanOut = async (repo: MiniRepo, args: string[], ask?: Ask) => {
+    const out = join(realTempDir('commet-roots115-out-'), 'snap.json');
+    const r = await cli(['scan', '--no-ingest', '--out', out, ...args], repo.dir, NO_LOGS, ask);
+    expect(r, args.join(' ')).toMatchObject({ code: 0, err: '' });
+    const layout = JSON.parse(readFileSync(out.replace(/\.json$/, '.layout.json'), 'utf8')) as LayoutV1;
+    return { ...r, roots: layout.source.roots };
+  };
+
+  it('AC1, AC3: --root and --no-root apply to that run only; config.json is untouched (saved, damaged or absent) and the notice says not saved', async () => {
+    for (const config of [SAVED, DAMAGED, undefined]) {
+      for (const [args, roots, line] of [[['--root', 'src'], ['src'], 'src (from --root'], [['--no-root'], [], 'none (from --no-root']] as const) {
+        const repo = repoWith(config);
+        const before = fingerprint(repo);
+        const r = await scanOut(repo, [...args]);
+        expect(fingerprint(repo), `${String(config)} ${args.join(' ')}`).toEqual(before);
+        expect(r.roots).toEqual(roots);
+        expect(rootsLine(r.out)).toEqual([`roots: ${line}, ${UNSAVED})`]);
+      }
+    }
+  });
+
+  it('AC1, AC3: an answer at the prompt is used for that run and not saved, so the next terminal scan asks again', async () => {
+    const repo = repoWith();
+    const ask = scripted(['n']);
+    const r = await scanOut(repo, [], ask);
+    expect(ask.asked).toEqual([QUESTION]);
+    expect(fingerprint(repo)).toBeNull();
+    expect(r.roots).toEqual([]);
+    expect(rootsLine(r.out)).toEqual([`roots: none (answered, ${UNSAVED})`]);
+    const again = scripted(['y']);
+    expect((await scanOut(repo, [], again)).roots).toEqual(['src']);
+    expect(again.asked).toEqual([QUESTION]);
+    expect(fingerprint(repo)).toBeNull();
+  });
+
+  it('AC1, AC3: --ask over a saved answer asks, uses the new answer, and leaves the saved one as it was', async () => {
+    const repo = repoWith(SAVED);
+    const before = fingerprint(repo);
+    const ask = scripted(['y']);
+    const r = await scanOut(repo, ['--ask'], ask);
+    expect(ask.asked).toEqual([QUESTION]);
+    expect(fingerprint(repo)).toEqual(before);
+    expect(r.roots).toEqual(['src']);
+    expect(rootsLine(r.out)).toEqual([`roots: src (answered, ${UNSAVED})`]);
+    // The saved answer is still what a later --out scan uses, and it says it saved nothing new.
+    const later = await scanOut(repo, []);
+    expect(later.roots).toEqual(['web']);
+    expect(rootsLine(later.out)).toEqual(['roots: web (saved; change with --root <dir>, --no-root or `commet scan --ask`)']);
+    expect(fingerprint(repo)).toEqual(before);
+  });
+
+  it('AC2: without --out, the same flags and answer are saved (#71)', async () => {
+    const flag = repoWith(SAVED);
+    expect((await cli(['scan', '--no-ingest', '--root', 'src'], flag.dir, NO_LOGS)).code).toBe(0);
+    expect(JSON.parse(fingerprint(flag)!.bytes)).toEqual({ roots: ['src'] });
+    const answered = repoWith();
+    const ask = scripted(['n']);
+    const r = await cli(['scan', '--no-ingest'], answered.dir, NO_LOGS, ask);
+    expect([r.code, ask.asked]).toEqual([0, [QUESTION]]);
+    expect(rootsLine(r.out)).toEqual(['roots: none (saved; change with --root <dir>, --no-root or `commet scan --ask`)']);
+    expect(JSON.parse(fingerprint(answered)!.bytes)).toEqual({ roots: [] });
+  });
+});
