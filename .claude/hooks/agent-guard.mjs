@@ -21,7 +21,7 @@ import process from 'node:process';
 const DYNAMIC = '\0'; // $(…), `…`
 const VAR = '\u0003'; // $X, ${X}, $'…'
 const GLOB = '\u0004'; // a glob or brace at the start of a word: it can expand to `--some-option`
-const UNKNOWN = /[\0\u0003\u0004]/;
+const unknown = (s) => [DYNAMIC, VAR, GLOB].some((m) => s.includes(m));
 const TMP = process.env.TMPDIR || tmpdir();
 const TMP_ROOTS = [...new Set([TMP, tmpdir(), '/tmp'].map((p) => { try { return realpathSync(p); } catch { return null; } }).filter(Boolean))];
 
@@ -75,7 +75,7 @@ function skipHeredocs(src, i, docs, out) {
       if (line.replace(/^\t+/, '') === delim) { end = i; i = nl < 0 ? src.length : nl + 1; break; }
       i = nl < 0 ? src.length : nl + 1;
     }
-    if (!quoted && UNKNOWN.test(dquote(src.slice(start, end), 0, out, null).text)) out.expands = true;
+    if (!quoted && unknown(dquote(src.slice(start, end), 0, out, null).text)) out.expands = true;
   }
   return i;
 }
@@ -173,7 +173,7 @@ const within = (p, dir) => p === dir || p.startsWith(dir.endsWith(sep) ? dir : d
 /** A word with a leading $TMPDIR filled in; null if it still holds run-time text. */
 function known(w) {
   const x = w.replace(new RegExp(`^${VAR}(TMPDIR|\\{TMPDIR\\})(?=/|$)`), TMP);
-  return UNKNOWN.test(x) ? null : x;
+  return unknown(x) ? null : x;
 }
 
 /** The real absolute path a word names, or null when the guard can't be sure of it. */
