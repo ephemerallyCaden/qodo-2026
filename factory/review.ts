@@ -78,6 +78,10 @@ export const isOpen = (f: Finding) => f.dismiss_reason == null && f.attribution_
  */
 export const isHigh = (f: Finding) => f.action_level === 'action_required';
 export const isBlocking = (f: Finding) => isOpen(f) && (isHigh(f) || f.action_level === 'remediation_recommended');
+const LEVELS = new Set(['action_required', 'remediation_recommended', 'informational']);
+/** Distinct levels of open findings outside our mapping ("(none)" if missing); AGENTS.md: stop and ask the human. */
+export const unknownLevels = (fs: Finding[]) =>
+  [...new Set(fs.filter(isOpen).map((f) => f.action_level ?? '(none)').filter((l) => !LEVELS.has(l)))];
 
 /** The reviewed-commit marker Qodo hides in its "Code Review by Qodo" comment; the last one wins. */
 export function qodoMarker(commentBodies: string, slug: string): string | null {

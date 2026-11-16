@@ -15,7 +15,7 @@ import { redact, RunLog, stamp, type Clock } from './log.js';
 import { isExecutable, midwayHoursLeft, type Check } from './preflight.js';
 import { dispositionsComment, prBody, summaryComment, type CheckResult } from './report.js';
 import {
-  ciState, isBlocking, isHigh, parseQodo, qodoMarker, qodoState, shortSha,
+  ciState, isBlocking, isHigh, parseQodo, unknownLevels, qodoMarker, qodoState, shortSha,
   type CheckRun, type CiState, type Finding, type QodoState, type ReviewRun,
 } from './review.js';
 import { claudeSettings, SANDBOX_EXEC, sandboxSelfTest, seatbelt, seatbeltProfile, worktreeGit, type SandboxPaths } from './sandbox.js';
@@ -515,6 +515,8 @@ class Tick {
       const r = await this.waitForReview();
       this.reviewRounds++;
       this.lastReview = r;
+      const unknown = unknownLevels(r.findings);
+      if (unknown.length) throw new Stop(`unknown Qodo action_level ${unknown.map((l) => `"${l}"`).join(', ')}: the human decides how it maps (AGENTS.md)`);
       const rejected = new Set(this.dispositions.filter((d) => d.verdict === 'rejected').map((d) => d.id));
       const blocking = r.findings.filter(isBlocking);
       const fresh = blocking.filter((f) => !rejected.has(f.id));

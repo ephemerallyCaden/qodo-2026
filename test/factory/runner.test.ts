@@ -555,6 +555,25 @@ describe('review loop (R6, R7)', () => {
     expect(w.issues.get(24)!.comments.at(-1)).toMatch(/Finding r1.*rejected in round 1/);
   });
 
+  it('an open finding with an unknown or missing action_level stops for the human and names it (AGENTS.md)', async () => {
+    const w = world();
+    const noLevel = finding('u2');
+    delete noLevel.action_level;
+    w.findings = () => [finding('u1', { action_level: 'critical' }), noLevel, finding('i1', { action_level: 'informational' })];
+    w.addIssue(24);
+    w.claude.push(implementDone());
+    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: 'unknown Qodo action_level "critical", "(none)": the human decides how it maps (AGENTS.md)' });
+    expect(w.agentCalls()).toHaveLength(1);
+  });
+
+  it('a closed finding with an unknown action_level does not stop the run', async () => {
+    const w = world();
+    w.findings = () => [finding('u1', { action_level: 'critical', dismiss_reason: 'false_positive' })];
+    w.addIssue(24);
+    w.claude.push(implementDone());
+    expect(await w.tick()).toMatchObject({ state: 'done', issue: 24 });
+  });
+
   it('a Medium finding that stays open after each fix hits the retry limit, never agent-done', async () => {
     const w = world();
     w.findings = () => [finding('r1', { action_level: 'remediation_recommended' })];
