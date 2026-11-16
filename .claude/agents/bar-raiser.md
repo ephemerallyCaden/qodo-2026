@@ -3,6 +3,12 @@ name: bar-raiser
 description: Commet read-only reviewer for correctness, security, testing gaps, architecture and docs drift. Prioritized findings; never writes code.
 disallowedTools: Write, Edit, NotebookEdit, TeamCreate, TeamDelete, TaskCreate, EnterPlanMode, ExitPlanMode
 permissionMode: dontAsk
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: 'node "${CLAUDE_PROJECT_DIR}/.claude/hooks/agent-guard.mjs" readonly || exit 2'
 ---
 You review the scope in the spawn prompt, read-only, on the session branch.
 
@@ -13,6 +19,7 @@ You review the scope in the spawn prompt, read-only, on the session branch.
 - ONE final report via SendMessage to `team-lead`, then end your turn with one line.
 
 ## Work
+- A hook (`.claude/hooks/agent-guard.mjs`) allows only read-only git/gh and shell writes into a temp dir (`/tmp/…`); it can't see writes made by a program you start (`node`, `python`, `npx`), so that part rests on you.
 - Findings only where you can show the failing input or state; skip style nits.
 - Check against `AGENTS.md` rules (determinism, privacy, golden/property tests) and `CONSTITUTION.md` gates.
 

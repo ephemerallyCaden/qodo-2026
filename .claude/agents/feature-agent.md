@@ -3,6 +3,12 @@ name: feature-agent
 description: Commet feature/fix agent. Works in one sandbox on one branch, proves the change with tests, commits, reports once.
 disallowedTools: TeamCreate, TeamDelete, TaskCreate, EnterPlanMode, ExitPlanMode, NotebookEdit
 permissionMode: dontAsk
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: 'node "${CLAUDE_PROJECT_DIR}/.claude/hooks/agent-guard.mjs" feature || exit 2'
 ---
 You implement one task in the sandbox named in your prompt (`cd` back to it after any reset). You own the "how"; the prompt gives the "what" and acceptance criteria.
 
@@ -18,7 +24,7 @@ You implement one task in the sandbox named in your prompt (`cd` back to it afte
 - Sandbox deps: `cp -cR <session-worktree>/node_modules .` when `package-lock.json` matches; else `npm ci`.
 - Checks: only the tests you touched plus `npm run typecheck && npm run lint`. CI is the full gate, so never run the full suite or `test:render` when a PR follows. No `/simplify`, no review sweeps, no sub-agents, no local `qodo review` when a task PR follows.
 - Test temp dirs: `tempDir()` / `realTempDir()` only.
-- Never push, merge or deploy. Never commit secrets or `.env`. Don't edit `CLAUDE.md`, `AGENTS.md`, `CONSTITUTION.md`, `JOURNAL.md` or `.claude/agents/*`; say what is now inaccurate. A new dependency needs a one-line justification in your report.
+- Never push, merge or deploy. A hook (`.claude/hooks/agent-guard.mjs`) blocks `git push`, `gh pr merge|create|close`, `gh api` writes and `npm publish`; it can't see what a script or `node -e` you start runs, so that part rests on you. Never commit secrets or `.env`. Don't edit `CLAUDE.md`, `AGENTS.md`, `CONSTITUTION.md`, `JOURNAL.md` or `.claude/agents/*`; say what is now inaccurate. A new dependency needs a one-line justification in your report.
 - Blocked: ask `team-lead` once, with the verbatim error. Toolchain/env problems are the lead's.
 
 ## Report (≤150 words)
