@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { startPose } from '../../web/src/camera/pose.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { SystemScene } from '../../web/src/render/scene.js';
+import { CORONA } from '../../web/src/model/star.js';
 import { CLOUD_FRAG, HAZE_FRAG, STAR, STAR_FRAG } from '../../web/src/render/shaders.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
 
@@ -76,6 +77,7 @@ describe('the GLSL three submits for the view', () => {
     expect((star.material as THREE.ShaderMaterial).side).toBe(THREE.BackSide); // covers the corona from any camera, even inside it
     expect(star.scale.x).toBeCloseTo(system.model.star.radius * STAR.span, 6);
     expect(STAR_FRAG).toContain('gl_FragDepth = ');
+    expect(STAR_FRAG, 'the corona never draws past the reach that hides what is behind it (Qodo 1ce5dd3d)').toContain(`, ${CORONA.reach.toFixed(3)})) discard;`);
     expect(STAR_FRAG).not.toMatch(/uFog|fog\(/); // the star has no file, so nothing fogs it (#74)
     const submitted = fragments.filter((f) => f.includes('uniform vec3 uDisc[5];'));
     expect(submitted).toHaveLength(1);

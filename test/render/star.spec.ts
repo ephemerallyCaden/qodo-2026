@@ -1,7 +1,8 @@
 // The star on the real view (#81, docs/features/star-art.md S1–S5): the Day 1 GIF's sun, ported from
 // the asset viewer's star.js. With the depth fade off it draws only its own palette roles
 // (world.starDisc, world.starCorona; never teal), core at the centre and each band further out, with a
-// flat, lumpy corona past the limb; frame 720 (one 24 s loop) is frame 0 and the seam is no bigger
+// flat, lumpy corona past the limb; the middle of the disc is the core on every frame of the loop, seen
+// from two sides and under reduced motion; frame 720 (one 24 s loop) is frame 0 and the seam is no bigger
 // than any other step; reduced motion holds it; far away it fades at 0.15 (S5); fog never covers it
 // (#74); its moonlets wear the planets' moon look (S6); and a drone (#80) still draws in front of it.
 // Every check fails on an empty frame.
@@ -118,13 +119,44 @@ test.describe('the star (#81)', () => {
     expect(median, 'the star moves over the loop').toBeGreaterThan(0);
     expect(seam, 'the seam is no bigger than a step').toBeLessThanOrEqual(median * 1.5);
     expect(diffPixels(at(0), at(360)), 'half a loop later the granulation has moved').toBeGreaterThan(200);
-    // The granulation wobbles every band edge, the core's too (S1), but never far enough to cool the
-    // centre past cream: |offset| ≤ 0.21 + 0.05 at the centre (limb value 1), cream starts at 0.72.
-    const centres = rs.map((r) => colours(r.pixels)[(r.pixels.height / 2) * r.pixels.width + r.pixels.width / 2]!);
+    // The granulation wobbles every band edge, the core's too (S1), yet the core band stays inside the cream band.
     const cores = rs.map((r) => { const px = colours(r.pixels); return [meanRadius(r.pixels, px, DISC[4]!), meanRadius(r.pixels, px, DISC[3]!)] as const; });
-    console.log(`star centre over the loop: ${count(centres, [DISC[4]!])} of ${centres.length} frames core, ${count(centres, [DISC[3]!])} cream`);
-    expect(centres.filter((h) => h !== DISC[4] && h !== DISC[3]), 'the centre is the core or cream on every frame').toEqual([]);
     expect(cores.filter(([core, cream]) => !(core < cream)), 'the core band sits inside the cream band on every frame').toEqual([]);
+    expect(view.errors).toEqual([]);
+  });
+
+  test('S1: the middle of the disc is the cream-white core on every frame of the loop, from any side, and under reduced motion (Qodo ac16fd84)', async ({ page }) => {
+    const view = await openView(page, systemView());
+    const MIDDLE = 0.1; // of the disc's radius: the shader holds the core out to STAR.core[0]
+    const grid: Frame = { ...LOW_RES, rgba: new Uint8Array(0) };
+    const centre = (grid.height / 2) * grid.width + grid.width / 2;
+    // The close view, and one from below where the granulation runs coolest at the centre (55 of 720 frames before the fix).
+    const poses: [string, OrbitPose][] = [['close', close(ALONE)], ['below', { ...close(ALONE), yaw: -1.25, pitch: -0.8 }]];
+    for (const [name, pose] of poses) {
+      const input: RenderInput = { layout: ALONE, camera: cam(pose), depthFade: false };
+      const disc = discPx(ALONE, pose.dist);
+      const middle = Array.from({ length: grid.width * grid.height }, (_, i) => i).filter((i) => radiusOf(grid, i) <= disc * MIDDLE);
+      expect(middle.length, 'the middle of the disc spans some pixels').toBeGreaterThan(30);
+      expect(middle).toContain(centre);
+      /** Frame → how many of the middle's pixels aren't the core, for every frame that has any. */
+      const cooled: [string, number][] = [];
+      let centreCore = 0, frames = 0;
+      const check = (r: Rendered, tag: string) => {
+        const px = middle.map((i) => hex(rgbaAt(r.pixels.rgba, i * 4)));
+        const off = px.filter((h) => h !== DISC[4]).length;
+        if (off > 0) cooled.push([`${tag}${r.frame}`, off]);
+        if (px[middle.indexOf(centre)] === DISC[4]) centreCore++;
+        frames++;
+      };
+      // Every frame of the loop, in chunks so only one chunk's frames are held at once.
+      for (let from = 0; from < LOOP_FRAMES; from += 120) {
+        for (const r of await render(view, input, Array.from({ length: 120 }, (_, i) => from + i))) check(r, '');
+      }
+      // Reduced motion holds frame 0, including on frames whose centre cooled before the fix (75, 289, 510 in the close view).
+      for (const r of await render(view, { ...input, reducedMotion: true }, [0, 75, 180, 289, 360, 510])) check(r, 'reduced ');
+      console.log(`star middle, ${name} (${middle.length} px within ${MIDDLE} of the ${disc.toFixed(1)} px disc radius): all core in ${frames - cooled.length} of ${frames} frames; the centre pixel core in ${centreCore}`);
+      expect.soft(cooled, `${name}: frames whose middle is not all core: [frame, px]`).toEqual([]);
+    }
     expect(view.errors).toEqual([]);
   });
 

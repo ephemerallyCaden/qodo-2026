@@ -6,6 +6,7 @@
 // (AGENTS.md Rule 5); the shaders only pick ramp steps. All lighting comes from the one key light
 // (uLight) in flat bands; there are no stock materials, shadow maps or post passes (Rule 4).
 import { DEPTH_RANGE } from '../model/depth.js';
+import { CORONA } from '../model/star.js';
 import { FOG_HAZE, FOG_MOON, FOG_SURFACE } from './fog-glsl.js';
 
 /**
@@ -150,10 +151,12 @@ export const TOON_FRAG = /* glsl */ `
 /**
  * The star (docs/features/star-art.md S1–S5): the Day 1 GIF's sun, from the approved asset viewer's
  * star.js (feature/asset-library mockups/asset-viewer). `cuts` are its band cuts on the wobbled limb
- * value, `span` the corona's reach in star radii (the star mesh's size), `fade` its depth-fade strength
- * (S5: the cream core stays the hottest point at any distance; lava glow's 0.5 greys it).
+ * value, `core` where the granulation may cool the centre (none within core[0] of the disc's radius as
+ * seen, fully again from core[1]), `span` the star mesh's size in star radii (it holds the corona,
+ * model/star.ts), `fade` its depth-fade strength (S5: the cream core stays the hottest point at any
+ * distance; lava glow's 0.5 greys it).
  */
-export const STAR = { cuts: [0.27, 0.5, 0.72, 0.9], span: 1.4, fade: 0.15 } as const;
+export const STAR = { cuts: [0.27, 0.5, 0.72, 0.9], core: [0.1, 0.2], span: 1.4, fade: 0.15 } as const;
 
 /**
  * The star in one draw on its one mesh: a sphere of STAR.span star radii, drawn from the inside
@@ -163,10 +166,12 @@ export const STAR = { cuts: [0.27, 0.5, 0.72, 0.9], span: 1.4, fade: 0.15 } as c
  *           cream-white core at the centre out to the red-orange limb, whose edges a granulation field
  *           wobbles (fbm cells plus fine simplex grain). The field churns on a circle in noise space
  *           (uChurn) while the disc turns (uSpin), both whole cycles per loop, so it returns to itself.
+ *           It never cools the middle of the disc (STAR.core), so the centre is the core on every frame.
  *   corona  elsewhere, in the plane through the centre that faces the eye (the asset viewer's
  *           billboard): a red-orange crown that licks past the limb, then a thin dark-red halo, flat
  *           bands (no dithering) with a lumpy edge riding the same circle, in a frame that keeps the
- *           camera's up. Past the halo the pixel is discarded.
+ *           camera's up. Past the halo (never past CORONA.reach, which hides what is behind it for
+ *           picking and labels) the pixel is discarded.
  * It writes the hit's own depth, so planets, moonlets and drones pass in front of and behind it
  * correctly. Emissive and unlit everywhere, never fogged (it has no file), faded per pixel at STAR.fade.
  */
@@ -195,7 +200,9 @@ export const STAR_FRAG = /* glsl */ `
       vec3 p = vec3(uSpin.x * n.x + uSpin.y * n.z, n.y, uSpin.x * n.z - uSpin.y * n.x); // into the turning disc's frame
       float g = fbm(p * 2.6 + vec3(uChurn * 0.7, 0.0));         // churning cells
       float g2 = snoise(p * 6.5 + vec3(0.0, uChurn.yx * 0.45)); // fine granulation
-      float m = mu + (g - 0.5) * 0.42 + g2 * 0.05;
+      float off = (g - 0.5) * 0.42 + g2 * 0.05;                  // the wobble, at most 0.26 either way
+      float r = sqrt(max(1.0 - mu * mu, 0.0));                  // off the disc's centre as seen, in star radii
+      float m = mu + max(off, -0.26 * smoothstep(${f3(STAR.core[0])}, ${f3(STAR.core[1])}, r)); // the middle never cools
       col = uDisc[m > ${f3(STAR.cuts[3])} ? 4 : m > ${f3(STAR.cuts[2])} ? 3 : m > ${f3(STAR.cuts[1])} ? 2 : m > ${f3(STAR.cuts[0])} ? 1 : 0];
     } else {
       vec3 axis = normalize(oc);
@@ -212,7 +219,7 @@ export const STAR_FRAG = /* glsl */ `
       float f = fbm(vec3(a * 1.7, 0.0) + vec3(0.0, uChurn * 0.55)); // lumps round the rim
       float f2 = fbm(vec3(a * 4.2, 3.0) + vec3(uChurn.yx * 0.35, 0.0));
       float crown = 1.035 + 0.16 * pow(max(f - 0.38, 0.0) * 2.2, 2.0) + 0.03 * f2;
-      if (r > 1.13 + 0.1 * f + 0.04 * f2) discard; // past the halo
+      if (r > min(${f3(CORONA.halo)} + ${f3(CORONA.lump)} * f + ${f3(CORONA.grain)} * f2, ${f3(CORONA.reach)})) discard; // past the halo
       col = r < crown ? uCorona[0] : uCorona[1];
     }
     vec4 clip = projectionMatrix * viewMatrix * vec4(hit, 1.0);
