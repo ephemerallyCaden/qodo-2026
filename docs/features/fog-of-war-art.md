@@ -1,7 +1,7 @@
 # Feature: Fog of war (art)
 
 ## Status
-In Progress (D2d approved; limb fix, then porting)
+Complete (art): cloud fog C6 replaces the dark veil (human, 2026-11-16); product drawing (#74) to follow
 
 ## Trigger
 The human, 2026-11-09: "suggest more things to design and make", then "keep going" (2026-11-10). Fog of war is R5, the product's core signal. Its logic and chart state are in PR #50 (#33), which says "drawing fog waits for the art pass".
@@ -52,10 +52,26 @@ Scan → fog view (#33) per file → fogged cells on each planet → you open a 
   - the fogged limb merges toward space (63% of the lava limb ring within 0.03 of space, against 28% clear), so a limb fix is required before the port;
   - dark toxic sits near the lava crust ramp.
 
+**Variant requested (human, 2026-11-14): the fog is the clouds themselves.** "We should try a variant where the fog is the clouds themselves, and the amount of cloud coverage shows the amount of known or unknown there is." Cloud cover rises with the uncharted share (clear planet at 100% charted, overcast at 0%), and charting clears clouds from over that file. Open design questions for the lab: what happens to a planet's ordinary seeded clouds (some bands have none: desert; lava has ash), whether fog clouds look like the normal clouds or a distinct heavier layer, and whether health can show through gaps (which would revive F3 partly). Compared against D2d, the current final.
+
+**Cloud fog adopted (human, 2026-11-16), replacing the dark veil.** After seeing C1–C5 (overcast, storm over weather, broken cloud, storm front, stratus bands) beside D2d: "I like the white clouds, in the storm front style. We should have 0 clouds when a planet is 100% discovered now, and only have clouds proportional to how much is missing." Then: "remove the other fog attempt from the actual app but keep it in the asset gallery to show we had tried it."
+- **C6 · white storm front:** C4's domed storm-front puffs in the cream cloud ramp, over each undiscovered file's territory, locked to the ground. Cover = 0.9 × the undiscovered share of the surface **cells** (each file's territory keeps the same 10% gap). Measured on the src demo planet (48 files, 256 cells): at 0/25/50/75/100% of files discovered the undiscovered cell share is 100/70/42/25/0% (the territory rule gives each file an equal share ±1 cell), so the cloud covers 90/63/39/22/0% of the surface (0.89–0.92 × the cell share).
+- **Weather:** the cream weather (lush, ocean) is removed while fog is on (in the product, always); lava's ash and toxic's rust smoke stay (health cues). Ice and desert have none.
+- **Events:** a clearing file's cloud turns [OIII] teal for the first ~0.6 s of its 1 s clear, then thins away (F5); a refog rolls cloud in from the far edge (2.4 s, no teal).
+- **The bulge is kept** (the human's call): the cloud reads well past the silhouette, so a cloudy planet looks bigger than its LOC-based size.
+- **Open:** test-file moons are not fogged under cloud fog (the veil fogged them); health shows through the gaps, so F3 partly revives.
+- **Where:** `mockups/asset-viewer/fog-cloud.js` (pure: the variants, the placement, the gaps, the fronts) and `planet.setFogClouds()` in viewer.js (no shader hook; off by default). The dark veil (`fog.js` D2d) stays for the fog lab and the asset library's history.
+
 ## Tasks
 - Exploration lab `mockups/fog-lab/` on `feature/fog-lab` (feature agent): 4–5 distinct fog directions on several bands and coverage levels (0/25/50/75/100% charted), with the clear and refog moments, measured against F3 and F8, for the human to pick.
 
 ## Completion
-- Merged: —
-- Date: —
-- Verification: —
+- Merged: feature/asset-library: 3dbfbc4 (the viewer's cloud fog C6, the fog lab's cloud looks) and 13ebffb (the library's fog is C6; its history keeps every fog tried); earlier 12588f7, 1eaa3ef and e66b737 (the dark veil D2d, now replaced). Pushed.
+- Date: 2026-11-16 (the dark veil: 2026-11-13)
+- Final look (human, 2026-11-16): **C6 · white storm front**, cloud over the undiscovered share (see above). It replaced the dark veil D2d (2026-11-11: cool blue-plum veil, halo limb, fogged haze), which stays in the asset library's history.
+- C6 verification: fog off, `shots.mjs` byte-identical to e66b737 (19/19); the viewer's fog test (off is off, none at 100%, cover falls with discovery, no teal at rest, deterministic, loop-locked); library fog pixel-identical to the viewer in four cases (679 and 568 teal px mid-clear, none at rest); the lab's C6 pixel-identical to the viewer's in three cases; health-looks, drone-lab, debris-lab green.
+- D2d verification (as recorded 2026-11-13):
+  - fog-lab 17/17; viewer 31/31; library fog 4/4 with 4 fidelity cases at 0 px against the viewer (lush 50%, ocean fully fogged with haze, a mid-clear, a mid chart-all with teal); health-looks, debris-lab and drone-lab green.
+  - Fog off: shots.mjs hashes identical to 968bc0c.
+  - Measured: fog pixels near lava crust 0.0% (from 89.6% on toxic); limb ring merged into space 0.0%; health on charted land 0/48 misreads at 25/50/75% charted.
+- For the product (#74): reuse `mockups/asset-viewer/fog-cloud.js` (pure: the cloud looks, the placement over each file's territory, the gaps and the clear/refog fronts; drawn through `planet.setFogClouds()`) and `fog-layout.js` (pure: #18's grid, the territory rule, the events). The dark veil (`fog.js`) is replaced.
