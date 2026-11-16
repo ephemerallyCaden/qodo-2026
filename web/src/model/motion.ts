@@ -18,6 +18,10 @@ export const TURNS = {
   moons: 2,
   /** The molten lava field churns once per surface turn. */
   lava: 2,
+  /** The star's disc turns once per loop, right to left like the planets (star-art.md S4). */
+  starSpin: 1,
+  /** The star's granulation and corona lumps churn once per loop, on a circle in noise space. */
+  starChurn: 1,
   /**
    * Planets around the star. Zero: planets hold their frame-0 angle (`phaseMilliturn`). The loop
    * lock only allows whole turns per 24 s loop, and even one turn sweeps a large system past the

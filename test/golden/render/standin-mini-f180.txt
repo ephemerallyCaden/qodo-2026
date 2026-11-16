@@ -11,7 +11,7 @@ colours  30 (5 palette, 25 off-palette: 3032 px)
     15    0.02%  #3b3866  39,9-275,168     world.stars[0]
      3    0.00%  #9a90e0  94,105-309,119   world.stars[1]
      3    0.00%  #fff8ff  44,0-260,172     world.stars[2]
-   256    0.44%  #ffc93c  151,81-168,98    world.glow[2]
+   256    0.44%  #ffc93c  151,81-168,98    world.glow[2], world.starDisc[2]
     56    0.09%  #15323c  140,25-179,36    (off-palette)
      2    0.00%  #1b1d3c  229,4-234,7      (off-palette)
    392    0.68%  #1c534e  137,28-182,52    (off-palette)

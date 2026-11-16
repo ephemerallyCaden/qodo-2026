@@ -260,6 +260,15 @@ describe('palette', () => {
     ]);
   });
 
+  it('builds the star from existing world colours, never teal (star-art.md S3, #81)', () => {
+    const { glow, sand, cloud, gasB } = palette.world;
+    expect(palette.world.starDisc).toEqual([...glow, sand.at(-1), cloud.at(-1)]); // limb → core: the lava glow, then the sand and cloud tops
+    expect(palette.world.starCorona).toEqual([glow[0], gasB[0]]); // crown, halo
+    const star: readonly string[] = [...palette.world.starDisc, ...palette.world.starCorona];
+    expect(star.filter((h) => TEAL.includes(h))).toEqual([]);
+    expect(star.filter((h) => h === palette.world.space)).toEqual([]);
+  });
+
   it('checks a per-biome ring (ring.<biome>) against that biome\'s own ramps', () => {
     const withRings = (ring: unknown) => {
       const b = broken();

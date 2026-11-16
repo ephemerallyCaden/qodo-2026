@@ -90,8 +90,8 @@ const BANDS = /* glsl */ `
 `;
 
 // The one sanctioned gradient (art-direction §5): a continuous per-pixel blend toward the depth tint,
-// by each fragment's own distance from the eye. k scales the strength (lava glow and the star fade at
-// half strength). uEye, not cameraPosition, so an ortho rig can share it. uDepthOn = 0 turns it off
+// by each fragment's own distance from the eye. k scales the strength (lava glow fades at half
+// strength, the star at STAR.fade). uEye, not cameraPosition, so an ortho rig can share it. uDepthOn = 0 turns it off
 // (RenderInput.depthFade), leaving only palette colours. uDepthStretch (squeeze, shift) moves the
 // later steps out to the system's size (model/depth.ts depthStretch, #59); (1, 0) is the tuned fade.
 const DEPTH = /* glsl */ `
@@ -147,16 +147,77 @@ export const TOON_FRAG = /* glsl */ `
   }
 `;
 
-/** The star: unlit, three glow bands from the limb in (centre hottest). */
+/**
+ * The star (docs/features/star-art.md S1–S5): the Day 1 GIF's sun, from the approved asset viewer's
+ * star.js (feature/asset-library mockups/asset-viewer). `cuts` are its band cuts on the wobbled limb
+ * value, `span` the corona's reach in star radii (the star mesh's size), `fade` its depth-fade strength
+ * (S5: the cream core stays the hottest point at any distance; lava glow's 0.5 greys it).
+ */
+export const STAR = { cuts: [0.27, 0.5, 0.72, 0.9], span: 1.4, fade: 0.15 } as const;
+
+/**
+ * The star in one draw on its one mesh: a sphere of STAR.span star radii, drawn from the inside
+ * (BackSide) so it covers the star and its corona from any camera, even one inside it. Each pixel
+ * casts its view ray from the eye:
+ *   disc    where the ray hits the star's sphere: five flat bands by limb angle (limb darkening), the
+ *           cream-white core at the centre out to the red-orange limb, whose edges a granulation field
+ *           wobbles (fbm cells plus fine simplex grain). The field churns on a circle in noise space
+ *           (uChurn) while the disc turns (uSpin), both whole cycles per loop, so it returns to itself.
+ *   corona  elsewhere, in the plane through the centre that faces the eye (the asset viewer's
+ *           billboard): a red-orange crown that licks past the limb, then a thin dark-red halo, flat
+ *           bands (no dithering) with a lumpy edge riding the same circle, in a frame that keeps the
+ *           camera's up. Past the halo the pixel is discarded.
+ * It writes the hit's own depth, so planets, moonlets and drones pass in front of and behind it
+ * correctly. Emissive and unlit everywhere, never fogged (it has no file), faded per pixel at STAR.fade.
+ */
 export const STAR_FRAG = /* glsl */ `
+  ${NOISE}
   ${DEPTH}
-  uniform vec3 uGlow[3];
-  in vec3 vNormalW;
+  uniform vec3 uDisc[5];
+  uniform vec3 uCorona[2];
+  uniform vec2 uChurn; // (cos, sin) of the churn angle
+  uniform vec2 uSpin;  // (cos, sin) of the disc's turn
+  uniform mat4 modelMatrix;
+  uniform mat4 projectionMatrix;
   in vec3 vPosW;
   void main() {
-    float d = dot(normalize(vNormalW), normalize(uEye - vPosW));
-    vec3 c = d > 0.8 ? uGlow[2] : d > 0.5 ? uGlow[1] : uGlow[0];
-    gl_FragColor = vec4(depthFade(c, vPosW, 0.5), 1.0);
+    vec3 c = modelMatrix[3].xyz;
+    float R = length(modelMatrix[0].xyz) / ${f3(STAR.span)};
+    vec3 rd = normalize(vPosW - uEye), oc = uEye - c;
+    float b = dot(oc, rd), h = b * b - (dot(oc, oc) - R * R);
+    float tFar = h >= 0.0 ? -b + sqrt(h) : -1.0;
+    vec3 hit, col;
+    if (tFar > 0.0) {
+      float tNear = -b - sqrt(h);
+      hit = uEye + rd * (tNear > 0.0 ? tNear : tFar); // the far side when the eye is inside the star
+      vec3 n = (hit - c) / R;
+      float mu = dot(n, -rd); // 1 at the centre of the disc, 0 at the limb
+      vec3 p = vec3(uSpin.x * n.x + uSpin.y * n.z, n.y, uSpin.x * n.z - uSpin.y * n.x); // into the turning disc's frame
+      float g = fbm(p * 2.6 + vec3(uChurn * 0.7, 0.0));         // churning cells
+      float g2 = snoise(p * 6.5 + vec3(0.0, uChurn.yx * 0.45)); // fine granulation
+      float m = mu + (g - 0.5) * 0.42 + g2 * 0.05;
+      col = uDisc[m > ${f3(STAR.cuts[3])} ? 4 : m > ${f3(STAR.cuts[2])} ? 3 : m > ${f3(STAR.cuts[1])} ? 2 : m > ${f3(STAR.cuts[0])} ? 1 : 0];
+    } else {
+      vec3 axis = normalize(oc);
+      float facing = dot(rd, axis);
+      if (facing >= 0.0) discard; // the plane is behind the eye
+      hit = uEye - rd * (dot(oc, axis) / facing);
+      vec3 camUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+      vec3 up = camUp - axis * dot(camUp, axis);
+      up = dot(up, up) < 1e-6 ? vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]) : normalize(up);
+      vec3 right = normalize(cross(up, axis));
+      vec2 uv = vec2(dot(hit - c, right), dot(hit - c, up)) / R;
+      float r = length(uv);
+      vec2 a = uv / r;
+      float f = fbm(vec3(a * 1.7, 0.0) + vec3(0.0, uChurn * 0.55)); // lumps round the rim
+      float f2 = fbm(vec3(a * 4.2, 3.0) + vec3(uChurn.yx * 0.35, 0.0));
+      float crown = 1.035 + 0.16 * pow(max(f - 0.38, 0.0) * 2.2, 2.0) + 0.03 * f2;
+      if (r > 1.13 + 0.1 * f + 0.04 * f2) discard; // past the halo
+      col = r < crown ? uCorona[0] : uCorona[1];
+    }
+    vec4 clip = projectionMatrix * viewMatrix * vec4(hit, 1.0);
+    gl_FragDepth = clip.z / clip.w * 0.5 + 0.5;
+    gl_FragColor = vec4(depthFade(col, hit, ${f3(STAR.fade)}), 1.0);
   }
 `;
 

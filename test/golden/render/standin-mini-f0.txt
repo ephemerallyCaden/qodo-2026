@@ -20,7 +20,7 @@ colours  30 (15 palette, 15 off-palette: 1594 px)
     97    0.16%  #a8602c  110,150-202,179  world.sand[1], world.moonBody[0]
    110    0.19%  #d8944a  110,148-202,179  world.sand[2], world.moonBody[1]
     88    0.15%  #f0c27a  111,147-202,178  world.sand[3], world.moonBody[2]
-   256    0.44%  #ffc93c  151,81-168,98    world.glow[2]
+   256    0.44%  #ffc93c  151,81-168,98    world.glow[2], world.starDisc[2]
     32    0.05%  #e88a34  151,178-168,179  world.toxic[4]
    312    0.54%  #15323c  226,65-244,113   (off-palette)
      2    0.00%  #1b1d3c  51,25-52,27      (off-palette)

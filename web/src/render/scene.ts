@@ -7,7 +7,7 @@ import { palette } from '../../../src/core/palette.js';
 import { ASPECT, FAR, FOV_DEG, NEAR, basis, eyeOf, fovOf, project, projectedRadius, systemDepth, type OrbitPose } from '../camera/pose.js';
 import type { DepthStretch } from '../model/depth.js';
 import { fileFogAt, foggedBy, planetPulse, planetTally, type FogEvent } from '../model/fog.js';
-import { loopPhase } from '../model/motion.js';
+import { loopPhase, TURNS, turnAngle } from '../model/motion.js';
 import { frameWidth } from '../model/pixels.js';
 import { mulberry32 } from '../model/prng.js';
 import { MOON_RADIUS, MOONLET_RADIUS, moonOffset, moonletPosition, planetCentre, type SystemModel } from '../model/system.js';
@@ -16,8 +16,9 @@ import { LIGHT_VIEW, orbitingSpheres, placeSpheres, ramp, shaderMaterial, SHARED
 import { FOG_SHARED, moonFogAttribute, setMoonFog } from './fog.js';
 import { DroneFleet } from './drone-fleet.js';
 import { MOON_GEO, makePlanet, type PlanetObject } from './planet.js';
-import { STAR_FRAG, STARFIELD_FRAG, STARFIELD_VERT } from './shaders.js';
+import { STAR, STAR_FRAG, STARFIELD_FRAG, STARFIELD_VERT } from './shaders.js';
 
+/** The star's one mesh: STAR.span star radii, so it covers the corona too (shaders.ts STAR_FRAG). */
 const STAR_GEO = new THREE.SphereGeometry(1, 48, 32);
 const STARFIELD_COUNT = 900;
 const STARFIELD_RADIUS = 500;
@@ -52,6 +53,7 @@ export class SystemScene {
   /** The agent drones (#80): at most DRONE_CAP, one draw call each. */
   readonly fleet = new DroneFleet();
   private readonly starfield = makeStarfield();
+  private readonly starMat: THREE.ShaderMaterial;
   private readonly moonlets: THREE.InstancedMesh | null;
   private readonly moonletFog: THREE.InstancedBufferAttribute | null;
   /** The fog drawn (null: no usable fog view, so every file is fogged) and the events over it. */
@@ -69,11 +71,15 @@ export class SystemScene {
     this.scene.add(this.fleet.group);
     this.disposables.push(this.starfield.geometry, this.starfield.material as THREE.Material);
 
-    const starMat = shaderMaterial(STAR_FRAG, { uGlow: { value: ramp(palette.world.glow, 3) } });
-    const star = new THREE.Mesh(STAR_GEO, starMat);
-    star.scale.setScalar(model.star.radius);
+    // The Day 1 sun (star-art.md): one draw, disc and corona, on the inside of a sphere that holds both.
+    this.starMat = shaderMaterial(STAR_FRAG, {
+      uDisc: { value: ramp(palette.world.starDisc, 5) }, uCorona: { value: ramp(palette.world.starCorona, 2) },
+      uChurn: { value: new THREE.Vector2(1, 0) }, uSpin: { value: new THREE.Vector2(1, 0) },
+    }, { side: THREE.BackSide });
+    const star = new THREE.Mesh(STAR_GEO, this.starMat);
+    star.scale.setScalar(model.star.radius * STAR.span);
     this.scene.add(star);
-    this.disposables.push(starMat);
+    this.disposables.push(this.starMat);
 
     // Moonlets (root files, unmatched tests): small grey regolith spheres on the star's innermost orbit.
     if (model.star.moonlets.length > 0) {
@@ -164,6 +170,9 @@ export class SystemScene {
       p.update(frame, c, at ? projectedRadius(p.model.radius, at.depth, fovOf(view)) * (pixelHeight / 2) : 0);
     });
     this.fleet.pose(this.model, frame, fovOf(view), pixelHeight);
+    const churn = turnAngle(frame, TURNS.starChurn), spin = turnAngle(frame, TURNS.starSpin);
+    (this.starMat.uniforms['uChurn']!.value as THREE.Vector2).set(Math.cos(churn), Math.sin(churn));
+    (this.starMat.uniforms['uSpin']!.value as THREE.Vector2).set(Math.cos(spin), Math.sin(spin));
     if (this.moonlets) placeSpheres(this.moonlets, this.model.star.moonlets.map((m) => moonletPosition(m, frame)), MOONLET_RADIUS);
   }
 

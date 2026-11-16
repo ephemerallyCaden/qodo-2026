@@ -48,6 +48,11 @@ const PALETTE = {
     // lava: near-black crust; glow is emissive and unlit
     crust: ['#0b0a10', '#0b0a10', '#17151d', '#262129', '#382c30'],
     glow: ['#c9361a', '#ff761a', '#ffc93c'],
+    // the star (the repo; the Day 1 sun, star-art.md S3): no new colours. The disc's five limb bands
+    // are the lava glow, then the sand top and the cloud top (limb → core); the corona is the glow rim
+    // (crown) and gas giant B's darkest step (halo). Never teal.
+    starDisc: ['#c9361a', '#ff761a', '#ffc93c', '#fff0b8', '#fffaf0'],
+    starCorona: ['#c9361a', '#481a18'],
     ash: ['#1a1719', '#332e30', '#565052', '#827b7c'],
     // gas giant: cream zones (A) and salmon-brown belts (B)
     gasA: ['#5a2e1c', '#9c5a30', '#d89a5a', '#f2cc94', '#fff0d0'],

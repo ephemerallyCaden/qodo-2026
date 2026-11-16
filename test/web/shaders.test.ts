@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { startPose } from '../../web/src/camera/pose.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { SystemScene } from '../../web/src/render/scene.js';
-import { CLOUD_FRAG, HAZE_FRAG } from '../../web/src/render/shaders.js';
+import { CLOUD_FRAG, HAZE_FRAG, STAR, STAR_FRAG } from '../../web/src/render/shaders.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
 
 const VERTEX = 35633, FRAGMENT = 35632;
@@ -67,6 +67,19 @@ describe('the GLSL three submits for the view', () => {
   it('submits every program as GLSL ES 3.00, with gl_FragColor mapped to an output (9c2be965)', () => {
     for (const src of [...fragments, ...vertices]) expect(src.startsWith('#version 300 es\n')).toBe(true);
     for (const f of fragments) expect(f).toContain('#define gl_FragColor pc_fragColor');
+  });
+
+  it('draws the star, disc and corona, in one program on one inside-out mesh that writes its own depth and has no fog (#81)', () => {
+    const stars = system.scene.children.filter((o): o is THREE.Mesh => o instanceof THREE.Mesh && (o.material as THREE.ShaderMaterial).fragmentShader === STAR_FRAG);
+    expect(stars).toHaveLength(1); // one draw call, as before the Day 1 sun
+    const star = stars[0]!;
+    expect((star.material as THREE.ShaderMaterial).side).toBe(THREE.BackSide); // covers the corona from any camera, even inside it
+    expect(star.scale.x).toBeCloseTo(system.model.star.radius * STAR.span, 6);
+    expect(STAR_FRAG).toContain('gl_FragDepth = ');
+    expect(STAR_FRAG).not.toMatch(/uFog|fog\(/); // the star has no file, so nothing fogs it (#74)
+    const submitted = fragments.filter((f) => f.includes('uniform vec3 uDisc[5];'));
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]!.match(/uniform\s+mat4\s+projectionMatrix\s*;/g)).toHaveLength(1);
   });
 
   it('declares modelMatrix at most once per program, so the surface shader adds no duplicate (e85f8692)', () => {
