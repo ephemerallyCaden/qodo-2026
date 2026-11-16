@@ -133,6 +133,21 @@ test.describe('the star (#81)', () => {
     expect(view.errors).toEqual([]);
   });
 
+  test('from inside the star (free flight can enter it) the core is ahead and the frame is all star', async ({ page }) => {
+    const view = await openView(page, systemView());
+    const pose = onStar(starRadius(ALONE) * 0.5); // halfway from the centre to the surface, looking at the centre
+    const [r] = await render(view, { layout: ALONE, camera: cam(pose), depthFade: false }, [0]);
+    const f = r!.pixels;
+    expect(statsProblems(r!.stats, f)).toEqual([]);
+    const px = colours(f);
+    const hot: readonly string[] = DISC.slice(3); // cream and the cream-white core
+    console.log(`inside the star: ${count(px, DISC)} of ${px.length} px in disc colours, ${count(px, hot)} cream or core`);
+    expect(count(px, DISC), 'every pixel is the star').toBe(px.length);
+    expect(hot, 'straight ahead is the hot core').toContain(px[(f.height / 2) * f.width + f.width / 2]);
+    expect(count(px, hot), 'mostly hot: the far side seen from inside is near its centre').toBeGreaterThan(px.length / 2);
+    expect(view.errors).toEqual([]);
+  });
+
   test('S5: far away it fades at 0.15, so its core stays lighter than lava\'s hottest glow', async ({ page }) => {
     const view = await openView(page, systemView());
     const height = 360, dist = 60; // past the fade's last step (44 units): the full 0.88 toward its last tint
