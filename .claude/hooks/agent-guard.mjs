@@ -81,7 +81,8 @@ function skipHeredocs(src, i, docs, out) {
   return i;
 }
 
-function parse(src, out = { cmds: [], writes: [], expands: false }) {
+// `fed`: something in the line feeds a command's stdin (a pipe, <, <<, <<<), so a shell there may read its script.
+function parse(src, out = { cmds: [], writes: [], expands: false, fed: false }) {
   let words = [];
   let word = null;
   let quoted = false; // the word so far had a quote or backslash (a heredoc delimiter like 'EOF')
@@ -116,6 +117,8 @@ function parse(src, out = { cmds: [], writes: [], expands: false }) {
     if (c === ' ' || c === '\t') { endWord(); i++; continue; }
     if (c === '\n') { endCmd(); i++; if (heredocs.length > 0) i = skipHeredocs(src, i, heredocs.splice(0), out); continue; }
     if (c === '#' && word === null) { const nl = src.indexOf('\n', i); i = nl < 0 ? src.length : nl; continue; }
+    if (c === '|' && src[i + 1] === '|') { endCmd(); i += 2; continue; }
+    if (c === '|') out.fed = true;
     if (c === ';' || c === '|' || c === '(' || c === ')') { endCmd(); i++; continue; }
     if (c === '&') {
       if (src[i + 1] === '>') { endWord(); pending = 'out'; i += src[i + 2] === '>' ? 3 : 2; continue; }
@@ -125,6 +128,7 @@ function parse(src, out = { cmds: [], writes: [], expands: false }) {
       if (word !== null && /^\d+$/.test(word)) word = null; // an fd number, as in 2>
       else endWord();
       if (c === '<') {
+        out.fed = true;
         if (src.startsWith('<<<', i)) { pending = 'in'; i += 3; }
         else if (src.startsWith('<<', i)) { pending = 'heredoc'; i += src[i + 2] === '-' ? 3 : 2; }
         else if (src[i + 1] === '>') { pending = 'out'; i += 2; }
@@ -553,6 +557,8 @@ const RUNTIME = (what) => `${what} only known at run time ($VAR, $(…), a shell
 const RELAYS = new Set(['xargs', 'parallel']);
 const RELAYED = new Set(['git', 'gh', 'npm', 'npx', 'pnpm', 'yarn', 'curl']);
 const POSITIONAL = /\$\{?[@*0-9]/; // $@, $*, $0–$9, ${1}: a shell -c script's arguments
+const STDIN_FLAG = /^-[A-Za-z]*[si][A-Za-z]*$/; // -s, -i: the script comes from stdin
+const STDIN_FILE = /^(-|\/dev\/(stdin|fd\/\d+)|\/proc\/self\/fd\/\d+)$/;
 
 /** Why a wrapper at `k` relays run-time text into git/gh/npm, or null. */
 function relays(words, k) {
@@ -589,10 +595,14 @@ function featureWords(words, ctx) {
     if (SHELLS.has(name)) {
       const m = rest.findIndex((w) => /^-[A-Za-z]*c[A-Za-z]*$/.test(w));
       const script = m >= 0 ? rest[m + 1] : undefined;
-      if (script === undefined && !rest.some((w) => !w.startsWith('-'))) return `\`${name}\` with no script reads one from its input: run the command itself.`;
+      // One rule: without -c, a shell on a fed line, with -s/-i/-//dev/stdin or with no operand reads its script from stdin.
+      if (script === undefined && (ctx.fed || rest.some((w) => STDIN_FLAG.test(w) || STDIN_FILE.test(w)) || !rest.some((w) => !w.startsWith('-')))) {
+        return `\`${name}\` could read its script from stdin (a pipe, <, <<, <<<, -s, - or no script file): run the command itself, or a script file on a line with no pipe or input redirect.`;
+      }
       if (script !== undefined && POSITIONAL.test(script.replaceAll(VAR, '$'))) return `\`${name} -c\` with "$@", $* or $1 runs its arguments as code: put the command in the script.`;
       if (script !== undefined) { const r = checkFeature(script, { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
     }
+    if ((name === 'source' || name === '.') && (ctx.fed || rest.some((w) => STDIN_FILE.test(w)))) return `\`${name}\` could read its script from stdin: run the command itself.`;
     if (name === 'eval') { const r = checkFeature(rest.join(' '), { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
   }
   // A command name can hide behind a wrapper we don't know (xargs-like): check git/gh/npm at every word.
@@ -614,8 +624,9 @@ function featureWords(words, ctx) {
 
 function checkFeature(src, ctx) {
   if (ctx.depth > 8) return 'the command nests too deeply to check.';
-  for (const words of parse(src).cmds) {
-    const r = featureWords(words, ctx);
+  const { cmds, fed } = parse(src);
+  for (const words of cmds) {
+    const r = featureWords(words, { ...ctx, fed });
     if (r) return r;
   }
   return null;

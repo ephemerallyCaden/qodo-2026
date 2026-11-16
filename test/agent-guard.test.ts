@@ -110,6 +110,17 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
       'gh pr $(echo merge) 1',
       '$(echo git) push',
       "printf 'git %s' push | sh",
+      // Qodo r5: any shell that reads its script from stdin, whatever its operands.
+      `printf 'git "$1"' | bash -s push`,
+      "printf 'git push' | bash /dev/stdin",
+      "printf 'git push' | (bash /dev/fd/0)",
+      "bash -s push <<'EOF'\ngit \"$1\"\nEOF",
+      'bash - push < /tmp/s.sh',
+      "bash <<< 'git push'",
+      "bash <(printf 'git push')",
+      "exec < /tmp/s.sh; bash x",
+      "printf 'git push' | source /dev/stdin",
+      'echo y | bash scripts/check.sh',
     ]);
     expectAllowed('feature', [
       "bash -c 'npm test'",
@@ -117,6 +128,8 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
       "git commit -m \"$(cat <<'EOF'\nfix: x\nEOF\n)\"",
       'find . -name "*.ts" | xargs grep -l TODO',
       'bash scripts/check.sh',
+      "bash -c 'npm test' 2>&1 | tail -5",
+      'npm run lint || npm run typecheck',
     ]);
   });
 
