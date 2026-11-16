@@ -18,7 +18,7 @@ window.__dbg = { THREE, scene, camera, renderer, planets, controls, DEPTH_U, CRA
   // a sphere's radius in px of the view canvas (the shader's gRadiusPx); obj: a mesh of unit radius
   radiusPx: (obj) => { const c = new THREE.Vector3().setFromMatrixPosition(obj.matrixWorld).applyMatrix4(camera.matrixWorldInverse); const R = new THREE.Vector3().setFromMatrixScale(obj.matrixWorld).x; return +((R * camera.projectionMatrix.elements[5]) / -c.z * document.getElementById('view').height * 0.5).toFixed(1); },
   // cloud InstancedMesh of a planet, wherever it sits in the group tree
-  puffsOf: (p) => { let m = null; p.group.traverse((o) => { if (!m && o.isInstancedMesh) m = o; }); return m; },
+  puffsOf: (p) => { let m = null; p.group.traverse((o) => { if (!m && o.isInstancedMesh && !o.userData.fogCloud) m = o; }); return m; }, // the weather's puffs, not cloud fog's
   // the view canvas's pixels at its internal resolution
   readView: () => { const s = document.getElementById('view'); const c = Object.assign(document.createElement('canvas'), { width: s.width, height: s.height }); const x = c.getContext('2d'); x.drawImage(s, 0, 0); return { W: s.width, H: s.height, d: x.getImageData(0, 0, s.width, s.height).data }; } };
 `;

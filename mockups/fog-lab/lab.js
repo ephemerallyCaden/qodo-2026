@@ -14,6 +14,8 @@ import { makeDrone } from '../drone-lab/drone.js';
 import { droneLook, pixK } from '../asset-library/drones.js';
 import { fogSpec } from './fog.js';
 import { driveFog } from '../asset-viewer/fog.js';
+import { fogClouds, CLOUD_FOGS, weatherShown } from '../asset-viewer/fog-cloud.js';
+import { BIOMES, WEATHER } from '../asset-viewer/viewer.js';
 import { mockPlanet, footprint, stateAt, cellData, COVERAGES, FOOTPRINTS, EVENT } from './mock.js';
 import { DIRECTIONS, LOOKS } from './variants.js';
 import { fibonacciCell, SURFACE_CELLS } from './surface.js';
@@ -103,7 +105,9 @@ function configure(c) {
 
 function layers(c, m) {
   planet.group.visible = m.planet !== false;
-  planet.parts.sky.visible = c.clouds && m.clouds !== false;
+  const cf = CLOUD_FOGS[c.dir]; // a fog-as-clouds variant: the fog hook is off, and its clouds may replace the biome's weather
+  const cloudFogOn = cf && c.fog && m.fog !== false;
+  planet.parts.sky.visible = c.clouds && m.clouds !== false && (!cloudFogOn || weatherShown(cf, WEATHER[BIOMES[c.biome].weather]?.ramp ?? null));
   planet.parts.sky.children[0].visible = m.puffs !== false; // the puffs; [1] is their shadow on the ground
   planet.setExtras({ moons: c.moons && m.moons !== false, artefacts: c.artefacts && m.artefacts !== false ? 'auto' : 0, lavaMode: 'layered' });
   for (const a of crew) a.group.visible = c.crew && m.crew !== false;
@@ -123,11 +127,17 @@ const anchorOf = (c, id) => c.foot.anchor[c.mock.files.findIndex((f) => f.id ===
 /** The fog's uniforms and cell texture for a cell at time t (the viewer's driveFog, plus A's per-reason switch). */
 function applyFog(c, t, m) {
   spec.uniforms.uFogReasons.value = c.reasons ? 1 : 0;
+  const cf = CLOUD_FOGS[c.dir];
+  const on = c.fog && m.fog !== false;
+  const clouds = cf && on ? fogClouds(c.mock, c.foot, stateAt(c.mock, { coverage: c.coverage, fogged: c.fogged, events: c.events, t }), cf) : null;
+  planet.setFogClouds(clouds);
+  lastCloudCover = clouds ? clouds.cover : null;
   return driveFog(spec, {
     layout: { planet: c.mock, foot: c.foot }, coverage: c.coverage, fogged: c.fogged, events: c.events, moonEvents: c.moonEvents,
-    t, period: LOOP.period, look: c.dir, on: c.fog && m.fog !== false, debug: m.debug ?? 0,
+    t, period: LOOP.period, look: cf ? 'D2d' : c.dir, on: on && !cf, debug: m.debug ?? 0,
   });
 }
+let lastCloudCover = null;
 
 const TMP = new THREE.Vector3();
 function pose(c, t, render) {
@@ -190,6 +200,8 @@ function shot(c, mode = 'final', t = c.t) {
   placeCamera(c.cam);
   pose(c, t, render);
   applyFog(c, t, m);
+  // a fog-cloud ramp change resets the planet's tint (setFogClouds): re-tint before the render, not one tile late
+  setDepthLevel(planet.group, depthLevelAt(camera.position.distanceTo(planet.group.getWorldPosition(TMP)), render));
   return capture(c.w, c.h);
 }
 

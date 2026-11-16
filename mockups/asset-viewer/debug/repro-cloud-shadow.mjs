@@ -33,7 +33,7 @@ export function classifyInPage({ o, mark = false, REACH = 0.12, SLACK = 1.2 }) {
   window.viewer.set(o);
   const p = planets[0];
   const inst = [];
-  p.group.traverse((m) => { if (m.isInstancedMesh) inst.push(m); });
+  p.group.traverse((m) => { if (m.isInstancedMesh && !m.userData.fogCloud) inst.push(m); }); // the weather's meshes, not cloud fog's
   const shadow = inst.find((m) => m.material.vertexShader?.includes('uToSurface'));
   const puffs = inst.find((m) => m !== shadow && m.instanceMatrix === shadow.instanceMatrix);
   if (!shadow || !puffs) throw new Error('could not find the cloud / cloud-shadow meshes');

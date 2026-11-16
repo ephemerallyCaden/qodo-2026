@@ -249,6 +249,13 @@ The events and loop are as before: teal at most 0.19% of the frame during a clea
 
 `lineup-D2d.png` shows the final look on every band at every coverage; `clear-D2d.gif`, `refog-D2d.gif` and `final-events-strip.png` are its events.
 
+## Fog as clouds: C1–C6, and C6 final (human, 2026-11-16)
+The human asked for "a variant where the fog is the clouds themselves, and the amount of cloud coverage shows the amount of known or unknown there is". `clouds.mjs` renders `asset-viewer/fog-cloud.js`'s looks beside D2d:
+- **C1 overcast** (cream, replacing the weather), **C2 storm over weather** (grey storm above the cream weather), **C3 broken cloud** (gaps show the ground), **C4 storm front** (grey storm, replacing the weather), **C5 stratus bands**.
+- **C6 · white storm front, the pick:** "I like the white clouds, in the storm front style. We should have 0 clouds when a planet is 100% discovered now, and only have clouds proportional to how much is missing." C4's domed shape in the cream cloud ramp; cover = 0.9 × the undiscovered share (each file's territory keeps the same 10% gap), so 90/63/39/22/0% at 0/25/50/75/100% discovered on the src planet. The cream weather goes; ash and rust smoke stay. The big bulge past the silhouette is kept (the human's call).
+- The lab draws the cloud looks as `dir` C1–C6 (`lab.js`: `setFogClouds`, the shader fog off). `test/viewer-fidelity.test.mjs` now checks the lab's C6 against the viewer's fogged hero.
+- Outputs: `clouds-compare.png` (C1–C5 vs D2d), `clouds-final-C6.png` (C6, every look × coverage), `clouds-before-after.png` (D2d vs C6 at 50%). Run `node clouds.mjs [compare lineups close final]`.
+
 ## Outputs (`out/`)
 
 | File | Shows |

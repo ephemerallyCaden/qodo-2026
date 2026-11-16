@@ -1,6 +1,7 @@
-// One shader path: the lab's D2d tile and the asset viewer's fogged hero planet are the same pixels
-// (the same planet, camera, time, layout, coverage and events), at rest, half charted and mid-clear.
-// The lab's shader holds every registered look and the viewer's only D2d; the pixels still match.
+// One fog: the lab's tile of the viewer's fog (C6 · white storm front, cloud fog: fog-cloud.js) and the
+// asset viewer's fogged hero planet are the same pixels (the same planet, camera, time, layout, coverage
+// and events), at rest, half discovered and mid-clear. The lab's planet also carries the shader fog hook
+// (off for a cloud look) and the viewer's hero doesn't; the pixels still match.
 // Browsers run one after the other (one per agent); every comparison fails on empty output.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,18 +12,18 @@ import { demoLayout, stateAt, allFogged } from '../../asset-viewer/fog-layout.js
 const planet = demoLayout('src', 7).planet;
 const all = allFogged(planet, stateAt(planet, { coverage: 0 })).map((f, k) => ({ file: f.id, kind: 'clear', at: 3 + k * 0.12 }));
 const CASES = [
-  { name: 'lush, fully fogged', biome: 'lush', coverage: 0, t: 3 },
+  { name: 'lush, fully fogged (its own cream weather gone)', biome: 'lush', coverage: 0, t: 3 },
   { name: 'desert, half charted', biome: 'desert', coverage: 0.5, t: 5 },
   { name: 'lush, mid "chart all"', biome: 'lush', coverage: 0, t: 3.5, events: all, moonEvents: [{ moon: 0, kind: 'clear', at: 3 }, { moon: 1, kind: 'clear', at: 3 }] },
 ];
 
-test('the lab\'s D2d is pixel-identical to the viewer\'s fogged hero', { timeout: 900000 }, async () => {
+test('the lab\'s C6 cloud fog is pixel-identical to the viewer\'s fogged hero', { timeout: 900000 }, async () => {
   const lab = [];
   const browser = await launch();
   try {
     const page = await openLab(browser);
     for (const c of CASES) {
-      const cell = { dir: 'D2d', biome: c.biome, seed: 7, layoutSeed: 7, coverage: c.coverage, events: c.events ?? [], moonEvents: c.moonEvents ?? [], moons: true };
+      const cell = { dir: 'C6', biome: c.biome, seed: 7, layoutSeed: 7, coverage: c.coverage, events: c.events ?? [], moonEvents: c.moonEvents ?? [], moons: true };
       const [f] = await page.evaluate(([cl, t]) => window.lab.frames(cl, [t], ['final', 'nofog']), [cell, c.t]);
       lab.push({ final: decode(f.final), nofog: decode(f.nofog) });
     }

@@ -18,6 +18,7 @@ import { bindPalettes } from './debris-palette.js';
 import { demoItems, ranked, AGE_MIXES } from './debris-layout.js';
 import { fogSpec, driveFog } from './fog.js';
 import { demoLayout, stateAt as fogStateAt, nextToChart, lastCharted, allFogged, COVERAGES as FOG_COVERAGES } from './fog-layout.js';
+import { fogClouds, FINAL_CLOUD_FOG, weatherShown } from './fog-cloud.js';
 
 THREE.ColorManagement.enabled = false; // palette hexes go to the screen untouched
 
@@ -53,6 +54,7 @@ for (const pal of Object.values(PALETTES)) {
   // Roles added in revision 5 get stand-ins from each palette's own ramps.
   pal.moonBody ??= pal.moon.slice(1, 5);
   pal.halo ??= pal.stars[0];
+  pal.fogFront ??= [...ACCENTS.reveal]; // cloud fog's clear front: [OIII] teal, events only (fog-cloud.js)
 }
 bindPalettes(PALETTES); // every palette carries the debris role (fixed colours: A3's grey, outline and lights)
 bindStarPalettes(PALETTES); // and the star's ramps (star.js), from its own world ramps
@@ -833,6 +835,7 @@ export const WEATHER = {
 const PLANET_GEO = new THREE.SphereGeometry(1, 72, 48);
 const PUFF_GEO = new THREE.IcosahedronGeometry(1, 3);
 const MAX_PUFFS = 3200; // enough for the densest weather (ocean) at the slider maximum, 45%
+const MAX_FOG_PUFFS = 1800; // fog clouds (fog-cloud.js): up to 256 cells x a lead puff and its satellites
 const ramp5 = () => ({ value: Array.from({ length: 5 }, () => new THREE.Color()) });
 
 // Loop lock: every planet layer completes whole cycles per LOOP.period (seconds).
@@ -917,6 +920,7 @@ export const { makeDebris } = debrisFactory({ depthGlsl: DEPTH_GLSL, depthUnifor
 // makePlanet({ fog: fogSpec() }) and driveFog() sets it each frame. Re-exported for the asset library.
 export { fogSpec, driveFog, registerFogLook, fogLookIds } from './fog.js';
 export { FOG_COVERAGES };
+export { fogClouds, FINAL_CLOUD_FOG, weatherShown, CLOUD_FOGS } from './fog-cloud.js';
 export { DEBRIS_STYLE, demoItems, AGE_MIXES };
 export const DEBRIS_COUNTS = [0, 1, 3, 8, 24];
 
@@ -1014,6 +1018,68 @@ export function makePlanet({ fog = null } = {}) {
 
   const m4 = new THREE.Matrix4();
   const up = new THREE.Vector3(0, 1, 0);
+
+  // Fog clouds (the fog-as-clouds variant, fog-cloud.js): puffs the caller places over the fogged territory,
+  // in the ground's frame (spin), so they stay over their files instead of drifting with the weather. They
+  // share the cloud shader, uniforms and shadow, and draw nothing until setFogClouds gets items.
+  const fogCloudMat = paletteMaterial(CLOUD_FRAG, { uRamp: 'cloud' }, { uBands: cloudMat.uniforms.uBands, uCenter: cloudMat.uniforms.uCenter });
+  fogCloudMat.vertexShader = CLOUD_VERT;
+  const fogGeo = PUFF_GEO.clone();
+  const fogMassAttr = new THREE.InstancedBufferAttribute(new Float32Array(MAX_FOG_PUFFS * 4), 4);
+  fogGeo.setAttribute('aMass', fogMassAttr);
+  const fogPuffs = new THREE.InstancedMesh(fogGeo, fogCloudMat, MAX_FOG_PUFFS);
+  const fogShadow = new THREE.InstancedMesh(fogGeo, shadowMat, MAX_FOG_PUFFS);
+  fogShadow.instanceMatrix = fogPuffs.instanceMatrix;
+  fogPuffs.frustumCulled = fogShadow.frustumCulled = false;
+  fogPuffs.userData.fogCloud = fogShadow.userData.fogCloud = true; // not the weather's puffs (debug puffsOf skips them)
+  fogPuffs.count = fogShadow.count = 0;
+  // the clear front: the puffs at a clearing file's edge, in [OIII] teal while the clear runs (events only)
+  const fogFrontMat = paletteMaterial(CLOUD_FRAG, { uRamp: 'fogFront' }, { uBands: cloudMat.uniforms.uBands, uCenter: cloudMat.uniforms.uCenter });
+  fogFrontMat.vertexShader = CLOUD_VERT;
+  const fogFrontGeo = PUFF_GEO.clone();
+  const fogFrontMass = new THREE.InstancedBufferAttribute(new Float32Array(MAX_FOG_PUFFS * 4), 4);
+  fogFrontGeo.setAttribute('aMass', fogFrontMass);
+  const fogFront = new THREE.InstancedMesh(fogFrontGeo, fogFrontMat, MAX_FOG_PUFFS);
+  fogFront.frustumCulled = false;
+  fogFront.userData.fogCloud = true;
+  fogFront.count = 0;
+  const fogSky = new THREE.Group();
+  fogSky.visible = false;
+  fogSky.add(fogPuffs, fogShadow, fogFront);
+  spin.add(fogSky);
+  /**
+   * spec: null (off) or { ramp?: 'cloud' | 'ash' | ..., items: [{ dir: [x, y, z] (unit, ground frame), size, lift?, flat?,
+   * stretch?, float?, anchor?: [x, y, z] (the mass's dome anchor, as rebuild's), front?: true (drawn in teal: a clear's edge) }] }.
+   */
+  function setFogClouds(spec) {
+    const items = spec?.items ?? [];
+    fogSky.visible = items.length > 0;
+    const ramp = spec?.ramp ?? 'cloud';
+    if (fogCloudMat.userData.ramps.uRamp !== ramp) {
+      fogCloudMat.userData.ramps = { uRamp: ramp };
+      group.userData.depthLevel = -1; // re-tint with the new ramp
+    }
+    const d = new THREE.Vector3();
+    const place = (mesh, mass, list) => {
+      const n = Math.min(list.length, MAX_FOG_PUFFS);
+      for (let i = 0; i < n; i++) {
+        const it = list[i];
+        d.set(it.dir[0], it.dir[1], it.dir[2]).normalize();
+        const { east, north } = tangentFrame(THREE, d);
+        const flat = it.flat ?? 0.6;
+        m4.makeBasis(east.multiplyScalar(it.size * (it.stretch ?? 1)), d.clone().multiplyScalar(it.size * flat), north.multiplyScalar(it.size));
+        m4.setPosition(d.clone().multiplyScalar(1 + (it.float ?? 0.055) + it.size * flat * (0.75 + (it.lift ?? 1) * 0.5)));
+        mesh.setMatrixAt(i, m4);
+        if (it.anchor) mass.setXYZW(i, it.anchor[0], it.anchor[1], it.anchor[2], 1);
+        else mass.setXYZW(i, 0, 0, 0, 0);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      mass.needsUpdate = true;
+      return n;
+    };
+    fogPuffs.count = fogShadow.count = place(fogPuffs, fogMassAttr, items.filter((it) => !it.front));
+    fogFront.count = place(fogFront, fogFrontMass, items.filter((it) => it.front));
+  }
   let built = '';
 
   let moonReach = 1; // moon orbits scale out with a ring pushed past the thin preset's distance
@@ -1288,7 +1354,7 @@ export function makePlanet({ fog = null } = {}) {
 
   // parts and moons: for the asset library, which shows layers on their own and edits moon orbits.
   const parts = { surface, haze, halo, sky, ringTilt, debris: debris.group };
-  return { group, rebuild, update, ring, setExtras, setDebris, parts, moons: MOONS, debris };
+  return { group, rebuild, update, ring, setExtras, setDebris, setFogClouds, parts, moons: MOONS, debris };
 }
 
 // ---------------------------------------------------------------- astronaut
@@ -1528,20 +1594,11 @@ const planets = LIBRARY ? [] : [
   scene.add(p.group);
   return p;
 });
-// The hero's fog: the first time the fog control is turned on, the hero is remade with a fog spec
-// (makePlanet({ fog })), so until then every shader is byte-identical to the shipped ones. Off
-// again, the fogged hero draws every pixel as before (test/fog.test.mjs).
-let heroFog = null;
-function ensureHeroFog() {
-  if (heroFog || LIBRARY) return;
-  heroFog = fogSpec();
-  const old = planets[0];
-  const p = makePlanet({ fog: heroFog });
-  p.group.position.copy(old.group.position);
-  scene.remove(old.group);
-  scene.add(p.group);
-  planets[0] = p;
-}
+// The hero's fog is cloud fog (fog-cloud.js, the human's pick 2026-11-16: the white storm front): white
+// storm cloud over the undiscovered share, locked to the ground, and none once the planet is fully
+// discovered; the planet's cream weather goes while fog is on (lava's ash and toxic's smoke stay). It
+// needs no shader hook (planet.setFogClouds), so fog off draws every pixel as before (test/fog.test.mjs).
+// The dark veil (fog.js D2d, the previous pick) stays for the fog lab and the asset library's history.
 
 // Crew line-up for the close-up, off to the side of the hero planet.
 export const CREW_SPOT = new THREE.Vector3(-1.35, -0.2, 4.6); // in front of the hero planet, so one shot shows crew + planet + depth
@@ -1720,7 +1777,6 @@ function heroDebris() {
 }
 
 function applyState() {
-  if (state.fog) ensureHeroFog();
   setLoop(state);
   const art = { artefacts: !state.artefacts ? 0 : state.artAuto ? 'auto' : state.artCount, teal: state.artTeal, cloudShadow: state.cloudShadow, regions: state.regions, artDebug: state.artDebug, lavaMode: state.lavaMode };
   document.getElementById('art-auto').checked = state.artAuto;
@@ -1743,10 +1799,6 @@ function applyState() {
   // Per-pixel depth: the same thresholds and per-level tints/strengths as the object fade.
   if (applyDepth(state)) retint(scene); // re-tint: pixel modes keep level-0 ramps
   document.body.style.background = resolve('space');
-  if (heroFog) { // the veil mixes toward this palette's space; the fogged limb is its halo colour
-    heroFog.uniforms.uFogSpace.value.set(resolve('space'));
-    heroFog.uniforms.uFogRim.value.set(resolve('halo'));
-  }
   solos.forEach((s) => s.setColor(state.color));
   // Faces: hashed from each contributor's handle unless the UI overrides the eye design.
   for (const a of [...crew, ...solos]) {
@@ -1769,15 +1821,22 @@ function applyState() {
 
 const clock = new THREE.Clock();
 const tmp = new THREE.Vector3();
-/** The hero's fog at time t: the demo planet (seeded with the planet), its charted share and events. */
+/** The hero's cloud fog at time t: the demo planet (seeded with the planet), its discovered share and events. */
 function heroFogAt(t) {
-  heroFog.view.value.copy(VIEW_SIZE.value);
-  return driveFog(heroFog, { layout: demoLayout('src', state.seed), coverage: state.fogCharted, events: state.fogEvents, moonEvents: state.fogMoonEvents, t, period: LOOP.period, look: 'D2d', on: state.fog });
+  const hero = planets[0];
+  if (!state.fog) {
+    hero.setFogClouds(null);
+    hero.parts.sky.visible = true;
+    return;
+  }
+  const { planet, foot } = demoLayout('src', state.seed);
+  hero.setFogClouds(fogClouds(planet, foot, fogStateAt(planet, { coverage: state.fogCharted, events: state.fogEvents, t }), FINAL_CLOUD_FOG));
+  hero.parts.sky.visible = weatherShown(FINAL_CLOUD_FOG, WEATHER[BIOMES[state.biome].weather]?.ramp ?? null);
 }
 
 function frame() {
   const t = state.time ?? clock.getElapsedTime();
-  if (heroFog) heroFogAt(t);
+  if (!LIBRARY) heroFogAt(t);
   controls.update();
   stars.position.copy(camera.position);
   poseWorld(t, { planets: [...planets, ...SYSTEM], astronauts: [...crew, ...solos], suns: [star], spin: state.spin, lavaTime: state.lavaTime });
@@ -1870,7 +1929,6 @@ function bindUi() {
   $('fog-chart-all').addEventListener('click', () => {
     const { at, planet, st } = fogNow();
     state.fogEvents = [...state.fogEvents, ...allFogged(planet, st).map((f, k) => ({ file: f.id, kind: 'clear', at: at + k * 0.12 }))];
-    heroFog?.moon.uniforms.forEach((u, i) => { if (u.uMoonFog.value.x > 0.5) state.fogMoonEvents = [...state.fogMoonEvents, { moon: i, kind: 'clear', at }]; });
   });
   $('debris-sweep').addEventListener('click', () => { // the biggest piece not yet swept breaks apart now
     const gone = new Set(state.debrisSwept.map((s) => s.id));
