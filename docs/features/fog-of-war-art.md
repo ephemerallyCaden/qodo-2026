@@ -74,4 +74,4 @@ Scan → fog view (#33) per file → fogged cells on each planet → you open a 
   - fog-lab 17/17; viewer 31/31; library fog 4/4 with 4 fidelity cases at 0 px against the viewer (lush 50%, ocean fully fogged with haze, a mid-clear, a mid chart-all with teal); health-looks, debris-lab and drone-lab green.
   - Fog off: shots.mjs hashes identical to 968bc0c.
   - Measured: fog pixels near lava crust 0.0% (from 89.6% on toxic); limb ring merged into space 0.0%; health on charted land 0/48 misreads at 25/50/75% charted.
-- For the product (#74): reuse `mockups/asset-viewer/fog-layout.js` (pure: #18's grid, the territory rule, the events, the cell texture) and `fog.js` (the D2d look and the haze rule); the colour and outline exceptions are in art direction §9.
+- For the product (#74): reuse `mockups/asset-viewer/fog-cloud.js` (pure: the cloud looks, the placement over each file's territory, the gaps and the clear/refog fronts; drawn through `planet.setFogClouds()`) and `fog-layout.js` (pure: #18's grid, the territory rule, the events). The dark veil (`fog.js`) is replaced.
