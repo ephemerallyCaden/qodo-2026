@@ -143,8 +143,8 @@ Gas giant and barren moon are **asset-library extras**, never shown in the produ
 ### Biomes
 | Biome | Look |
 |---|---|
-| Lush (healthy) | Ocean plus green continents, polar caps, clustered cream clouds. |
-| Ocean (healthy) | Mostly water with a few islands, thin clouds and a lit-limb haze. |
+| Lush (healthy) | Ocean plus green continents and polar caps (no weather of its own: its clouds are the fog, §9). |
+| Ocean (healthy) | Mostly water with a few islands and a lit-limb haze (no weather of its own: its clouds are the fog, §9). |
 | Ice (healthy) | White strata over **open dark-blue water leads**, cut by bold jagged crevasses. |
 | Desert / crater (ash band) | Wind-dune bands and Worley craters with a dark floor and bright rim. No clouds. |
 | Lava (worst band) | Near-black, slightly blue-shaded crust broken by **open molten lava pools** and bold glowing fissures. Low, streaky ash smoke rises off the fissures. |
@@ -159,6 +159,7 @@ Gas giant and barren moon are **asset-library extras**, never shown in the produ
 - **Mix:** each planet balances three things: solid ground, crack networks, and open pools (lava) or water (ice).
 
 ### Clouds
+- **Meaning (human, 2026-11-16):** in the product, clouds are the fog of war (§9): they cover undiscovered code, and a fully discovered planet has none. The seeded weather below is the cloud layer's look, used by the fog; lava's ash and toxic's rust smoke keep their own weather.
 - **Altitude:** clouds float as their own layer, with bases at r ≈ 1.05, and cast a faint shadow on the terrain, one band darker and offset along the light. Only clouds actually between the surface and the light cast shadows.
 - **Form:** clouds **blend into soft continuous clumps**. Each mass is shaded as a single dome, with a lumpy outline that bulges past the silhouette.
 - **Cover:** about **28%** of the visible disc on lush, ocean and toxic, and about **8%** ash on lava. Cover comes from a quantile of the weather density, so it's consistent across seeds.
@@ -223,7 +224,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
   - **Count:** scales with planet size, from **1 sector on the smallest planets to 5 on the biggest**, deterministic from the seed.
   - **Glyph clamp:** each sector holds a bounded number of glyph cells across it (lower and upper limits). Zooming in makes cells larger instead of multiplying them, and zooming out never shrinks a sector below the lower limit.
   - **Controls:** a viewer toggle, off by default, with teal as a sub-toggle and a manual sector override.
-- **Adopted: fog of war (human, 2026-11-11; `docs/features/fog-of-war-art.md`).** Each uncharted file is a **dark veil**: its territory (each file's share of the planet's surface cells, computed when drawing) becomes its ramp's darkest step mixed well toward space, with faint drifting `\ /` hatching, a dim 2 px parcel line (a **fog-only exception** to the no-outlines rule), and a visible "?". Hidden reads unmistakably at a glance. The veil's mix toward space adds colours, a **fog-only exception** to the filter rule below (the human chose the dark veil, 2026-11-11); its darks lean cool (toward space and `#30285a`) so a fogged planet never reads as warm lava crust. **Fog hides health on purpose:** you can't see the health of code you haven't reviewed, so the band reads only on charted land and in the planet's label. A fogged planet keeps its silhouette against space. Charting clears a parcel outward from its centre with the inverted-lightness wavefront and a 1 px teal core; refog rolls back in with no teal.
+- **Adopted: fog of war is cloud (human, 2026-11-16; `docs/features/fog-of-war-art.md`).** Undiscovered code is under **white storm cloud**: the cloud layer (cream, domed masses, the offset shadow) sits over each undiscovered file's territory (its share of the planet's surface cells, computed when drawing), locked to the ground rather than drifting. Cover is exactly 0.9 of the undiscovered share of the surface (the storm front's gaps), so a planet's cloudiness reads how much of it you haven't reviewed, and a **fully discovered planet has no clouds**. The planets' own cream weather (lush, ocean) is therefore gone in the product; lava's ash plumes and toxic's rust smoke stay, as health-band cues. The clouds bulge well past the silhouette by the human's choice, so a cloudy planet reads bigger than its size. Charting a file turns its cloud [OIII] teal while it thins away (about 0.6 s of the 1 s clear); a refog rolls cloud back in from the far edge, with no teal. Health reads on discovered land and through the gaps. The dark veil (D2d, adopted 2026-11-11) is replaced, and kept in the asset library's history.
 - **Candidates, not yet adopted:**
   - glitch packets whose heads carry their source planet's colour;
   - terminal and drifting-band view modes;

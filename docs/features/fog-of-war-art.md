@@ -1,7 +1,7 @@
 # Feature: Fog of war (art)
 
 ## Status
-Complete (art); product drawing (#74) to follow
+Complete (art): cloud fog C6 replaces the dark veil (human, 2026-11-16); product drawing (#74) to follow
 
 ## Trigger
 The human, 2026-11-09: "suggest more things to design and make", then "keep going" (2026-11-10). Fog of war is R5, the product's core signal. Its logic and chart state are in PR #50 (#33), which says "drawing fog waits for the art pass".
@@ -53,6 +53,14 @@ Scan → fog view (#33) per file → fogged cells on each planet → you open a 
   - dark toxic sits near the lava crust ramp.
 
 **Variant requested (human, 2026-11-14): the fog is the clouds themselves.** "We should try a variant where the fog is the clouds themselves, and the amount of cloud coverage shows the amount of known or unknown there is." Cloud cover rises with the uncharted share (clear planet at 100% charted, overcast at 0%), and charting clears clouds from over that file. Open design questions for the lab: what happens to a planet's ordinary seeded clouds (some bands have none: desert; lava has ash), whether fog clouds look like the normal clouds or a distinct heavier layer, and whether health can show through gaps (which would revive F3 partly). Compared against D2d, the current final.
+
+**Cloud fog adopted (human, 2026-11-16), replacing the dark veil.** After seeing C1–C5 (overcast, storm over weather, broken cloud, storm front, stratus bands) beside D2d: "I like the white clouds, in the storm front style. We should have 0 clouds when a planet is 100% discovered now, and only have clouds proportional to how much is missing." Then: "remove the other fog attempt from the actual app but keep it in the asset gallery to show we had tried it."
+- **C6 · white storm front:** C4's domed storm-front puffs in the cream cloud ramp, over each undiscovered file's territory, locked to the ground. Cover = 0.9 × the undiscovered share of the surface, exactly (each file's territory keeps the same 10% gap). Measured on the src demo planet: 90/63/39/22/0% cloud at 0/25/50/75/100% discovered.
+- **Weather:** the cream weather (lush, ocean) is removed while fog is on (in the product, always); lava's ash and toxic's rust smoke stay (health cues). Ice and desert have none.
+- **Events:** a clearing file's cloud turns [OIII] teal for the first ~0.6 s of its 1 s clear, then thins away (F5); a refog rolls cloud in from the far edge (2.4 s, no teal).
+- **The bulge is kept** (the human's call): the cloud reads well past the silhouette, so a cloudy planet looks bigger than its LOC-based size.
+- **Open:** test-file moons are not fogged under cloud fog (the veil fogged them); health shows through the gaps, so F3 partly revives.
+- **Where:** `mockups/asset-viewer/fog-cloud.js` (pure: the variants, the placement, the gaps, the fronts) and `planet.setFogClouds()` in viewer.js (no shader hook; off by default). The dark veil (`fog.js` D2d) stays for the fog lab and the asset library's history.
 
 ## Tasks
 - Exploration lab `mockups/fog-lab/` on `feature/fog-lab` (feature agent): 4–5 distinct fog directions on several bands and coverage levels (0/25/50/75/100% charted), with the clear and refog moments, measured against F3 and F8, for the human to pick.
