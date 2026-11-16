@@ -94,7 +94,8 @@ Where it differs from the review loop above:
 - Fix rounds add new commits and never force-push.
 - No local `qodo review` before the PR: the PR review is the gate.
 - Findings and dispositions live in the run log and one PR comment per fix round.
-- An `action_required` finding the agent rejects stops the run with `agent-needs-help` for the human's decision.
+- `action_required` (High) and `remediation_recommended` (Medium) findings both block and go to the agent to fix or reject; `informational` (Low) ones are listed in the summary for the human.
+- An `action_required` finding the agent rejects stops the run with `agent-needs-help` for the human's decision. A `remediation_recommended` one it rejects with evidence is settled, recorded in the run log and PR comment.
 
 ## Daily Discussion posts
 - Each day has one post file, `.archive/docs/hackathon/day<N>-discussion-post.md`, following that day's template. Create it if missing.

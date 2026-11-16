@@ -15,7 +15,7 @@ import { redact, RunLog, stamp, type Clock } from './log.js';
 import { isExecutable, midwayHoursLeft, type Check } from './preflight.js';
 import { dispositionsComment, prBody, summaryComment, type CheckResult } from './report.js';
 import {
-  ciState, isBlocking, parseQodo, qodoMarker, qodoState, shortSha,
+  ciState, isBlocking, isHigh, parseQodo, qodoMarker, qodoState, shortSha,
   type CheckRun, type CiState, type Finding, type QodoState, type ReviewRun,
 } from './review.js';
 import { claudeSettings, SANDBOX_EXEC, sandboxSelfTest, seatbelt, seatbeltProfile, worktreeGit, type SandboxPaths } from './sandbox.js';
@@ -53,7 +53,14 @@ const QODO_BOT = 'qodo-code-review[bot]';
 
 const tail = (s: string, lines = 120) => s.split('\n').slice(-lines).join('\n').trim();
 const firstLine = (s: string) => s.trim().split('\n')[0] ?? '';
-const needsHuman = (n: number) => new Stop(`${n} action_required finding(s) the agent rejected need the human's decision`);
+/**
+ * Called once every blocking finding left is one the agent rejected. A rejected High needs the
+ * human's decision; the agent may dismiss a Medium itself (AGENTS.md), so those alone are done.
+ */
+function settleRejected(rejected: Finding[]): void {
+  const n = rejected.filter(isHigh).length;
+  if (n) throw new Stop(`${n} action_required finding(s) the agent rejected need the human's decision`);
+}
 
 /** Every gh and git command a tick runs passes the runtime guardrails (R8). */
 export function runTick(cfg: Config, deps: Deps): Promise<Outcome> {
@@ -512,10 +519,7 @@ class Tick {
       const blocking = r.findings.filter(isBlocking);
       const fresh = blocking.filter((f) => !rejected.has(f.id));
       this.log.event('review', { round: this.reviewRounds, head: this.head, ciFailed: r.failed.map((c) => c.name), blocking: blocking.map((f) => f.id), fresh: fresh.map((f) => f.id) });
-      if (!r.failed.length && !fresh.length) {
-        if (blocking.length) throw needsHuman(blocking.length);
-        return;
-      }
+      if (!r.failed.length && !fresh.length) return settleRejected(blocking);
       const ciFailures = await Promise.all(r.failed.map(async (run) => ({ run, log: await this.failedLog(run) })));
       const before = this.head!;
       const res = await this.fixRound({ findings: fresh, ciFailures, localFailures: [] });
@@ -529,7 +533,7 @@ class Tick {
       if (r.failed.length || res.dispositions.some((d) => d.verdict !== 'rejected')) {
         throw new Stop('the fix round made no commits, but CI failures or open findings remain');
       }
-      throw needsHuman(blocking.length);
+      return settleRejected(blocking);
     }
   }
 

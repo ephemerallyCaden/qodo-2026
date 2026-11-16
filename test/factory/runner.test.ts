@@ -374,10 +374,12 @@ describe('publish (R5)', () => {
 });
 
 describe('review loop (R6, R7)', () => {
-  it('a finding leads to a fix round, a clean review, then agent-done with a summary comment', async () => {
+  it('High and Medium findings get a fix round, a clean review, then agent-done; a Low is listed, never optional', async () => {
     const w = world();
     const f1 = firstHeadOnly(finding('f1'), finding('f1', { attribution_status: 'implemented' }));
-    w.findings = (head) => [f1(head), finding('r1', { action_level: 'remediation_recommended' })];
+    const medium = { action_level: 'remediation_recommended' } as const;
+    const r1 = firstHeadOnly(finding('r1', medium), finding('r1', { ...medium, attribution_status: 'implemented' }));
+    w.findings = (head) => [f1(head), r1(head), finding('i1', { action_level: 'informational' })];
     w.addIssue(24);
     w.claude.push(implementDone(), fixDone('confirmed'));
     expect(await w.tick()).toMatchObject({ state: 'done', issue: 24 });
@@ -388,7 +390,9 @@ describe('review loop (R6, R7)', () => {
     expect(fix.cwd).toBe(join(w.repoDir, '.sandboxes/agent-24'));
     const prompt = promptOf(fix.args);
     expect(prompt).toContain('- id f1 ');
-    expect(prompt).not.toContain('- id r1 ');
+    expect(prompt).toContain('- id r1 ');
+    expect(prompt).not.toContain('- id i1 ');
+    expect(prompt).not.toMatch(/optional/i);
     expect(prompt).toContain('Validate each one');
     // One PR comment with the dispositions (R6 "replies to the finding").
     expect(w.prs[0]!.comments[0]).toMatch(/Agent fix round 1 of 2[\s\S]*Finding f1[\s\S]*\| confirmed \|/);
@@ -398,7 +402,9 @@ describe('review loop (R6, R7)', () => {
     expect(summary).toContain('| Completed Qodo reviews | 2');
     expect(summary).toContain('| CI on the head | check (20) success, check (22) success |');
     expect(summary).toMatch(/Finding f1.*\| action_required \| confirmed in round 1/);
-    expect(summary).toMatch(/Finding r1.*\| remediation_recommended \| open recommendation \(optional\)/);
+    expect(summary).toMatch(/Finding r1.*\| remediation_recommended \| confirmed in round 1/);
+    expect(summary).toMatch(/Finding i1.*\| informational \| Low: listed for the human, not blocking/);
+    expect(summary).not.toMatch(/optional/i);
     expect(summary).not.toContain(w.root);
   });
 
@@ -527,6 +533,34 @@ describe('review loop (R6, R7)', () => {
     expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: "1 action_required finding(s) the agent rejected need the human's decision" });
     expect(w.prs[0]!.comments[0]).toContain('| rejected |');
     expect(w.issues.get(24)!.comments.at(-1)).toMatch(/Finding f1.*rejected in round 1/);
+  });
+
+  it('a remediation_recommended finding the agent rejects with evidence is settled: agent-done, no human (AGENTS.md)', async () => {
+    const w = world();
+    w.findings = () => [finding('r1', { action_level: 'remediation_recommended' })];
+    w.addIssue(24);
+    w.claude.push(implementDone(), fixDone('rejected', 0));
+    expect(await w.tick()).toMatchObject({ state: 'done', issue: 24 });
+    expect(promptOf(w.agentCalls()[1]!.args)).toContain('- id r1 ');
+    expect(w.prs[0]!.comments[0]).toContain('| rejected |');
+    expect(w.issues.get(24)!.comments.at(-1)).toMatch(/Finding r1.*rejected in round 1: rejected by trace/);
+  });
+
+  it('rejected High and Medium findings: only the High goes to the human', async () => {
+    const w = world();
+    w.findings = () => [finding('f1'), finding('r1', { action_level: 'remediation_recommended' })];
+    w.addIssue(24);
+    w.claude.push(implementDone(), fixDone('rejected', 0));
+    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: "1 action_required finding(s) the agent rejected need the human's decision" });
+    expect(w.issues.get(24)!.comments.at(-1)).toMatch(/Finding r1.*rejected in round 1/);
+  });
+
+  it('a Medium finding that stays open after each fix hits the retry limit, never agent-done', async () => {
+    const w = world();
+    w.findings = () => [finding('r1', { action_level: 'remediation_recommended' })];
+    w.addIssue(24);
+    w.claude.push(implementDone(), fixDone(), fixDone());
+    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: expect.stringMatching(/^retry limit: 2 fix rounds used and 1 blocking finding\(s\) remain/) });
   });
 
   it('a fix round that rewrites pushed history stops the run', async () => {

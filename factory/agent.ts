@@ -141,13 +141,15 @@ export function fixPrompt(f: FixInput): string {
   const out = [`Fix round ${f.round} of ${f.maxRounds}, on head ${f.head}.`, ''];
   if (f.findings.length) {
     out.push(
-      'Qodo review findings (action_required). Validate each one before changing code; Qodo is sometimes wrong.',
+      'Qodo review findings: action_required (High) and remediation_recommended (Medium). Each must be settled.',
+      'Validate each one before changing code; Qodo is sometimes wrong.',
       'Confirm it with a failing test or a concrete trace, or reject it with a reason and evidence.',
-      'Fix confirmed ones with a test that fails without the fix.', '',
+      'Fix confirmed ones with a test that fails without the fix.',
+      'A rejected action_required finding goes to the human; a rejected remediation_recommended one is settled by your evidence.', '',
     );
     for (const x of f.findings) {
       const loc = x.location?.file_path ? `${x.location.file_path}:${x.location.start_line ?? '?'}-${x.location.end_line ?? '?'}` : 'no location';
-      out.push(`- id ${x.id} (${loc}): ${x.title ?? ''}`, `  ${x.description ?? ''}`);
+      out.push(`- id ${x.id} [${x.action_level ?? '?'}] (${loc}): ${x.title ?? ''}`, `  ${x.description ?? ''}`);
       if (x.evidence?.explanation) out.push(`  Explanation: ${x.evidence.explanation}`);
     }
     out.push('');

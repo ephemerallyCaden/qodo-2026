@@ -72,7 +72,12 @@ export function parseQodo(stdout: string): QodoOutput | null {
  * status as open too.
  */
 export const isOpen = (f: Finding) => f.dismiss_reason == null && f.attribution_status !== 'implemented';
-export const isBlocking = (f: Finding) => isOpen(f) && f.action_level === 'action_required';
+/**
+ * AGENTS.md "Definition of done": action_required = High and remediation_recommended = Medium
+ * must both be settled; informational (Low) never blocks and is listed for the human.
+ */
+export const isHigh = (f: Finding) => f.action_level === 'action_required';
+export const isBlocking = (f: Finding) => isOpen(f) && (isHigh(f) || f.action_level === 'remediation_recommended');
 
 /** The reviewed-commit marker Qodo hides in its "Code Review by Qodo" comment; the last one wins. */
 export function qodoMarker(commentBodies: string, slug: string): string | null {

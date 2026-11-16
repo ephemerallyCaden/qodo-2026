@@ -92,7 +92,7 @@ function disposition(f: Finding, all: RunSummary['dispositions']): string {
   if (d && d.verdict !== 'unanswered') return `${d.verdict} in round ${d.round}: ${d.reason}${d.fix ? `; fix: ${d.fix}` : ''}`;
   if (f.dismiss_reason) return `dismissed (${f.dismiss_reason})`;
   if (!isOpen(f)) return f.attribution_status ?? 'closed';
-  return f.action_level === 'action_required' ? 'OPEN' : 'open recommendation (optional)';
+  return f.action_level === 'informational' ? 'Low: listed for the human, not blocking' : 'OPEN';
 }
 
 export function summaryComment(s: RunSummary): string {

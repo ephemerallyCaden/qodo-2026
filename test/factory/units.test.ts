@@ -98,14 +98,16 @@ describe('Qodo done-check (R6)', () => {
     expect(parseQodo(JSON.stringify({ review_runs: [{}], findings: [] }))).toBeNull();
   });
 
-  it('blocks on open action_required findings only', () => {
+  it('blocks on open High (action_required) and Medium (remediation_recommended) findings, never Low', () => {
     expect(isBlocking(finding('a'))).toBe(true);
     for (const s of ['pending', 'partial_implementation', 'not_implemented', 'focus_areas_edited', 'some_new_status']) {
       expect(isBlocking(finding('a', { attribution_status: s }))).toBe(true);
     }
     expect(isBlocking(finding('a', { attribution_status: 'implemented' }))).toBe(false);
     expect(isBlocking(finding('a', { dismiss_reason: 'false_positive' }))).toBe(false);
-    expect(isBlocking(finding('a', { action_level: 'remediation_recommended' }))).toBe(false);
+    expect(isBlocking(finding('a', { action_level: 'remediation_recommended' }))).toBe(true);
+    expect(isBlocking(finding('a', { action_level: 'remediation_recommended', dismiss_reason: 'rejected' }))).toBe(false);
+    expect(isBlocking(finding('a', { action_level: 'informational' }))).toBe(false);
   });
 
   it('reads the last reviewed-commit marker for this repo only', () => {
