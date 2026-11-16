@@ -27,14 +27,13 @@ const run = (argv: string[], call: Call | string, opts: { shell?: string; cwd?: 
 const bash = (role: string, command: string, cwd = ROOT) => run([role], { tool_name: 'Bash', tool_input: { command }, cwd }, { cwd });
 const write = (role: string, file_path: string, cwd = ROOT, tool_name = 'Write') => run([role], { tool_name, tool_input: { file_path }, cwd }, { cwd });
 
+// Every mismatch at once, so a failing run lists each command that got the wrong answer.
 const expectBlocked = (role: string, commands: string[], cwd?: string) => {
-  for (const command of commands) expect({ command, status: bash(role, command, cwd).status }).toEqual({ command, status: 2 });
+  expect(commands.map((command) => ({ command, status: bash(role, command, cwd).status }))).toEqual(commands.map((command) => ({ command, status: 2 })));
 };
 const expectAllowed = (role: string, commands: string[], cwd?: string) => {
-  for (const command of commands) {
-    const r = bash(role, command, cwd);
-    expect({ command, status: r.status, stderr: r.stderr }).toEqual({ command, status: 0, stderr: '' });
-  }
+  const got = commands.map((command) => { const r = bash(role, command, cwd); return { command, status: r.status, stderr: r.stderr }; });
+  expect(got).toEqual(commands.map((command) => ({ command, status: 0, stderr: '' })));
 };
 
 describe('feature role: no push, PR merge/create/close or publish', () => {
@@ -108,6 +107,14 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
     ]);
   });
 });
+
+// Qodo round 3 on #150: each of these got past the denylist guard on fe69af7.
+const R3 = [
+  "curl -s -o /dev/null -w '%output{src/file}%{http_code}' https://example.com",
+  "tar -tf /tmp/a.tar --checkpoint=1 --checkpoint-action='exec=touch src/file'",
+  "sed --in 's/x/y/' src/cli.ts",
+  'sort --o=src/cli.ts test/input',
+];
 
 describe('readonly role (scout, bar-raiser): never changes the checkout', () => {
   it('blocks mutating git verbs, aliases and unknown verbs', () => {
@@ -257,6 +264,10 @@ describe('readonly role (scout, bar-raiser): never changes the checkout', () => 
     ]);
   });
 
+  it('runs only listed programs and options (Qodo r3)', () => {
+    expectBlocked('readonly', R3);
+  });
+
   it('redirects into a temp clone', () => {
     const clone = join(SCRATCH, 'clone');
     mkdirSync(join(clone, '.git'), { recursive: true });
@@ -265,8 +276,10 @@ describe('readonly role (scout, bar-raiser): never changes the checkout', () => 
 });
 
 describe('debugger role: writes only under test/ (probes in test/probes/) or a temp dir', () => {
-  const repo = realTempDir('commet-guard-repo-');
-  mkdirSync(join(repo, '.git'));
+  // Inside the guard's own temp dir on purpose: a checkout in a temp dir is still a checkout, on
+  // Linux (/tmp) as on macOS (/var/folders). CI on Linux failed when only macOS put it outside.
+  const repo = join(SCRATCH, 'repo');
+  mkdirSync(join(repo, '.git'), { recursive: true });
   mkdirSync(join(repo, 'test/probes'), { recursive: true });
   mkdirSync(join(repo, 'src'));
   symlinkSync(join(repo, 'src'), join(repo, 'test/srclink'));
@@ -291,6 +304,10 @@ describe('debugger role: writes only under test/ (probes in test/probes/) or a t
     for (const path of [join(repo, 'test/x.test.ts'), join(repo, 'test/probes/p.mjs'), 'test/y.test.ts', join(outside, 'probe.mjs')]) {
       for (const tool of ['Write', 'Edit']) expect({ path, tool, status: write('debugger', path, repo, tool).status }).toEqual({ path, tool, status: 0 });
     }
+  });
+
+  it('runs only listed programs and options (Qodo r3)', () => {
+    expectBlocked('debugger', R3, repo);
   });
 
   it('applies the same rule to shell writes, but leaves git and test runs alone', () => {
