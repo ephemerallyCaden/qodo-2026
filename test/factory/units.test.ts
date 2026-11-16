@@ -110,6 +110,12 @@ describe('Qodo done-check (R6)', () => {
     expect(isBlocking(finding('a', { action_level: 'informational' }))).toBe(false);
   });
 
+  it('a dismissed or implemented finding is closed whatever its reason (Qodo PR149 9248ccfa)', () => {
+    expect(isBlocking(finding('a', { attribution_status: 'dismissed' }))).toBe(false);
+    expect(isBlocking(finding('a', { attribution_status: 'dismissed', action_level: 'remediation_recommended' }))).toBe(false);
+    expect(isBlocking(finding('a', { attribution_status: 'implemented' }))).toBe(false);
+  });
+
   it('reads the last reviewed-commit marker for this repo only', () => {
     const body = `<!-- https://github.com/o/r/commit/${OLD} -->\n<!-- https://github.com/x/y/commit/${HEAD} -->\n<!-- https://github.com/o/r/commit/${HEAD} -->`;
     expect(qodoMarker(body, 'o/r')).toBe(HEAD);
@@ -188,6 +194,12 @@ describe('agent output', () => {
   it('leaves a finding the agent skipped unanswered', () => {
     const r = fixResult({ findings: [{ id: 'a', verdict: 'rejected', reason: 'wrong' }, { id: 'zzz', verdict: 'confirmed' }] }, [finding('a'), finding('b')]);
     expect(r.dispositions.map((d) => [d.id, d.verdict])).toEqual([['a', 'rejected'], ['b', 'unanswered']]);
+  });
+
+  it('a rejection without a non-empty reason stays unanswered (Qodo PR149 cd3af15c)', () => {
+    const sent = [finding('a'), finding('b'), finding('c')];
+    const r = fixResult({ findings: [{ id: 'a', verdict: 'rejected' }, { id: 'b', verdict: 'rejected', reason: '  ' }, { id: 'c', verdict: 'rejected', reason: 7 }] }, sent);
+    expect(r.dispositions.map((d) => d.verdict)).toEqual(['unanswered', 'unanswered', 'unanswered']);
   });
 });
 

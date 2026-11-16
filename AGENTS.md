@@ -95,7 +95,8 @@ Where it differs from the review loop above:
 - No local `qodo review` before the PR: the PR review is the gate.
 - Findings and dispositions live in the run log and one PR comment per fix round.
 - `action_required` (High) and `remediation_recommended` (Medium) findings both block and go to the agent to fix or reject; `informational` (Low) ones are listed in the summary for the human.
-- An `action_required` finding the agent rejects stops the run with `agent-needs-help` for the human's decision. A `remediation_recommended` one it rejects with evidence is settled, recorded in the run log and PR comment.
+- An `action_required` finding the agent rejects stops the run with `agent-needs-help` for the human's decision. A `remediation_recommended` one it rejects with evidence is settled, recorded in the run log and PR comment; a rejection with no reason counts as unanswered.
+- The stop rule: a finding the agent reported fixed that is still open in the review of its new head stops the run with `agent-needs-help`, naming it, instead of another fix round.
 
 ## Daily Discussion posts
 - Each day has one post file, `.archive/docs/hackathon/day<N>-discussion-post.md`, following that day's template. Create it if missing.

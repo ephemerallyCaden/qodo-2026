@@ -511,6 +511,8 @@ class Tick {
 
   /** Review → fix → push until clean, a stop, or the retry limit (R6, R7). */
   private async reviewLoop(): Promise<void> {
+    // Findings the last fix round reported fixed; one still open on the new head is the stop rule.
+    let reported = new Set<string>();
     for (;;) {
       const r = await this.waitForReview();
       this.reviewRounds++;
@@ -519,6 +521,8 @@ class Tick {
       if (unknown.length) throw new Stop(`unknown Qodo action_level ${unknown.map((l) => `"${l}"`).join(', ')}: the human decides how it maps (AGENTS.md)`);
       const rejected = new Set(this.dispositions.filter((d) => d.verdict === 'rejected').map((d) => d.id));
       const blocking = r.findings.filter(isBlocking);
+      const back = blocking.filter((f) => reported.has(f.id)).map((f) => f.id);
+      if (back.length) throw new Stop(`stop rule: ${back.join(', ')} reported fixed but still open on the new head, so no progress`);
       const fresh = blocking.filter((f) => !rejected.has(f.id));
       this.log.event('review', { round: this.reviewRounds, head: this.head, ciFailed: r.failed.map((c) => c.name), blocking: blocking.map((f) => f.id), fresh: fresh.map((f) => f.id) });
       if (!r.failed.length && !fresh.length) return settleRejected(blocking);
@@ -526,6 +530,7 @@ class Tick {
       const before = this.head!;
       const res = await this.fixRound({ findings: fresh, ciFailures, localFailures: [] });
       const moved = (await this.revHead()) !== before;
+      reported = new Set(res.dispositions.filter((d) => d.verdict === 'confirmed').map((d) => d.id));
       if (moved) await this.verifyAndPush();
       await this.post('pr', this.pr!.url, dispositionsComment({
         round: this.fixRounds, maxRounds: this.cfg.maxFixRounds, before, after: this.head!,

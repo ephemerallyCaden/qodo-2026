@@ -574,9 +574,27 @@ describe('review loop (R6, R7)', () => {
     expect(await w.tick()).toMatchObject({ state: 'done', issue: 24 });
   });
 
-  it('a Medium finding that stays open after each fix hits the retry limit, never agent-done', async () => {
+  it('a Medium rejected with no reason is not settled: never agent-done (Qodo PR149 cd3af15c)', async () => {
     const w = world();
     w.findings = () => [finding('r1', { action_level: 'remediation_recommended' })];
+    w.addIssue(24);
+    w.claude.push(implementDone(), fixDone('rejected', 0, ''));
+    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: 'the fix round made no commits, but CI failures or open findings remain' });
+    expect(w.prs[0]!.comments[0]).toContain('| unanswered |');
+  });
+
+  it('a finding reported fixed but still open on the new head stops the run, naming it (Qodo PR149 cf416525)', async () => {
+    const w = world();
+    w.findings = () => [finding('f1'), finding('r1', { action_level: 'remediation_recommended' })];
+    w.addIssue(24);
+    w.claude.push(implementDone(), fixDone(), fixDone());
+    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: 'stop rule: f1, r1 reported fixed but still open on the new head, so no progress' });
+    expect(w.agentCalls()).toHaveLength(2);
+  });
+
+  it('Medium findings that keep coming back new hit the retry limit, never agent-done', async () => {
+    const w = world();
+    w.findings = (head) => [finding(`r-${head.slice(-4)}`, { action_level: 'remediation_recommended' })];
     w.addIssue(24);
     w.claude.push(implementDone(), fixDone(), fixDone());
     expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: expect.stringMatching(/^retry limit: 2 fix rounds used and 1 blocking finding\(s\) remain/) });

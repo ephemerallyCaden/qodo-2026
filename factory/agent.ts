@@ -307,14 +307,18 @@ export interface Disposition {
   fix: string;
 }
 
-/** One disposition per finding sent; a finding the agent skipped stays `unanswered` (still open). */
+/**
+ * One disposition per finding sent; a finding the agent skipped, or rejected without a reason,
+ * stays `unanswered` (still open): a rejection is only settled by its evidence.
+ */
 export function fixResult(block: unknown, sent: Finding[]): { dispositions: Disposition[]; notes: string } {
   const b = block as { findings?: unknown; notes?: unknown };
   const list = (Array.isArray(b.findings) ? b.findings : []) as { id?: unknown; verdict?: unknown; reason?: unknown; fix?: unknown }[];
   const dispositions = sent.map((f): Disposition => {
     const d = list.find((x) => x?.id === f.id);
-    const verdict = d?.verdict === 'confirmed' || d?.verdict === 'rejected' ? d.verdict : 'unanswered';
-    return { id: f.id, verdict, reason: typeof d?.reason === 'string' ? d.reason : '', fix: typeof d?.fix === 'string' ? d.fix : '' };
+    const reason = typeof d?.reason === 'string' ? d.reason : '';
+    const verdict = d?.verdict === 'confirmed' ? 'confirmed' : d?.verdict === 'rejected' && reason.trim() ? 'rejected' : 'unanswered';
+    return { id: f.id, verdict, reason, fix: typeof d?.fix === 'string' ? d.fix : '' };
   });
   return { dispositions, notes: typeof b.notes === 'string' ? b.notes : '' };
 }

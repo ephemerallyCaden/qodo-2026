@@ -67,11 +67,12 @@ export function parseQodo(stdout: string): QodoOutput | null {
 }
 
 /**
- * Open = neither implemented nor dismissed. That covers the statuses seen so far
- * (pending, partial_implementation, not_implemented, focus_areas_edited) and treats any new
- * status as open too.
+ * Open = neither implemented nor dismissed (by status or reason; a dismissal needs no reason).
+ * That covers the statuses seen so far (pending, partial_implementation, not_implemented,
+ * focus_areas_edited) and treats any new status as open too.
  */
-export const isOpen = (f: Finding) => f.dismiss_reason == null && f.attribution_status !== 'implemented';
+export const isOpen = (f: Finding) =>
+  f.dismiss_reason == null && f.attribution_status !== 'implemented' && f.attribution_status !== 'dismissed';
 /**
  * AGENTS.md "Definition of done": action_required = High and remediation_recommended = Medium
  * must both be settled; informational (Low) never blocks and is listed for the human.
