@@ -2,9 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import { FOCUS_FILL, FOV_DEG, eyeOf, focusPose, framingDistance, fromCameraPose, pick, project, projectedRadius, startPose, toCameraPose, type OrbitPose } from '../../web/src/camera/pose.js';
 import { FreeFlightRig, GLIDE_MS, MIN_FOCUS_DIST, type FlyKey } from '../../web/src/camera/rig.js';
+import { coronaEdge, starOccluders } from '../../web/src/render/corona.js';
 import { STAR } from '../../web/src/render/shaders.js';
 import { placeLabels } from '../../web/src/labels/place.js';
-import { CORONA, starOccluders } from '../../web/src/model/star.js';
+import { CORONA } from '../../web/src/model/star.js';
 import { planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
 import type { Vec3 } from '../../web/src/model/vec.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
@@ -121,35 +122,46 @@ describe('labels', () => {
   });
 });
 
-describe('the star hides what its corona covers (Qodo 1ce5dd3d on #155)', () => {
-  // A unit star at the origin, seen from 10 units out on +z: the shader draws its corona in the plane
-  // z = 0 out to CORONA.reach star radii, and a ray that crosses that plane inside it meets the corona.
+describe('the star hides what its corona draws over, and only that (Qodo 1ce5dd3d, 9ba6148c on #155)', () => {
+  // A unit star at the origin, seen from 10 units out on +z at frame 0: the shader draws its corona in
+  // the plane z = 0 out to a lumpy edge (coronaEdge, at most CORONA.reach star radii), and a ray that
+  // crosses that plane inside the edge meets the corona.
   const view: OrbitPose = { target: [0, 0, 0], yaw: 0, pitch: 0, dist: 10 };
   const W = 1280, H = 720;
-  /** A small planet at depth z whose line of sight crosses the star's plane `at` star radii right of its centre (left if negative). */
-  const seenAt = (at: number, z: number) => ({ centre: [(at * (10 - z)) / 10, 0, z] as Vec3, radius: 0.1 });
-  const band = (1 + CORONA.reach) / 2; // over the corona, past the disc
-  const behind = seenAt(band, -5); // behind the corona: drawn over, so hidden
-  const beside = seenAt(CORONA.reach + 0.15, -5); // behind the star's plane, but clear of the corona
-  const before = seenAt(-band, 0.3); // in front of the corona's plane, over it, yet inside a sphere of the corona's reach
+  const edgeAt = (deg: number) => coronaEdge([Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)], 0);
+  const degrees = Array.from({ length: 360 }, (_, k) => k);
+  const gapDeg = degrees.reduce((a, b) => (edgeAt(b) < edgeAt(a) ? b : a)), lumpDeg = degrees.reduce((a, b) => (edgeAt(b) > edgeAt(a) ? b : a));
+  const between = (edgeAt(gapDeg) + edgeAt(lumpDeg)) / 2; // past the edge in the gap, inside it in the lump
+  /** A small planet at depth z whose line of sight crosses the star's plane `at` star radii from its centre, toward `deg`. */
+  const seenAt = (at: number, z: number, deg: number) => {
+    const k = (at * (10 - z)) / 10, a = (deg * Math.PI) / 180;
+    return { centre: [k * Math.cos(a), k * Math.sin(a), z] as Vec3, radius: 0.01 };
+  };
+  const ring = seenAt((1 + CORONA.halo) / 2, -5, 0); // behind the corona's ring inside its lowest edge: always drawn over
+  const lump = seenAt(between, -5, lumpDeg); // behind a lump
+  const gap = seenAt(between, -5, gapDeg); // just as far out, but behind a gap between lumps: visible
+  const beside = seenAt(CORONA.reach + 0.15, -5, 90); // past the corona's reach
+  const before = seenAt((1 + CORONA.halo) / 2, 0.3, 180); // in front of the corona's plane, inside a sphere of its reach
   const at = (s: { centre: Vec3 }) => { const p = project(view, s.centre)!; return { x: p.x, y: p.y }; };
 
-  it('the corona reaches past the disc and stays inside the star mesh', () => {
-    expect(band).toBeGreaterThan(1);
+  it('the corona reaches past the disc, stays inside the star mesh, and its edge is lumpy and churns', () => {
+    expect(CORONA.halo).toBeGreaterThan(1);
     expect(CORONA.reach).toBeLessThan(STAR.span);
+    expect(edgeAt(gapDeg)).toBeGreaterThanOrEqual(CORONA.halo);
+    expect(edgeAt(lumpDeg)).toBeLessThanOrEqual(CORONA.reach);
+    expect(edgeAt(lumpDeg) - edgeAt(gapDeg), 'lumps and gaps differ by more than the planet').toBeGreaterThan(0.04);
+    expect(degrees.some((d) => Math.abs(coronaEdge([Math.cos(d), Math.sin(d)], 360) - coronaEdge([Math.cos(d), Math.sin(d)], 0)) > 0.01), 'it churns').toBe(true);
     expect(Math.hypot(...before.centre) - before.radius).toBeGreaterThan(1); // clear of the star itself
     expect(Math.hypot(...before.centre)).toBeLessThan(CORONA.reach); // so a corona sphere would wrongly hide it
   });
 
-  it('never picks a planet behind the corona, but still one beside it or in front of it', () => {
-    const blockers = starOccluders(1);
-    expect(pick(view, at(behind), [behind], blockers)).toBeNull();
-    expect(pick(view, at(beside), [beside], blockers)).toBe(0);
-    expect(pick(view, at(before), [before], blockers)).toBe(0);
+  it('never picks a planet behind the corona, but still one seen through a gap, beside it or in front of it', () => {
+    const blockers = starOccluders(1, 0);
+    expect([ring, lump, gap, beside, before].map((s) => pick(view, at(s), [s], blockers))).toEqual([null, null, 0, 0, 0]);
   });
 
-  it('labels no planet behind the corona, but still one beside it or in front of it', () => {
-    expect(placeLabels(view, [behind, beside, before], starOccluders(1), W, H, 4, 50).map((l) => l.i).sort()).toEqual([1, 2]);
+  it('labels no planet behind the corona, but still one seen through a gap, beside it or in front of it', () => {
+    expect(placeLabels(view, [ring, lump, gap, beside, before], starOccluders(1, 0), W, H, 0, 50).map((l) => l.i).sort()).toEqual([2, 3, 4]);
   });
 });
 

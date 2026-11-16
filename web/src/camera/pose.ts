@@ -153,17 +153,45 @@ export function project(p: OrbitPose, point: Vec3): { x: number; y: number; dept
 /** Screen radius, as a share of half the frame height, of a sphere of radius r at view depth z. */
 export const projectedRadius = (r: number, depth: number, fovDeg: number = FOV_DEG): number => r / (depth * tanHalfV(fovDeg));
 
+/** The unit view ray through a point in normalised device coordinates. */
+function viewRay(p: OrbitPose, ndc: { x: number; y: number }): Vec3 {
+  const b = basis(p.yaw, p.pitch), tanV = tanHalfV(fovOf(p));
+  const ray = add(b.fwd, add(scale(b.right, ndc.x * tanV * ASPECT), scale(b.up, ndc.y * tanV)));
+  return scale(ray, 1 / length(ray));
+}
+
+/**
+ * Distance along the view ray through `ndc` to where it crosses a flat occluder, or Infinity on a miss:
+ * the plane through its centre that faces the eye, inside its outline (`edge`, else `radius`). Directions
+ * in the plane use the star shader's corona frame, which keeps the camera's up.
+ */
+export function flatHit(p: OrbitPose, ndc: { x: number; y: number }, o: Occluder): number {
+  const eye = eyeOf(p), dir = viewRay(p, ndc);
+  const oc = sub(o.centre, eye);
+  const along = dot(oc, dir);
+  if (along <= 0) return Infinity;
+  const t = dot(oc, oc) / along; // the plane through the centre, normal to the line from the eye
+  const off = sub(add(eye, scale(dir, t)), o.centre);
+  const r = length(off);
+  if (t <= NEAR || r > o.radius) return Infinity;
+  if (!o.edge || r === 0) return t;
+  const b = basis(p.yaw, p.pitch), axis = scale(oc, -1 / length(oc)); // towards the eye
+  const flatUp = sub(b.up, scale(axis, dot(b.up, axis)));
+  const up = dot(flatUp, flatUp) < 1e-6 ? b.right : scale(flatUp, 1 / length(flatUp));
+  const side = cross(up, axis);
+  const right = scale(side, 1 / length(side));
+  return r <= o.edge([dot(off, right) / r, dot(off, up) / r]) ? t : Infinity;
+}
+
 /**
  * The body under a point in normalised device coordinates: the nearest sphere the view ray hits,
  * each grown to at least `minNdc` of half the frame height so a far planet is still clickable.
  * `blockers` (the star and its corona) hide what is behind them but are never picked.
  */
 export function pick(p: OrbitPose, ndc: { x: number; y: number }, bodies: readonly Sphere[], blockers: readonly Occluder[] = [], minNdc = 0.04): number | null {
-  const b = basis(p.yaw, p.pitch);
   const tanV = tanHalfV(fovOf(p));
   const eye = eyeOf(p);
-  const ray = add(b.fwd, add(scale(b.right, ndc.x * tanV * ASPECT), scale(b.up, ndc.y * tanV)));
-  const dir = scale(ray, 1 / length(ray));
+  const dir = viewRay(p, ndc);
   /** Distance along the ray to where it enters the sphere, or Infinity on a miss. */
   const enter = (s: Sphere, grow: boolean) => {
     const oc = sub(s.centre, eye);
@@ -173,20 +201,11 @@ export function pick(p: OrbitPose, ndc: { x: number; y: number }, bodies: readon
     const miss = dot(oc, oc) - t * t;
     return miss > r * r ? Infinity : t - Math.sqrt(r * r - miss);
   };
-  /** Distance along the ray to where it crosses a flat occluder (its plane faces the eye), or Infinity on a miss. */
-  const meet = (s: Occluder) => {
-    const oc = sub(s.centre, eye);
-    const along = dot(oc, dir);
-    if (along <= 0) return Infinity;
-    const t = dot(oc, oc) / along; // the plane through the centre, normal to the line from the eye
-    const off = sub(add(eye, scale(dir, t)), s.centre);
-    return t > NEAR && dot(off, off) <= s.radius * s.radius ? t : Infinity;
-  };
   let best: number | null = null, bestT = Infinity;
   bodies.forEach((body, i) => {
     const t = enter(body, true);
     if (t < bestT) { bestT = t; best = i; }
   });
-  if (blockers.some((s) => (s.flat ? meet(s) : enter(s, false)) < bestT)) return null;
+  if (blockers.some((s) => (s.flat ? flatHit(p, ndc, s) : enter(s, false)) < bestT)) return null;
   return best;
 }

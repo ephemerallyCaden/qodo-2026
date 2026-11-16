@@ -44,6 +44,13 @@ export function snoise(vx: number, vy: number, vz: number): number {
   return 42 * sum;
 }
 
+/** The shader's `fbm`: four octaves of snoise, rescaled to 0..1. */
+export function fbm(x: number, y: number, z: number): number {
+  let s = 0, a = 0.5;
+  for (let i = 0; i < 4; i++) { s += a * snoise(x, y, z); x = x * 2.03 + 11.7; y = y * 2.03 + 11.7; z = z * 2.03 + 11.7; a *= 0.5; }
+  return (s / 0.9375) * 0.5 + 0.5;
+}
+
 // The shader's integer cell hash (pcg3d): integer maths, so bit-exact on the CPU.
 const U = (x: number) => x >>> 0;
 function pcg3d(x: number, y: number, z: number): Vec3 {

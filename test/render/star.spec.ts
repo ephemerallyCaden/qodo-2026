@@ -1,8 +1,9 @@
 // The star on the real view (#81, docs/features/star-art.md S1–S5): the Day 1 GIF's sun, ported from
 // the asset viewer's star.js. With the depth fade off it draws only its own palette roles
 // (world.starDisc, world.starCorona; never teal), core at the centre and each band further out, with a
-// flat, lumpy corona past the limb; the middle of the disc is the core on every frame of the loop, seen
-// from two sides and under reduced motion; frame 720 (one 24 s loop) is frame 0 and the seam is no bigger
+// flat, lumpy corona past the limb, drawn where its CPU trace says (picking and labels hide behind it);
+// the middle of the disc is the core on every frame of the loop, seen from two sides and under reduced
+// motion; frame 720 (one 24 s loop) is frame 0 and the seam is no bigger
 // than any other step; reduced motion holds it; far away it fades at 0.15 (S5); fog never covers it
 // (#74); its moonlets wear the planets' moon look (S6); and a drone (#80) still draws in front of it.
 // Every check fails on an empty frame.
@@ -15,6 +16,7 @@ import { placeDrone } from '../../web/src/drones/place.js';
 import { LOOP_FRAMES } from '../../web/src/model/motion.js';
 import { frameWidth } from '../../web/src/model/pixels.js';
 import { systemModel } from '../../web/src/model/system.js';
+import { coronaEdge } from '../../web/src/render/corona.js';
 import { droneView, session } from '../fixtures/drones.js';
 import { assertRendered, diffPixels, hex, LOW_RES, rgbaAt, statsProblems, type Frame } from './frame.js';
 import type { Rendered } from './harness.js';
@@ -48,6 +50,27 @@ function meanRadius(f: Frame, px: readonly string[], colour: string): number {
 }
 /** The star's disc radius on screen, internal px, for a camera `dist` from it. */
 const discPx = (l: LayoutV1, dist: number, height: number = LOW_RES.height) => projectedRadius(starRadius(l), dist) * (height / 2);
+/** The star's outline in a frame of it centred: how far out, in px, the last star pixel lies toward each of 72 directions (screen y down). */
+function outline(f: Frame, px: readonly string[]): number[] {
+  return Array.from({ length: 72 }, (_, k) => {
+    const a = (k / 72) * Math.PI * 2;
+    let last = 0;
+    for (let d = 0; d < 80; d += 0.5) {
+      const x = Math.floor(f.width / 2 + Math.cos(a) * d), y = Math.floor(f.height / 2 + Math.sin(a) * d);
+      if (STAR_COLOURS.includes(px[y * f.width + x]!)) last = d;
+    }
+    return last;
+  });
+}
+/**
+ * Picking and labels hide what the corona's CPU trace covers (render/corona.ts, Qodo 9ba6148c), so it
+ * must be the outline drawn: within 1.5 px (one pixel either way, plus the half-pixel sampling step) all round.
+ */
+function assertTraced(edge: readonly number[], disc: number, frame: number): void {
+  const off = edge.map((e, k) => { const a = (k / 72) * Math.PI * 2; return e - coronaEdge([Math.cos(a), -Math.sin(a)], frame) * disc; });
+  console.log(`corona outline, frame ${frame}: the CPU trace is within ${Math.max(...off.map(Math.abs)).toFixed(2)} px of the drawn edge over 72 directions`);
+  expect(off.flatMap((d, k) => (Math.abs(d) > 1.5 ? [`${k * 5}°: ${d.toFixed(2)} px`] : [])), `frame ${frame}: directions where the traced corona edge is off`).toEqual([]);
+}
 /**
  * The star alone isn't blank: within budget, every disc and corona colour drawn, and at least 80% of
  * its disc's area in star colours. (It draws 6 colours, so the fixtures' 12-colour floor can't apply.)
@@ -79,20 +102,13 @@ test.describe('the star (#81)', () => {
     order.slice(1).forEach((x, i) => expect(x, `band ${i + 1} sits outside band ${i}`).toBeGreaterThan(order[i]!));
 
     // the corona: past the limb all round, with a lumpy edge, never past its span, in flat bands (no dithering)
-    const edge = Array.from({ length: 72 }, (_, k) => {
-      const a = (k / 72) * Math.PI * 2;
-      let last = 0;
-      for (let d = 0; d < 80; d += 0.5) {
-        const x = Math.floor(f.width / 2 + Math.cos(a) * d), y = Math.floor(f.height / 2 + Math.sin(a) * d);
-        if (STAR_COLOURS.includes(px[y * f.width + x]!)) last = d;
-      }
-      return last;
-    });
+    const edge = outline(f, px);
     const reach = edge.map((e) => e - disc);
     console.log(`corona reach past the disc: ${Math.min(...reach).toFixed(1)}–${Math.max(...reach).toFixed(1)} px`);
     expect(Math.min(...reach), 'the corona reaches past the disc all round').toBeGreaterThanOrEqual(2);
     expect(Math.max(...reach) - Math.min(...reach), 'the corona\'s edge is lumpy').toBeGreaterThanOrEqual(2.5);
     expect(Math.max(...edge), 'nothing is drawn past the corona\'s span').toBeLessThanOrEqual(disc * 1.4 + 1);
+    assertTraced(edge, disc, 0);
     const halo = px.flatMap((h, i) => (h === CORONA[1] ? [radiusOf(f, i)] : []));
     expect(Math.min(...halo), 'the halo is only past the limb').toBeGreaterThan(disc - 1);
     const lone = px.filter((h, i) => CORONA.includes(h) && [-1, 1, -f.width, f.width].every((o) => px[i + o] !== h)).length;
@@ -119,6 +135,7 @@ test.describe('the star (#81)', () => {
     expect(median, 'the star moves over the loop').toBeGreaterThan(0);
     expect(seam, 'the seam is no bigger than a step').toBeLessThanOrEqual(median * 1.5);
     expect(diffPixels(at(0), at(360)), 'half a loop later the granulation has moved').toBeGreaterThan(200);
+    assertTraced(outline(at(360), colours(at(360))), discPx(ALONE, pose.dist), 360); // the lumps churn with the frame, on the CPU too
     // The granulation wobbles every band edge, the core's too (S1), yet the core band stays inside the cream band.
     const cores = rs.map((r) => { const px = colours(r.pixels); return [meanRadius(r.pixels, px, DISC[4]!), meanRadius(r.pixels, px, DISC[3]!)] as const; });
     expect(cores.filter(([core, cream]) => !(core < cream)), 'the core band sits inside the cream band on every frame').toEqual([]);

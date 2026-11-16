@@ -170,8 +170,8 @@ export const STAR = { cuts: [0.27, 0.5, 0.72, 0.9], core: [0.1, 0.2], span: 1.4,
  *   corona  elsewhere, in the plane through the centre that faces the eye (the asset viewer's
  *           billboard): a red-orange crown that licks past the limb, then a thin dark-red halo, flat
  *           bands (no dithering) with a lumpy edge riding the same circle, in a frame that keeps the
- *           camera's up. Past the halo (never past CORONA.reach, which hides what is behind it for
- *           picking and labels) the pixel is discarded.
+ *           camera's up. Past the halo (never past CORONA.reach; render/corona.ts traces it on the CPU,
+ *           so picking and labels hide what it covers) the pixel is discarded.
  * It writes the hit's own depth, so planets, moonlets and drones pass in front of and behind it
  * correctly. Emissive and unlit everywhere, never fogged (it has no file), faded per pixel at STAR.fade.
  */

@@ -15,9 +15,9 @@ import { PixelPass } from './render/pixel.js';
 import { DroneFleet, type FleetEntry } from './render/drone-fleet.js';
 import { capLabels } from './drones/select.js';
 import { SystemScene } from './render/scene.js';
+import { starOccluders } from './render/corona.js';
 
 import { UI_COLOURS } from './ui/colours.js';
-import { starOccluders } from './model/star.js';
 import type { Occluder, Sphere } from './model/vec.js';
 
 /** A drone's smallest clickable size, as a share of half the frame height (a planet's is 0.04). */
@@ -28,8 +28,8 @@ export const MAX_LABELS = 50;
 /** Of them, at most this many go to drones. */
 const MAX_DRONE_LABELS = 8;
 
-/** The star's disc and corona: they hide the planets and drones behind them from picking and labels. */
-const starBlockers = (s: SystemScene): Occluder[] => starOccluders(s.model.star.radius);
+/** The star's disc and corona at a frame: they hide the planets and drones behind them from picking and labels. */
+const starBlockers = (s: SystemScene, frame: number): Occluder[] => starOccluders(s.model.star.radius, frame);
 
 export class View {
   readonly pass: PixelPass;
@@ -197,7 +197,7 @@ export class View {
     if (this.showHelp) out.push({ text: HELP, x: 2 * px, y: H - lh, align: 'left', colour: dim });
     // drone labels come first in the budget (a few at most), so a busy system never drops a selected drone's name
     const drones = this.droneLabels(s, frame, pose, W, H, 2 * px, MAX_DRONE_LABELS);
-    for (const l of placeLabels(pose, s.spheres(frame), starBlockers(s), W, H, 2 * px, MAX_LABELS - out.length - drones.length)) {
+    for (const l of placeLabels(pose, s.spheres(frame), starBlockers(s, frame), W, H, 2 * px, MAX_LABELS - out.length - drones.length)) {
       out.push({ text: s.model.planets[l.i]!.path, x: l.x, y: l.y, align: 'centre', colour: l.i === focus ? mark : ink });
     }
     out.push(...drones);
@@ -211,7 +211,7 @@ export class View {
     const at = s.fleet.spheres(s.model, frame); // null: its home isn't in this layout, so it isn't drawn and has no label
     const wanted = entries.flatMap((e, i) => (at[i] && (e.label !== null || e.key === this.selectedDrone) ? [i] : []));
     const spheres = wanted.map((i) => at[i]!);
-    const blockers = [...s.spheres(frame), ...starBlockers(s)];
+    const blockers = [...s.spheres(frame), ...starBlockers(s, frame)];
     const selected = (l: { i: number }) => entries[wanted[l.i]!]!.key === this.selectedDrone;
     return capLabels(placeLabels(pose, spheres, blockers, W, H, gap, spheres.length), selected, max).map((l) => {
       const e = entries[wanted[l.i]!]!;
@@ -226,7 +226,7 @@ export class View {
     if (!s) return null;
     const c = this.pass.canvas.getBoundingClientRect();
     const ndc = { x: (cssX / c.width) * 2 - 1, y: 1 - (cssY / c.height) * 2 };
-    return pick(pose, ndc, s.spheres(frame), starBlockers(s)); // the star and its corona hide what is behind them
+    return pick(pose, ndc, s.spheres(frame), starBlockers(s, frame)); // the star and its corona hide what is behind them
   }
 
   /**
@@ -241,7 +241,7 @@ export class View {
     const ndc = { x: (cssX / c.width) * 2 - 1, y: 1 - (cssY / c.height) * 2 };
     const at = s.fleet.spheres(s.model, frame);
     const drawn = at.flatMap((d, i) => (d ? [i] : []));
-    const hit = pick(pose, ndc, drawn.map((i) => at[i]!), [...starBlockers(s), ...s.spheres(frame), ...s.smallBodies(frame)], DRONE_MIN_NDC);
+    const hit = pick(pose, ndc, drawn.map((i) => at[i]!), [...starBlockers(s, frame), ...s.spheres(frame), ...s.smallBodies(frame)], DRONE_MIN_NDC);
     return hit === null ? null : s.fleet.entries[drawn[hit]!]!.key;
   }
 
