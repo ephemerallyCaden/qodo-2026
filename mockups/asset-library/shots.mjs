@@ -78,7 +78,7 @@ const SHOTS = {
   'history-drones': { set: history('drones', 6, 4, { option: 2 }), archive: true }, // the live Copilot drone beside D-final (archived)
   'history-no-archive': { set: history('crew', 3) }, // the same view without the archive
   'history-debris': { set: history('debris', 0, 2, { option: 1 }), archive: true }, // direction B (junkyard), live through the debris lab's kits, beside the final A3
-  'history-fog': { set: history('fog', 2, 4, { option: 2 }), archive: true }, // D2c (veiled), live through the fog lab's looks, beside the final D2d
+  'history-fog': { set: history('fog', 4, 6, { option: 2 }), archive: true }, // the replaced dark veil D2d beside the final cloud fog C6, both at 50%
 };
 
 const wanted = process.argv.slice(2);

@@ -144,7 +144,7 @@ export const GROUPS = [
     ],
   },
   {
-    // fog of war (R5; the fog lab's D2d · dark veil): every band at every charted share, the chart buttons, and fog with debris
+    // fog of war (R5; cloud fog C6 · white storm front, the human's pick): every band at every discovered share, the chart buttons, and fog with debris
     id: 'fog', title: 'Fog', note: 'the files you haven\'t reviewed, under a dark veil: every band at 0, 25, 50, 75 and 100% charted; chart one, refog one, chart all; fog with debris',
     items: [
       ...[['lava', 11, 'worst band'], ['toxic', 13, 'second-worst band'], ['desert', 3, 'ash band'], ['lush', 7, 'healthy'], ['ocean', 42, 'healthy'], ['ice', 21, 'healthy']]

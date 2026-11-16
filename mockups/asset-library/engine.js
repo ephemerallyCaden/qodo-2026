@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import {
   makePlanet, makeAstronaut, makeStar, makeSky, makeStars, setDepthLevel, depthLevelAt, poseWorld, setLoop, applyDepth,
-  setPixelSize, setViewSize, frameWidth, retint, resolve, renderer, camera, controls, VIEWS, BIOMES, CREW_SPOT, driveFog,
+  setPixelSize, setViewSize, frameWidth, retint, resolve, renderer, camera, controls, VIEWS, BIOMES, WEATHER, CREW_SPOT, driveFog,
 } from '../asset-viewer/viewer.js';
 import { eyesFor } from '../asset-viewer/faces.js';
 import { makeAstronaut as makeLabAstronaut } from '../explorations/astronaut-lab/astronaut.js';
@@ -19,7 +19,8 @@ import { makeDrone, layout as droneLayout, extents as droneExtents } from '../dr
 import { contributorKey, eyeGlowKey } from './palette.js';
 import { droneLook, droneCell, droneCamera, pixK, ZOOM } from './drones.js';
 import { debrisSpec } from './debris-spec.js';
-import { fogDrive } from './fog-spec.js';
+import { fogDrive, fogCloudsAt, isCloudLook } from './fog-spec.js';
+import { weatherShown } from '../asset-viewer/fog-cloud.js';
 // The fog lab's looks (A-E, A2, D2a-D2e) register with the viewer's fog on import, before any fog spec
 // is made, so a fogged planet's shader holds them all (the history draws them live); its fogSpec is
 // the viewer's plus the lab's one extra uniform. D2d draws pixel-identical to the viewer's either way.
@@ -73,7 +74,7 @@ export class Stage {
     while (this.slots.length > items.length) this.scene.remove(this.slots.pop().group);
     items.forEach((it, i) => {
       let s = this.slots[i];
-      const fog = it.kind === 'planet' && it.fog.on; // a fogged planet has its own shaders (makePlanet({ fog }))
+      const fog = it.kind === 'planet' && it.fog.on && !isCloudLook(it.fog.look); // a shader-fogged planet has its own shaders (makePlanet({ fog })); cloud fog needs none
       if (!s || s.kind !== it.kind || !!s.fog !== fog) {
         if (s) this.scene.remove(s.group);
         s = this.slots[i] = this.make(it.kind, fog);
@@ -151,6 +152,10 @@ export class Stage {
     // fog first, as the viewer's frame(): the veil mixes toward the active palette's space, and its
     // fogged limb is the halo colour
     for (const s of by('planet')) {
+      // cloud fog (the viewer's fog): storm cloud over the undiscovered share; the cream weather goes, smoke stays
+      const clouds = fogCloudsAt(s.item, t);
+      s.obj.setFogClouds(clouds);
+      s.obj.parts.sky.visible = s.item.layers.clouds && (!clouds || weatherShown(s.item.fog.look, WEATHER[BIOMES[s.item.biome].weather]?.ramp ?? null));
       if (!s.fog) continue;
       s.fog.view.value.set(...this.view);
       s.fog.uniforms.uFogSpace.value.set(resolve('space'));

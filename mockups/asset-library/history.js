@@ -18,6 +18,7 @@ import { showcaseScene, GROUPS } from './catalogue.js';
 import { LOSPEC_ORDER } from '../asset-viewer/palettes.js';
 import { BRANDS } from './drones.js';
 import { DIRECTIONS as FOG_DIRECTIONS } from '../fog-lab/variants.js';
+import { CLOUD_FOGS } from '../asset-viewer/fog-cloud.js';
 
 // ---------------------------------------------------------------- vendored palettes
 // f4ceea0 viewer.js: the suit shared by v1 and v2 there (the cool white approved in revision 1)
@@ -154,7 +155,7 @@ const debrisView = (direction) => solo({ ...LUSH, ring: 'off', debris: debrisOf(
 
 // The fog family: the lush hero at 50% charted, in a fog-lab direction (its looks register with the
 // viewer's fog: engine.js imports the lab's fog.js), or D2d at each charted share
-const fogName = (id) => FOG_DIRECTIONS.find((d) => d.id === id).name;
+const fogName = (id) => (CLOUD_FOGS[id] ?? FOG_DIRECTIONS.find((d) => d.id === id)).name;
 const fogOf = (look, charted = 0.5) => ({ on: true, charted, look });
 const fogView = (look) => solo({ ...LUSH, ring: 'off', fog: fogOf(look) });
 const fogOptions = (ids) => ({ label: 'direction', list: ids.map((id) => ({ id, label: `${id} · ${fogName(id)}`, item: { fog: fogOf(id) } })) });
@@ -321,7 +322,7 @@ export const FAMILIES = [
   {
     // fog of war (R5), drawn live: the fog lab's directions are registered with the viewer's fog. The
     // lab's history is one commit on this branch (1eaa3ef, squashed); the dates are its steps'.
-    id: 'fog', title: 'Fog', note: 'the files you haven\'t reviewed: five directions and A2, D refined toward "unseen", two dark veils, then D2d',
+    id: 'fog', title: 'Fog', note: 'the files you haven\'t reviewed: five directions and A2, D refined toward "unseen", two dark veils, D2d, then fog as clouds and C6',
     steps: [
       { date: '2026-11-11 03:52', rev: '1eaa3ef', title: 'five directions, A–E', exploration: true, live: { ...fogView('A'), options: fogOptions(['A', 'B', 'C', 'D', 'E']) },
         changed: 'One fog shader path on #18\'s 256-cell grid, five looks: A glyph field (a 5×5 glyph per fogged cell), B unlit (the terrain two steps darker), C unrendered (a coarse lattice of flat tiles), D survey parcels (flat cells, each file\'s footprint outlined), E mist (streaks drifting west). Each file clears with a teal front and refogs with a rolling edge.',
@@ -334,10 +335,17 @@ export const FAMILIES = [
       { date: '2026-11-11 19:25', rev: '1eaa3ef', title: 'D2e: dark veil + band edges', exploration: true, live: fogView('D2e'),
         changed: 'D2c\'s parcels pushed close to space, each outlined in the middle step of the band\'s own ramp, so the band reads from the parcel edges.',
         why: 'The dark pass: fog that\'s unmistakably hidden. D2e kept a hint of health at the edges; the human picked D2d, where health doesn\'t read through fog at all.' },
-      { date: '2026-11-11 23:03', rev: '12588f7', title: 'D2d · dark veil', final: true,
+      { date: '2026-11-11 23:03', rev: '12588f7', title: 'D2d · dark veil', tag: 'replaced',
         live: { ...fogView('D2d'), options: { label: 'charted', list: [0, 0.25, 0.5, 0.75, 1].map((c) => ({ id: String(c), label: `${Math.round(c * 100)}% charted`, item: { fog: fogOf('D2d', c) } })) } },
         changed: 'Each fogged file a parcel in a cool blue-plum veil whatever its band, with faint drifting hatching, a dim outline, a "?" on half the big parcels and a halo-coloured limb; the lit-limb haze is fogged too. Ported into the viewer as fog on the hero planet.',
-        why: 'The human: "you can\'t see the health of code you haven\'t reviewed", so health reads on charted land only. The veil is cool, never lava crust\'s warm darks (a false worst-band signal), and the limb is one step above space so the silhouette holds.' },
+        why: 'The human: "you can\'t see the health of code you haven\'t reviewed", so health reads on charted land only. The veil is cool, never lava crust\'s warm darks (a false worst-band signal), and the limb is one step above space so the silhouette holds. Replaced on 2026-11-16 by cloud fog.' },
+      { date: '2026-11-16 16:00', rev: '3dbfbc4', title: 'fog as clouds, C1–C5', exploration: true, live: { ...fogView('C1'), options: fogOptions(['C1', 'C2', 'C3', 'C4', 'C5']) },
+        changed: 'The fog becomes cloud: cloud cover over the undiscovered share, locked to the ground, clearing as files are charted. Five looks: C1 overcast (cream, replacing the weather), C2 storm over weather (grey storm above the cream weather), C3 broken cloud (gaps show the ground), C4 storm front (grey storm replacing the weather) and C5 stratus bands.',
+        why: 'The human: "we should try a variant where the fog is the clouds themselves, and the amount of cloud coverage shows the amount of known or unknown there is."' },
+      { date: '2026-11-16 17:00', rev: '3dbfbc4', title: 'C6 · white storm front', final: true,
+        live: { ...fogView('C6'), options: { label: 'discovered', list: [0, 0.25, 0.5, 0.75, 1].map((c) => ({ id: String(c), label: `${Math.round(c * 100)}% discovered`, item: { fog: fogOf('C6', c) } })) } },
+        changed: 'C4\'s storm-front shape in white: storm cloud over exactly 0.9 of the undiscovered share of the surface, none on a fully discovered planet. The planets\' cream weather (lush, ocean) goes; lava\'s ash and toxic\'s rust smoke stay. Ported into the viewer as its fog; the dark veil stays here as a tried look.',
+        why: 'The human: "I like the white clouds, in the storm front style. We should have 0 clouds when a planet is 100% discovered now, and only have clouds proportional to how much is missing."' },
     ],
   },
   {

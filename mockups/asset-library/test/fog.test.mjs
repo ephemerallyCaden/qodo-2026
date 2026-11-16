@@ -1,14 +1,15 @@
 // Fog of war in the library: a fogged planet is pixel-identical to the asset viewer's hero at the same
 // configuration (R7: at rest, fully fogged on a hazy biome, and mid-clear); the chart buttons add the
-// viewer's events; scenes keep a planet's fog; the history draws the fog lab's directions live and ends
-// on the inspector's D2d; the fog state is clamped and survives the URL; the catalogue's Fog group.
+// viewer's events; scenes keep a planet's fog; the history draws every fog tried live (the fog lab's
+// directions, the dark veil D2d, the cloud looks C1-C5) and ends on the inspector's fog, cloud fog C6; the fog state is clamped and survives the URL; the catalogue's Fog group.
 // Every render comparison fails on empty output.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, openLibrary, openViewer, grabCanvas, grabTile, pageErrors, diff, stats, hexInt } from './harness.mjs';
 import * as S from '../state.js';
 import { GROUPS } from '../catalogue.js';
-import { FOG_COVERAGES, FOG_LOOKS, chartEvents, fogStatus } from '../fog-spec.js';
+import { FOG_COVERAGES, FOG_LOOKS, FINAL_FOG_LOOK, chartEvents, fogStatus } from '../fog-spec.js';
+import { CLOUD_FOGS } from '../../asset-viewer/fog-cloud.js';
 import { DIRECTION_IDS } from '../../fog-lab/fog.js'; // (registers the lab's looks; three loads in Node)
 import { ACCENTS } from '../../asset-viewer/planet-ramps.js';
 import { COVERAGES as VIEWER_COVERAGES, EVENT } from '../../asset-viewer/fog-layout.js';
@@ -20,14 +21,14 @@ const teal = new Set(ACCENTS.reveal.map(hexInt));
 const tealPx = (g) => [...stats(g).colours].filter(([c]) => teal.has(c)).reduce((n, [, k]) => n + k, 0);
 
 // "chart one" at 10.7 s on the lush hero at 25%: the file the viewer's button would pick, on the visible hemisphere
-// (at 50% the next file is never in view on this planet); caught 0.3 s in, while the teal front is under way
+// (at 50% the next file is never in view on this planet); caught 0.3 s in, while its cloud is still teal
 const clearing = chartEvents({ seed: 7, fog: { charted: 0.25, seed: null, events: [], moonEvents: [] } }, 'one', 10.7).events;
 // "chart all" from 0% pressed at 2.3 s, caught at 3 s: files clearing 0.12 s apart and the fogged moons
 const chartAll = chartEvents({ seed: 7, fog: { charted: 0, seed: null, events: [], moonEvents: [] } }, 'all', 2.3);
 const CASES = [
   { name: 'lush, 50% charted', viewer: { fogCharted: 0.5, time: 3 }, library: planet({}, { charted: 0.5 }, 3) },
-  { name: 'ocean (seed 42), fully fogged: the haze fogged too', viewer: { biome: 'ocean', seed: 42, fogCharted: 0, time: 5.5 }, library: planet({ biome: 'ocean', seed: 42 }, { charted: 0 }, 5.5) },
-  { name: 'lush, 25%, a file 0.3 s into its clear (the teal front)', flat: true, viewer: { fogCharted: 0.25, fogEvents: clearing, time: 11 }, library: planet({}, { charted: 0.25, events: clearing }, 11), teal: true },
+  { name: 'ocean (seed 42), fully fogged: storm cloud, no weather of its own', viewer: { biome: 'ocean', seed: 42, fogCharted: 0, time: 5.5 }, library: planet({ biome: 'ocean', seed: 42 }, { charted: 0 }, 5.5) },
+  { name: 'lush, 25%, a file 0.3 s into its clear (its cloud in teal)', flat: true, viewer: { fogCharted: 0.25, fogEvents: clearing, time: 11 }, library: planet({}, { charted: 0.25, events: clearing }, 11), teal: true },
   { name: 'lush, mid "chart all" from 0% (files clearing in turn, moons too)', flat: true, viewer: { fogCharted: 0, fogEvents: chartAll.events, fogMoonEvents: chartAll.moonEvents, time: 3 }, library: planet({}, { charted: 0, events: chartAll.events, moonEvents: chartAll.moonEvents }, 3), teal: true },
 ];
 
@@ -72,10 +73,12 @@ test('a fogged planet is pixel-identical to the viewer\'s, mid-clear included', 
   }
 });
 
-test('the chart buttons add the viewer\'s events; scenes keep fog; the history\'s directions are live and end on the inspector\'s D2d', { timeout: 1800000 }, async () => {
+test('the chart buttons add the viewer\'s events; scenes keep fog; every fog tried is live in the history, which ends on the inspector\'s cloud fog', { timeout: 1800000 }, async () => {
   const browser = await launch();
   try {
     const page = await openLibrary(browser);
+    const T0 = Date.now(), step = (m) => console.log(`  [${((Date.now() - T0) / 1000).toFixed(0)} s] ${m}`); // progress: this test is long on a shared machine
+    step('library open');
     const st = () => page.evaluate(() => window.library.state());
     // a DOM click: Playwright's click waits for steady frames, and every frame renders fog thumbnails (a big shader to compile in SwiftShader)
     const press = (name) => page.getByRole('button', { name, exact: true }).evaluate((b) => b.click());
@@ -93,6 +96,7 @@ test('the chart buttons add the viewer\'s events; scenes keep fog; the history\'
       assert.deepEqual(s.asset.fog.events, chartEvents(S.normalise(base).asset, kind, 3).events, name);
     }
     assert.ok(s.asset.fog.events.length > 3 && s.asset.fog.moonEvents.length === 1, 'chart all at 50%: every fogged file and the fogged (small) moon');
+    step('chart buttons');
     // a scene keeps the planet's fog
     const scene = { mode: 'scene', scene: { items: [{ ...base.asset, pos: [0, 0, 0] }], selected: -1, camera: { pos: [1.92, 1.12, 6.69], target: [0, 0, 0] } }, render: base.render };
     await page.evaluate((x) => window.library.set(x), scene);
@@ -100,7 +104,8 @@ test('the chart buttons add the viewer\'s events; scenes keep fog; the history\'
     assert.deepEqual((await st()).scene.items[0].fog, S.normalise(base).asset.fog);
     await page.evaluate((x) => window.library.set(x), { ...scene, scene: { ...scene.scene, items: [{ ...base.asset, pos: [0, 0, 0], fog: { on: false } }] } });
     assert.ok(diff(inScene, await grabCanvas(page)).length > 300, 'the scene draws the planet\'s fog');
-    // the history: each direction live (the fog lab's registered looks), each unlike the final D2d
+    step('scene');
+    // the history: every fog tried, live (the fog lab's looks, the dark veil, the cloud looks), each unlike the final C6
     const H = await import('../history.js');
     const fam = H.family('fog');
     const shot = async (step, option = 0) => { await page.evaluate((x) => window.library.set(x), { mode: 'history', history: { family: 'fog', step, option }, render: paused(3) }); return grabCanvas(page); };
@@ -110,17 +115,22 @@ test('the chart buttons add the viewer\'s events; scenes keep fog; the history\'
     looks.push(await shot(1)); // A2
     for (let o = 0; o < 3; o++) looks.push(await shot(2, o)); // D2a-D2c
     looks.push(await shot(3)); // D2e
+    looks.push(await shot(4, 2)); // D2d, the dark veil (replaced), at 50%
+    for (let o = 0; o < 5; o++) looks.push(await shot(5, o)); // C1-C5
+    step(`history: ${looks.length} looks`);
     for (const [i, g] of looks.entries()) {
       assert.ok(stats(g).drawn > 3000, `direction ${i}: empty`);
-      assert.ok(diff(g, final).length > 50, `direction ${i} looks like D2d`);
+      assert.ok(diff(g, final).length > 50, `look ${i} looks like the final cloud fog`);
     }
     assert.ok(diff(looks[0], looks[1]).length > 50, 'A and B differ');
     await page.evaluate((x) => window.library.set(x), planet({ ring: 'off' }, { charted: 0.5 }, 3));
-    assert.equal(diff(final, await grabCanvas(page)).length, 0, 'the history\'s D2d differs from the inspector');
+    assert.equal(diff(final, await grabCanvas(page)).length, 0, 'the history\'s final fog differs from the inspector');
+    step('history checked');
     // the Fog group's tiles render: one per band fully fogged, and the four demos
     const items = GROUPS.find((g) => g.id === 'fog').items;
     for (const it of [...items.filter((x) => x.state.asset.fog.charted === 0 && !x.state.asset.fog.events.length), ...items.slice(-4)]) {
       const tile = await grabTile(page, it.id);
+      step(`tile ${it.title}`);
       assert.ok(stats(tile).drawn > 300, `${it.title}: empty thumbnail (${stats(tile).drawn} px)`);
     }
     // the three event tiles show their event, as opened: teal on a clear (depth off, as above), a visible front on a refog
@@ -141,8 +151,10 @@ test('the chart buttons add the viewer\'s events; scenes keep fog; the history\'
 
 test('the fog state is clamped to real files, and survives the URL', () => {
   const f = S.normaliseFog({ on: 'yes', charted: 0.4, seed: -4, events: [{ file: 'nope', kind: 'clear', at: 1 }, { file: 'src/core/f1', kind: 'zap', at: 1 }, 'x'], moonEvents: [{ moon: 2, kind: 'clear', at: 1 }, { moon: 1, kind: 'refog', at: 1e9 }], look: 'Z' }, 7);
-  assert.deepEqual(f, { on: false, charted: 0.5, seed: 1, events: [], moonEvents: [{ moon: 1, kind: 'refog', at: 3600 }], look: 'D2d' });
+  assert.deepEqual(f, { on: false, charted: 0.5, seed: 1, events: [], moonEvents: [{ moon: 1, kind: 'refog', at: 3600 }], look: FINAL_FOG_LOOK });
+  assert.equal(FINAL_FOG_LOOK, 'C6', 'the fog is the white storm front');
   assert.equal(S.normaliseFog({ look: 'D2c' }, 7).look, 'D2c', 'a known exploration keeps its look');
+  assert.equal(S.normaliseFog({ look: 'D2d' }, 7).look, 'D2d', 'the replaced dark veil keeps its look');
   const st = S.normalise(planet({}, { charted: 0.25, seed: 12, events: [{ file: 'src/core/f1', kind: 'clear', at: 2 }] }, 3));
   assert.deepEqual(S.decodeHash(S.encodeHash(st)), st);
   assert.equal(st.focus, 'fog');
@@ -150,7 +162,7 @@ test('the fog state is clamped to real files, and survives the URL', () => {
   assert.deepEqual(S.normalise({ mode: 'scene', scene: { items: [{ kind: 'planet', fog: { on: true, charted: 0 } }] } }).scene.items[0].fog.charted, 0, 'scenes keep fog');
   assert.deepEqual(S.normalise({}).asset.fog.on, false, 'a planet has no fog unless asked');
   assert.deepEqual(FOG_COVERAGES, VIEWER_COVERAGES, 'the viewer\'s charted shares');
-  assert.deepEqual([...FOG_LOOKS].sort(), [...DIRECTION_IDS].sort(), 'the fog lab\'s registered directions');
+  assert.deepEqual([...FOG_LOOKS].sort(), [...Object.keys(CLOUD_FOGS), ...DIRECTION_IDS].sort(), 'the cloud looks and the fog lab\'s registered directions');
 });
 
 test('the Fog group: every band at every charted share, the chart buttons mid-event, and fog with debris', () => {
