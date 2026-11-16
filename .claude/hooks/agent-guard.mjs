@@ -2,10 +2,12 @@
 // Usage: node agent-guard.mjs <feature|debugger|readonly>, with Claude Code's hook JSON on stdin.
 // Exit 2 blocks the tool call (the reason goes to the agent on stderr); exit 0 lets it through.
 //   feature   no `git push`, `gh pr merge|create|close|reopen`, `gh release` writes, `gh api` writes, npm publish.
-//   readonly  (scout, bar-raiser) only read-only git and gh, and shell writes only into a temp dir.
-//   debugger  Edit/Write and shell writes only under the repo's test/ (probes in test/probes/) or a temp dir.
-// It reads the command line, so it can't see what a program it starts does (node, python, npx, a
-// script), or a command name built at run time ($VAR). Those residuals stay prompt-enforced.
+//   readonly  (scout, bar-raiser) only read-only git and gh (no fetch, no option or setting that writes a
+//             file or runs a program), no file-writing command at all, and redirects only into a temp dir.
+//   debugger  Edit/Write, redirects and every path a file-writing command touches only under the repo's
+//             test/ (probes in test/probes/) or a temp dir; a writer whose paths it can't read is blocked.
+// It reads the command line, so it can't see what a program does by its own code or config (node,
+// python, an awk/sed script, a git config file), or a command name built at run time ($VAR).
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -188,27 +190,94 @@ function writeOk(target, cwd, role) {
   if (p.includes(DYNAMIC) || p.includes('$') || p.includes('`')) return false; // can't tell where it goes
   const abs = real(resolve(cwd, p));
   if (abs === null) return false;
+  if (TMP_ROOTS.some((t) => within(abs, t))) return true; // a temp dir, even a temp clone
+  if (role !== 'debugger') return false;
   const repo = repoRoot(abs);
-  if (repo !== null) return role === 'debugger' && within(abs, join(repo, 'test'));
-  return TMP_ROOTS.some((t) => within(abs, t));
+  return repo !== null && within(abs, join(repo, 'test'));
 }
 
 const writeMsg = (role, target) => role === 'debugger'
-  ? `the debugger writes only under test/ (probes in test/probes/) or a temp dir outside the repo, not ${target}`
+  ? `the debugger writes only under test/ (probes in test/probes/) or a temp dir, not ${target}`
   : `scout and bar-raiser are read-only: write to an absolute temp path (/tmp/…), not ${target}`;
 
-// Commands that write the files they name: which operands.
-const WRITERS = { tee: 'all', touch: 'all', rm: 'all', rmdir: 'all', mkdir: 'all', truncate: 'all', mv: 'all', cp: 'last', ln: 'last', install: 'last', rsync: 'last', sed: 'inplace', perl: 'inplace', dd: 'dd' };
-
-function writerTargets(name, args) {
-  const kind = WRITERS[name];
-  const p = positionals(args);
-  if (kind === 'all') return p;
-  if (kind === 'last') return p.slice(-1);
-  if (kind === 'inplace') return args.some((a) => /^-[A-Za-z]*i/.test(a) || a.startsWith('--in-place')) ? p.slice(-1) : [];
-  if (kind === 'dd') return args.filter((a) => a.startsWith('of=')).map((a) => a.slice(3));
-  return [];
+/** Operands and option values of a command line, `valued` naming the options that take a value. */
+function splitArgs(args, valued = []) {
+  const ops = [];
+  const vals = {};
+  const put = (f, v) => { (vals[f] ??= []).push(v); };
+  for (let j = 0; j < args.length; j++) {
+    const a = args[j];
+    if (a === '--') { ops.push(...args.slice(j + 1)); break; }
+    if (a === '-' || !a.startsWith('-')) { ops.push(a); continue; }
+    const eq = a.indexOf('=');
+    if (a.startsWith('--')) {
+      if (eq > 0) put(a.slice(0, eq), a.slice(eq + 1));
+      else if (valued.includes(a)) put(a, args[++j] ?? '');
+      else put(a, '');
+      continue;
+    }
+    for (let c = 1; c < a.length; c++) { // a cluster: -rt dir, -tdir
+      const f = `-${a[c]}`;
+      if (valued.includes(f)) { put(f, a.slice(c + 1) || (args[++j] ?? '')); break; }
+      put(f, '');
+    }
+  }
+  const has = (...fs) => fs.some((f) => f in vals);
+  const values = (...fs) => fs.flatMap((f) => vals[f] ?? []);
+  return { ops, has, values };
 }
+
+const ALL_VALUED = { truncate: ['-s', '--size', '-r', '--reference'], mkdir: ['-m', '--mode'], mkfifo: ['-m', '--mode'], mknod: ['-m', '--mode'] };
+const ALL = (name, args) => splitArgs(args, ALL_VALUED[name]).ops;
+const AFTER_MODE = (name, args) => { const a = splitArgs(args); return a.has('--reference') ? a.ops : a.ops.slice(1); };
+const READS_WHEN = (...flags) => (name, args) => (splitArgs(args).has(...flags) ? undefined : null);
+const TARGET_DIR = ['-t', '--target-directory', '-S', '--suffix', '-m', '--mode', '-o', '--owner', '-g', '--group'];
+function copyLike(name, args) {
+  const a = splitArgs(args, TARGET_DIR);
+  const dirs = a.values('-t', '--target-directory');
+  if (name === 'mv') return [...a.ops, ...dirs]; // mv removes its sources too
+  if (dirs.length > 0) return dirs;
+  if (name === 'install' && a.has('-d', '--directory')) return a.ops;
+  return a.ops.slice(-1);
+}
+function inPlace(name, args) {
+  // BSD sed: a bare -i takes the next word as the backup suffix ('' or '.bak').
+  const i = args.indexOf('-i');
+  const words = name === 'sed' && i >= 0 && /^(\..*)?$/.test(args[i + 1] ?? 'x') ? args.filter((_, j) => j !== i + 1) : args;
+  const a = splitArgs(words, name === 'sed' ? ['-e', '--expression', '-f', '--file', '-l', '--line-length'] : ['-e', '-E', '-I', '-M', '-m']);
+  if (!a.has('-i', '--in-place')) return undefined; // without -i it only reads (a script's own writes are its business)
+  const scripted = name === 'sed' ? a.has('-e', '--expression', '-f', '--file') : a.has('-e', '-E');
+  return scripted ? a.ops : a.ops.slice(1);
+}
+// File-writing commands: the paths they write, read off their arguments; null when that can't be
+// done, undefined when this call writes nothing. Scout and bar-raiser may run none of them.
+const WRITERS = {
+  tee: ALL, touch: ALL, rm: ALL, rmdir: ALL, unlink: ALL, mkdir: ALL, mkfifo: ALL, mknod: ALL, truncate: ALL, shred: ALL,
+  mv: copyLike, cp: copyLike, ln: copyLike, install: copyLike, link: (n, a) => splitArgs(a).ops.slice(-1),
+  chmod: AFTER_MODE, chown: AFTER_MODE, chgrp: AFTER_MODE,
+  sed: inPlace, perl: inPlace,
+  dd: (n, a) => a.filter((w) => w.startsWith('of=')).map((w) => w.slice(3)),
+  sort: (n, a) => { const o = splitArgs(a, ['-o', '--output', '-k', '--key', '-t', '--field-separator', '-T', '--temporary-directory', '-S', '--buffer-size']).values('-o', '--output'); return o.length > 0 ? o : undefined; },
+  uniq: (n, a) => { const o = splitArgs(a, ['-f', '-s', '-w']).ops; return o.length > 1 ? [o[1]] : undefined; },
+  curl: (n, a) => {
+    const s = splitArgs(a, ['-o', '--output', '-D', '--dump-header', '-c', '--cookie-jar', '--output-dir', '-K', '--config', '--trace', '--trace-ascii', '--stderr',
+      '-H', '--header', '-d', '--data', '--data-raw', '--data-binary', '-X', '--request', '-u', '--user', '-A', '-e', '-b', '-F', '-T', '-w', '-x', '-m', '-r', '-C', '-E']);
+    if (s.has('-O', '--remote-name', '--remote-name-all', '-J', '-K', '--config', '--output-dir', '-T', '--upload-file')) return null;
+    const out = s.values('-o', '--output', '-D', '--dump-header', '-c', '--cookie-jar', '--trace', '--trace-ascii', '--stderr').filter((p) => p !== '-');
+    return out.length > 0 ? out : undefined;
+  },
+  find: (n, a) => (a.some((w) => ['-delete', '-fprint', '-fprint0', '-fprintf', '-fls'].includes(w)) ? null : undefined),
+  // Where these write depends on the archive, the patch or the network: never readable here.
+  wget: () => null, rsync: () => null, scp: () => null, ditto: () => null, split: () => null, csplit: () => null, patch: () => null,
+  zip: () => null, mktemp: () => null,
+  // Listing or decompressing to stdout only reads (tar tf, unzip -l, gzip -dc).
+  tar: (n, a) => (splitArgs(a).has('-t', '--list') || /^[A-Za-z]*t[A-Za-z]*$/.test(a[0] ?? '') ? undefined : null), // also `tar tf x`
+  unzip: READS_WHEN('-l', '-t', '-p', '-Z'),
+  gzip: READS_WHEN('-c', '--stdout', '-l', '--list', '-t', '--test'), gunzip: READS_WHEN('-c', '--stdout', '-l', '--list', '-t', '--test'),
+  bzip2: READS_WHEN('-c', '--stdout', '-t', '--test'), xz: READS_WHEN('-c', '--stdout', '-l', '--list', '-t', '--test'),
+};
+// gsed, gcp, … (GNU coreutils on macOS) behave as their plain names.
+const writerFor = (name) => WRITERS[name] ?? (name.startsWith('g') && WRITERS[name.slice(1)] ? WRITERS[name.slice(1)] : undefined);
 
 // ---- git, gh and npm.
 
@@ -217,7 +286,7 @@ const READ_GIT = new Set(['status', 'diff', 'log', 'show', 'blame', 'annotate', 
   'check-ignore', 'check-attr', 'check-ref-format', 'var', 'version', 'help', 'diff-tree', 'diff-files', 'diff-index', 'show-branch', 'verify-commit', 'verify-tag']);
 const MUTATING_GIT = new Set(['add', 'am', 'apply', 'bisect', 'checkout', 'cherry-pick', 'clean', 'commit', 'filter-branch', 'gc', 'init', 'merge', 'mv',
   'pull', 'push', 'rebase', 'replace', 'reset', 'restore', 'revert', 'rm', 'switch', 'update-ref', 'update-index', 'read-tree', 'checkout-index',
-  'prune', 'repack', 'maintenance', 'format-patch', 'clone']);
+  'prune', 'repack', 'maintenance', 'format-patch', 'clone', 'fetch']); // fetch moves the shared remote refs
 // Commands that read or write by their arguments: true when this call only reads.
 const DUAL_GIT = {
   branch: (a) => !has(a, '-d', '-D', '-m', '-M', '-c', '-C', '-f', '-u', '-t', '--delete', '--move', '--copy', '--force', '--set-upstream-to',
@@ -236,9 +305,8 @@ const DUAL_GIT = {
     return ['get', 'list'].includes(p[0]) || has(a, '--get', '--get-all', '--get-regexp', '--get-urlmatch', '-l', '--list') || p.length <= 1;
   },
   notes: (a) => a.length === 0 || ['list', 'show'].includes(positionals(a)[0]),
-  reflog: (a) => !['expire', 'delete'].includes(positionals(a)[0]),
+  reflog: (a) => [undefined, 'show', 'exists', 'list'].includes(positionals(a)[0]),
   'symbolic-ref': (a) => !has(a, '-d', '--delete') && positionals(a).length <= 1,
-  fetch: (a) => positionals(a).slice(1).every((r) => !r.includes(':')), // a dst:src refspec writes a local ref
   submodule: (a) => a.length === 0 || ['status', 'summary'].includes(positionals(a)[0]),
   'sparse-checkout': (a) => a[0] === 'list',
 };
@@ -266,19 +334,30 @@ const quote = (a) => `'${a.replaceAll("'", "'\\''")}'`;
 const featureMsg = (what) => `feature-agent never pushes, merges or publishes (${what}): the team lead does that (AGENTS.md).`;
 const readonlyMsg = (what) => `scout and bar-raiser are read-only: \`${what}\` can change the checkout or GitHub.`;
 
+// --output[=file] (and any abbreviation git might accept), --output-directory, and grep's
+// -O/--open-files-in-pager, which runs a program.
+function gitWriteOption(verb, a) {
+  const name = /^--([^=]+)/.exec(a)?.[1];
+  if (name !== undefined && (name.startsWith('output') || 'output'.startsWith(name))) return true;
+  if (verb !== 'grep') return false;
+  return /^-[A-Za-z]*O/.test(a) || (name !== undefined && name.length > 1 && (name.startsWith('open-files') || 'open-files-in-pager'.startsWith(name)));
+}
+
 function checkGit(args, strict, ctx) {
   const { verb, rest, conf } = gitVerb(args);
   if (conf.some((c) => /^alias\./i.test(c))) return '`git -c alias.…` can run any command: call the git verb itself.';
+  if (ctx.role === 'readonly' && conf.length > 0) return readonlyMsg('git -c …') + ' A setting can make git write files or run programs.';
+  for (const c of conf) { const r = checkCommand(c.slice(c.indexOf('=') + 1), { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
   if (verb === null) return null;
+  if (ctx.role === 'readonly') {
+    const opt = rest.find((a) => gitWriteOption(verb, a));
+    if (opt !== undefined) return readonlyMsg(`git ${verb} ${opt}`) + ' The option writes a file or runs a program.';
+  }
   if (ctx.role === 'feature') {
     if (verb === 'push') return featureMsg('git push');
     if (READ_GIT.has(verb) || MUTATING_GIT.has(verb) || verb in DUAL_GIT) return null;
   } else {
     if (READ_GIT.has(verb)) return null;
-    if (verb === 'clone') {
-      const p = positionals(rest);
-      return p.length >= 2 && writeOk(p[p.length - 1], ctx.cwd, ctx.role) ? null : readonlyMsg('git clone (clone into /tmp/<name>)');
-    }
     if (verb in DUAL_GIT) return DUAL_GIT[verb](rest) ? null : readonlyMsg(`git ${verb} ${rest.join(' ')}`.trim());
     if (MUTATING_GIT.has(verb)) return readonlyMsg(`git ${verb}`);
   }
@@ -333,7 +412,17 @@ function checkGh(args, strict, ctx) {
 
 // ---- One command line.
 
+const GIT_CONFIG_ENV = /^GIT_CONFIG_(PARAMETERS|COUNT|KEY_\d+|VALUE_\d+)$/;
+
 function checkWords(words, ctx) {
+  // VAR=value anywhere (a prefix, env, export): the value may be run as a command (PAGER, GIT_EDITOR, …).
+  for (const w of words) {
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/.exec(w);
+    if (!m) continue;
+    if (ctx.role !== 'debugger' && GIT_CONFIG_ENV.test(m[1] ?? '')) return `${m[1]} sets git config like \`git -c\`, which can run any command.`;
+    const r = checkCommand(m[2] ?? '', { ...ctx, depth: ctx.depth + 1 });
+    if (r) return r;
+  }
   const starts = commandStarts(words);
   for (const k of starts) {
     const name = base(words[k]);
@@ -343,9 +432,11 @@ function checkWords(words, ctx) {
       if (m >= 0 && rest[m + 1] !== undefined) { const r = checkCommand(rest[m + 1], { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
     }
     if (name === 'eval') { const r = checkCommand(rest.join(' '), { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
-    if (ctx.role !== 'feature') {
-      for (const t of writerTargets(name, rest)) if (!writeOk(t, ctx.cwd, ctx.role)) return writeMsg(ctx.role, t);
-    }
+    const paths = writerFor(name)?.(name, rest);
+    if (paths === undefined || ctx.role === 'feature') continue;
+    if (ctx.role === 'readonly') return `scout and bar-raiser run no file-writing command (${name}): send output to a temp file with a redirect (> /tmp/…).`;
+    if (paths === null) return `the debugger can't tell which paths this ${name} writes: use cp, mkdir or a redirect into test/ or a temp dir.`;
+    for (const t of paths) if (!writeOk(t, ctx.cwd, ctx.role)) return writeMsg(ctx.role, t);
   }
   if (ctx.role === 'debugger') return null;
   // A command name can hide behind a wrapper we don't know (xargs-like): check git/gh/npm at every word.

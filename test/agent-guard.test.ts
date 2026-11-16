@@ -11,8 +11,10 @@ import { realTempDir } from './fixtures/tmp.js';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const GUARD = join(ROOT, '.claude/hooks/agent-guard.mjs');
+// The guard's temp dir: its own, so a fixture repo made with tempDir() counts as an ordinary checkout.
+const SCRATCH = realTempDir('commet-guard-scratch-');
 // No global or system git config: a user alias must not change what a case means.
-const ENV = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+const ENV = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', TMPDIR: SCRATCH };
 
 type Call = { tool_name: string; tool_input: Record<string, unknown>; cwd?: string };
 const run = (argv: string[], call: Call | string, opts: { shell?: string; cwd?: string } = {}) => {
@@ -131,6 +133,12 @@ describe('readonly role (scout, bar-raiser): never changes the checkout', () => 
       'git fetch origin main:main',
       'git co main',
       'git clone https://github.com/o/r',
+      `git clone https://github.com/o/r ${join(SCRATCH, 'r')}`,
+      'git fetch origin',
+      'git fetch',
+      'git reflog drop --all',
+      'git reflog expire --all',
+      'git reflog delete HEAD@{1}',
       'cd .. && git checkout main',
       'git -C ../x reset --hard',
       'git status; git checkout -- src',
@@ -184,9 +192,9 @@ describe('readonly role (scout, bar-raiser): never changes the checkout', () => 
       'git worktree list',
       'git config --get user.name',
       'git remote -v',
-      'git fetch origin',
+      'git reflog',
+      'git reflog show -5',
       'git -C ../x log',
-      `git clone https://github.com/o/r ${join(tmpdir(), 'r')}`,
       'gh pr view 150 --comments',
       'gh pr diff 150',
       'gh pr checks 150',
@@ -196,11 +204,63 @@ describe('readonly role (scout, bar-raiser): never changes the checkout', () => 
       'npx vitest run test/x.test.ts > /tmp/out.log 2>&1',
       'ls 2>/dev/null',
       'npm test 2>&1 | tail -5',
-      'cp src/a.ts /tmp/a.ts',
       'echo x > "$TMPDIR/x"',
-      `echo x > ${join(tmpdir(), 'x')}`,
+      `echo x > ${join(SCRATCH, 'x')}`,
       'grep -rn "git checkout" .claude/agents',
+      "sed -n '1,20p' src/cli.ts",
+      'sort -u a.txt',
+      'curl -s https://example.com',
+      "find . -name '*.ts'",
+      'git log --oneline --orderfile=x',
     ]);
+  });
+
+  it('runs no file-writing command, even into a temp dir (a redirect is the one way out)', () => {
+    expectBlocked('readonly', [
+      'cp src/a.ts /tmp/a.ts',
+      'tee /tmp/x',
+      'mkdir -p /tmp/x',
+      'touch /tmp/x',
+      'rm /tmp/x',
+      'ln -s a /tmp/b',
+      'dd if=a of=/tmp/b',
+      'rsync -a src/ /tmp/b',
+      'install a /tmp/b',
+      "sed -i '' s/a/b/ /tmp/x",
+      'perl -pi -e s/a/b/ /tmp/x',
+      'sort -o /tmp/x a',
+      'curl -o /tmp/x https://example.com',
+      'curl -sO https://example.com/x',
+      'wget https://example.com',
+      'find . -name x -delete',
+      'tar -xf a.tar',
+      'patch -p1 < /tmp/a.diff',
+    ]);
+  });
+
+  it('rejects git options and settings that write a file or run a program', () => {
+    expectBlocked('readonly', [
+      'git show --output=src/cli.ts HEAD',
+      'git diff --output src/cli.ts',
+      'git log -p --output=/tmp/x',
+      'git grep -Ocat x',
+      'git grep --open-files-in-pager=vim x',
+      'git -c core.pager=cat log',
+      "git -c 'core.pager=tee src/x' log",
+      "PAGER='rm -rf src' git log",
+      "GIT_CONFIG_PARAMETERS=\"'core.pager=cat'\" git log",
+    ]);
+    expectBlocked('feature', [
+      "git -c core.pager='git push' log",
+      "GIT_CONFIG_PARAMETERS=\"'alias.p=push'\" git p",
+      'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p',
+    ]);
+  });
+
+  it('redirects into a temp clone', () => {
+    const clone = join(SCRATCH, 'clone');
+    mkdirSync(join(clone, '.git'), { recursive: true });
+    expectAllowed('readonly', [`git -C ${clone} log > ${join(clone, 'log.txt')}`]);
   });
 });
 
@@ -210,7 +270,7 @@ describe('debugger role: writes only under test/ (probes in test/probes/) or a t
   mkdirSync(join(repo, 'test/probes'), { recursive: true });
   mkdirSync(join(repo, 'src'));
   symlinkSync(join(repo, 'src'), join(repo, 'test/srclink'));
-  const outside = realTempDir('commet-guard-tmp-');
+  const outside = SCRATCH;
 
   it('blocks Edit/Write to app code, by any path', () => {
     for (const path of [
@@ -235,6 +295,34 @@ describe('debugger role: writes only under test/ (probes in test/probes/) or a t
 
   it('applies the same rule to shell writes, but leaves git and test runs alone', () => {
     expectBlocked('debugger', ['echo x > src/cli.ts', 'cp /tmp/a src/a.ts', "sed -i '' s/a/b/ src/cli.ts"], repo);
+  });
+
+  it('checks every path a writer touches', () => {
+    expectBlocked('debugger', [
+      "sed -i 's/a/b/' src/cli.ts /tmp/safe",
+      "sed -i '' s/a/b/ test/x.ts src/cli.ts",
+      'sed -i.bak -e s/a/b/ test/x.ts src/cli.ts',
+      'sed --in-place -e s/a/b/ src/cli.ts test/x.ts',
+      'perl -pi -e s/a/b/ test/x.ts src/cli.ts',
+      'cp -t src /tmp/x',
+      'cp --target-directory=src /tmp/x',
+      'cp --target-directory src /tmp/x',
+      'cp -rt src /tmp/x',
+      'ln -t src /tmp/x',
+      'mv -t src test/a',
+      'install -d test/x src/y',
+      'rsync -a /tmp/x/ test/x/',
+      'tar -xf /tmp/a.tar',
+      'patch -p1 < /tmp/a.diff',
+    ], repo);
+    expectAllowed('debugger', [
+      "sed -i '' s/a/b/ test/x.ts",
+      'sed -i.bak -e s/a/b/ test/x.ts test/y.ts',
+      'perl -pi -e s/a/b/ test/x.ts',
+      'cp src/cli.ts test/fixtures/cli.ts',
+      'cp -t test/probes /tmp/x src/cli.ts',
+      'mkdir -p test/probes/x /tmp/y',
+    ], repo);
     expectAllowed('debugger', [
       'cat > test/probes/p.mjs <<EOF\nconsole.log(1)\nEOF',
       'git checkout abc123',

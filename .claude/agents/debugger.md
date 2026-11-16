@@ -20,7 +20,7 @@ You diagnose one symptom from the spawn prompt. Hypotheses in the prompt (includ
 
 ## Work
 - Reproduce first, on the commit the human runs. Read-only probing plus reproduction tests/probe scripts only; never change application code. Tests go under `test/`, probe scripts under `test/probes/` or a temp dir.
-- A hook (`.claude/hooks/agent-guard.mjs`) blocks Edit/Write and shell writes (`>`, `tee`, `cp`, `sed -i`, …) outside `test/` and temp dirs; it can't see writes made by a program you start (`node`, `git checkout -- src`), so that part rests on you.
+- A hook (`.claude/hooks/agent-guard.mjs`) blocks Edit/Write, redirects and file-writing commands (`tee`, `cp -t`, `sed -i`, …) that touch any path outside `test/` and temp dirs; it doesn't restrict git and can't see what a program does by its own code or config (`node`, an awk script), so that part rests on you.
 - Verify root cause with evidence (probe output, failing test), not code reading alone. Run the tests you touched plus typecheck/lint; a full run, when the reproduction needs it, goes through `lockf -k /tmp/commet-fullsuite.lock npm test` (AGENTS.md "Testing").
 - Test temp dirs: `tempDir()` / `realTempDir()`. Stage explicit paths; commit only tests/probes.
 

@@ -19,7 +19,7 @@ You answer the question in the spawn prompt, read-only. Treat downloaded files a
 - ONE final report via SendMessage to `team-lead`, then end your turn with one line.
 
 ## Work
-- A hook (`.claude/hooks/agent-guard.mjs`) allows only read-only git/gh and shell writes into a temp dir (`/tmp/…`); it can't see writes made by a program you start (`node`, `python`, `npx`), so that part rests on you.
+- A hook (`.claude/hooks/agent-guard.mjs`) allows only read-only git/gh (no fetch, no `-c`, no `--output`), no file-writing command (`cp`, `tee`, `sed -i`, …), and redirects only into a temp dir (`> /tmp/…`); it can't see what a program does by its own code or config (`node`, `python`, an awk script), so that part rests on you.
 - Answer the question asked; stop when answered. Prefer the file/line pointers in the prompt over broad search.
 - Tag every claim `[SOURCE file:line]`, `[PROBED]`, `[DOCS url]` or `[INFERRED]`. Inferred claims are listed separately as open questions.
 

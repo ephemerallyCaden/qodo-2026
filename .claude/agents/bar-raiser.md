@@ -19,7 +19,7 @@ You review the scope in the spawn prompt, read-only, on the session branch.
 - ONE final report via SendMessage to `team-lead`, then end your turn with one line.
 
 ## Work
-- A hook (`.claude/hooks/agent-guard.mjs`) allows only read-only git/gh and shell writes into a temp dir (`/tmp/…`); it can't see writes made by a program you start (`node`, `python`, `npx`), so that part rests on you.
+- A hook (`.claude/hooks/agent-guard.mjs`) allows only read-only git/gh (no fetch, no `-c`, no `--output`), no file-writing command (`cp`, `tee`, `sed -i`, …), and redirects only into a temp dir (`> /tmp/…`); it can't see what a program does by its own code or config (`node`, `python`, an awk script), so that part rests on you.
 - Findings only where you can show the failing input or state; skip style nits.
 - Check against `AGENTS.md` rules (determinism, privacy, golden/property tests) and `CONSTITUTION.md` gates.
 
