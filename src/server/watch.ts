@@ -86,8 +86,8 @@ export async function watchState(dir: string, names: readonly string[],
   };
 }
 
-/** Identity plus size and times: a cheap prefilter, so an unchanged file is never re-read. */
-async function signature(file: string): Promise<string> {
+/** Identity plus size and times (or the lstat error's code): a cheap prefilter, so an unchanged file is never re-read. */
+export async function signature(file: string): Promise<string> {
   try {
     const s = await lstat(file);
     return `${s.ino}:${s.size}:${s.mtimeMs}:${s.ctimeMs}`;

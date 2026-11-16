@@ -152,6 +152,15 @@ describe('EventStreamParser', () => {
     expect(p.rejected).toBe(2);
     expect(parseLiveEvent('{"type":"fog"}')).toBeNull();
   });
+
+  it('takes the server\'s rescan outcomes (#95) only with a boolean and a whole exit code 0–255', () => {
+    expect(parseLiveEvent('{"type":"rescan","ok":false,"exitCode":5}')).toEqual({ type: 'rescan', ok: false, exitCode: 5 });
+    expect(parseLiveEvent('{"type":"rescan","ok":true,"exitCode":0,"extra":"dropped"}')).toEqual({ type: 'rescan', ok: true, exitCode: 0 });
+    for (const bad of ['{"type":"rescan","ok":"no","exitCode":5}', '{"type":"rescan","ok":false}', '{"type":"rescan","ok":false,"exitCode":1.5}',
+      '{"type":"rescan","ok":false,"exitCode":-1}', '{"type":"rescan","ok":false,"exitCode":256}', '{"type":"rescan","ok":false,"exitCode":"5"}']) {
+      expect(parseLiveEvent(bad), bad).toBeNull();
+    }
+  });
 });
 
 describe('bitmap font', () => {

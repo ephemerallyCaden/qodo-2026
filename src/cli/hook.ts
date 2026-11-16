@@ -6,13 +6,13 @@ import { lstatSync, mkdirSync, readFileSync, realpathSync, rmdirSync, rmSync } f
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommetError, EXIT } from '../core/errors.js';
-import { lineHasher, sha256Hex } from '../core/hash.js';
+import { lineHasher } from '../core/hash.js';
 import { installText, removeText, shownGroup } from '../hooks/claude-settings.js';
 import { eventsFromPayload, placePath } from '../hooks/event.js';
 import {
   applyInstall, applyRemove, CHAINED, hookScript, hooksTarget, ownHooksDir, planInstall, planRemove, shellQuote, type HookStep, type RemoveStep,
 } from '../hooks/git-hooks.js';
-import { coalescedRefresh } from '../hooks/refresh.js';
+import { coalescedRefresh, refreshKey } from '../hooks/refresh.js';
 import { gitRunner, tryGit, type Git } from '../scan/git.js';
 import { repoIdOf, worktreePaths } from '../scan/repo.js';
 import { appendEvents, dropRecord } from '../state/events.js';
@@ -35,7 +35,7 @@ const MAX_PAYLOAD_BYTES = 32 << 20;
 
 /** Where the hooks run the CLI from: this node and this package's dist/cli.js (overridable for tests). */
 export interface HookPaths { node: string; cli: string }
-const defaultPaths = (): HookPaths => ({ node: process.execPath, cli: fileURLToPath(new URL('../cli.js', import.meta.url)) });
+export const defaultPaths = (): HookPaths => ({ node: process.execPath, cli: fileURLToPath(new URL('../cli.js', import.meta.url)) });
 
 interface Parts { git: boolean; claude: boolean; yes: boolean }
 
@@ -336,7 +336,7 @@ async function event(io: Io, now: () => number): Promise<number> {
 async function refresh(io: Io, scan: (io: Io) => Promise<number>): Promise<number> {
   const repo = await openRepo(io.cwd);
   const quiet: Io = { stdout: () => undefined, stderr: () => undefined, cwd: io.cwd, env: io.env };
-  return coalescedRefresh(stateDir(repo.commonDir), sha256Hex(repo.top ?? repo.commonDir).slice(0, 12), () => scan(quiet));
+  return coalescedRefresh(stateDir(repo.commonDir), refreshKey(repo.top, repo.commonDir), () => scan(quiet));
 }
 
 function usage(io: Io, why: string): number {

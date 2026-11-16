@@ -29,8 +29,19 @@ export const TOKEN_HEADER = 'x-commet-token';
 /** Built web bundle, relative to the package root. Served at `/`; the bundle itself holds no repo data. */
 export const WEB_DIST = 'dist/web';
 
-/** One `data:` line of the events stream. The view refetches the named resource. */
-export interface LiveEvent { type: 'snapshot' | 'layout' | 'fog'; head: Sha }
+/** One `data:` line of the events stream. The view refetches the named resource, or (`rescan`) says how the server's own rescan went. */
+export type LiveEvent = ResourceEvent | RescanEvent;
+
+/** A state resource changed: the view refetches it. `head` is the scan's (for `fog`, the fog's). */
+export interface ResourceEvent { type: 'snapshot' | 'layout' | 'fog'; head: Sha }
+
+/**
+ * #95: `commet open` rescans when HEAD or a branch moves. Sent when a rescan fails (`ok: false`, with
+ * `commet scan`'s exit code, 1 when it couldn't run), and when one succeeds after a failure (`ok: true`,
+ * exit code 0). A successful rescan's data arrives as its snapshot, layout and fog events; no reason
+ * text or path is ever sent (the terminal running `commet open` shows the scan's own message).
+ */
+export interface RescanEvent { type: 'rescan'; ok: boolean; exitCode: number }
 
 /**
  * Write responses. An action whose `at` the snapshot doesn't know (#58) gets `ChartUnknownHead`, told

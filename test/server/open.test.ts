@@ -22,12 +22,16 @@ const URL_LINE = /^Commet is open at http:\/\/127\.0\.0\.1:(\d+)\/#t=([A-Za-z0-9
 
 const oneCommitRepo = () => miniRepo([{ id: 'c1', at: '2026-10-01T09:00:00Z', path: 'src/a.ts', lines: ['export const a = 1;'] }]);
 
-/** Starts `commet open` in-process and resolves once it has printed its URL. */
+/**
+ * Starts `commet open` in-process and resolves once it has printed its URL. These tests scan by hand,
+ * so open's own rescans on ref changes (#95, test/server/rescan.test.ts) are off.
+ */
 async function launch(cwd: string, args: string[], webRoot: string, launchEnv: NodeJS.ProcessEnv = env) {
   let out = '';
   let err = '';
   const ac = new AbortController();
-  const done = runOpen(args, { stdout: (t) => (out += t), stderr: (t) => (err += t), cwd, env: launchEnv }, { signal: ac.signal, webRoot, pollMs: 100 });
+  const done = runOpen(args, { stdout: (t) => (out += t), stderr: (t) => (err += t), cwd, env: launchEnv }, { signal: ac.signal, webRoot, pollMs: 100,
+    rescan: null });
   let code: number | undefined;
   void done.then((c) => (code = c));
   await waitFor(() => URL_LINE.test(out) || code !== undefined, 20_000, 'the URL');

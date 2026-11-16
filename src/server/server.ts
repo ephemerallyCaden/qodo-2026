@@ -1,7 +1,7 @@
 // The hardened local server behind `commet open` (R14). The only listener Commet has: 127.0.0.1,
 // Host-checked, token-gated data routes, no CORS. Surface: docs/contracts/phase2.md.
 import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from 'node:http';
-import { API, TOKEN_HEADER, type ChartResult, type DiffQuery, type DiffResult, type LiveEvent, type UnseenQuery, type UnseenResult } from '../core/contract/api.js';
+import { API, TOKEN_HEADER, type ChartResult, type DiffQuery, type DiffResult, type LiveEvent, type ResourceEvent, type UnseenQuery, type UnseenResult } from '../core/contract/api.js';
 import type { DroneView } from '../core/contract/drones.js';
 import type { ChartAction, FogView } from '../core/contract/fog.js';
 import { CommetError } from '../core/errors.js';
@@ -53,6 +53,8 @@ export interface CommetServer {
   url: string;
   /** True when the web bundle wasn't there at startup. */
   webMissing: boolean;
+  /** Sends a live event to every open view (#95: how `commet open`'s own rescan went; a failure is also sent to views that connect until one works again). */
+  announce(ev: LiveEvent): void;
   close(): Promise<void>;
 }
 
@@ -92,10 +94,13 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
   let bundle = await loadBundle(o.webRoot);
   const webMissing = bundle === null;
 
+  const frame = (ev: LiveEvent) => `data: ${JSON.stringify(ev)}\n\n`;
   const broadcast = (ev: LiveEvent) => {
-    const line = `data: ${JSON.stringify(ev)}\n\n`;
+    const line = frame(ev);
     for (const res of streams) res.write(line);
   };
+  /** #95: the last rescan failure, until a rescan works again, so a view that connects meanwhile hears it too. */
+  let failedRescan: LiveEvent | null = null;
 
   const routes = new Map<string, { method: 'GET' | 'POST'; handle: Handler }>([
     [API.snapshot, { method: 'GET', handle: async (_req, res) => sendState(res, STATE_FILES.snapshot, NO_SNAPSHOT) }],
@@ -188,6 +193,7 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
     if (streams.size >= MAX_STREAMS) return sendJson(res, 503, { error: 'too many open event streams' });
     res.writeHead(200, { ...BASE_HEADERS, 'content-type': 'text/event-stream; charset=utf-8' });
     res.write(': commet live updates\n\n');
+    if (failedRescan) res.write(frame(failedRescan));
     streams.add(res);
     req.socket.setTimeout(0);
     res.on('close', () => streams.delete(res));
@@ -281,6 +287,10 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
     port,
     url: `http://${BIND_HOST}:${port}/#t=${o.token}`,
     webMissing,
+    announce: (ev) => {
+      if (ev.type === 'rescan') failedRescan = ev.ok ? null : ev;
+      broadcast(ev);
+    },
     close: () => new Promise<void>((resolve) => {
       watcher.close();
       for (const res of streams) res.end();
@@ -292,7 +302,7 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
 }
 
 /** The LiveEvent for a changed state file, or null when its head can't be read (nothing to announce). */
-function liveEvent(name: string, body: Buffer): LiveEvent | null {
+function liveEvent(name: string, body: Buffer): ResourceEvent | null {
   let doc: unknown;
   try {
     doc = JSON.parse(body.toString('utf8'));

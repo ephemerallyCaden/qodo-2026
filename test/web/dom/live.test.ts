@@ -401,3 +401,30 @@ describe('drones in live mode (#80)', () => {
     slow.resolve(droneView(OTHER, []));
   });
 });
+
+describe('the server\'s own rescans in live mode (#95)', () => {
+  it('a failed rescan is said with its exit code, the map stays, and it is said again after a reload until a good one; the events fetch nothing', async () => {
+    const fog = fogAt(HEAD);
+    const l = await live({ layout: miniLayout, fog });
+    const calls = l.fogCalls();
+    l.send({ type: 'rescan', ok: false, exitCode: 5 });
+    await settle();
+    expect(l.last()).toBe('automatic rescan failed (exit 5): showing the last scan; the terminal running `commet open` says why');
+    expect(l.view.fog).toBe(fog);
+    expect(l.view.model).not.toBeNull();
+    expect([l.fogCalls(), l.layouts.length]).toEqual([calls, 0]);
+    // Still the state after a reload (a layout event, or a reconnect): said again after the reload's own status text.
+    l.layouts.push(async () => miniLayout);
+    l.fogs.push(async () => fog);
+    await l.emit({ type: 'layout', head: HEAD });
+    expect(l.last()).toBe('automatic rescan failed (exit 5): showing the last scan; the terminal running `commet open` says why');
+    l.send({ type: 'rescan', ok: true, exitCode: 0 });
+    await settle();
+    expect(l.last()).toBe('automatic rescan works again');
+    l.layouts.push(async () => miniLayout);
+    l.fogs.push(async () => fog);
+    await l.emit({ type: 'layout', head: HEAD });
+    expect(l.status.join('\n').split('automatic rescan failed').length - 1).toBe(2);
+    expect(l.fogCalls()).toBe(calls + 2);
+  });
+});

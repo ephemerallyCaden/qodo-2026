@@ -1,7 +1,7 @@
 // A text/event-stream parser for GET /api/events, which the view reads with fetch (not EventSource)
 // so the token travels in a header, never in a URL (contract). Chunks may split anywhere, including
 // inside a line or a CRLF. Each event's data is one LiveEvent; anything else is counted, not used.
-import type { LiveEvent } from '../../../src/core/contract/api.js';
+import type { LiveEvent, ResourceEvent } from '../../../src/core/contract/api.js';
 
 const TYPES = ['snapshot', 'layout', 'fog'];
 /** A runaway line (no newline for this long) is dropped rather than buffered forever. */
@@ -65,6 +65,12 @@ export function parseLiveEvent(text: string): LiveEvent | null {
   try { v = JSON.parse(text); } catch { return null; }
   if (typeof v !== 'object' || v === null) return null;
   const o = v as Record<string, unknown>;
+  // #95: how the server's own rescan went; an exit code is a whole number 0–255.
+  if (o['type'] === 'rescan') {
+    const code = o['exitCode'];
+    return typeof o['ok'] === 'boolean' && typeof code === 'number' && Number.isInteger(code) && code >= 0 && code <= 255
+      ? { type: 'rescan', ok: o['ok'], exitCode: code } : null;
+  }
   if (typeof o['type'] !== 'string' || !TYPES.includes(o['type']) || typeof o['head'] !== 'string') return null;
-  return { type: o['type'] as LiveEvent['type'], head: o['head'] };
+  return { type: o['type'] as ResourceEvent['type'], head: o['head'] };
 }

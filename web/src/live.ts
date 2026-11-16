@@ -59,6 +59,8 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   let drawnHead: string | null = null;
   /** A fog was refused or failed and the HUD said so (pairFog). */
   let fogHeld = false;
+  /** #95: what the HUD says while the server's own rescans fail; null once one works again. */
+  let rescanFailed: string | null = null;
   const rig = new FreeFlightRig(PARKED_POSE); // replaced by the start pose once a layout loads
   // #75: review and chart the focused planet's unseen files (the star's in free flight).
   const panel = new Panel({ client, fogTicket: () => view.fogTicket(), applyFog: (f, t) => view.applyFog(f, t),
@@ -137,6 +139,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       say();
       if (fogChanged) hud.announce(fogChanged); // what the reload's fog changed (a rescan's refogs), not overwritten by say()
       if (paired.notice) hud.announce(paired.notice); // after say(), so the status line keeps it
+      if (rescanFailed) hud.announce(rescanFailed); // still true after a reload (#95): the drawn scan is the last good one
       void drones.refresh(drawnHead);
       redraw();
     } catch (e) {
@@ -220,7 +223,11 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   await update('layout');
   let paused = false;
   client.follow((ev) => {
-    if (ev.type === 'layout' || ev.type === 'fog') void update(ev.type);
+    // #95: the server's own rescan failed (its new data would come as layout and fog events), or works again.
+    if (ev.type === 'rescan') {
+      rescanFailed = ev.ok ? null : `automatic rescan failed (exit ${ev.exitCode}): showing the last scan; the terminal running \`commet open\` says why`;
+      hud.announce(rescanFailed ?? 'automatic rescan works again');
+    } else if (ev.type === 'layout' || ev.type === 'fog') void update(ev.type);
     else if (ev.type === 'snapshot' && ev.head === drawnHead) void drones.refresh(drawnHead); // a new head's layout event refetches for itself
   }, (status) => {
     // The server keeps no backlog, so a change made while the stream was down (or before it first
