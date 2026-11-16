@@ -81,9 +81,10 @@ export class SystemScene {
     this.scene.add(star);
     this.disposables.push(this.starMat);
 
-    // Moonlets (root files, unmatched tests): small grey regolith spheres on the star's innermost orbit.
+    // Moonlets (root files, unmatched tests): the planets' test-moon look (star-art.md S6: warm peach,
+    // art-direction §4 small moons), on the star's innermost orbit.
     if (model.star.moonlets.length > 0) {
-      const mat = toonMaterial(palette.world.moon.slice(1), palette.fog.veil.moon);
+      const mat = toonMaterial(palette.world.moonBody, palette.fog.veil.moonBody);
       const orbit = model.star.moonlets[0]!.orbit; // one orbit for every moonlet
       const geo = MOON_GEO.clone(); // its own copy: it carries the moonlets' fog
       this.moonletFog = moonFogAttribute(model.star.moonlets.length);

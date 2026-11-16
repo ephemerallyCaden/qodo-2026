@@ -3,7 +3,8 @@
 // (world.starDisc, world.starCorona; never teal), core at the centre and each band further out, with a
 // flat, lumpy corona past the limb; frame 720 (one 24 s loop) is frame 0 and the seam is no bigger
 // than any other step; reduced motion holds it; far away it fades at 0.15 (S5); fog never covers it
-// (#74); and a drone (#80) still draws in front of it. Every check fails on an empty frame.
+// (#74); its moonlets wear the planets' moon look (S6); and a drone (#80) still draws in front of it.
+// Every check fails on an empty frame.
 import { expect, test } from '@playwright/test';
 import { palette } from '../../src/core/palette.js';
 import type { CameraPose, RenderInput } from '../../src/core/contract/api.js';
@@ -161,7 +162,7 @@ test.describe('the star (#81)', () => {
     expect(view.errors).toEqual([]);
   });
 
-  test('fog never covers the star (#74): all fogged and all clear draw the same star', async ({ page }) => {
+  test('fog never covers the star (#74): all fogged and all clear draw the same star; its moonlets wear the moon look (S6)', async ({ page }) => {
     const view = await openView(page, systemView());
     const pose = close(MINI);
     const input: RenderInput = { layout: MINI, camera: cam(pose), depthFade: false };
@@ -179,6 +180,12 @@ test.describe('the star (#81)', () => {
     expect(diffPixels(fogged!.pixels, clear!.pixels), 'not vacuous: the fog changed the moonlets').toBeGreaterThan(0);
     expect(changed(a, b), 'star pixels changed with the fog').toEqual([]);
     expect(changed(a, c)).toEqual([]);
+    // S6: its moonlets wear the planets' test-moon look (warm peach), never the grey regolith ramp
+    const grey: readonly string[] = palette.world.moon, peach: readonly string[] = palette.world.moonBody;
+    const inSpan = (px: readonly string[], set: readonly string[]) => px.filter((h, i) => set.includes(h) && radiusOf(clear!.pixels, i) <= discPx(MINI, pose.dist) * 2).length;
+    console.log(`moonlets (all clear): ${inSpan(b, peach)} px warm peach, ${count(b, grey)} px grey regolith`);
+    expect(inSpan(b, peach), 'moonlets in the moon look').toBeGreaterThan(20);
+    expect(count(b, grey), 'grey regolith moonlets').toBe(0);
     expect(view.errors).toEqual([]);
   });
 
