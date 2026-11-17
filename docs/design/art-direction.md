@@ -6,13 +6,13 @@
 
 Commet is **a calm, hand-held pocket universe of your codebase, with the code layer glitching through it.**
 
-You look down at a small, softly lit solar system that loops on its own. Clouds drift, moons swing past and rings shimmer, and the whole scene comes back to where it started without a seam. It reads like a toy you could hold. Over that natural world sits a thin, honest layer of *code*: glyphs, corrupted sectors and decoded labels. It never looks like decoration. It looks like the planet itself briefly showing its source.
+You look down at a small, softly lit solar system that loops on its own. Clouds drift, moons swing past and rings shimmer, and the whole scene comes back to where it started without a seam, while the planets themselves creep round the star far more slowly (§7). It reads like a toy you could hold. Over that natural world sits a thin, honest layer of *code*: glyphs, corrupted sectors and decoded labels. It never looks like decoration. It looks like the planet itself briefly showing its source.
 
 **Pillars**
 1. **Softness first.** The natural world is gentle, rounded and warm-lit. Nothing is harsh except the code layer, and that only in small doses.
 2. **Pixel honesty.** Everything is real 3D, then rendered small and blown up. Every pixel on screen is a real low-resolution pixel. No fake pixel art, no sub-pixel smoothing; surfaces are banded, and only distance is allowed to grade smoothly.
 3. **Readable at 180 pixels tall.** Every feature must survive the internal resolution: lines at least 2 px, faces as shapes rather than text, and clear value contrast. If it can't be read at 320×180, it doesn't ship.
-4. **Mesmerising loops.** Every moving layer completes a whole number of cycles per loop. The eye never catches a reset.
+4. **Mesmerising loops.** Every moving layer completes a whole number of cycles per loop. The eye never catches a reset. The one exception is the planets' slow orbits round the star (§7).
 5. **The code layer is a filter, not a sticker.** Glitches reuse the colours of whatever they cover. One accent colour, used sparingly, marks events.
 
 ## 2. Influences
@@ -185,16 +185,22 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 
 ## 7. Motion
 
-- **Loop lock:** every layer completes a whole number of cycles per loop. The default loop is **24 s**:
+- **Loop lock:** every layer except the planets' orbits completes a whole number of cycles per loop. The default loop is **24 s**:
   - the surface turns **2** times, right to left, at about 1 rad/s;
   - clouds turn **3** times, drifting 1.5× faster than the surface so they visibly slide over the terrain;
   - each moon orbits once per surface turn;
   - ring debris flows 1/5 turn per surface turn;
   - the crew's bob, sway and blink are locked to whole cycles.
 - **Alternative loop:** 36 s at 3:4.
+- **Slow orbits (human, 2026-11-10, #60):** planets orbit the star very slowly, off the loop: one turn every **10 minutes** (0.6°/s, 25 loops; `ORBIT_SECONDS` in `web/src/model/motion.ts`). One whole turn per 24 s loop would be 15°/s, which swept a large system past the camera and fought free flight and focus, so the orbits gave up the seamless loop.
+  - Every planet turns at the same constant rate, with no easing, so the system turns as one: planets keep their places relative to each other (the layout's slots and phases), and a speed never reads as data (constitution principle 4).
+  - Seen from the start pose, no planet crosses more than 1.5% of the frame per second (over a minute to cross it), in a small system and a large one alike, because the start pose's distance grows with the system. Commet's own outermost planet moves 0.36 units/s, under the slowest free-flight speed (0.5 units/s).
+  - Moons, clouds, drones, fog and labels ride with their planet.
+  - Orbit position is a function of the frame number alone. Every 18 000 frames (one orbit, 25 loops) the whole scene is exactly frame 0 again.
+- **Focus follows the orbit:** clicking a planet, or `[` / `]`, locks the camera onto it. The camera glides in, then moves with the planet along its orbit without turning, so the planet stays centred at the angle and zoom the user chose while the star and the other planets turn past behind it. Escape, or any fly key, returns to free flight from wherever the camera is, and the planet orbits on out of the centre. Home returns to the start pose turned with the orbits, so it frames the system exactly as it first appeared, with every planet as far from the eye (the depth fade of §5 holds).
 - **Parallax order:** stars are static, then ring, surface, small moon and large moon, each moving faster.
-- **Seamless test:** the difference between the last frame and the first must be no more than a normal frame-to-frame difference.
-- **Reduced motion** freezes on a fixed frame.
+- **Seamless test:** the difference between the last frame and the first must be no more than a normal frame-to-frame difference, for every loop-locked layer. Frame 720 is no longer frame 0 for planets, so render tests pin the frames they compare: they follow a planet with the camera, as focus does, or compare across one whole orbit (`test/render/orbits.spec.ts`).
+- **Reduced motion** freezes on a fixed frame, frame 0, orbits included. Focus cuts instead of gliding.
 
 ## 8. Astronauts (the crew)
 
@@ -248,7 +254,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 | Cracks | ≥2 px jagged Voronoi cracks plus open lava pools / ice water |
 | Clouds | Float r≈1.05, offset shadow, 1.5× drift, blended clumps, ~28% cover (lava ash ~8%) |
 | Rings | Thin chunky clumps, 1 px dots, front arc over disc; meaning open, library only until it has one |
-| Motion | 24 s loop lock (surface 2 : clouds 3); 36 s 3:4 alternative; reduced motion freezes |
+| Motion | 24 s loop lock (surface 2 : clouds 3); 36 s 3:4 alternative; planets orbit once per 10 min, off the loop, and focus follows them (#60); reduced motion freezes |
 | Astronaut | Chibi SDF, 4:3 screen visor, ApprenticeHack V2 eyes, BLK 36 |
 | Code layer | Filter-style glyphs; planet artefacts adopted as a toggle |
 | Labels and UI | Bitmap pixel font at native resolution, outside the pixel pass |
