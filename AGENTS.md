@@ -104,6 +104,7 @@ Where it differs from the review loop above:
 - The file has a `#` title, a `>` note on what to paste and what's still pending, the post between two `----` lines, then `## Notes`.
 - When asked to write the post or change it, edit that file in place. Never start a second copy (`-paste`, `-short`, `-v2`): copies drift, and Day 4 ended up with several. Supporting files (a GIF's on-screen text, a draft ticket) can sit beside it as `day<N>-<what>.md`.
 - Never delete, rename or overwrite a post file without first diffing it against what you keep and carrying the human's edits over. The human edits these files in their editor, and an unsaved editor tab doesn't survive a rename.
+- Each post's subject (the ticket or PR it is about) is a substantial new feature a judge can see, such as per-session drones or planet creation. Backend, infrastructure, test and cleanup work can appear as a supporting line, never as the subject. If a day's challenge needs a PR with findings, build a visible feature for it rather than using a background PR.
 - After each change, add to its `## Notes`: the biggest Qodo lesson, a telling number, anything on the day's theme.
 - Never post it. Posting needs the human.
 - Review: one blind-reader round with at most two readers, then one fix pass. A second round only if the human asks. Charts and images get one brief and one revision. (Day 3 took four text rounds and seven chart versions; Day 6 took five rounds across two attempts.)
