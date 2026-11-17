@@ -3,7 +3,7 @@
 // the contract's CameraPose (position, target, fovDeg) is what crosses the render hook.
 import type { CameraPose } from '../../../src/core/contract/api.js';
 import { depthStretch, type DepthStretch } from '../model/depth.js';
-import { TURNS } from '../model/motion.js';
+import { orbitAngle } from '../model/motion.js';
 import { planetCentre, planetReach, type SystemModel } from '../model/system.js';
 import { add, cross, dot, lerp, length, scale, sub, type Occluder, type Sphere, type Vec3 } from '../model/vec.js';
 
@@ -66,23 +66,21 @@ const START_FIT = { x: 0.92, y: 0.85 } as const;
 /**
  * The view's start pose: 28° above the orbit plane, looking at the middle of the system's bodies
  * (each planet with its moons, the star, the moonlet orbit), as close as they all fit START_FIT at
- * frame 0, found by bisection. Planets hold still (TURNS.orbits is 0); if they orbit, whole orbits
- * are fitted instead. A star alone fills 45% of the frame height, like a focused planet.
+ * frame 0, found by bisection. The planets then orbit out of this framing, slowly (#60): see
+ * startPoseAt for the same framing at a later frame. A star alone fills 45% of the frame height, like
+ * a focused planet.
  */
 export function startPose(model: SystemModel): OrbitPose {
   const pts: Vec3[] = [];
   const sphere = (c: Vec3, r: number) => {
     for (const d of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as Vec3[]) pts.push(add(c, scale(d, r)));
   };
-  const circle = (r: number, h: number) => {
-    for (let k = 0; k < 24; k++) { const a = (k / 24) * Math.PI * 2; pts.push([Math.cos(a) * r, h, Math.sin(a) * r], [Math.cos(a) * r, -h, Math.sin(a) * r]); }
+  const circle = (r: number) => {
+    for (let k = 0; k < 24; k++) { const a = (k / 24) * Math.PI * 2; pts.push([Math.cos(a) * r, 0, Math.sin(a) * r]); }
   };
   sphere([0, 0, 0], model.star.radius);
-  if (model.star.moonlets.length) circle(model.star.moonlets[0]!.orbit, 0);
-  for (const p of model.planets) {
-    if (TURNS.orbits === 0) sphere(planetCentre(p, 0), planetReach(p));
-    else circle(p.orbit + planetReach(p), planetReach(p));
-  }
+  if (model.star.moonlets.length) circle(model.star.moonlets[0]!.orbit);
+  for (const p of model.planets) sphere(planetCentre(p, 0), planetReach(p));
   let pose: OrbitPose = { target: [0, 0, 0], yaw: 0.35, pitch: (28 * Math.PI) / 180, dist: 1 };
   // a star alone (no planets) is framed like a focused planet, so the frame is never near-empty
   if (model.planets.length === 0) return { ...pose, dist: framingDistance(model.star.radius, FOCUS_FILL) };
@@ -108,9 +106,22 @@ export function startPose(model: SystemModel): OrbitPose {
 }
 
 /**
+ * The start pose at a frame: startPose turned round the star with the planets (every planet orbits at one
+ * rate, #60), so it frames the system exactly as frame 0 does, and every body is as far from the eye. Home
+ * goes here, so it always shows the system as it first appeared, wherever the orbits have taken it.
+ */
+export function startPoseAt(model: SystemModel, frame: number): OrbitPose {
+  const p = startPose(model), a = orbitAngle(frame);
+  const c = Math.cos(a), s = Math.sin(a), [x, y, z] = p.target;
+  // the same turn as planetCentre's: +a about +y takes (x, z) to (x cos a + z sin a, z cos a - x sin a)
+  return { ...p, target: [x * c + z * s, y, z * c - x * s], yaw: p.yaw + a };
+}
+
+/**
  * The depth fade for a system (#59): its later steps scaled to the extent, and reaching at least the
  * farthest planet seen from the start pose, so that planet fades no further than the 0.72 step
- * (system-design §10, overview readability).
+ * (system-design §10, overview readability). Measured at frame 0; startPoseAt keeps every planet as far
+ * from the eye at any frame, so it holds at the start pose whenever Home is pressed (#60).
  */
 export function systemDepth(model: SystemModel, start: OrbitPose = startPose(model)): DepthStretch {
   const eye = eyeOf(start);

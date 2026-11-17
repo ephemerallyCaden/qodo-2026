@@ -2,7 +2,7 @@
 // planet focus, the HUD and live updates. Reduced motion freezes the frame, draws only on input and
 // cuts instead of gliding (AC7).
 import type { FogView } from '../../src/core/contract/fog.js';
-import { PARKED_POSE, startPose } from './camera/pose.js';
+import { PARKED_POSE, startPoseAt } from './camera/pose.js';
 import { FreeFlightRig } from './camera/rig.js';
 import { ViewError, type DataClient } from './data/client.js';
 import { Drones } from './drones/controller.js';
@@ -122,9 +122,10 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       fogHeld = paired.held;
       hud.clearError();
       const model = view.model!;
-      // Later reloads keep the camera (planets never move: append-only slots), except that a system
-      // which started empty, framed on its star, is reframed once planets appear.
-      if (!loaded || (!framedPlanets && model.planets.length > 0)) rig.reset(startPose(model));
+      // Later reloads keep the camera (planets keep their slots, append-only, and the frame count runs
+      // on, so nothing jumps), except that a system which started empty, framed on its star, is
+      // reframed once planets appear. The start pose turns with the orbits (#60): framed as at frame 0.
+      if (!loaded || (!framedPlanets && model.planets.length > 0)) rig.reset(startPoseAt(model, shown()));
       framedPlanets = model.planets.length > 0;
       loaded = true;
       // focusId is read now, after the awaits, so a focus change made during the reload wins
@@ -186,7 +187,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       setFocus(focus === null ? (dir > 0 ? 0 : n - 1) : (focus + dir + n) % n);
     },
     release: () => { drones.deselect(); setFocus(null); },
-    home: () => { drones.deselect(); if (view.model) { rig.reset(startPose(view.model)); setFocus(null); } },
+    home: () => { drones.deselect(); if (view.model) { rig.reset(startPoseAt(view.model, shown())); setFocus(null); } },
   });
 
   const loop = startLoop(({ frame: f, dtMs }) => {

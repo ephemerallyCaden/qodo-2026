@@ -36,6 +36,8 @@ export function renderHook(view: View, viewport: () => { w: number; h: number; d
       view.showHelp = false;
       view.depthFade = next.depthFade ?? true;
       view.resize(clampPixelHeight(next.pixelHeight), vp.w, vp.h, vp.dpr);
+      // No camera: the start pose of frame 0, held for every frame, as the live view's camera stays put
+      // while the planets orbit (#60), so frame n shows how far they have moved.
       pose = next.camera ? fromCameraPose(next.camera) : startPose(view.model!);
       input = next;
     },

@@ -1,12 +1,15 @@
-// The view's pure scene model (#30): layout → bodies, loop-locked motion, the info text.
+// The view's pure scene model (#30): layout → bodies, loop-locked motion, the slow orbits (#60), the info text.
 import { describe, expect, it } from 'vitest';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { infoLines, planetLines, summaryText, systemLines } from '../../web/src/model/describe.js';
-import { LOOP_FRAMES, REDUCED_MOTION_FRAME, TURNS, effectiveFrame, loopPhase, turnAngle } from '../../web/src/model/motion.js';
+import { startPose, project } from '../../web/src/camera/pose.js';
+import { MIN_FLY_SPEED } from '../../web/src/camera/rig.js';
+import { FPS, LOOP_FRAMES, ORBIT_FRAMES, ORBIT_SECONDS, REDUCED_MOTION_FRAME, TURNS, effectiveFrame, loopPhase, orbitAngle, turnAngle } from '../../web/src/model/motion.js';
 import { clampPixelHeight, frameWidth, upscaleFactor } from '../../web/src/model/pixels.js';
 import { mulberry32 } from '../../web/src/model/prng.js';
 import { HEALTHY_LOOKS, MOON_RADIUS, MILLI_PER_RENDER_UNIT, lookOf, moonOffset, moonletPosition, planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
 import { miniFog, miniLayout } from '../fixtures/contract/mini.js';
+import { selfLike, selfLikeRoots } from '../fixtures/overview.js';
 
 const clone = (): LayoutV1 => structuredClone(miniLayout);
 const longitude = (v: [number, number, number]) => Math.atan2(v[2], v[0]);
@@ -76,12 +79,10 @@ describe('systemModel', () => {
     expect(m2.planets[1]).toEqual(m.planets[1]);
   });
 
-  it('places planets at their frame-0 angle (phaseMilliturn) and keeps them there', () => {
+  it('places planets at their frame-0 angle (phaseMilliturn)', () => {
     const [x, , z] = planetCentre(m.planets[1]!, 0); // web: 250 milliturns, a quarter turn
     expect(x).toBeCloseTo(0, 9);
     expect(z).toBeCloseTo(-5.4, 9);
-    expect(TURNS.orbits).toBe(0);
-    expect(planetCentre(m.planets[1]!, 360)).toEqual(planetCentre(m.planets[1]!, 0));
   });
 
   it("reaches as far as a planet's moons, or its cloud tops", () => {
@@ -125,6 +126,76 @@ describe('loop-locked motion', () => {
     expect(effectiveFrame(537, true)).toBe(REDUCED_MOTION_FRAME);
     expect(effectiveFrame(537, false)).toBe(537);
     expect(effectiveFrame(5.7, false)).toBe(5);
+  });
+});
+
+describe('slow orbits (#60)', () => {
+  const m = systemModel(miniLayout);
+  /** A planet's angle round the star (counter-clockwise from +x seen from above, like phaseMilliturn). */
+  const angleOf = (c: readonly number[]) => Math.atan2(-c[2]!, c[0]!);
+  const turn = (a: number) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+
+  it('turns once every ORBIT_SECONDS (10 minutes), a whole number of loops, so it is the only motion off the loop', () => {
+    expect(ORBIT_SECONDS).toBe(600);
+    expect(ORBIT_FRAMES).toBe(18_000);
+    expect(ORBIT_FRAMES % LOOP_FRAMES).toBe(0); // 25 loops: every 18 000 frames the whole scene is frame 0 again
+    expect(orbitAngle(0)).toBe(0);
+    expect(orbitAngle(ORBIT_FRAMES)).toBe(0);
+    expect(orbitAngle(-1)).toBeCloseTo(2 * Math.PI * (1 - 1 / ORBIT_FRAMES), 12);
+    expect(orbitAngle(LOOP_FRAMES)).toBeCloseTo((2 * Math.PI) / 25, 12); // not loop-locked: one loop is 1/25 of a turn
+    for (const p of m.planets) {
+      expect(planetCentre(p, ORBIT_FRAMES)).toEqual(planetCentre(p, 0));
+      expect(planetCentre(p, LOOP_FRAMES)).not.toEqual(planetCentre(p, 0));
+    }
+  });
+
+  it('is a pure function of the frame number: the same frame gives the same centre, in any order, and a fraction of a frame is the frame', () => {
+    const p = m.planets[2]!;
+    const a = [5400, 7, 5400].map((f) => planetCentre(p, f));
+    expect(a[0]).toEqual(a[2]);
+    expect(planetCentre(p, 7.9)).toEqual(a[1]);
+    expect(planetCentre(systemModel(clone()).planets[2]!, 5400)).toEqual(a[0]);
+  });
+
+  it('moves every planet at one constant rate, on its own orbit, never easing', () => {
+    for (const p of m.planets) {
+      const at = [0, 1, 2, 3, 9000, 9001].map((f) => planetCentre(p, f));
+      for (const c of at) {
+        expect(Math.hypot(c[0], c[2])).toBeCloseTo(p.orbit, 9); // stays on its slot's orbit
+        expect(c[1]).toBe(0);
+      }
+      const step = (i: number) => turn(angleOf(at[i + 1]!) - angleOf(at[i]!));
+      for (const i of [1, 2, 4]) expect(step(i)).toBeCloseTo(step(0), 12);
+      expect(step(0)).toBeCloseTo((2 * Math.PI) / ORBIT_FRAMES, 12); // the same angle per frame for every planet
+      expect(turn(angleOf(at[0]!))).toBeCloseTo(turn(p.phase * 2 * Math.PI), 9);
+    }
+  });
+
+  it('keeps every planet where it was relative to the others: the system turns as one', () => {
+    const gaps = (f: number) => m.planets.slice(1).map((p) => turn(angleOf(planetCentre(p, f)) - angleOf(planetCentre(m.planets[0]!, f))));
+    for (const f of [1234, 9000, 17_999]) gaps(f).forEach((g, i) => expect(g).toBeCloseTo(gaps(0)[i]!, 9));
+  });
+
+  it('is slow enough not to fight free flight: from the start pose no planet crosses more than 1.5% of the frame a second, and the fastest moves under the slowest flight', () => {
+    for (const [name, layout] of [['mini', miniLayout], ['selfLike', selfLike], ['selfLikeRoots', selfLikeRoots]] as const) {
+      const sys = systemModel(layout), start = startPose(sys);
+      let share = 0, speed = 0;
+      for (let f = 0; f < ORBIT_FRAMES; f += 600) {
+        for (const p of sys.planets) {
+          const c0 = planetCentre(p, f), c1 = planetCentre(p, f + FPS);
+          speed = Math.max(speed, Math.hypot(c1[0] - c0[0], c1[2] - c0[2]));
+          const a = project(start, c0), b = project(start, c1);
+          if (a && b) share = Math.max(share, Math.hypot((b.x - a.x) / 2, (b.y - a.y) / 2)); // NDC spans 2 each way
+        }
+      }
+      expect(share, `${name}: share of the frame crossed per second`).toBeLessThan(0.015);
+      expect(share, `${name}: still moving`).toBeGreaterThan(0.005);
+      expect(speed, `${name}: render units per second`).toBeLessThan(MIN_FLY_SPEED);
+    }
+  });
+
+  it('freezes with every other layer under reduced motion', () => {
+    for (const f of [537, 9000]) expect(planetCentre(m.planets[1]!, effectiveFrame(f, true))).toEqual(planetCentre(m.planets[1]!, 0));
   });
 });
 

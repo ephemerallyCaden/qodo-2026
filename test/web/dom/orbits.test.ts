@@ -1,0 +1,197 @@
+// Focus on orbiting planets in live mode (#60): planets orbit slowly, a focused planet stays centred
+// as it orbits (the camera follows it, keeping the user's angle and zoom), Escape returns to free
+// flight where the camera is, Home turns with the orbits, and under reduced motion the orbits hold
+// frame 0 and focus cuts. Driven through runLive and the real free-flight rig, with a fake view that
+// records what each frame draws and a requestAnimationFrame the test steps by hand.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DataClient } from '../../../web/src/data/client.js';
+import { focusPose, project, startPose, startPoseAt, type OrbitPose } from '../../../web/src/camera/pose.js';
+import { GLIDE_MS } from '../../../web/src/camera/rig.js';
+import { runLive } from '../../../web/src/live.js';
+import { LOOP_FRAMES } from '../../../web/src/model/motion.js';
+import { planetCentre, systemModel, type SystemModel } from '../../../web/src/model/system.js';
+import type { Hud } from '../../../web/src/ui/hud.js';
+import type { View } from '../../../web/src/view.js';
+import { miniFog, miniLayout } from '../../fixtures/contract/mini.js';
+import { droneView } from '../../fixtures/drones.js';
+
+// The review panel (#75) and the drone panel need a DOM: no-ops here, as in live.test.ts.
+vi.mock('../../../web/src/ui/panel.js', () => ({ Panel: class { setFog() {} select() {} scale() {} } }));
+vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} } }));
+
+/** Frames requested with requestAnimationFrame, run by tick(). */
+let queued: FrameRequestCallback[] = [];
+let now = 0;
+
+function stubPage(reduced: boolean): void {
+  vi.stubGlobal('matchMedia', () => ({ matches: reduced, addEventListener: () => {} }));
+  vi.stubGlobal('devicePixelRatio', 1);
+  vi.stubGlobal('innerWidth', 640);
+  vi.stubGlobal('innerHeight', 360);
+  vi.stubGlobal('addEventListener', () => {});
+  const els = new Map<string, { textContent: string; hidden: boolean; contains: () => boolean }>();
+  vi.stubGlobal('document', { activeElement: null, getElementById: (id: string) => { if (!els.has(id)) els.set(id, { textContent: '', hidden: true, contains: () => false }); return els.get(id); } });
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { queued.push(cb); return queued.length; });
+  vi.stubGlobal('cancelAnimationFrame', () => {});
+}
+
+beforeEach(() => { queued = []; now = 0; });
+afterEach(() => { vi.unstubAllGlobals(); });
+
+interface Drawn { frame: number; pose: OrbitPose; focus: number | null }
+
+/** runLive on mini against a fake view whose focus targets are the real planets at each frame. */
+async function live(reduced = false) {
+  stubPage(reduced);
+  let model: SystemModel | null = null;
+  const drawn: Drawn[] = [];
+  const canvas = Object.assign(new EventTarget(), { focus() {}, setPointerCapture: () => {}, getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 360 }) });
+  const view = {
+    pass: { canvas },
+    labels: { px: 2 },
+    fog: null,
+    get model() { return model; },
+    onFog: null as unknown,
+    reducedMotion: reduced,
+    fogChange: { cleared: 0, refogged: 0 },
+    fogTicket: () => 1,
+    applyFog: () => true,
+    async load() { model = systemModel(miniLayout); },
+    selectedDrone: null,
+    setDrones: async () => true,
+    pickDroneAt: () => null,
+    planetAt: null as number | null,
+    pickAt: () => view.planetAt,
+    resize: () => {},
+    draw: (frame: number, pose: OrbitPose, focus: number | null) => { drawn.push({ frame, pose: structuredClone(pose), focus }); return {}; },
+    focusTarget: (i: number, frame: number) => (model ? { centre: planetCentre(model.planets[i]!, frame), radius: model.planets[i]!.radius } : null),
+  };
+  const client: DataClient = {
+    layout: async () => miniLayout,
+    fog: async () => miniFog,
+    follow: () => () => {},
+    drones: async () => droneView(miniLayout.source.head, []),
+    unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
+    diff: async () => ({ ok: false, error: 'no-such-file' }),
+    chart: async () => ({ ok: false, error: 'not used' }),
+  };
+  const hud = { announce: () => {}, summary: () => {}, scale: () => {}, clearError: () => {}, error: () => {}, setReducedMotion: () => {} };
+  await runLive(view as unknown as View, hud as unknown as Hud, client);
+  const key = (k: string) => canvas.dispatchEvent(Object.assign(new Event('keydown'), { key: k, code: k, altKey: false, ctrlKey: false, metaKey: false, preventDefault: () => {} }));
+  const click = (planet: number) => {
+    view.planetAt = planet;
+    const ev = (type: string) => Object.assign(new Event(type), { button: 0, pointerId: 1, clientX: 5, clientY: 5, movementX: 0, movementY: 0 });
+    canvas.dispatchEvent(ev('pointerdown'));
+    canvas.dispatchEvent(ev('pointerup'));
+  };
+  /** Runs the requested frames `n` times, `ms` apart (the loop clamps a tick to 100 ms: 3 frames). */
+  const tick = (n = 1, ms = 100) => {
+    for (let k = 0; k < n; k++) {
+      const run = queued;
+      queued = [];
+      for (const cb of run) cb(now);
+      now += ms;
+    }
+  };
+  return { model: () => model!, drawn, key, click, tick, last: () => drawn.at(-1)! };
+}
+
+const close = (a: readonly number[], b: readonly number[], digits = 9) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i]!, digits));
+/** Where a planet is on screen in a drawn frame (NDC, 0,0 is the centre). */
+const onScreen = (d: Drawn, m: SystemModel, i: number) => { const q = project(d.pose, planetCentre(m.planets[i]!, d.frame))!; return [q.x, q.y]; };
+
+describe('focus follows an orbiting planet (#60)', () => {
+  it('planets orbit while the camera holds still in free flight', async () => {
+    const l = await live();
+    l.tick(40); // 4 s: 117 frames
+    const m = l.model();
+    const first = l.drawn[0]!, last = l.last();
+    expect(first.frame).toBe(0);
+    expect(last.frame).toBeGreaterThan(100);
+    expect(last.pose).toEqual(first.pose); // no input: the camera stays where it started
+    expect(first.pose).toEqual(startPose(m));
+    const moved = Math.hypot(...onScreen(last, m, 2).map((v, k) => v - onScreen(first, m, 2)[k]!));
+    expect(moved).toBeGreaterThan(0.01); // docs has moved on screen
+  });
+
+  it('`]` glides onto the planet, then keeps it centred as it orbits, holding the angle and zoom', async () => {
+    const l = await live();
+    l.tick(10);
+    l.key(']');
+    l.tick(Math.ceil(GLIDE_MS / 100) + 1); // the glide lands on the moving planet
+    const landed = l.drawn.length;
+    l.tick(LOOP_FRAMES / 3); // one 24 s loop on: the planet has turned 1/25 of its orbit
+    const m = l.model();
+    const after = l.drawn.slice(landed);
+    expect(after.at(-1)!.frame - after[0]!.frame).toBeGreaterThanOrEqual(LOOP_FRAMES - 3);
+    for (const d of after) {
+      expect(d.focus).toBe(0);
+      close(d.pose.target, planetCentre(m.planets[0]!, d.frame)); // the target is the planet's centre at that very frame
+      close(onScreen(d, m, 0), [0, 0]);
+      expect([d.pose.yaw, d.pose.pitch, d.pose.dist]).toEqual([after[0]!.pose.yaw, after[0]!.pose.pitch, after[0]!.pose.dist]);
+    }
+    const travelled = Math.hypot(...after.at(-1)!.pose.target.map((v, k) => v - after[0]!.pose.target[k]!));
+    expect(travelled).toBeGreaterThan(0.3); // not vacuous: the camera went along the orbit
+  });
+
+  it('a click focuses the planet under it and follows it the same way', async () => {
+    const l = await live();
+    l.tick(10);
+    l.click(2);
+    l.tick(30);
+    const m = l.model(), d = l.last();
+    expect(d.focus).toBe(2);
+    close(d.pose.target, planetCentre(m.planets[2]!, d.frame));
+  });
+
+  it('Escape returns to free flight where the camera is: it stops following, and the planet orbits on out of the centre', async () => {
+    const l = await live();
+    l.tick(10);
+    l.key(']');
+    l.tick(20);
+    l.key('Escape');
+    l.tick(1);
+    const freed = l.drawn.length - 1;
+    expect(l.last().focus).toBeNull();
+    l.tick(200); // 20 s
+    const m = l.model(), after = l.drawn.slice(freed);
+    for (const d of after) expect(d.pose).toEqual(after[0]!.pose);
+    const off = Math.hypot(...onScreen(after.at(-1)!, m, 0));
+    expect(off).toBeGreaterThan(0.05); // src has left the centre
+  });
+
+  it('Home frames the system as it first appeared, wherever the orbits have taken it', async () => {
+    const l = await live();
+    l.tick(300); // 30 s: 18° round
+    const at = l.last().frame;
+    l.key('Home');
+    l.tick(1);
+    const m = l.model(), d = l.last();
+    expect(d.pose).toEqual(startPoseAt(m, at));
+    const first = l.drawn[0]!;
+    for (let i = 0; i < m.planets.length; i++) {
+      const was = onScreen(first, m, i);
+      onScreen({ ...d, frame: at }, m, i).forEach((v, k) => expect(v).toBeCloseTo(was[k]!, 9));
+    }
+  });
+});
+
+describe('reduced motion (#60 AC 3)', () => {
+  it('holds the orbits on frame 0 and cuts to a focus, which then stays put', async () => {
+    const l = await live(true);
+    l.tick(5);
+    const m = l.model();
+    l.key(']');
+    l.tick(1);
+    const cut = l.last();
+    expect(cut.frame).toBe(0);
+    expect(cut.focus).toBe(0);
+    expect(cut.pose).toEqual(focusPose(startPose(m), planetCentre(m.planets[0]!, 0), m.planets[0]!.radius)); // a cut: no glide in between
+    l.key(']');
+    l.tick(1);
+    expect(l.last().pose.target).toEqual(planetCentre(m.planets[1]!, 0));
+    l.tick(50);
+    expect(l.drawn.every((d) => d.frame === 0)).toBe(true);
+    expect(l.last().pose.target).toEqual(planetCentre(m.planets[1]!, 0));
+  });
+});

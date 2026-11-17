@@ -40,7 +40,8 @@ const LOOK_RAD_PER_PX = 0.005;
 const WHEEL_ZOOM = 0.0015;
 /** Fly speed as a share of the focal distance per second. */
 const FLY_RATE = 0.6;
-const MIN_FLY_SPEED = 0.5;
+/** The slowest free flight goes, in render units per second (orbits stay below it, motion.ts ORBIT_SECONDS). */
+export const MIN_FLY_SPEED = 0.5;
 /** A focused camera never enters the planet: the clouds reach about 1.1 radii. */
 export const MIN_FOCUS_DIST = 1.35;
 /** The closest a camera focused on a body of `radius` may come to its centre. */

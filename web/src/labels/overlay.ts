@@ -46,7 +46,7 @@ export class LabelLayer {
   private readonly ctx: CanvasRenderingContext2D;
   /** One bitmap per text, colour and scale, so a frame blits labels instead of re-rasterising them. */
   private readonly cache = new Map<string, HTMLCanvasElement>();
-  /** What the canvas shows now; an identical label set skips the redraw (planets hold still between frames). */
+  /** What the canvas shows now; an identical label set skips the redraw (a still frame, or orbits that moved no label a device px). */
   private shown = '';
   px = 1;
 

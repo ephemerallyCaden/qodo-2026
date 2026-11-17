@@ -11,7 +11,7 @@ import { DRONE_TURNS, placeDrone } from '../../web/src/drones/place.js';
 import { pick } from '../../web/src/camera/pose.js';
 import { capLabels, DRONE_CAP, droneLabels, droneRows, droneStatus, entryOf, selectDrones } from '../../web/src/drones/select.js';
 import { LOOP_FRAMES } from '../../web/src/model/motion.js';
-import { systemModel } from '../../web/src/model/system.js';
+import { planetCentre, systemModel } from '../../web/src/model/system.js';
 import { miniDrones, miniLayout } from '../fixtures/contract/mini.js';
 import { droneView, repoDrones, session, viewDrones } from '../fixtures/drones.js';
 import { selfLikeRoots } from '../fixtures/overview.js';
@@ -146,22 +146,30 @@ describe('orbits (AC 5, Rule 4)', () => {
   const home = miniLayout.planets[0]!.dirId;
   const at = (f: number, seed = 7) => placeDrone(model, home, seed, f)!;
   const dist = (a: number[], b: number[]) => Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
+  /** Where the drone is relative to its home planet, which orbits the star itself (#60). */
+  const off = (f: number) => { const c = at(f).centre, h = planetCentre(model.planets[0]!, f); return c.map((x, i) => +(x - h[i]!).toFixed(6)); };
 
-  it('is a pure function of (seed, frame) and loops whole turns per 24 s', () => {
+  it('is a pure function of (seed, frame) and loops whole turns per 24 s round its planet', () => {
     expect(at(10)).toEqual(at(10));
     expect(DRONE_TURNS).toBe(2);
-    expect(at(0).centre.map((x) => +x.toFixed(6))).toEqual(at(LOOP_FRAMES).centre.map((x) => +x.toFixed(6)));
-    expect(at(0).centre.map((x) => +x.toFixed(6))).toEqual(at(LOOP_FRAMES / 2).centre.map((x) => +x.toFixed(6)));
+    expect(off(0)).toEqual(off(LOOP_FRAMES));
+    expect(off(0)).toEqual(off(LOOP_FRAMES / 2));
   });
 
-  it('turns at a constant rate: equal frame steps move it equal distances', () => {
-    const d = [0, 1, 2, 3].map((k) => dist(at(100 + k).centre, at(101 + k).centre));
-    for (const x of d) expect(x).toBeCloseTo(d[0]!, 6);
+  it('moves with its planet along the planet\'s orbit, so it never lags behind or drifts off (#60)', () => {
+    const h0 = planetCentre(model.planets[0]!, 0), h1 = planetCentre(model.planets[0]!, LOOP_FRAMES);
+    expect(dist(h0, h1)).toBeGreaterThan(0.1); // the planet has moved a loop on
+    expect(dist(at(0).centre, at(LOOP_FRAMES).centre)).toBeCloseTo(dist(h0, h1), 6); // and the drone exactly as far
+  });
+
+  it('turns at a constant rate: equal frame steps move it equal distances round its planet', () => {
+    const d = [0, 1, 2, 3].map((k) => dist(off(100 + k), off(101 + k)));
+    for (const x of d) expect(x).toBeCloseTo(d[0]!, 5);
   });
 
   it('keeps clear of its home and starts from a seeded phase, so seeds differ and a seed repeats', () => {
     const planet = model.planets[0]!;
-    const c = planet.orbit; // frame 0 puts the planet at (orbit, 0, 0) with TURNS.orbits 0 and phase 0
+    const c = planet.orbit; // frame 0 puts the planet at its phase-0 angle, (orbit, 0, 0)
     expect(dist(at(0).centre, [c, 0, 0])).toBeGreaterThan(planet.radius);
     expect(at(0, 1).centre).not.toEqual(at(0, 2).centre);
     expect(placeDrone(model, 'd_nowhere', 1, 0)).toBeNull();

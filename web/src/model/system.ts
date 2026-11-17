@@ -6,7 +6,7 @@
 // (principle 4; contract: append-only slots). No rings: they have no meaning yet (contract amendment
 // 2026-11-10), so the view draws none.
 import type { HealthBand, LayoutV1, Planet } from '../../../src/core/contract/layout.js';
-import { TURNS, turnAngle } from './motion.js';
+import { orbitAngle, TURNS, turnAngle } from './motion.js';
 import { INV_PHI, R2, fract } from './prng.js';
 import type { Vec3 } from './vec.js';
 
@@ -155,9 +155,12 @@ export function systemModel(layout: LayoutV1): SystemModel {
 }
 
 
-/** A planet's centre at a frame: its slot's orbit, starting at phaseMilliturn, turning TURNS.orbits per loop. */
+/**
+ * A planet's centre at a frame: on its slot's orbit, from phaseMilliturn at frame 0, turning round the
+ * star once per ORBIT_FRAMES at a constant rate, like every other planet (#60).
+ */
 export function planetCentre(p: PlanetModel, frame: number): Vec3 {
-  const a = p.phase * Math.PI * 2 + turnAngle(frame, TURNS.orbits);
+  const a = p.phase * Math.PI * 2 + orbitAngle(frame);
   return [Math.cos(a) * p.orbit, 0, -Math.sin(a) * p.orbit];
 }
 

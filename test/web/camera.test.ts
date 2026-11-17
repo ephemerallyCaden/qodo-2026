@@ -1,6 +1,6 @@
 // Camera maths and the free-flight rig (#30): pure, so picking, labels and the renderer agree.
 import { describe, expect, it } from 'vitest';
-import { FOCUS_FILL, FOV_DEG, eyeOf, focusPose, framingDistance, fromCameraPose, pick, project, projectedRadius, startPose, toCameraPose, type OrbitPose } from '../../web/src/camera/pose.js';
+import { FOCUS_FILL, FOV_DEG, eyeOf, focusPose, framingDistance, fromCameraPose, pick, project, projectedRadius, startPose, startPoseAt, toCameraPose, type OrbitPose } from '../../web/src/camera/pose.js';
 import { FreeFlightRig, GLIDE_MS, MIN_FOCUS_DIST, type FlyKey } from '../../web/src/camera/rig.js';
 import { coronaEdge, starOccluders } from '../../web/src/render/corona.js';
 import { STAR } from '../../web/src/render/shaders.js';
@@ -68,6 +68,22 @@ describe('poses', () => {
     const xs = m.planets.flatMap((p) => { const c = planetCentre(p, 0), r = planetReach(p); return [project(start, [c[0] - r, c[1], c[2]])!.x, project(start, [c[0] + r, c[1], c[2]])!.x]; });
     expect(Math.min(...xs) + Math.max(...xs)).toBeCloseTo(0, 1); // centred, not hugging one edge
     expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(1.5); // and filling most of the width
+  });
+
+  it('turns the start pose with the orbits (#60): at any frame it frames the system as frame 0 does, every body as far from the eye', () => {
+    const m = systemModel(miniLayout);
+    const s0 = startPose(m);
+    expect(startPoseAt(m, 0)).toEqual(s0);
+    for (const f of [720, 4500, 13_333]) {
+      const s = startPoseAt(m, f);
+      expect([s.pitch, s.dist]).toEqual([s0.pitch, s0.dist]);
+      for (const p of m.planets) {
+        const a = project(s0, planetCentre(p, 0))!, b = project(s, planetCentre(p, f))!;
+        close([b.x, b.y, b.depth], [a.x, a.y, a.depth]); // same place on screen, same distance: the same depth fade (#59)
+      }
+      const fixed = project(s0, planetCentre(m.planets[2]!, f))!; // the frame-0 pose, held: the planets have moved in it
+      expect(Math.hypot(fixed.x - project(s0, planetCentre(m.planets[2]!, 0))!.x, fixed.y - project(s0, planetCentre(m.planets[2]!, 0))!.y)).toBeGreaterThan(0.01);
+    }
   });
 
   it('frames a lone star like a focused planet', () => {
