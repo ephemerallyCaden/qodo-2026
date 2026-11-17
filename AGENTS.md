@@ -206,7 +206,7 @@ Source of truth: `docs/design/art-direction.md`. These rules summarise it and ch
 - **Applies to:** every feature, UI surface and piece of copy, including fog, status messages, debris, teammates and recaps.
 - **Rule:**
   - Nothing awards XP, points, levels, badges or streaks for commits, PRs, lines or sessions.
-  - No leaderboard, ranking, or per-person score or count (such as commits or lines per person) appears anywhere; repo totals are fine.
+  - No leaderboard, ranking, or per-person score or count (such as commits or lines per person) appears anywhere; repo totals are fine. The one exception is a session's own detail view, below: its numbers describe that one session, never a person.
   - A session's own detail view may show what that session did: the files it edited, with edit counts, and when it edited them (human decision, 2026-11-16, for the drone panel). Never rank or sort sessions by those numbers, never compare sessions in one list by them, never sum them per person, and never turn them into a score, badge or reward.
   - Fog clears only on review, when a file's diff is opened or its question answered; no timer, elapsed time, new commit or button (such as "chart all") clears it.
   - No guilt mechanics: nothing decays, nags or punishes a break (no state that worsens with time away, no repeated reminders, no penalties).
