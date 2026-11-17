@@ -4,7 +4,7 @@
 // flat, lumpy corona past the limb, drawn where its CPU trace says (picking and labels hide behind it);
 // the middle of the disc is the core on every frame of the loop, seen from two sides and under reduced
 // motion; frame 720 (one 24 s loop) is frame 0 and the seam is no bigger
-// than any other step; reduced motion holds it; far away it fades at 0.15 (S5); fog never covers it
+// than any other step (the star alone: its layers stay loop-locked, only planet orbits left the loop, #60); reduced motion holds it; far away it fades at 0.15 (S5); fog never covers it
 // (#74); its moonlets wear the planets' moon look (S6); and a drone (#80) still draws in front of it.
 // Every check fails on an empty frame.
 import { expect, test } from '@playwright/test';

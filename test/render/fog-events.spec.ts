@@ -4,10 +4,9 @@
 // charted moon clears towards clear and never shows less than its end state.
 import { expect, test } from '@playwright/test';
 import { palette } from '../../src/core/palette.js';
-import { focusPose, startPose, toCameraPose } from '../../web/src/camera/pose.js';
 import { FOG_EVENT_FRAMES } from '../../web/src/model/fog.js';
-import { planetCentre, systemModel } from '../../web/src/model/system.js';
-import { fogFor, MINI, openView } from './harness.js';
+import { systemModel } from '../../web/src/model/system.js';
+import { fogFor, following, MINI, openView } from './harness.js';
 
 const target = { name: 'events', entry: '/test/render/events/index.html', mounts: ['test/render/events', 'web/src', 'src/core', 'node_modules/three/build'].map((d) => ({ url: `/${d}/`, dir: d })) };
 const veil = new Set<string>(Object.values(palette.fog.veil.moonBody));
@@ -20,8 +19,8 @@ declare global { interface Window { __events: Events } }
 
 test('moons: a refog rolls in towards fogged, a chart clears towards clear, never the reverse', async ({ page }) => {
   const model = systemModel(MINI);
-  const web = model.planets.find((p) => p.path === 'web')!; // 24 test moons
-  const camera = toCameraPose(focusPose(startPose(model), planetCentre(web, 0), web.radius));
+  const start = 100; // the frame each change lands on
+  const camera = following(model, 'web', start); // web (24 test moons), framed where its orbit has it then (#60); a front moves it under 0.14 units
   const moons = new Set(MINI.planets.find((p) => p.path === 'web')!.moons.map((m) => m.fileId) as string[]);
   const clear = fogFor(MINI), fogged = fogFor(MINI, (id) => moons.has(id));
   const view = await openView(page, target, { testMode: false });
@@ -30,7 +29,6 @@ test('moons: a refog rolls in towards fogged, a chart clears towards clear, neve
   /** Moon-veil pixels at each frame offset after a change from `from` to `to`, and at rest in `to`. */
   async function veils(from: typeof clear, to: typeof clear, kind: 'clear' | 'refog'): Promise<{ at: number[]; rest: number }> {
     await page.evaluate(([l, f, c]) => window.__events.setup(l, f, c, 360), [MINI, from, camera] as const);
-    const start = 100;
     expect(await page.evaluate(([f, n]) => window.__events.change(f, n), [to, start] as const)).toBe(true);
     const n = FOG_EVENT_FRAMES[kind];
     const at: number[] = [];

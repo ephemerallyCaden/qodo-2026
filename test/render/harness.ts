@@ -6,12 +6,14 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import type { Browser, Page } from '@playwright/test';
 import ts from 'typescript';
-import { TEST_MODE_PARAM, WEB_DIST, type RenderInput, type RenderStats } from '../../src/core/contract/api.js';
+import { TEST_MODE_PARAM, WEB_DIST, type CameraPose, type RenderInput, type RenderStats } from '../../src/core/contract/api.js';
 import type { FogView } from '../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import type { Frame } from './frame.js';
 import type { GoldenOptions } from './golden.js';
 import type { RenderEnv } from './twin.js';
+import { focusPose, startPose, toCameraPose } from '../../web/src/camera/pose.js';
+import { planetCentre, type SystemModel } from '../../web/src/model/system.js';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 /** A reserved test TLD: the browser never resolves it, every request is answered from disk. */
@@ -71,6 +73,19 @@ export function fogFor(layout: LayoutV1, fogged: (fileId: string) => boolean = (
     planets: [...layout.planets].sort((a, b) => (a.dirId < b.dirId ? -1 : 1)).map((p) => ({ dirId: p.dirId, ...count(ids(p)) })),
     star: count(layout.star.moonlets.map((m) => m.fileId)),
   };
+}
+
+/**
+ * The camera on a planet (by path) at frame `n`, focused from the start pose at frame `from` and
+ * followed since, as the live view's rig does (#60): the hero framing, carried along the planet's
+ * orbit without turning, so the planet stays centred. Render each frame with its own camera.
+ */
+export function following(model: SystemModel, path: string, n: number, from = 0): CameraPose {
+  const p = model.planets.find((x) => x.path === path);
+  if (!p) throw new Error(`no planet ${path}`);
+  const c0 = planetCentre(p, from), c = planetCentre(p, n);
+  const f = focusPose(startPose(model), c0, p.radius);
+  return toCameraPose({ ...f, target: [f.target[0] + c[0] - c0[0], f.target[1] + c[1] - c0[1], f.target[2] + c[2] - c0[2]] });
 }
 
 /** The file for a request path, or null when it's outside every mount. A `.js` request with only a `.ts` beside it is served transpiled. */

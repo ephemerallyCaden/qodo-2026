@@ -1,8 +1,8 @@
 // Fog of war on the real view (#74, R5; D2d, docs/features/fog-of-war-art.md). The goldens
 // (view.spec.ts) are fogged frames of mini; these check what a golden can't say on its own: clear
 // and charted draw the same, fog without evidence covers everything (Rule 1), the veil and its
-// limb are palette colours, teal shows only on events, the hatch drift closes the loop, and fog
-// costs no draw call or triangle.
+// limb are palette colours, teal shows only on events, the hatch drift closes the loop (on a planet
+// followed along its orbit, #60), and fog costs no draw call or triangle.
 import { expect, test } from '@playwright/test';
 import type { FogView } from '../../src/core/contract/fog.js';
 import { palette } from '../../src/core/palette.js';
@@ -10,16 +10,16 @@ import { focusPose, startPose, toCameraPose } from '../../web/src/camera/pose.js
 import { LOOP_FRAMES } from '../../web/src/model/motion.js';
 import { planetCentre, systemModel } from '../../web/src/model/system.js';
 import { assertRendered, diffPixels } from './frame.js';
-import { fogFor, MINI, MINI_FOG, MINI_INPUT, openView, render, systemView, type Rendered } from './harness.js';
+import { fogFor, following, MINI, MINI_FOG, MINI_INPUT, openView, render, systemView, type Rendered } from './harness.js';
 import { LATER } from './suite.js';
 import { paletteProblems } from './twin.js';
 
 const model = systemModel(MINI);
-/** The hero framing of a mini planet by path, at 360 px: big enough to show parcels, hatching and the "?". */
-const focus = (path: string) => {
-  const p = model.planets.find((x) => x.path === path)!;
-  return { camera: toCameraPose(focusPose(startPose(model), planetCentre(p, 0), p.radius)), pixelHeight: 360 };
-};
+/**
+ * The hero framing of a mini planet by path, at 360 px: big enough to show parcels, hatching and the "?".
+ * At frame `n` it has followed the planet along its orbit since frame 0, as focus does (#60).
+ */
+const focus = (path: string, n = 0) => ({ camera: following(model, path, n), pixelHeight: 360 });
 /** The same framing, orbited by `dyaw` and `dpitch` radians: an oblique view, where smoke overlaps its neighbours. */
 const oblique = (path: string, dyaw: number, dpitch: number) => {
   const p = model.planets.find((x) => x.path === path)!;
@@ -94,11 +94,15 @@ test('teal stays off the frame at rest (it marks events only)', async ({ page })
   expect(view.errors).toEqual([]);
 });
 
-test('the hatch drift closes the 24 s loop: a fogged frame one loop on is the same frame', async ({ page }) => {
+test('the hatch drift closes the 24 s loop: one loop on, the fogged planet followed along its orbit draws the same pixels', async ({ page }) => {
+  // web fills its hero frame (src has the star behind it, which the orbit moves); the planets left the loop (#60), so the
+  // camera follows web as focus does, and the frames are pinned: 0, one loop on, and a frame inside the loop
   const view = await openView(page, systemView());
-  const [a, b, c] = await render(view, { layout: MINI, fog: null, ...focus('src') }, [0, LOOP_FRAMES, LATER]);
-  expect(diffPixels(a!.pixels, b!.pixels)).toBe(0);
-  expect(diffPixels(a!.pixels, c!.pixels), 'not vacuous: the frame moves within the loop').toBeGreaterThan(0);
+  const at = async (n: number) => (await render(view, { layout: MINI, fog: null, ...focus('web', n) }, [n]))[0]!;
+  const [a, b, c] = [await at(0), await at(LOOP_FRAMES), await at(LATER)];
+  for (const r of [a, b, c]) assertRendered(r.pixels, r.stats);
+  expect(diffPixels(a.pixels, b.pixels)).toBe(0);
+  expect(diffPixels(a.pixels, c.pixels), 'not vacuous: the frame moves within the loop').toBeGreaterThan(0);
   expect(view.errors).toEqual([]);
 });
 
@@ -122,8 +126,9 @@ test('a fully fogged lava planet shows no fissure glow or smoke colour at hero f
   const base = { layout: lava, ...focus('src'), depthFade: false };
   // The fissure glow and the smoke (the ash ramp). The crust is the ground itself: the "?" glyph is inked in one of its steps.
   const LAVA = [...palette.world.glow, ...palette.world.ash];
-  const [clear] = await render(view, { ...base, fog: fogFor(lava) }, [0, 90]);
-  const [fogged, fogged90] = await render(view, { ...base, fog: fogFor(lava, () => true) }, [0, 90]);
+  const [clear] = await render(view, { ...base, fog: fogFor(lava) }, [0]);
+  const [fogged] = await render(view, { ...base, fog: fogFor(lava, () => true) }, [0]);
+  const [fogged90] = await render(view, { ...base, ...focus('src', 90), fog: fogFor(lava, () => true) }, [90]); // followed to frame 90 (#60)
   const [charted] = await render(view, { ...base, fog: { ...fogFor(lava), files: fogFor(lava).files.map((f) => ({ ...f, state: 'charted' as const })) } }, [0]);
   for (const r of [clear, fogged, charted]) assertRendered(r!.pixels, r!.stats);
   // The star glows in the same colours, so only the middle of the frame, where the planet is, is counted.
