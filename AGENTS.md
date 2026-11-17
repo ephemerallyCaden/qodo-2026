@@ -178,11 +178,11 @@ Source of truth: `docs/design/art-direction.md`. These rules summarise it and ch
   - No post-processing beyond the nearest-neighbour upscale: no `EffectComposer` pass or full-screen shader for bloom (`UnrealBloomPass`), blur, FXAA or SMAA, SSAO, vignette, chromatic aberration or film grain.
   - Surface colour comes in quantised bands: a shader picks one band of its ramp per pixel and never blends smoothly between ramp colours.
   - Drawn lines, such as cracks, fissures and crevasses, are at least 2 internal px wide; stars and ring dots are exactly 1 internal px.
-  - Every animated layer completes a whole number of cycles per loop (24 s), so the loop has no seam.
+  - Every animated layer completes a whole number of cycles per loop (24 s), so the loop has no seam. **Exception:** the planets' orbits round the star, one turn per 10 minutes, off the loop (human, 2026-11-10, #60).
   - **Exception:** the per-pixel depth fade toward the depth tint is the one gradient.
   - **Exception:** labels and UI render outside the pixel pass, in the bitmap font, never into the low-resolution target (no `TextGeometry` or font-rendered canvas text in the scene).
 - **Why:** three.js defaults and polish passes give smooth gradients and soft edges, which is a blurry 3D render, not pixel art.
-- **Checked by:** asset-viewer render tests (line width, depth, loop seam); in review, any AA, filtering, stock material, planetary easing, post-pass or in-pass text.
+- **Checked by:** asset-viewer render tests (line width, depth, loop seam); `test/render/orbits.spec.ts` (orbits); in review, any AA, filtering, stock material, planetary easing, post-pass or in-pass text.
 
 ### Rule 5: Palette consistency
 *Every rendered colour comes from a named palette, never an inline literal, and nothing is pure black.*
