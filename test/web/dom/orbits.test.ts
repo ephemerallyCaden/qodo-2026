@@ -1,7 +1,7 @@
 // Focus on orbiting planets in live mode (#60): planets orbit slowly, a focused planet stays centred
 // as it orbits (the camera follows it, keeping the user's angle and zoom), Escape returns to free
 // flight where the camera is, Home turns with the orbits, and under reduced motion the orbits hold
-// frame 0 and focus cuts. Driven through runLive and the real free-flight rig, with a fake view that
+// still (frame 0 from the start, or the frame where it was switched on) and focus cuts. Driven through runLive and the real free-flight rig, with a fake view that
 // records what each frame draws and a requestAnimationFrame the test steps by hand.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DataClient } from '../../../web/src/data/client.js';
@@ -75,7 +75,8 @@ async function live(reduced = false) {
     diff: async () => ({ ok: false, error: 'no-such-file' }),
     chart: async () => ({ ok: false, error: 'not used' }),
   };
-  const hud = { announce: () => {}, summary: () => {}, scale: () => {}, clearError: () => {}, error: () => {}, setReducedMotion: () => {} };
+  // runLive sets onReducedMotion: what the HUD's reduce-motion checkbox calls
+  const hud = { announce: () => {}, summary: () => {}, scale: () => {}, clearError: () => {}, error: () => {}, setReducedMotion: () => {}, onReducedMotion: (() => {}) as (on: boolean) => void };
   await runLive(view as unknown as View, hud as unknown as Hud, client);
   const key = (k: string) => canvas.dispatchEvent(Object.assign(new Event('keydown'), { key: k, code: k, altKey: false, ctrlKey: false, metaKey: false, preventDefault: () => {} }));
   const click = (planet: number) => {
@@ -93,7 +94,7 @@ async function live(reduced = false) {
       now += ms;
     }
   };
-  return { model: () => model!, drawn, key, click, tick, last: () => drawn.at(-1)! };
+  return { model: () => model!, drawn, key, click, tick, last: () => drawn.at(-1)!, reduceMotion: (on: boolean) => hud.onReducedMotion(on) };
 }
 
 const close = (a: readonly number[], b: readonly number[], digits = 9) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i]!, digits));
@@ -193,5 +194,32 @@ describe('reduced motion (#60 AC 3)', () => {
     l.tick(50);
     expect(l.drawn.every((d) => d.frame === 0)).toBe(true);
     expect(l.last().pose.target).toEqual(planetCentre(m.planets[1]!, 0));
+  });
+
+  it('switched on mid-session, freezes on the frame it was showing, so nothing jumps, and switched off resumes from there (Qodo d094226d)', async () => {
+    const l = await live();
+    l.tick(1500); // 150 s: the orbits have turned about 90°
+    const m = l.model(), before = l.last();
+    expect(before.frame).toBeGreaterThan(4000);
+    l.reduceMotion(true);
+    l.tick(20); // 2 s with reduced motion on
+    const held = l.drawn.slice(l.drawn.indexOf(before) + 1);
+    expect(held.length).toBeGreaterThan(0);
+    for (const d of held) {
+      expect(d.frame).toBe(before.frame); // not frame 0: the planets stay where they were
+      expect(d.pose).toEqual(before.pose);
+      for (let i = 0; i < m.planets.length; i++) expect(onScreen(d, m, i)).toEqual(onScreen(before, m, i));
+    }
+    l.key(']');
+    l.tick(1);
+    const cut = l.last();
+    expect(cut.frame).toBe(before.frame);
+    expect(cut.pose).toEqual(focusPose(before.pose, planetCentre(m.planets[0]!, before.frame), m.planets[0]!.radius)); // a cut, at the held frame
+    l.reduceMotion(false);
+    l.tick(10);
+    const resumed = l.drawn.slice(l.drawn.indexOf(cut) + 1);
+    expect(resumed[0]!.frame - before.frame).toBeLessThanOrEqual(3); // carries on from the held frame (one tick is at most 3 frames)
+    expect(resumed.at(-1)!.frame).toBeGreaterThan(before.frame); // and moves again
+    close(resumed.at(-1)!.pose.target, planetCentre(m.planets[0]!, resumed.at(-1)!.frame)); // still following src
   });
 });

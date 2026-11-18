@@ -200,7 +200,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 - **Focus follows the orbit:** clicking a planet, or `[` / `]`, locks the camera onto it. The camera glides in, then moves with the planet along its orbit without turning, so the planet stays centred at the angle and zoom the user chose while the star and the other planets turn past behind it. Escape, or any fly key, returns to free flight from wherever the camera is, and the planet orbits on out of the centre. Home returns to the start pose turned with the orbits, so it frames the system exactly as it first appeared, with every planet as far from the eye (the depth fade of §5 holds).
 - **Parallax order:** stars are static, then ring, surface, small moon and large moon, each moving faster.
 - **Seamless test:** the difference between the last frame and the first must be no more than a normal frame-to-frame difference, for every loop-locked layer. Frame 720 is no longer frame 0 for planets, so render tests pin the frames they compare: they follow a planet with the camera, as focus does, or compare across one whole orbit (`test/render/orbits.spec.ts`).
-- **Reduced motion** freezes on a fixed frame, frame 0, orbits included. Focus cuts instead of gliding.
+- **Reduced motion** freezes every layer, orbits included, on the frame where it was switched on (frame 0 when it is on from the start), and switching it off resumes from there, so switching it never moves a planet. Focus cuts instead of gliding.
 
 ## 8. Astronauts (the crew)
 

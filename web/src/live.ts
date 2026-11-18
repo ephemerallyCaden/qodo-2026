@@ -8,7 +8,6 @@ import { ViewError, type DataClient } from './data/client.js';
 import { Drones } from './drones/controller.js';
 import { startLoop } from './loop.js';
 import { planetLines, summaryText } from './model/describe.js';
-import { effectiveFrame } from './model/motion.js';
 import { PIXEL_HEIGHT } from './model/pixels.js';
 import type { Hud } from './ui/hud.js';
 import { Input } from './ui/input.js';
@@ -76,7 +75,10 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     redraw();
   };
 
-  const shown = () => effectiveFrame(frame, reduced);
+  // The frame drawn. Under reduced motion the loop's clock holds still, so this freezes on the frame where
+  // it was switched on (frame 0 when it is on from the start) and resumes from there: switching it never
+  // moves the planets (Qodo d094226d). The render hook draws frame 0 for reducedMotion (hook.ts).
+  const shown = () => frame;
   const say = () => {
     const m = view.model;
     const p = focus === null ? null : m?.planets[focus];

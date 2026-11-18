@@ -396,7 +396,7 @@ That's ≤ 20 typical, with a **hard budget of 100 draw calls and ≤ 50k instan
 - Live mode: `web/src/loop.ts` computes `n` from `performance.now()`.
 - Test mode: `?frame=N&cam=<base64 pose>&fixture=<name>` plus `window.__commet.renderFrame(n): Promise<ImageData>`, using `preserveDrawingBuffer` in test builds only.
 
-**Reduced motion** (`prefers-reduced-motion` or a toggle): `n` is fixed at 0, rendering happens only on input or data change, transitions are cuts, and the drone idle and fog wavefront are frozen.
+**Reduced motion** (`prefers-reduced-motion` or a toggle): `n` holds where it was when reduced motion was switched on (0 when it is on from the start, and in test mode), rendering happens only on input or data change, transitions are cuts, and the drone idle and fog wavefront are frozen.
 
 **2D map toggle:** a top-down orthographic projection of `layout()` drawn in Canvas2D: crisp discs sized by LOC, fog as a flat hatch, bitmap labels. It's a separate format per art direction §10, and it's also the no-WebGL fallback.
 

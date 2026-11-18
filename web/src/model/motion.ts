@@ -39,7 +39,11 @@ export const ORBIT_SECONDS = 600;
 /** One orbit in frames: a whole number of loops (25), so every 18 000 frames the whole scene is frame 0 again. */
 export const ORBIT_FRAMES = FPS * ORBIT_SECONDS;
 
-/** The frame reduced motion freezes on (AC7). */
+/**
+ * The frame a view under reduced motion from the start holds (AC7), and the one the render hook draws
+ * for `reducedMotion`. Switched on mid-session, the live view freezes on the frame it was showing
+ * instead (live.ts `shown`), so the orbits never jump (#60, Qodo d094226d).
+ */
 export const REDUCED_MOTION_FRAME = 0;
 
 /** Position in the loop, 0..1, for any integer frame (negative frames wrap too). */
@@ -62,7 +66,7 @@ export function orbitAngle(frame: number): number {
   return ((((n % ORBIT_FRAMES) + ORBIT_FRAMES) % ORBIT_FRAMES) / ORBIT_FRAMES) * Math.PI * 2;
 }
 
-/** The frame the renderer actually draws: reduced motion freezes on one fixed frame. */
+/** The frame the render hook draws: reduced motion freezes on REDUCED_MOTION_FRAME. */
 export function effectiveFrame(frame: number, reducedMotion: boolean): number {
   return reducedMotion ? REDUCED_MOTION_FRAME : Math.floor(frame);
 }
