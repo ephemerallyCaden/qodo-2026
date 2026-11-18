@@ -11,13 +11,14 @@ import type { LayoutV1 } from './layout.js';
  * and `beacon` (#79, R10: POST a BeaconAction, JSON body). `beacons` is the beacon view (GET).
  * `events` is a text/event-stream that the view reads with fetch (not EventSource), so the token
  * travels in a header, never in a URL. `unseen` and `diff` (#75) take query parameters: see
- * UnseenQuery and DiffQuery.
+ * UnseenQuery and DiffQuery. So does `droneDetail` (#148): see DroneDetailQuery.
  */
 export const API = {
   snapshot: '/api/snapshot',
   layout: '/api/layout',
   fog: '/api/fog',
   drones: '/api/drones',
+  droneDetail: '/api/drone-detail',
   chart: '/api/chart',
   beacon: '/api/beacon',
   beacons: '/api/beacons',

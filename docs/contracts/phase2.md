@@ -1,12 +1,12 @@
 # Phase 2 contract (#29)
 
-**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch), 2026-11-11 (content roots, #71; the unseen and diff routes, #75), 2026-11-13 (drone view, #80) and 2026-11-18 (beacons, #79).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
+**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch), 2026-11-11 (content roots, #71; the unseen and diff routes, #75), 2026-11-13 (drone view, #80) and 2026-11-18 (beacons, #79; drone detail, #148).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
 
 | Shape | Types | Produced by | Consumed by |
 |---|---|---|---|
 | `layout.json` | `src/core/contract/layout.ts` (`LayoutV1`) | #18 `layout()` | #30 view, #32 server, #34 later |
 | Fog view | `src/core/contract/fog.ts` (`FogView`, `ChartAction`) | #33 R5 | #32 server, #30 view |
-| Drone view | `src/core/contract/drones.ts` (`DroneView`, `DroneSession`) | #80 | #32 server, #30 view |
+| Drone view | `src/core/contract/drones.ts` (`DroneView`, `DroneSession`; #148: `DroneDetail`) | #80, #148 | #32 server, #30 view |
 | Beacons | `src/core/contract/beacons.ts` (`BeaconAction`, `BeaconView`, `Beacon`, `BeaconResult`, `BEACON_TEXT_MAX`, `MAX_BEACONS`) | #79 R10 | #32 server, #30 view |
 | Local HTTP surface | `src/core/contract/api.ts` (`API`, `TOKEN_HEADER`, `WEB_DIST`, `LiveEvent`; #75: `UnseenList`, `DiffView`) | #32 R14, #75 | #30 view |
 | Render hook | `src/core/contract/api.ts` (`RenderHook`, `RenderInput`, `RenderStats`, `TEST_MODE_PARAM`) | #30 view | #31 render tests |
@@ -43,6 +43,15 @@
 - **Tool:** `tool` is a string, not the snapshot's `Tool` union, so a provider the scanner doesn't know yet draws the generic drone with its name.
 - **Determinism:** the view is a pure function of the snapshot and the layout. Two scans of the same repo and logs give byte-identical `canonicalJson`. No wall-clock time (principle 3).
 
+## Drone detail (amended 2026-11-18, #148)
+- **What it is:** one agent session's own detail for the drone panel: its files at HEAD with an edit count each, a count of its other edited paths and their edits, and its edits in `DETAIL_BUCKETS` (24, fixed) equal time slices. `GET /api/drone-detail?key=<SessionKey>&at=<Sha>` (`DroneDetailQuery`, `DroneDetail`) serves it, one session per request, for the drone the user selected. The list route `GET /api/drones` is unchanged and stays path- and count-free.
+- **Rule 6:** this is the session-detail exception (AGENTS.md Rule 6, 2026-11-16). The answer describes the requested session only: no other session, no ranking and no total across sessions. Files are ordered by folder, then name (codepoint), never by count. A pseudo-session (`inferred`) gets no detail: 404, as an unknown key does.
+- **Query:** exactly `key` and `at`, each once. `at` is the `DroneView.head` the view shows and must be the current head, else `ChartUnknownHead` (409) and the view refetches. A malformed query is 400; an unknown key or an inferred session is 404 with a fixed error naming neither. GET only, behind the same Host, origin and token gates.
+- **Source:** the snapshot's `Session.fileEdits`, `editsOutside` and `editBuckets` (scanner, #148), read through `openFogSource`, so #64's pair check refuses a snapshot and layout from different scans here too. Paths come from `snapshot.files` and are repo-relative; a path with no file at HEAD is counted in `otherFiles`, never named (Rule 1: it may be deleted, renamed, excluded, on another branch or in a removed worktree, #110).
+- **Edits and buckets:** an edit is one tool result's change to one file (the parser's deduped edit events). Bucket `i = span === 0 ? 0 : floor((ts − first) × 24 / (span + 1))`, in integers, where `first` and `last` are the millisecond times behind `startedAt` and `endedAt` and `span = last − first`. The buckets count every edit, so they sum to the files' edits plus `otherEdits`.
+- **`needsRescan`:** true when the snapshot predates #148 (no `fileEdits`). `files` and `buckets` are then empty and the counts 0, and the view says "rescan to see this session's files".
+- **Determinism:** a pure function of the snapshot. Two scans of the same repo and logs give byte-identical `canonicalJson`.
+
 ## Beacons (amended 2026-11-18, #79, R10)
 - **What it is:** charting a file can leave a one-line note, the captain's log, shown as a beacon on the file's planet (or on the star for a root file or unmatched test).
 - **State:** `.git/commet/beacons.json`, never git notes (they attach to commits and can be pushed): `{ schemaVersion: 'beacons.1', beacons: [{ fileId, at, text }] }`, file ids, commit SHAs and the note text only, in the order the notes were left. Canonical JSON, mode 0600, atomic writes under `beacons.lock`, symlinks refused; a damaged file is a state error (exit 5), never reset. No wall-clock time.
@@ -56,7 +65,7 @@
 - **Bind and Host:** binds 127.0.0.1 only. `Host` must be `127.0.0.1:<port>` or `localhost:<port>`.
 - **Token:** the opened URL is `http://127.0.0.1:<port>/#t=<token>`. The fragment is never sent to the server. The view reads it and sends `x-commet-token` on every data request.
 - **Static bundle:** served at `/` from `dist/web` without a token, because it holds no repo data. No directory listing and no traversal.
-- **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`, `/api/unseen`, `/api/diff`, `/api/drones` (#80), `/api/beacons` (#79; GET only, behind the same Host, origin and token gates).
+- **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`, `/api/unseen`, `/api/diff`, `/api/drones` (#80), `/api/drone-detail` (#148, see "Drone detail") and `/api/beacons` (#79), GET only, behind the same Host, origin and token gates.
 - **Write routes:** `POST /api/chart` with a `ChartAction` JSON body (exact keys, `at` a full 40-hex SHA, or 64-hex in a SHA-256 repo) returns a `ChartResult`. An unknown `at` gets `ChartUnknownHead` with status 409 Conflict, told apart from other refusals (400) by its `head`. `POST /api/beacon` (#79) takes a `BeaconAction` JSON body (exactly `fileId`, `at`, `text`; `application/json`, at most 4096 bytes) and returns a `BeaconResult`: 200 with the new `BeaconView`, 409 `ChartUnknownHead`, or 400 with a fixed reason (not a beacon, a note the rule refuses, a file not at that head, the cap). The view has no removal, so the API takes none; removal is the CLI's. Every other method or path is refused.
 - **Reviewing from the view (amended 2026-11-11, #75):** two more read routes, so a file can be charted where its diff is read (R5).
   - `GET /api/unseen?home=<DirId>|star&at=<Sha>` (`UnseenQuery`, `UnseenList`) lists the fogged files of one planet, or of the star, with their paths. Layout has no file paths and leaves out surface overflow, and fog.1 has no file-to-planet map, so the view can't name them otherwise. fog.1 is unchanged.
