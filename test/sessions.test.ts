@@ -2,7 +2,8 @@
 // and all its edits in 24 equal time slices, from the parser's deduped edit events.
 import { describe, expect, it } from 'vitest';
 import { buildSessions } from '../src/attrib/match.js';
-import type { EditEvent, SessionMeta } from '../src/attrib/parsers/claude.js';
+import type { ClaudeIngest, EditEvent, SessionMeta } from '../src/attrib/parsers/claude.js';
+import { mergeIngest } from '../src/scan/index.js';
 import { DETAIL_BUCKETS } from '../src/core/contract/drones.js';
 import type { FileId, Session, SessionKey } from '../src/core/snapshot/types.js';
 
@@ -74,7 +75,31 @@ describe('buildSessions: edits per file and over time (#148)', () => {
     expect(s).toMatchObject({ files: [], fileEdits: [], editsOutside: 0, filesOutside: 0, editBuckets: zeros() });
   });
 
+  it('a session found again by the outside-transcript pass is merged, not replaced: its files, span, lines and edits all count, once (Qodo PR #167 121022e1)', () => {
+    const ingest = (sessions: SessionMeta[], events: EditEvent[]): ClaudeIngest =>
+      ({ events, sessions: new Map(sessions.map((m) => [m.key, m])), ranCommits: [], ranWindows: [], unreadable: [], partial: [], dropped: 0 });
+    const first = { ...meta('a', ['src/a.ts'], T0 + 10_000, T0 + 20_000), linesAdded: 1 };
+    const again = { ...meta('a', ['README.md'], T0, T0 + 23_999), linesAdded: 2, linesRemoved: 1, branch: 'other' };
+    const shared = ev('a', T0 + 10_000, 'src/a.ts');
+    const into = ingest([first], [shared]);
+    mergeIngest(into, ingest([again], [{ ...shared }, ev('a', T0, 'README.md'), ev('a', T0 + 23_999, 'README.md')]));
+    const m = into.sessions.get('s_a' as SessionKey)!;
+    expect(m).toMatchObject({ firstTs: T0, lastTs: T0 + 23_999, linesAdded: 3, linesRemoved: 1, branch: 'main' });
+    expect([...m.files].sort()).toEqual(['README.md', 'src/a.ts']);
+    expect(into.events).toHaveLength(3); // the repeated event (same session and event id) once
+    const s = buildSessions(into.sessions.values(), [], new Map(), fileIds, into.events)[0]!;
+    expect(s).toMatchObject({ filesTouched: 2, filesOutside: 0, editsOutside: 0, fileEdits: [{ id: f(1), n: 2 }, { id: f(3), n: 1 }] });
+    // In the merged span, the edits fall where they happened: none is clamped to an end.
+    const want = zeros();
+    want[0] = 1;
+    want[10] = 1;
+    want[23] = 1;
+    expect(s.editBuckets).toEqual(want);
+  });
+
   it('never drops an edit: one on a path the session record lacks, or outside its span, still counts (Rule 1)', () => {
+    // The parser records a path with every edit and mergeIngest merges records, so this can't come
+    // from a scan; if that ever broke, the edit is counted rather than lost.
     const s = build([meta('a', ['src/a.ts'], T0 + 1000, T0 + 2000)], [ev('a', T0 + 1000, 'src/a.ts'), ev('a', T0, 'README.md'), ev('a', T0 + 9000, 'y.ts')])['a']!;
     expect(s.fileEdits).toEqual([{ id: f(1), n: 1 }, { id: f(3), n: 1 }]);
     expect(s).toMatchObject({ filesTouched: 3, filesOutside: 1, editsOutside: 1 });

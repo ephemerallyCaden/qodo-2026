@@ -72,6 +72,18 @@ describe('readDroneDetail on a scanned repo (#148)', () => {
     await expect(readDroneDetail(r.repo.dir, { key, at: snap.repo.head })).rejects.toMatchObject({ exitCode: EXIT.state, message: expect.stringMatching(/damaged.*run `commet scan`/) });
   });
 
+  it('a null session entry is a state error for the detail and for the drone list, not an internal one (Qodo PR #167 af483acc)', async () => {
+    const r = setup();
+    expect((await r.run('scan', '--no-root')).code).toBe(0);
+    const file = join(r.state, 'snapshot.json');
+    const snap = JSON.parse(readFileSync(file, 'utf8')) as SnapshotV02;
+    (snap.sessions as unknown[]).unshift(null);
+    writeAtomic(file, JSON.stringify(snap));
+    const damaged = { exitCode: EXIT.state, message: expect.stringMatching(/damaged.*run `commet scan`/) };
+    await expect(readDroneDetail(r.repo.dir, { key: sessionKey('claude-code', SID), at: snap.repo.head })).rejects.toMatchObject(damaged);
+    await expect(readDrones(r.repo.dir)).rejects.toMatchObject(damaged);
+  });
+
   it('a snapshot without sessions is a state error, as for the drone list', async () => {
     const r = setup();
     expect((await r.run('scan', '--no-root')).code).toBe(0);

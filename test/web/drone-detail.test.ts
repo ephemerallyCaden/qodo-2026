@@ -102,9 +102,23 @@ describe('the timeline (AC 4, 6)', () => {
     expect(timelineCells(buckets(), 10)).toEqual(buckets());
   });
 
-  it('is said in words too: the total, the span and the busiest slice', () => {
-    expect(timelineText(detail())).toBe('19 edits from 2026-11-10 09:00:00 UTC to 2026-11-10 11:00:00 UTC in 24 equal slices; at most 10 in one slice');
+  it('is said in words too: the total, the span, and when each edit happened, slice by slice (Qodo PR #167 4dfd03c0)', () => {
+    // 2 h in 24 slices of 5 min: slices 1, 6 and 24.
+    expect(timelineText(detail())).toBe('19 edits from 2026-11-10 09:00:00 UTC to 2026-11-10 11:00:00 UTC, in 24 slices of 0:05:00: '
+      + '10 in 0:00:00–0:05:00, 6 in 0:25:00–0:30:00, 3 in 1:55:00–2:00:00 after the start');
     expect(timelineText(detail({ files: [], otherFiles: 0, otherEdits: 0, buckets: buckets() }))).toBe('no edits from 2026-11-10 09:00:00 UTC to 2026-11-10 11:00:00 UTC');
+  });
+
+  it('two timelines with the same total and peak but edits at other times read differently', () => {
+    const early = detail({ buckets: buckets([0, 10], [1, 6], [2, 3]) });
+    const late = detail({ buckets: buckets([21, 10], [22, 6], [23, 3]) });
+    expect(timelineText(early)).not.toBe(timelineText(late));
+    expect(timelineText(late)).toMatch(/10 in 1:45:00–1:50:00/);
+  });
+
+  it('a zero-length session says its edits happened at its one time', () => {
+    const at = '2026-11-10T09:00:00Z';
+    expect(timelineText(detail({ startedAt: at, endedAt: at, buckets: buckets([0, 19]) }))).toBe('19 edits, all at 2026-11-10 09:00:00 UTC');
   });
 });
 

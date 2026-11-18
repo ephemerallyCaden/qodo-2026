@@ -54,12 +54,28 @@ export function timelineCells(buckets: readonly number[], rows: number): number[
   return buckets.map((n) => (n <= 0 || max === 0 ? 0 : Math.max(1, Math.ceil((n * rows) / max))));
 }
 
-/** The timeline in words, for screen readers and as its caption. */
+/** A duration as h:mm:ss, floored to the second. */
+function clock(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${Math.floor(s / 3600)}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}`;
+}
+
+/**
+ * The timeline in words, for screen readers and as its caption: the total, the span, and how many edits
+ * fell in each slice that has any, by its offset from the start, so it says what the graph shows
+ * (Qodo PR #167 4dfd03c0). Slice edges are to the second.
+ */
 export function timelineText(d: Pick<DroneDetail, 'buckets' | 'startedAt' | 'endedAt'>): string {
   const total = d.buckets.reduce((a, b) => a + b, 0);
-  const span = `from ${utc(d.startedAt)} to ${utc(d.endedAt)}`;
-  if (total === 0) return `no edits ${span}`;
-  return `${edits(total)} ${span} in ${d.buckets.length} equal slices; at most ${Math.max(...d.buckets)} in one slice`;
+  const start = utc(d.startedAt);
+  if (total === 0) return `no edits from ${start} to ${utc(d.endedAt)}`;
+  const span = Date.parse(d.endedAt) - Date.parse(d.startedAt);
+  if (!(span > 0)) return total === 1 ? `1 edit, at ${start}` : `${edits(total)}, all at ${start}`;
+  const n = d.buckets.length;
+  const edge = (i: number) => Math.floor((i * span) / n);
+  const slices = d.buckets.flatMap((b, i) => (b > 0 ? [`${b} in ${clock(edge(i))}–${clock(edge(i + 1))}`] : []));
+  return `${edits(total)} from ${start} to ${utc(d.endedAt)}, in ${n} slices of ${clock(span / n)}: ${slices.join(', ')} after the start`;
 }
 
 /** What a reply (or a failed request) shows for the session `key` at `head`. A reply for anything else is a failure, never shown. */

@@ -74,9 +74,33 @@ const within = (spans: Interval[], t: number) => spans.some((s) => t >= s.from &
 const personId = (email: string): PersonId => `p_${sha256Hex(email).slice(0, 12)}`;
 const excluded = (path: string, row: NumstatRow | undefined) => exclusionOf(path, row?.binary) !== null;
 
-function mergeIngest(into: ClaudeIngest, more: ClaudeIngest): void {
-  into.events.push(...more.events);
-  for (const [k, v] of more.sessions) if (!into.sessions.has(k)) into.sessions.set(k, v);
+/**
+ * Adds a later parse (the outside-transcript pass) to the first. A session seen in both is merged, never
+ * replaced: its files, span and lines from either parse all count, so its per-file edit counts and its
+ * timeline cover every edit (#148, Qodo PR #167 121022e1). An edit event both parses read (same session
+ * and event id) counts once. Its first parse's metadata (branch, model, version) wins.
+ */
+export function mergeIngest(into: ClaudeIngest, more: ClaudeIngest): void {
+  const seen = new Set(into.events.map((e) => `${e.sessionKey}\0${e.eventId}`));
+  for (const e of more.events) {
+    const id = `${e.sessionKey}\0${e.eventId}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    into.events.push(e);
+  }
+  for (const [k, v] of more.sessions) {
+    const had = into.sessions.get(k);
+    if (!had) { into.sessions.set(k, v); continue; }
+    for (const path of v.files) had.files.add(path);
+    had.firstTs = Math.min(had.firstTs, v.firstTs);
+    had.lastTs = Math.max(had.lastTs, v.lastTs);
+    had.linesAdded += v.linesAdded;
+    had.linesRemoved += v.linesRemoved;
+    had.branch ??= v.branch;
+    had.model ??= v.model;
+    had.toolVersion ??= v.toolVersion;
+    had.agentType ??= v.agentType;
+  }
   into.ranCommits.push(...more.ranCommits);
   into.ranWindows.push(...more.ranWindows);
   into.unreadable.push(...more.unreadable);

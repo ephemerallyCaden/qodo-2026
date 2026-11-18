@@ -137,6 +137,14 @@ describe('droneDetail (#148)', () => {
     for (const over of damaged) expect(droneDetail(snapOf([{ ...s, ...over }]), s.key), JSON.stringify(over)).toBe('damaged');
   });
 
+  it('a snapshot whose sessions hold a non-object is "damaged", whichever key is asked (Qodo PR #167 af483acc)', () => {
+    const s = edited('a', { 'src/a.ts': 2 });
+    for (const bad of [null, 7, 'x', [], { key: 9 }]) {
+      expect(droneDetail(snapOf([bad as never, s]), s.key), JSON.stringify(bad)).toBe('damaged');
+      expect(droneDetail(snapOf([s, bad as never]), 's_zz' as SessionKey), JSON.stringify(bad)).toBe('damaged');
+    }
+  });
+
   it('is byte-identical for the same inputs, in any session order', () => {
     const a = edited('a', { 'src/b.ts': 2, 'README.md': 1 }, 1, 1);
     const b = edited('b', { 'lib/x.ts': 1 });

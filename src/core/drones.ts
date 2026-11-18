@@ -85,6 +85,10 @@ export function byFolderThenName(a: string, b: string): number {
 
 const isCount = (n: unknown, min = 0): n is number => typeof n === 'number' && Number.isInteger(n) && n >= min;
 
+/** A sessions[] entry that can be read at all: an object with a string key. */
+export const isSessionEntry = (x: unknown): boolean =>
+  typeof x === 'object' && x !== null && !Array.isArray(x) && typeof (x as { key?: unknown }).key === 'string';
+
 /**
  * Whether a session's #148 fields can be read: `old` when none is there (scanned before #148), `damaged`
  * when any is there but malformed, or the counts don't add up.
@@ -110,6 +114,8 @@ function detailFields(s: Session): 'ok' | 'old' | 'damaged' {
  * counts can't be read, so the caller reports damaged state instead of serving a bad detail.
  */
 export function droneDetail(snapshot: Pick<SnapshotV02, 'repo' | 'files' | 'sessions'>, key: SessionKey): DroneDetail | 'damaged' | null {
+  // An entry that isn't a session object means the file is damaged, whichever key is asked (Qodo PR #167 af483acc).
+  if (!snapshot.sessions.every(isSessionEntry)) return 'damaged';
   const s = snapshot.sessions.find((x) => x.key === key);
   if (!s || (s.inferred as boolean)) return null;
   const base = { ok: true, schemaVersion: 'drone-detail.1', head: snapshot.repo.head, key: s.key, startedAt: s.startedAt, endedAt: s.endedAt } as const;

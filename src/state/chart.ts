@@ -7,7 +7,7 @@ import { canonicalJson } from '../core/canonical-json.js';
 import type { ChartResult } from '../core/contract/api.js';
 import type { DroneDetailQuery, DroneDetailResult, DroneView } from '../core/contract/drones.js';
 import type { ChartAction, ChartUnknownHead, FogView } from '../core/contract/fog.js';
-import { droneDetail, droneView } from '../core/drones.js';
+import { droneDetail, droneView, isSessionEntry } from '../core/drones.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import {
   applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges, type ChartState, type FogBase,
@@ -321,8 +321,9 @@ const DAMAGED_SESSIONS = 'state error: .git/commet/snapshot.json is damaged or f
 /** GET /api/drones (#80): the drone view, placed with the same file-to-planet map as the fog. State errors throw CommetError. */
 export async function readDrones(repoDir: string): Promise<DroneView> {
   const { base } = await openFogSource(repoDir);
-  // isSnapshot checks only what fog reads; sessions are the drone view's input.
-  if (!Array.isArray(base.snapshot.sessions)) throw new CommetError(DAMAGED_SESSIONS, EXIT.state);
+  // isSnapshot checks only what fog reads; sessions are the drone view's input, each one an object
+  // (a null entry is damaged state, not an internal error; Qodo PR #167 af483acc).
+  if (!Array.isArray(base.snapshot.sessions) || !base.snapshot.sessions.every(isSessionEntry)) throw new CommetError(DAMAGED_SESSIONS, EXIT.state);
   return droneView(base.snapshot, base.home);
 }
 
