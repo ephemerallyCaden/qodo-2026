@@ -1,12 +1,13 @@
 # Phase 2 contract (#29)
 
-**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch), 2026-11-11 (content roots, #71; the unseen and diff routes, #75) and 2026-11-13 (drone view, #80).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
+**Status: locked 2026-11-09; amended 2026-11-10 (rings removed, `healthy` band, `depthFade` switch), 2026-11-11 (content roots, #71; the unseen and diff routes, #75), 2026-11-13 (drone view, #80) and 2026-11-18 (beacons, #79).** Change it only through the team lead, never inside a feature PR. The types are the source of truth; this doc explains them.
 
 | Shape | Types | Produced by | Consumed by |
 |---|---|---|---|
 | `layout.json` | `src/core/contract/layout.ts` (`LayoutV1`) | #18 `layout()` | #30 view, #32 server, #34 later |
 | Fog view | `src/core/contract/fog.ts` (`FogView`, `ChartAction`) | #33 R5 | #32 server, #30 view |
 | Drone view | `src/core/contract/drones.ts` (`DroneView`, `DroneSession`) | #80 | #32 server, #30 view |
+| Beacons | `src/core/contract/beacons.ts` (`BeaconAction`, `BeaconView`, `Beacon`, `BeaconResult`, `BEACON_TEXT_MAX`, `MAX_BEACONS`) | #79 R10 | #32 server, #30 view |
 | Local HTTP surface | `src/core/contract/api.ts` (`API`, `TOKEN_HEADER`, `WEB_DIST`, `LiveEvent`; #75: `UnseenList`, `DiffView`) | #32 R14, #75 | #30 view |
 | Render hook | `src/core/contract/api.ts` (`RenderHook`, `RenderInput`, `RenderStats`, `TEST_MODE_PARAM`) | #30 view | #31 render tests |
 
@@ -42,12 +43,20 @@
 - **Tool:** `tool` is a string, not the snapshot's `Tool` union, so a provider the scanner doesn't know yet draws the generic drone with its name.
 - **Determinism:** the view is a pure function of the snapshot and the layout. Two scans of the same repo and logs give byte-identical `canonicalJson`. No wall-clock time (principle 3).
 
+## Beacons (amended 2026-11-18, #79, R10)
+- **What it is:** charting a file can leave a one-line note, the captain's log, shown as a beacon on the file's planet (or on the star for a root file or unmatched test).
+- **State:** `.git/commet/beacons.json`, never git notes (they attach to commits and can be pushed): `{ schemaVersion: 'beacons.1', beacons: [{ fileId, at, text }] }`, file ids, commit SHAs and the note text only, in the order the notes were left. Canonical JSON, mode 0600, atomic writes under `beacons.lock`, symlinks refused; a damaged file is a state error (exit 5), never reset. No wall-clock time.
+- **Recorded like a chart:** `fileId` is the file's id as of `at`, the `FogView.head` the user saw (#58), and it is followed to the current head through the fog's rename map on every read. A renamed file keeps its note; a note whose file can't be followed to HEAD (deleted, another branch, before the window) is counted in `BeaconView.unplaced`, never drawn or dropped (Rule 1). One note per file: a new one replaces the old and moves to the end. Past `MAX_BEACONS` (1000) a new note is refused.
+- **The note:** 1 to `BEACON_TEXT_MAX` (120) Unicode code points on one line, no leading or trailing whitespace, and no control (`\p{Cc}`), line or paragraph separator, bidi-control or lone-surrogate character. One rule (`beaconTextProblem`, `src/core/beacons.ts`) is used by the server, the state file, the CLI and the view; a bad note is refused with fixed text that never quotes it, never rewritten. Clients trim surrounding whitespace before sending. It is plain text: JSON data on the wire, DOM `textContent` or bitmap glyphs in the view, never HTML.
+- **`BeaconView`** (`GET /api/beacons`): `head`, the placed `beacons` (`fileId` at HEAD, repo-relative `path` for the label, `home` a planet's `DirId` or `'star'` from the fog's `FogBase.home` map, `at`, `text`) and `unplaced`. Like the fog and drones, the view draws it only over the layout of the same scan (#64).
+- **CLI:** `commet beacon [list]`, `commet beacon [--] <file> <note>`, `commet beacon --remove [--] <file>`, and `commet chart --note <text> [--] <file>`. They act at the head of the snapshot they read.
+
 ## Local HTTP surface (`commet open`)
 - **Bind and Host:** binds 127.0.0.1 only. `Host` must be `127.0.0.1:<port>` or `localhost:<port>`.
 - **Token:** the opened URL is `http://127.0.0.1:<port>/#t=<token>`. The fragment is never sent to the server. The view reads it and sends `x-commet-token` on every data request.
 - **Static bundle:** served at `/` from `dist/web` without a token, because it holds no repo data. No directory listing and no traversal.
-- **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`, `/api/unseen`, `/api/diff`, `/api/drones` (#80, GET only, behind the same Host, origin and token gates).
-- **Write routes:** `POST /api/chart` with a `ChartAction` JSON body (exact keys, `at` a full 40-hex SHA, or 64-hex in a SHA-256 repo) returns a `ChartResult`. An unknown `at` gets `ChartUnknownHead` with status 409 Conflict, told apart from other refusals (400) by its `head`. `POST /api/beacon` answers 501 until R10. Every other method or path is refused.
+- **Read routes:** `GET /api/snapshot`, `/api/layout`, `/api/fog`, `/api/unseen`, `/api/diff`, `/api/drones` (#80), `/api/beacons` (#79; GET only, behind the same Host, origin and token gates).
+- **Write routes:** `POST /api/chart` with a `ChartAction` JSON body (exact keys, `at` a full 40-hex SHA, or 64-hex in a SHA-256 repo) returns a `ChartResult`. An unknown `at` gets `ChartUnknownHead` with status 409 Conflict, told apart from other refusals (400) by its `head`. `POST /api/beacon` (#79) takes a `BeaconAction` JSON body (exactly `fileId`, `at`, `text`; `application/json`, at most 4096 bytes) and returns a `BeaconResult`: 200 with the new `BeaconView`, 409 `ChartUnknownHead`, or 400 with a fixed reason (not a beacon, a note the rule refuses, a file not at that head, the cap). The view has no removal, so the API takes none; removal is the CLI's. Every other method or path is refused.
 - **Reviewing from the view (amended 2026-11-11, #75):** two more read routes, so a file can be charted where its diff is read (R5).
   - `GET /api/unseen?home=<DirId>|star&at=<Sha>` (`UnseenQuery`, `UnseenList`) lists the fogged files of one planet, or of the star, with their paths. Layout has no file paths and leaves out surface overflow, and fog.1 has no file-to-planet map, so the view can't name them otherwise. fog.1 is unchanged.
   - `GET /api/diff?fileId=<FileId>&at=<Sha>` (`DiffQuery`, `DiffView`) is one file's unseen diff, as parsed hunks.
@@ -57,7 +66,7 @@
   - git runs argv-only (system design §9 check 8): `diff-tree` between the two commits (never the work tree or index), `--literal-pathspecs` (a file named `*.ts` or `:(glob)x` means only itself), `--no-ext-diff --no-textconv --no-color`, the scan's pinned config, revisions as full hex from the snapshot and paths only after `--`.
   - Past `DIFF_LIMITS` (1 Mi characters or 20,000 lines) the rest is cut and `truncated` set; the view says so beside Chart and offers the `git diff` command. At most 4 diffs run at once and each gets 10 s; past either the answer is 503.
   - Diffs are served on demand and never stored, cached or logged, on either side.
-- **Live updates:** `GET /api/events` is a `text/event-stream` read with `fetch`, so the token stays in a header. Each `data:` line is a `LiveEvent`. The view refetches the named resource.
+- **Live updates:** `GET /api/events` is a `text/event-stream` read with `fetch`, so the token stays in a header. Each `data:` line is a `LiveEvent`. The view refetches the named resource. A change to `beacons.json` (from this server or `commet beacon`) is sent as `{ type: 'beacons', head }` (#79), `head` the beacon view's.
   - **Rescans without hooks (amended 2026-11-16, #95):** while it runs, `commet open` watches its worktree's HEAD and the branches (read-only: that worktree's own `HEAD`, `refs/heads/**`, `refs/remotes/**`, `packed-refs` and `reftable/tables.list`, by lstat; fs.watch hints plus a poll; another worktree's HEAD moves no branch its scan shows) and, once a burst of changes settles (500 ms, at most 5 s), runs one child `commet scan` of its worktree, coalesced through `commet hook refresh`'s lock and request (one running, one pending). The child is spawned from an argv array with no shell and no terminal (it never asks and never writes `config.json`); nothing is written to git config or a hooks dir. No HTTP route starts a scan. A failed rescan is said on stderr with the scan's own message and sent as `RescanEvent` `{ type: 'rescan', ok: false, exitCode }`, also to each view that connects until a rescan works again; the first good one after it as `{ ok: true, exitCode: 0 }`. The view keeps saying the failure in its status line, after reloads too, until then. The new data itself arrives as snapshot, layout and fog events. Shutdown stops watching and kills the running child only while holding `publish.lock`, so the child is never stopped halfway through publishing its pair: it waits for that lock for as long as the child runs, and a child that ends meanwhile isn't signalled.
 - **No CORS headers,** and cross-origin writes are refused.
 
@@ -66,6 +75,7 @@
 - **Calls:** `load(input)`, then `renderFrame(n)`, which draws exactly frame `n` and returns `renderer.info` draw calls and triangles. `lowResPixels()` returns the internal target before upscale, so goldens can sit near a 0 threshold.
 - **Determinism:** a frame is a pure function of (`RenderInput`, frame number), per principle 3.
 - **Drones (amended 2026-11-13, #80):** `RenderInput.drones` (a `DroneView`, default none) is drawn like the live view draws it: at most 16 placed sessions, the most recently ended, each circling its home. The hook checks it with the view's validator and refuses a bad one.
+- **Beacons (amended 2026-11-18, #79):** `RenderInput.beacons` (a `BeaconView`, default none) must be of the layout's head and pass the view's validator, else the hook refuses it. One draw call for every body holding notes; with none, a frame is exactly what it was before beacons.
 - **Palette check (amended 2026-11-10):** `RenderInput.depthFade` (default true) switches the per-pixel depth fade. With it off, off-palette pixels must be 0 (system-design §10), because the fade is the only off-palette output.
 
 ## Directory ownership in Phase 2
