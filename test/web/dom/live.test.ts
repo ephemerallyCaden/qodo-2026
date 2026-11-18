@@ -12,7 +12,7 @@ import { runLive } from '../../../web/src/live.js';
 import { systemModel, type SystemModel } from '../../../web/src/model/system.js';
 import type { Hud } from '../../../web/src/ui/hud.js';
 import type { View } from '../../../web/src/view.js';
-import type { DroneView } from '../../../src/core/contract/drones.js';
+import { DETAIL_BUCKETS, type DroneDetail, type DroneDetailResult, type DroneView } from '../../../src/core/contract/drones.js';
 import type { BeaconView } from '../../../src/core/contract/beacons.js';
 import type { FleetEntry } from '../../../web/src/render/drone-fleet.js';
 import { miniFog, miniLayout } from '../../fixtures/contract/mini.js';
@@ -21,7 +21,9 @@ import { droneView, session } from '../../fixtures/drones.js';
 
 // The review panel (#75) needs a DOM and is tested in the render suite: a no-op here.
 vi.mock('../../../web/src/ui/panel.js', () => ({ Panel: class { setFog() {} select() {} scale() {} } }));
-vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} } }));
+// The drone panel stub records what its session-detail section is told to show (#148).
+const detailShown = vi.hoisted(() => [] as { kind: string; text?: string; detail?: unknown }[]);
+vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} showDetail(s: { kind: string }) { detailShown.push(s); } } }));
 
 const HEAD = miniLayout.source.head;
 const OTHER = 'b'.repeat(40);
@@ -44,6 +46,7 @@ beforeEach(() => {
   vi.stubGlobal('innerHeight', 360);
   vi.stubGlobal('addEventListener', () => {});
   els.clear();
+  detailShown.length = 0;
   activeElement = null;
   vi.stubGlobal('document', { get activeElement() { return activeElement; }, getElementById: (id: string) => { if (!els.has(id)) els.set(id, { textContent: '', hidden: true, contains: (n) => n === PANEL_BUTTON }); return els.get(id); } }); // the drone HUD line and panel host
   vi.stubGlobal('requestAnimationFrame', () => 1);
@@ -68,6 +71,9 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
   /** Answers for the beacon view (#79), in turn; with none queued, an empty one of the layout's head. */
   const beaconAnswers: (() => Promise<BeaconView>)[] = [];
   let beaconCalls = 0;
+  /** Answers for a session's detail (#148), in turn; with none queued, an empty detail of the asked key and head. */
+  const detailAnswers: (() => Promise<DroneDetailResult>)[] = [];
+  const detailAsked: { key: string; at: string }[] = [];
   const fogs: (() => Promise<FogView>)[] = [async () => { if (first.fog instanceof Error) throw first.fog; return first.fog; }];
   let fogCalls = 0;
   let onEvent: (ev: LiveEvent) => void = () => {};
@@ -77,6 +83,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     fog: () => { fogCalls++; return fogs.shift()!(); },
     follow: (e, st) => { onEvent = e; onStatus = st; return () => {}; },
     drones: () => { droneCalls++; return (droneAnswers.shift() ?? (async () => droneView(head, [])))(); },
+    droneDetail: (key, at) => { detailAsked.push({ key, at }); return (detailAnswers.shift() ?? (async () => emptyDetail(key, at)))(); },
     unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }),
     chart: async () => ({ ok: false, error: 'not used' }),
@@ -127,10 +134,16 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     await vi.waitFor(() => expect(layouts.length + fogs.length).toBe(0));
     await new Promise((r) => setTimeout(r, 10));
   };
-  return { view, status, layouts, fogs, droneAnswers, droneCalls: () => droneCalls, beaconAnswers, beaconCalls: () => beaconCalls, emit, send: (ev: LiveEvent) => onEvent(ev), connection: (st: string) => onStatus(st), fogCalls: () => fogCalls, last: () => status.at(-1) ?? '' };
+  return { view, status, layouts, fogs, droneAnswers, detailAnswers, detailAsked, droneCalls: () => droneCalls, beaconAnswers, beaconCalls: () => beaconCalls, emit, send: (ev: LiveEvent) => onEvent(ev), connection: (st: string) => onStatus(st), fogCalls: () => fogCalls, last: () => status.at(-1) ?? '' };
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 10));
+
+/** A session's detail with no edits, of `key` at `at` (#148). */
+const emptyDetail = (key: string, at: string): DroneDetail => ({
+  ok: true, schemaVersion: 'drone-detail.1', head: at, key: key as DroneDetail['key'], startedAt: '2026-11-10T09:00:00Z', endedAt: '2026-11-10T10:00:00Z',
+  files: [], otherFiles: 0, otherEdits: 0, buckets: new Array<number>(DETAIL_BUCKETS).fill(0), needsRescan: false,
+});
 
 describe('live mode applies a fog only over its own scan\'s layout (#64)', () => {
   it('a matched pair loads as before: the fog is applied and nothing is announced about it', async () => {
@@ -411,6 +424,114 @@ describe('drones in live mode (#80)', () => {
     await vi.waitFor(() => expect(l.layouts.length).toBe(0));
     await vi.waitFor(() => expect(l.view.selectedDrone).toBeNull());
     slow.resolve(droneView(OTHER, []));
+  });
+});
+
+describe("the drone panel's session detail (#148)", () => {
+  const [a] = miniLayout.planets.map((p) => p.dirId);
+  const ev = (type: string) => Object.assign(new Event(type), { button: 0, pointerId: 1, clientX: 5, clientY: 5, movementX: 0, movementY: 0 });
+  /** Draws `sessions` and clicks the drone of `key`, as a user does. */
+  const drawAndPick = async (l: Awaited<ReturnType<typeof live>>, sessions: ReturnType<typeof session>[], key: string) => {
+    l.droneAnswers.push(async () => droneView(HEAD, sessions));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.view.drawn.length).toBe(sessions.length));
+    l.view.droneAt = key;
+    l.view.pass.canvas.dispatchEvent(ev('pointerdown'));
+    l.view.pass.canvas.dispatchEvent(ev('pointerup'));
+  };
+  const kinds = () => detailShown.map((d) => d.kind);
+
+  it('asks for nothing until a drone is selected, then once, for that session at the drawn head: loading, then the list', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!), session(2, 'star')]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.view.drawn.length).toBe(2));
+    expect(l.detailAsked).toEqual([]);
+    const ready = { ...emptyDetail(session(2, 'star').key, HEAD), files: [{ fileId: 'f_000000000001' as const, path: 'src/a.ts', edits: 2 }], buckets: [2, ...new Array<number>(DETAIL_BUCKETS - 1).fill(0)] };
+    l.detailAnswers.push(async () => ready);
+    l.view.droneAt = session(2, 'star').key;
+    l.view.pass.canvas.dispatchEvent(ev('pointerdown'));
+    l.view.pass.canvas.dispatchEvent(ev('pointerup'));
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready']));
+    expect(l.detailAsked).toEqual([{ key: session(2, 'star').key, at: HEAD }]);
+    expect(detailShown[1]!.detail).toEqual(ready);
+  });
+
+  it('never asks for an inferred pseudo-session, and says the detail is for agent sessions (Rule 6)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    const s = session(1, a!, { inferred: true });
+    await drawAndPick(l, [s], s.key);
+    await settle();
+    expect(l.detailAsked).toEqual([]);
+    expect(detailShown).toEqual([{ kind: 'note', text: 'file detail is for agent sessions only' }]);
+  });
+
+  it('drops a reply that lands after its drone was closed or another one picked', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    const slow = deferred<DroneDetailResult>();
+    l.detailAnswers.push(() => slow.promise);
+    await drawAndPick(l, [session(1, a!), session(2, 'star')], session(1, a!).key);
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading']));
+    // Another drone: its own request; the first one's late answer is dropped.
+    l.view.droneAt = session(2, 'star').key;
+    l.view.pass.canvas.dispatchEvent(ev('pointerdown'));
+    l.view.pass.canvas.dispatchEvent(ev('pointerup'));
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'loading', 'ready']));
+    slow.resolve({ ...emptyDetail(session(1, a!).key, HEAD), otherFiles: 1, otherEdits: 1, buckets: [1, ...new Array<number>(DETAIL_BUCKETS - 1).fill(0)] });
+    await settle();
+    expect(kinds()).toEqual(['loading', 'loading', 'ready']);
+    expect((detailShown[2]!.detail as DroneDetail).key).toBe(session(2, 'star').key);
+    // Closed while loading: nothing is shown when the answer lands.
+    const late = deferred<DroneDetailResult>();
+    l.detailAnswers.push(() => late.promise);
+    l.view.droneAt = session(1, a!).key;
+    l.view.pass.canvas.dispatchEvent(ev('pointerdown'));
+    l.view.pass.canvas.dispatchEvent(ev('pointerup'));
+    await vi.waitFor(() => expect(kinds().length).toBe(4));
+    l.view.pass.canvas.dispatchEvent(Object.assign(new Event('keydown'), { key: 'Escape', code: 'Escape', altKey: false, ctrlKey: false, metaKey: false, preventDefault: () => {} }));
+    late.resolve(emptyDetail(session(1, a!).key, HEAD));
+    await settle();
+    expect(kinds()).toEqual(['loading', 'loading', 'ready', 'loading']);
+  });
+
+  it('a failed request is a line in the panel and an announcement; the map and the drones stay', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    l.detailAnswers.push(() => Promise.reject(new ViewError('/api/drone-detail answered 500.')));
+    await drawAndPick(l, [session(1, a!)], session(1, a!).key);
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'failed']));
+    expect(detailShown[1]!.text).toMatch(/500/);
+    expect(l.last()).toMatch(/session files unavailable: .*500/);
+    expect(l.view.model).not.toBeNull();
+    expect(l.view.drawn.length).toBe(1);
+  });
+
+  it('a new drone view asks again for the open drone, since a rescan at the same head can change its edits (Qodo 32bf0631)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    const before = deferred<DroneDetailResult>();
+    l.detailAnswers.push(() => before.promise);
+    await drawAndPick(l, [session(1, a!)], session(1, a!).key);
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading']));
+    // A rescan at the same head while the first request is out: a new request, and the old answer is dropped.
+    const after = { ...emptyDetail(session(1, a!).key, HEAD), otherFiles: 1, otherEdits: 2, buckets: [2, ...new Array<number>(DETAIL_BUCKETS - 1).fill(0)] };
+    l.detailAnswers.push(async () => after);
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!)]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'loading', 'ready']));
+    before.resolve(emptyDetail(session(1, a!).key, HEAD));
+    await settle();
+    expect(kinds()).toEqual(['loading', 'loading', 'ready']);
+    expect(detailShown[2]!.detail).toEqual(after);
+    expect(l.detailAsked).toHaveLength(2);
+  });
+
+  it('a failed drone refresh keeps the open detail without asking again', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await drawAndPick(l, [session(1, a!)], session(1, a!).key);
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready']));
+    l.droneAnswers.push(() => Promise.reject(new ViewError('/api/drones answered 500.')));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready', 'ready']));
+    expect(l.detailAsked).toHaveLength(1);
   });
 });
 

@@ -1,17 +1,19 @@
 // Drones in live mode (#80): fetch GET /api/drones, pair it with the drawn layout, choose what to draw
 // (select.ts), say it in the HUD and open the panel of a clicked drone. A failed fetch is announced and
-// never blocks the map, as the fog's is. Everything the view needs from here is a call or two.
-import type { DroneSession, DroneView } from '../../../src/core/contract/drones.js';
+// never blocks the map, as the fog's is. Everything the view needs from here is a call or two. The open
+// panel asks for its session's files and timeline (#148), once per selection, for the drawn head only.
+import type { DroneDetailResult, DroneSession, DroneView } from '../../../src/core/contract/drones.js';
 import type { OrbitPose } from '../camera/pose.js';
 import { ViewError, type DataClient } from '../data/client.js';
 import { byId } from '../ui/dom.js';
 import type { View } from '../view.js';
+import { detailState, INFERRED_NOTE, LOADING, type DetailState } from './detail.js';
 import { DronePanel } from './panel.js';
 import { droneStatus, entryOf, selectDrones } from './select.js';
 
 export interface DronesHost {
   view: View;
-  client: Pick<DataClient, 'drones'>;
+  client: Pick<DataClient, 'drones' | 'droneDetail'>;
   /** Polite screen-reader and status-line announcement. */
   announce(text: string): void;
   /** Something changed that needs a redraw. */
@@ -32,6 +34,10 @@ export class Drones {
   private gen = 0;
   /** Why the latest refresh didn't apply, shown beside the counts until a matching one does. */
   private note = '';
+  /** The open panel's session detail (#148): whose, of which head, and what it shows. */
+  private detail: { key: string; head: string; state: DetailState } | null = null;
+  /** Bumped by every detail request and every close, so a late answer is dropped. */
+  private detailGen = 0;
 
   constructor(private readonly host: DronesHost) {
     this.panel.onClose = () => { this.deselect(); host.release(); };
@@ -77,6 +83,9 @@ export class Drones {
       return;
     }
     if (!drawn || gen !== this.gen) return; // stale: a newer refresh or a layout reload owns the state now
+    // A new drone view means a new scan, maybe of the same head, whose edits may differ: the open panel
+    // asks again, and an answer still out from the old scan is dropped (Qodo 32bf0631).
+    if (data !== this.data) { this.detail = null; this.detailGen++; }
     this.data = data;
     this.shown = sel ? sel.shown : [];
     this.line.textContent = (sel ? droneStatus(sel) : 'drones: none loaded') + (this.note ? ` (${this.note})` : '');
@@ -89,6 +98,34 @@ export class Drones {
   private showPanel(s: DroneSession, takeFocus = true): void {
     const home = s.home === 'star' || s.home === null ? 'the star' : this.host.view.model?.planets.find((p) => p.dirId === s.home)?.path ?? 'unknown';
     this.panel.show(s, home, takeFocus);
+    this.showDetail(s);
+  }
+
+  /**
+   * The panel's files and timeline (#148). Never asked for an inferred pseudo-session (Rule 6). The same
+   * session of the same drone view keeps what it has (a failed refresh rebuilds the panel); anything else asks again.
+   */
+  private showDetail(s: DroneSession): void {
+    if (s.inferred) { this.panel.showDetail({ kind: 'note', text: INFERRED_NOTE }); return; }
+    const head = this.data?.head;
+    if (head === undefined) return;
+    const had = this.detail;
+    if (had && had.key === s.key && had.head === head && had.state.kind !== 'failed') { this.panel.showDetail(had.state); return; }
+    void this.loadDetail(s.key, head);
+  }
+
+  private async loadDetail(key: string, head: string): Promise<void> {
+    const gen = ++this.detailGen;
+    this.detail = { key, head, state: LOADING };
+    this.panel.showDetail(LOADING);
+    let got: DroneDetailResult | Error;
+    try { got = await this.host.client.droneDetail(key as DroneSession['key'], head); } catch (e) { got = e instanceof Error ? e : new Error(String(e)); }
+    // Stale: another request, a close, another drone or another scan took over meanwhile.
+    if (gen !== this.detailGen || this.host.view.selectedDrone !== key || this.data?.head !== head) return;
+    const state = detailState(got, key, head);
+    this.detail = { key, head, state };
+    this.panel.showDetail(state);
+    if (state.kind === 'failed') this.host.announce(`session files unavailable: ${state.text}`);
   }
 
   /** A click on the view: selects the drone under it and opens its panel. False when none is there. */
@@ -104,6 +141,8 @@ export class Drones {
   }
 
   deselect(): void {
+    this.detailGen++;
+    this.detail = null;
     if (this.host.view.selectedDrone === null && !this.panelOpen()) return;
     this.host.view.selectedDrone = null;
     const hadFocus = this.panelOpen() && byId('drone-panel').contains(document.activeElement);

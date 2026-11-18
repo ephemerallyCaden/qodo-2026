@@ -31,6 +31,8 @@ export function fixtureClient(name: string): DataClient {
     },
     fog: async () => parseFog(await file('mini.fog.json'), `fixture ${name}`),
     drones: async () => parseDrones(await file('mini.drones.json'), `fixture ${name}`),
+    // A session's files need a scanned repository: the fixtures have no paths (#148).
+    droneDetail: () => Promise.reject(new ViewError("A session's files need `commet open`: the dev fixtures have no paths.")),
     follow: (_onEvent, onStatus) => { onStatus(`dev fixture ${name}`); return () => {}; },
     // Reviewing needs a repository: the fixtures have no paths or diffs (#75).
     unseen: () => Promise.reject(new ViewError('Reviewing needs `commet open`: the dev fixtures have no diffs.')),

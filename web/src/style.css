@@ -23,6 +23,17 @@ canvas.bitmap, #error canvas { display: block; image-rendering: pixelated; }
 #drone-panel dd { margin: 0; overflow-wrap: anywhere; }
 #drone-panel button { background: var(--space); color: var(--ink); border: 1px solid var(--rule); padding: 2px 5px; cursor: pointer; font: inherit; }
 #drone-panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The session's files and edit timeline (#148): one session only, in folder-and-name order. */
+#drone-panel .detail { margin-top: 6px; border-top: 1px solid var(--rule); padding-top: 4px; max-height: 40vh; overflow-y: auto; }
+#drone-panel h3 { margin: 4px 0 2px; font-size: 12px; font-weight: normal; color: var(--dim); }
+#drone-panel .folder { margin: 2px 0 0; overflow-wrap: anywhere; }
+#drone-panel ul { list-style: none; margin: 0; padding: 0 0 0 1ch; }
+#drone-panel li { display: flex; justify-content: space-between; gap: 1ch; }
+#drone-panel li .name { overflow-wrap: anywhere; }
+#drone-panel li .n { color: var(--dim); white-space: nowrap; }
+#drone-panel .note { margin: 2px 0; color: var(--dim); overflow-wrap: anywhere; }
+#drone-panel canvas.timeline { display: block; margin-top: 2px; image-rendering: pixelated; }
+#drone-panel .axis { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: 1ch; margin: 1px 0 0; color: var(--dim); }
 
 /* Review panel (#75): crisp DOM outside the pixel pass. Bitmap titles and buttons; diff text monospace. */
 #panel { position: fixed; right: 8px; top: 56px; max-height: calc(100vh - 64px); box-sizing: border-box; width: min(64ch, 42vw); display: flex; flex-direction: column; gap: 6px;

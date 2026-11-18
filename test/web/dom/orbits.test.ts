@@ -72,6 +72,7 @@ async function live(reduced = false) {
     fog: async () => miniFog,
     follow: () => () => {},
     drones: async () => droneView(miniLayout.source.head, []),
+    droneDetail: async () => ({ ok: false, error: 'no-such-session' }),
     unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }),
     chart: async () => ({ ok: false, error: 'not used' }),
