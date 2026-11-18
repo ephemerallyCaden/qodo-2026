@@ -34,8 +34,8 @@ export class Drones {
   private gen = 0;
   /** Why the latest refresh didn't apply, shown beside the counts until a matching one does. */
   private note = '';
-  /** The open panel's session detail (#148): whose, of which head, and what it shows. */
-  private detail: { key: string; head: string; state: DetailState } | null = null;
+  /** The open panel's session detail (#148): whose, of which head, what it shows, and the request (gen) behind it. */
+  private detail: { key: string; head: string; state: DetailState; gen: number } | null = null;
   /** Bumped by every detail request and every close, so a late answer is dropped. */
   private detailGen = 0;
 
@@ -51,6 +51,9 @@ export class Drones {
   async refresh(head: string | null): Promise<void> {
     if (head === null) return;
     const gen = ++this.gen;
+    // A refresh means a new scan (a snapshot or layout event), maybe of the same head: the open panel asks
+    // for its detail again however the drone view fetch goes, and an answer still out is dropped (Qodo PR #167 09393e2b).
+    this.dropDetail();
     if (this.data && this.data.head !== head) { // a layout of another scan: its sessions are gone from the scene, so are their details
       this.data = null;
       this.shown = [];
@@ -83,9 +86,6 @@ export class Drones {
       return;
     }
     if (!drawn || gen !== this.gen) return; // stale: a newer refresh or a layout reload owns the state now
-    // A new drone view means a new scan, maybe of the same head, whose edits may differ: the open panel
-    // asks again, and an answer still out from the old scan is dropped (Qodo 32bf0631).
-    if (data !== this.data) { this.detail = null; this.detailGen++; }
     this.data = data;
     this.shown = sel ? sel.shown : [];
     this.line.textContent = (sel ? droneStatus(sel) : 'drones: none loaded') + (this.note ? ` (${this.note})` : '');
@@ -106,7 +106,7 @@ export class Drones {
    * session of the same drone view keeps what it has (a failed refresh rebuilds the panel); anything else asks again.
    */
   private showDetail(s: DroneSession): void {
-    if (s.inferred) { this.panel.showDetail({ kind: 'note', text: INFERRED_NOTE }); return; }
+    if (s.inferred) { this.dropDetail(); this.panel.showDetail({ kind: 'note', text: INFERRED_NOTE }); return; }
     const head = this.data?.head;
     if (head === undefined) return;
     const had = this.detail;
@@ -116,14 +116,18 @@ export class Drones {
 
   private async loadDetail(key: string, head: string): Promise<void> {
     const gen = ++this.detailGen;
-    this.detail = { key, head, state: LOADING };
+    this.detail = { key, head, state: LOADING, gen };
     this.panel.showDetail(LOADING);
     let got: DroneDetailResult | Error;
     try { got = await this.host.client.droneDetail(key as DroneSession['key'], head); } catch (e) { got = e instanceof Error ? e : new Error(String(e)); }
-    // Stale: another request, a close, another drone or another scan took over meanwhile.
-    if (gen !== this.detailGen || this.host.view.selectedDrone !== key || this.data?.head !== head) return;
+    // Stale: another request, a close, another drone or another scan took over meanwhile. Its "loading"
+    // is forgotten, so coming back to this drone asks again (Qodo PR #167 7fdffd82).
+    if (gen !== this.detailGen || this.host.view.selectedDrone !== key || this.data?.head !== head) {
+      if (this.detail?.gen === gen) this.detail = null;
+      return;
+    }
     const state = detailState(got, key, head);
-    this.detail = { key, head, state };
+    this.detail = { key, head, state, gen };
     this.panel.showDetail(state);
     if (state.kind === 'failed') this.host.announce(`session files unavailable: ${state.text}`);
   }
@@ -140,9 +144,14 @@ export class Drones {
     return true;
   }
 
-  deselect(): void {
+  /** Forgets the open panel's detail and drops any answer still out for it. */
+  private dropDetail(): void {
     this.detailGen++;
     this.detail = null;
+  }
+
+  deselect(): void {
+    this.dropDetail();
     if (this.host.view.selectedDrone === null && !this.panelOpen()) return;
     this.host.view.selectedDrone = null;
     const hadFocus = this.panelOpen() && byId('drone-panel').contains(document.activeElement);

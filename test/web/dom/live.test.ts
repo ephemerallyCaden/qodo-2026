@@ -524,14 +524,34 @@ describe("the drone panel's session detail (#148)", () => {
     expect(l.detailAsked).toHaveLength(2);
   });
 
-  it('a failed drone refresh keeps the open detail without asking again', async () => {
+  it('a failed drone refresh still asks again for the open drone: the refresh came from a new scan (Qodo PR #167 09393e2b)', async () => {
     const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
     await drawAndPick(l, [session(1, a!)], session(1, a!).key);
     await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready']));
     l.droneAnswers.push(() => Promise.reject(new ViewError('/api/drones answered 500.')));
     l.send({ type: 'snapshot', head: HEAD });
-    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready', 'ready']));
-    expect(l.detailAsked).toHaveLength(1);
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready', 'loading', 'ready']));
+    expect(l.detailAsked).toHaveLength(2);
+  });
+
+  it('returning to a drone whose request was dropped asks again, and never stays loading (Qodo PR #167 7fdffd82)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    const slow = deferred<DroneDetailResult>();
+    l.detailAnswers.push(() => slow.promise);
+    const inferred = session(2, 'star', { inferred: true });
+    await drawAndPick(l, [session(1, a!), inferred], session(1, a!).key);
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading']));
+    const pick = (key: string) => {
+      l.view.droneAt = key;
+      l.view.pass.canvas.dispatchEvent(ev('pointerdown'));
+      l.view.pass.canvas.dispatchEvent(ev('pointerup'));
+    };
+    pick(inferred.key);
+    slow.resolve(emptyDetail(session(1, a!).key, HEAD)); // lands while the inferred drone is selected: dropped
+    await settle();
+    pick(session(1, a!).key);
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'note', 'loading', 'ready']));
+    expect(l.detailAsked).toHaveLength(2);
   });
 });
 

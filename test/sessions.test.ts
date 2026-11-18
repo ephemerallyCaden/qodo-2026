@@ -17,7 +17,8 @@ function meta(key: string, files: string[], firstTs: number, lastTs: number): Se
     toolVersion: undefined, linesAdded: 0, linesRemoved: 0, firstTs, lastTs, files: new Set(files) };
 }
 let n = 0;
-const ev = (key: string, ts: number, path: string): EditEvent => ({ eventId: `e${String(n++).padStart(15, '0')}`, sessionKey: `s_${key}` as SessionKey, ts, path, hashes: [] });
+const ev = (key: string, ts: number, path: string, added = 1, removed = 0): EditEvent =>
+  ({ eventId: `e${String(n++).padStart(15, '0')}`, sessionKey: `s_${key}` as SessionKey, ts, path, hashes: [], added, removed });
 const build = (metas: SessionMeta[], events: EditEvent[]): Record<string, Session> =>
   Object.fromEntries(buildSessions(metas, [], new Map(), fileIds, events).map((s) => [s.key.slice(2), s]));
 const zeros = () => new Array<number>(DETAIL_BUCKETS).fill(0);
@@ -79,12 +80,13 @@ describe('buildSessions: edits per file and over time (#148)', () => {
     const ingest = (sessions: SessionMeta[], events: EditEvent[]): ClaudeIngest =>
       ({ events, sessions: new Map(sessions.map((m) => [m.key, m])), ranCommits: [], ranWindows: [], unreadable: [], partial: [], dropped: 0 });
     const first = { ...meta('a', ['src/a.ts'], T0 + 10_000, T0 + 20_000), linesAdded: 1 };
-    const again = { ...meta('a', ['README.md'], T0, T0 + 23_999), linesAdded: 2, linesRemoved: 1, branch: 'other' };
+    // Its three edits (one of them the shared one) added a line each.
+    const again = { ...meta('a', ['README.md'], T0, T0 + 23_999), linesAdded: 3, linesRemoved: 0, branch: 'other' };
     const shared = ev('a', T0 + 10_000, 'src/a.ts');
     const into = ingest([first], [shared]);
     mergeIngest(into, ingest([again], [{ ...shared }, ev('a', T0, 'README.md'), ev('a', T0 + 23_999, 'README.md')]));
     const m = into.sessions.get('s_a' as SessionKey)!;
-    expect(m).toMatchObject({ firstTs: T0, lastTs: T0 + 23_999, linesAdded: 3, linesRemoved: 1, branch: 'main' });
+    expect(m).toMatchObject({ firstTs: T0, lastTs: T0 + 23_999, linesAdded: 3, linesRemoved: 0, branch: 'main' });
     expect([...m.files].sort()).toEqual(['README.md', 'src/a.ts']);
     expect(into.events).toHaveLength(3); // the repeated event (same session and event id) once
     const s = buildSessions(into.sessions.values(), [], new Map(), fileIds, into.events)[0]!;
@@ -95,6 +97,17 @@ describe('buildSessions: edits per file and over time (#148)', () => {
     want[10] = 1;
     want[23] = 1;
     expect(s.editBuckets).toEqual(want);
+  });
+
+  it("an edit both parses read counts its lines once, like its event (Qodo PR #167 b7385767)", () => {
+    const ingest = (sessions: SessionMeta[], events: EditEvent[]): ClaudeIngest =>
+      ({ events, sessions: new Map(sessions.map((m) => [m.key, m])), ranCommits: [], ranWindows: [], unreadable: [], partial: [], dropped: 0 });
+    const shared = ev('a', T0, 'src/a.ts', 2, 1);
+    const into = ingest([{ ...meta('a', ['src/a.ts'], T0, T0), linesAdded: 2, linesRemoved: 1 }], [shared]);
+    // The second parse read the shared edit again (2 added, 1 removed) and one more (5 added, 3 removed).
+    mergeIngest(into, ingest([{ ...meta('a', ['src/a.ts', 'x.ts'], T0, T0 + 1000), linesAdded: 7, linesRemoved: 4 }], [{ ...shared }, ev('a', T0 + 1000, 'x.ts', 5, 3)]));
+    expect(into.sessions.get('s_a' as SessionKey)).toMatchObject({ linesAdded: 7, linesRemoved: 4 });
+    expect(into.events).toHaveLength(2);
   });
 
   it('never drops an edit: one on a path the session record lacks, or outside its span, still counts (Rule 1)', () => {

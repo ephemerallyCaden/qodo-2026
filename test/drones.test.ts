@@ -133,6 +133,8 @@ describe('droneDetail (#148)', () => {
       { fileEdits: [null as never] }, { fileEdits: [{ id: f(1), n: 0 }] }, { fileEdits: [{ id: f(1), n: 1.5 }] }, { fileEdits: [{ id: 'x' as FileId, n: 1 }] },
       { editsOutside: -1 }, { editsOutside: undefined as never }, { editBuckets: [1] }, { editBuckets: [...s.editBuckets.slice(1), 0.5] },
       { editBuckets: [3, ...s.editBuckets.slice(1)] }, { filesOutside: -1 },
+      // A file listed twice, whose counts still add up: damaged, never a detail the view refuses (Qodo PR #167 1eabd165).
+      { fileEdits: [{ id: s.fileEdits[0]!.id, n: 1 }, { id: s.fileEdits[0]!.id, n: 1 }] },
     ];
     for (const over of damaged) expect(droneDetail(snapOf([{ ...s, ...over }]), s.key), JSON.stringify(over)).toBe('damaged');
   });

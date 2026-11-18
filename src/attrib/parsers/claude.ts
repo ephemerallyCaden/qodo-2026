@@ -69,6 +69,9 @@ export interface EditEvent {
   ts: number;
   path: string;
   hashes: string[];
+  /** Lines this edit added and removed, as counted into its session's linesAdded/linesRemoved (#148: a re-read edit counts once). */
+  added: number;
+  removed: number;
 }
 
 export type SessionMeta = Pick<Session, 'key' | 'kind' | 'parentKey' | 'agentType' | 'branch' | 'model'
@@ -997,7 +1000,7 @@ export async function parseClaude(d: Discovery, knownPaths: Set<string>, hash: (
         s.files.add(path);
         s.linesAdded += e.added.length;
         s.linesRemoved += e.removed;
-        out.events.push({ eventId, sessionKey: key, ts, path, hashes: hashLines(e.added, hash) });
+        out.events.push({ eventId, sessionKey: key, ts, path, hashes: hashLines(e.added, hash), added: e.added.length, removed: e.removed });
       });
     }
     // A git call with no result (a crash, a truncated log) may have committed any time until the

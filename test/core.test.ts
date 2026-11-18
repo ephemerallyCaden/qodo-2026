@@ -39,7 +39,7 @@ describe('core', () => {
 
 describe('matchCommits', () => {
   const ev = (eventId: string, sessionKey: `s_${string}`, ts: number, hashes: string[]): EditEvent =>
-    ({ eventId, sessionKey, ts, path: 'f.ts', hashes });
+    ({ eventId, sessionKey, ts, path: 'f.ts', hashes, added: hashes.length, removed: 0 });
   const commit = (over: Partial<MatchCommit>): MatchCommit => ({ sha: 'c', dateMs: 10_000, isSelf: true, isMerge: false,
     covered: true, partial: false, added: new Map([['f.ts', ['h1', 'h2', 'h3', 'h4']]]), patchIncomplete: false, ranBy: new Set(),
     ranByCommand: new Set(), ...over });

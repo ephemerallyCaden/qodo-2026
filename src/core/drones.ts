@@ -100,6 +100,8 @@ function detailFields(s: Session): 'ok' | 'old' | 'damaged' {
   if (!Array.isArray(edits) || !isCount(raw.editsOutside) || !isCount(raw.filesOutside) || !Array.isArray(raw.editBuckets)) return 'damaged';
   if (!edits.every((e: unknown) => typeof e === 'object' && e !== null && typeof (e as { id?: unknown }).id === 'string'
     && (e as { id: string }).id.startsWith('f_') && isCount((e as { n?: unknown }).n, 1))) return 'damaged';
+  // Each file once: the view refuses a list with a repeat, so the server must not serve one (Qodo PR #167 1eabd165).
+  if (new Set(edits.map((e) => e.id)).size !== edits.length) return 'damaged';
   const buckets: unknown[] = raw.editBuckets;
   if (buckets.length !== DETAIL_BUCKETS || !buckets.every((b) => isCount(b))) return 'damaged';
   const sum = (buckets as number[]).reduce((a, b) => a + b, 0);

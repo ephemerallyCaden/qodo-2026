@@ -78,24 +78,34 @@ const excluded = (path: string, row: NumstatRow | undefined) => exclusionOf(path
  * Adds a later parse (the outside-transcript pass) to the first. A session seen in both is merged, never
  * replaced: its files, span and lines from either parse all count, so its per-file edit counts and its
  * timeline cover every edit (#148, Qodo PR #167 121022e1). An edit event both parses read (same session
- * and event id) counts once. Its first parse's metadata (branch, model, version) wins.
+ * and event id) counts once, and so do its lines (Qodo PR #167 b7385767). Its first parse's metadata
+ * (branch, model, version) wins.
  */
 export function mergeIngest(into: ClaudeIngest, more: ClaudeIngest): void {
   const seen = new Set(into.events.map((e) => `${e.sessionKey}\0${e.eventId}`));
+  /** Per session, the lines of the edits `more` read again: already in `into`'s totals. */
+  const reread = new Map<string, { added: number; removed: number }>();
   for (const e of more.events) {
     const id = `${e.sessionKey}\0${e.eventId}`;
-    if (seen.has(id)) continue;
+    if (seen.has(id)) {
+      const r = reread.get(e.sessionKey) ?? { added: 0, removed: 0 };
+      r.added += e.added;
+      r.removed += e.removed;
+      reread.set(e.sessionKey, r);
+      continue;
+    }
     seen.add(id);
     into.events.push(e);
   }
   for (const [k, v] of more.sessions) {
     const had = into.sessions.get(k);
     if (!had) { into.sessions.set(k, v); continue; }
+    const again = reread.get(k) ?? { added: 0, removed: 0 };
     for (const path of v.files) had.files.add(path);
     had.firstTs = Math.min(had.firstTs, v.firstTs);
     had.lastTs = Math.max(had.lastTs, v.lastTs);
-    had.linesAdded += v.linesAdded;
-    had.linesRemoved += v.linesRemoved;
+    had.linesAdded += v.linesAdded - again.added;
+    had.linesRemoved += v.linesRemoved - again.removed;
     had.branch ??= v.branch;
     had.model ??= v.model;
     had.toolVersion ??= v.toolVersion;
