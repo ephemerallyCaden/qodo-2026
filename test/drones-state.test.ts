@@ -1,5 +1,6 @@
 // readDrones (#80 AC 3/4): the glue reads the same snapshot/layout pair as the fog, and places a
-// session on the planet the fog gives its files. A throwaway repo and state dir, scanned in-process.
+// session on the planet the fog gives its files. readDroneDetail (#148 AC 2-3): one session's files and
+// timeline from the same pair. A throwaway repo and state dir, scanned in-process.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -8,7 +9,9 @@ import { EXIT } from '../src/core/errors.js';
 import { fileIdOf, homes } from '../src/core/fog/index.js';
 import type { SnapshotV02 } from '../src/core/snapshot/types.js';
 import { writeAtomic } from '../src/state/io.js';
-import { openFogSource, readDrones, readFog } from '../src/state/chart.js';
+import { DETAIL_BUCKETS } from '../src/core/contract/drones.js';
+import { sessionKey } from '../src/core/hash.js';
+import { openFogSource, readDroneDetail, readDrones, readFog } from '../src/state/chart.js';
 import { cli } from './fixtures/cli.js';
 import { createResult, miniClaude, miniRepo, session } from './fixtures/mini.js';
 
@@ -33,6 +36,53 @@ function setup() {
   const run = (...args: string[]) => cli(args, repo.dir, { CLAUDE_CONFIG_DIR: dirname(projects) });
   return { repo, run, state: join(repo.dir, '.git/commet') };
 }
+
+describe('readDroneDetail on a scanned repo (#148)', () => {
+  it("lists a session's files with their edits and puts its first and last edit at the ends of its timeline", async () => {
+    const r = setup();
+    expect((await r.run('scan', '--no-root')).code).toBe(0);
+    const head = (await readDrones(r.repo.dir)).head;
+    const d = await readDroneDetail(r.repo.dir, { key: sessionKey('claude-code', SID), at: head });
+    const buckets = new Array<number>(DETAIL_BUCKETS).fill(0);
+    buckets[0] = 1;
+    buckets[DETAIL_BUCKETS - 1] = 1;
+    expect(d).toEqual({
+      ok: true, schemaVersion: 'drone-detail.1', head, key: sessionKey('claude-code', SID), startedAt: '2026-10-10T08:10:10Z', endedAt: '2026-10-10T08:20:10Z',
+      files: [{ fileId: fileIdOf('src/a.ts'), path: 'src/a.ts', edits: 1 }, { fileId: fileIdOf('src/b.ts'), path: 'src/b.ts', edits: 1 }],
+      otherFiles: 0, otherEdits: 0, buckets, needsRescan: false,
+    });
+  });
+
+  it('answers unknown-head for another head, and no-such-session for a key the snapshot lacks', async () => {
+    const r = setup();
+    expect((await r.run('scan', '--no-root')).code).toBe(0);
+    const head = (await readDrones(r.repo.dir)).head;
+    expect(await readDroneDetail(r.repo.dir, { key: sessionKey('claude-code', SID), at: 'f'.repeat(40) })).toEqual({ ok: false, error: 'unknown-head', head });
+    expect(await readDroneDetail(r.repo.dir, { key: 's_00000000000000', at: head })).toEqual({ ok: false, error: 'no-such-session' });
+  });
+
+  it('a session with damaged edit counts is a state error, not an internal one (Qodo 7105505d)', async () => {
+    const r = setup();
+    expect((await r.run('scan', '--no-root')).code).toBe(0);
+    const file = join(r.state, 'snapshot.json');
+    const snap = JSON.parse(readFileSync(file, 'utf8')) as SnapshotV02;
+    const key = sessionKey('claude-code', SID);
+    snap.sessions.find((s) => s.key === key)!.fileEdits = [null as never];
+    writeAtomic(file, JSON.stringify(snap));
+    await expect(readDroneDetail(r.repo.dir, { key, at: snap.repo.head })).rejects.toMatchObject({ exitCode: EXIT.state, message: expect.stringMatching(/damaged.*run `commet scan`/) });
+  });
+
+  it('a snapshot without sessions is a state error, as for the drone list', async () => {
+    const r = setup();
+    expect((await r.run('scan', '--no-root')).code).toBe(0);
+    const file = join(r.state, 'snapshot.json');
+    const damaged = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    const head = (damaged['repo'] as { head: string }).head;
+    delete damaged['sessions'];
+    writeAtomic(file, JSON.stringify(damaged));
+    await expect(readDroneDetail(r.repo.dir, { key: sessionKey('claude-code', SID), at: head })).rejects.toMatchObject({ exitCode: EXIT.state });
+  });
+});
 
 describe('readDrones on a scanned repo', () => {
   it('places each session on the planet the fog gives its files, from the fog\'s own pair', async () => {
@@ -72,6 +122,8 @@ describe('readDrones on a scanned repo', () => {
     const fogMsg = await msg(() => readFog(r.repo.dir));
     expect(fogMsg).toMatch(/come from different scans/);
     expect(await msg(() => readDrones(r.repo.dir))).toBe(fogMsg);
+    const head = (JSON.parse(snapshotA.toString('utf8')) as SnapshotV02).repo.head;
+    expect(await msg(() => readDroneDetail(r.repo.dir, { key: sessionKey('claude-code', SID), at: head }))).toBe(fogMsg);
   });
 
   it('a snapshot without sessions is a state error, not an internal one (Qodo r1)', async () => {

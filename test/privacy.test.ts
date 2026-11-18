@@ -6,7 +6,9 @@ import { Readable } from 'node:stream';
 import { beforeAll, expect, it } from 'vitest';
 import { DENIED_PATH, discoverClaude, metaToken, parseClaude, redactPaths } from '../src/attrib/parsers/claude.js';
 import { main } from '../src/cli/main.js';
+import { DETAIL_BUCKETS } from '../src/core/contract/drones.js';
 import type { SnapshotV02 } from '../src/core/snapshot/types.js';
+import { readDroneDetail } from '../src/state/chart.js';
 import { formatSummary } from '../src/core/summary.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
 import { CANARIES, MAIN_SESSION, SUBAGENT_ID, writeClaudeFixture, type ClaudeFixture } from './fixtures/claude/basic.js';
@@ -54,6 +56,34 @@ it('sessions[].files holds only f_ ids; other edited paths are counted, never na
   // The canary-named edit is in the repo but not in the snapshot; the outside-the-repo one is dropped.
   expect(snap.sessions.some((s) => s.filesOutside > 0)).toBe(true);
   expect(outputs['snapshot']).not.toContain(CANARIES.editedFile);
+});
+
+it('sessions[].fileEdits holds only their own f_ ids and integers; the counts add up (#148)', () => {
+  const snap = JSON.parse(outputs['snapshot']!) as SnapshotV02;
+  const int = (n: unknown) => typeof n === 'number' && Number.isInteger(n) && n >= 0;
+  for (const s of snap.sessions) {
+    expect(s.fileEdits.map((e) => e.id), s.key).toEqual(s.files);
+    for (const e of s.fileEdits) expect(Object.keys(e).sort()).toEqual(['id', 'n']);
+    expect(s.fileEdits.every((e) => int(e.n) && e.n >= 1)).toBe(true);
+    expect(int(s.editsOutside) && (s.filesOutside === 0) === (s.editsOutside === 0)).toBe(true);
+    expect(s.editBuckets).toHaveLength(DETAIL_BUCKETS);
+    expect(s.editBuckets.every(int)).toBe(true);
+    expect(s.editBuckets.reduce((a, b) => a + b, 0)).toBe(s.fileEdits.reduce((a, e) => a + e.n, 0) + s.editsOutside);
+  }
+  expect(snap.sessions.some((s) => s.fileEdits.length > 0 && s.editsOutside > 0)).toBe(true);
+});
+
+it('the drone detail names only snapshot files: no canary, cwd or absolute path (#148)', async () => {
+  const snap = JSON.parse(outputs['snapshot']!) as SnapshotV02;
+  const paths = new Set(snap.files.map((f) => f.path));
+  const forbidden = [...Object.values(CANARIES), repo.dir, claude.claudeDir, homedir(), tmpdir()];
+  for (const s of snap.sessions) {
+    const d = await readDroneDetail(repo.dir, { key: s.key, at: snap.repo.head });
+    if (!d.ok) throw new Error(`no detail for ${s.key}`);
+    for (const f of d.files) expect(paths.has(f.path), f.path).toBe(true);
+    const text = JSON.stringify(d);
+    for (const f of forbidden) expect(text.includes(f), `${s.key} contains ${f}`).toBe(false);
+  }
 });
 
 it('metadata fields reject path-shaped values but keep branch names (Qodo #3, Issue #5 case 6)', () => {

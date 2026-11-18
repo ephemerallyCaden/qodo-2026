@@ -57,6 +57,18 @@ export interface Session {
   files: FileId[];
   /** Edited paths with no snapshot file (deleted since, excluded, another branch); filesTouched = files.length + filesOutside. */
   filesOutside: number;
+  /**
+   * #148: the session's edits (one tool result's change to one file) per file, one entry per `files` id
+   * in the same order, each `n` ≥ 1. Absent in a snapshot scanned before #148.
+   */
+  fileEdits: { id: FileId; n: number }[];
+  /** #148: its edits on the `filesOutside` paths. */
+  editsOutside: number;
+  /**
+   * #148: all its edits in DETAIL_BUCKETS (24) equal slices from its first to its last edit or git record
+   * (the times behind startedAt and endedAt). Sums to the `fileEdits` counts plus `editsOutside`.
+   */
+  editBuckets: number[];
   linesAdded: number;
   linesRemoved: number;
   commits: Sha[];

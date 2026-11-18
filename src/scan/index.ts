@@ -241,7 +241,7 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
     people: [...people.values()].sort((a, b) => byCodepoint(a.id, b.id)),
     commits,
     sessions: buildSessions(ingest?.sessions.values() ?? [], raw.map((c) => c.sha), results,
-      new Map(files.map((f) => [f.path, f.id]))),
+      new Map(files.map((f) => [f.path, f.id])), ingest?.events ?? []),
   };
   const unreadable = ingest?.unreadable.length ?? 0;
   const logs = found && { transcripts: found.transcripts.length - unreadable, tooLarge: found.stats.tooLarge,

@@ -3,8 +3,9 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { STAR_HOME, type DiffQuery, type UnseenQuery } from '../core/contract/api.js';
 import type { BeaconAction } from '../core/contract/beacons.js';
+import type { DroneDetailQuery } from '../core/contract/drones.js';
 import type { ChartAction } from '../core/contract/fog.js';
-import type { DirId, FileId } from '../core/snapshot/types.js';
+import type { DirId, FileId, SessionKey } from '../core/snapshot/types.js';
 
 /** The only address the server binds. Deliberately not configurable (CONSTITUTION, "Requires human approval"). */
 export const BIND_HOST = '127.0.0.1';
@@ -50,6 +51,8 @@ export function tokenMatches(given: string | string[] | undefined, token: string
 
 const FILE_ID = /^f_[0-9a-f]{12,64}$/;
 const DIR_ID = /^d_[0-9a-f]{12,64}$/;
+/** A session key: `s_` and hex (14 from the scanner; the contract fixtures use 12). */
+const SESSION_KEY = /^s_[0-9a-f]{12,64}$/;
 /** A full commit SHA: 40 hex, or 64 in a SHA-256 repo. */
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 /** Longest query string the read routes take; theirs are two ids. */
@@ -81,6 +84,12 @@ export function parseUnseenQuery(target: string): UnseenQuery | null {
   if (!q || !SHA.test(q.at)) return null;
   if (q.home === STAR_HOME) return { home: null, at: q.at };
   return DIR_ID.test(q.home) ? { home: q.home as DirId, at: q.at } : null;
+}
+
+/** `GET /api/drone-detail` parameters (#148): a session key and the head the view shows. Null for anything else. */
+export function parseDroneDetailQuery(target: string): DroneDetailQuery | null {
+  const q = exactQuery(target, ['key', 'at']);
+  return q && SESSION_KEY.test(q.key) && SHA.test(q.at) ? { key: q.key as SessionKey, at: q.at } : null;
 }
 
 /**

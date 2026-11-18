@@ -590,7 +590,60 @@
         "c354b5ae3e3c3e8778788bddf15931eb2997a6fe",
         "3cf0531849a196cc532f1e92be34bb126af9651b"
       ],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        2
+      ],
+      "editsOutside": 1,
       "endedAt": "2026-10-09T09:30:00Z",
+      "fileEdits": [
+        {
+          "id": "f_00b4e89d4aaa",
+          "n": 1
+        },
+        {
+          "id": "f_033ecd338eec",
+          "n": 1
+        },
+        {
+          "id": "f_089cedd9e904",
+          "n": 1
+        },
+        {
+          "id": "f_49cc4f090941",
+          "n": 1
+        },
+        {
+          "id": "f_b651e26a9c88",
+          "n": 1
+        },
+        {
+          "id": "f_ba1a4e79419f",
+          "n": 1
+        }
+      ],
       "files": [
         "f_00b4e89d4aaa",
         "f_033ecd338eec",
@@ -614,7 +667,35 @@
     },
     {
       "commits": [],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editsOutside": 1,
       "endedAt": "2026-10-05T09:00:00Z",
+      "fileEdits": [],
       "files": [],
       "filesOutside": 1,
       "filesTouched": 1,
@@ -629,7 +710,35 @@
     },
     {
       "commits": [],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editsOutside": 1,
       "endedAt": "2026-10-05T09:10:00Z",
+      "fileEdits": [],
       "files": [],
       "filesOutside": 1,
       "filesTouched": 1,
@@ -649,7 +758,40 @@
       "commits": [
         "d2ef4727742e1cf0d06cb5a03236de5213179e3e"
       ],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editsOutside": 0,
       "endedAt": "2026-10-06T09:59:58Z",
+      "fileEdits": [
+        {
+          "id": "f_04ac967ba698",
+          "n": 1
+        }
+      ],
       "files": [
         "f_04ac967ba698"
       ],
@@ -670,7 +812,35 @@
     {
       "branch": "main",
       "commits": [],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editsOutside": 1,
       "endedAt": "2026-10-25T09:00:00Z",
+      "fileEdits": [],
       "files": [],
       "filesOutside": 1,
       "filesTouched": 1,

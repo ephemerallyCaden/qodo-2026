@@ -10,7 +10,7 @@ import { newToken } from '../server/guard.js';
 import { watchRefs } from '../server/refs.js';
 import { startServer, type CommetServer, type ServerOptions } from '../server/server.js';
 import { applyBeacon, readBeacons } from '../state/beacons.js';
-import { applyChart, readDrones, readFog } from '../state/chart.js';
+import { applyChart, readDroneDetail, readDrones, readFog } from '../state/chart.js';
 import { readDiff, readUnseen } from '../state/diff.js';
 import { readStateBytes } from '../state/io.js';
 import { defaultPaths } from './hook.js';
@@ -63,8 +63,8 @@ export async function runOpen(argv: string[], io: Io, ctl: OpenControl = {}): Pr
     const opts: ServerOptions = { stateDir: dir, webRoot: ctl.webRoot ?? packageWebRoot(), port: args.port, token: newToken(),
       // R5 (#33, #58): the fog view and chart writes, through the same module `commet chart` uses.
       fog: () => readFog(io.cwd), chart: (action) => applyChart(io.cwd, action),
-      // #80: the drone view, from the same pair as the fog.
-      drones: () => readDrones(io.cwd),
+      // #80: the drone view, from the same pair as the fog; #148: one session's own files and timeline.
+      drones: () => readDrones(io.cwd), droneDetail: (q) => readDroneDetail(io.cwd, q),
       // #79 (R10): beacons, in .git/commet/beacons.json, through the module `commet beacon` uses.
       beacons: () => readBeacons(io.cwd), beacon: (action) => applyBeacon(io.cwd, action),
       // #75: reviewing from the view. Diffs come from local git on demand and are never stored.

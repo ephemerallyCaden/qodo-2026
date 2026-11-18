@@ -1,5 +1,6 @@
 import { byCodepoint } from '../core/canonical-json.js';
 import { classify } from '../core/classify.js';
+import { DETAIL_BUCKETS } from '../core/contract/drones.js';
 import { u32 } from '../core/hash.js';
 import type { CommitAttribution, FileId, Session, SessionKey } from '../core/snapshot/types.js';
 import { isoUtc } from '../core/time.js';
@@ -94,9 +95,23 @@ export function matchCommits(commits: MatchCommit[], events: EditEvent[]): Map<s
   return out;
 }
 
-/** Session records for sessions that touched this repo; commits are listed in window order. */
+/**
+ * Which of a session's DETAIL_BUCKETS equal time slices an edit at `ts` falls in (#148): integers only, the
+ * first edit in slice 0 and the last in the final one. A zero-length span puts everything in slice 0, and a
+ * time outside the span is clamped, never dropped (Rule 1).
+ */
+function bucketOf(ts: number, first: number, last: number): number {
+  const span = last - first;
+  if (span <= 0) return 0;
+  return Math.min(DETAIL_BUCKETS - 1, Math.max(0, Math.floor(((ts - first) * DETAIL_BUCKETS) / (span + 1))));
+}
+
+/**
+ * Session records for sessions that touched this repo; commits are listed in window order. `events` are
+ * the parser's deduped edit events: a session's edit counts per file and its timeline come from them (#148).
+ */
 export function buildSessions(metas: Iterable<SessionMeta>, commitOrder: string[],
-  results: Map<string, MatchResult>, fileIds: ReadonlyMap<string, FileId>): Session[] {
+  results: Map<string, MatchResult>, fileIds: ReadonlyMap<string, FileId>, events: readonly EditEvent[] = []): Session[] {
   const commitsOf = new Map<SessionKey, string[]>();
   for (const sha of commitOrder) {
     for (const s of results.get(sha)?.attribution.sessions ?? []) {
@@ -105,17 +120,40 @@ export function buildSessions(metas: Iterable<SessionMeta>, commitOrder: string[
       else commitsOf.set(s.sessionKey, [sha]);
     }
   }
+  const eventsOf = new Map<SessionKey, EditEvent[]>();
+  for (const e of events) {
+    const list = eventsOf.get(e.sessionKey);
+    if (list) list.push(e);
+    else eventsOf.set(e.sessionKey, [e]);
+  }
   const sessions: Session[] = [];
-  for (const { firstTs, lastTs, files, ...rest } of metas) {
+  for (const { firstTs, lastTs, files: metaFiles, ...rest } of metas) {
     const commits = commitsOf.get(rest.key) ?? [];
+    const edits = eventsOf.get(rest.key) ?? [];
+    // The parser adds a path to the session for every edit event, so these are the same paths; an event
+    // whose path the record lacks still counts, so no edit is dropped (Rule 1).
+    const files = new Set(metaFiles);
+    for (const e of edits) files.add(e.path);
     if (files.size === 0 && commits.length === 0) continue;
     const ids = new Set<FileId>();
+    const perId = new Map<FileId, number>();
+    const buckets = new Array<number>(DETAIL_BUCKETS).fill(0);
+    let editsOutside = 0;
     for (const path of files) {
       const id = fileIds.get(path);
       if (id) ids.add(id);
     }
+    for (const e of edits) {
+      const id = fileIds.get(e.path);
+      if (id) perId.set(id, (perId.get(id) ?? 0) + 1);
+      else editsOutside++;
+      buckets[bucketOf(e.ts, firstTs, lastTs)]!++;
+    }
+    const sorted = [...ids].sort(byCodepoint);
     sessions.push({ ...rest, tool: 'claude-code', startedAt: isoUtc(firstTs), endedAt: isoUtc(lastTs),
-      filesTouched: files.size, files: [...ids].sort(byCodepoint), filesOutside: files.size - ids.size, commits, inferred: false, seed: u32(rest.key) });
+      filesTouched: files.size, files: sorted, filesOutside: files.size - ids.size,
+      fileEdits: sorted.map((id) => ({ id, n: perId.get(id) ?? 0 })), editsOutside, editBuckets: buckets,
+      commits, inferred: false, seed: u32(rest.key) });
   }
   return sessions.sort((a, b) => byCodepoint(a.startedAt, b.startedAt) || byCodepoint(a.key, b.key));
 }

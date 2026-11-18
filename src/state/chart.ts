@@ -5,9 +5,9 @@ import { lstatSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalJson } from '../core/canonical-json.js';
 import type { ChartResult } from '../core/contract/api.js';
-import type { DroneView } from '../core/contract/drones.js';
+import type { DroneDetailQuery, DroneDetailResult, DroneView } from '../core/contract/drones.js';
 import type { ChartAction, ChartUnknownHead, FogView } from '../core/contract/fog.js';
-import { droneView } from '../core/drones.js';
+import { droneDetail, droneView } from '../core/drones.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import {
   applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges, type ChartState, type FogBase,
@@ -316,10 +316,26 @@ export async function applyChart(repoDir: string, body: unknown): Promise<ChartR
   return r.ok ? { ok: true, fog: fogFrom(r.base, r.chart) } : r;
 }
 
+const DAMAGED_SESSIONS = 'state error: .git/commet/snapshot.json is damaged or from another commet version; run `commet scan`';
+
 /** GET /api/drones (#80): the drone view, placed with the same file-to-planet map as the fog. State errors throw CommetError. */
 export async function readDrones(repoDir: string): Promise<DroneView> {
   const { base } = await openFogSource(repoDir);
   // isSnapshot checks only what fog reads; sessions are the drone view's input.
-  if (!Array.isArray(base.snapshot.sessions)) throw new CommetError('state error: .git/commet/snapshot.json is damaged or from another commet version; run `commet scan`', EXIT.state);
+  if (!Array.isArray(base.snapshot.sessions)) throw new CommetError(DAMAGED_SESSIONS, EXIT.state);
   return droneView(base.snapshot, base.home);
+}
+
+/**
+ * GET /api/drone-detail (#148): one session's files and timeline, from the same snapshot/layout pair as
+ * the fog and the drones, at the head the view shows (else unknown-head). State errors throw CommetError.
+ */
+export async function readDroneDetail(repoDir: string, q: DroneDetailQuery): Promise<DroneDetailResult> {
+  const { base } = await openFogSource(repoDir);
+  const head = base.snapshot.repo.head;
+  if (q.at !== head) return { ok: false, error: 'unknown-head', head };
+  if (!Array.isArray(base.snapshot.sessions)) throw new CommetError(DAMAGED_SESSIONS, EXIT.state);
+  const d = droneDetail(base.snapshot, q.key);
+  if (d === 'damaged') throw new CommetError(DAMAGED_SESSIONS, EXIT.state);
+  return d ?? { ok: false, error: 'no-such-session' };
 }
