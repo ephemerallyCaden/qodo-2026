@@ -3,19 +3,20 @@
 // State lives in `.git/commet/beacons.json` through src/state/beacons.ts, the module the server uses.
 import { beaconTextProblem, cleanBeaconText } from '../core/beacons.js';
 import { CommetError, EXIT } from '../core/errors.js';
-import { clearBeacons, currentBeacons, writeBeacon } from '../state/beacons.js';
+import { clearBeacons, clearUnplacedBeacons, currentBeacons, writeBeacon } from '../state/beacons.js';
 import { openFogSource, type FogSource } from '../state/chart.js';
 import { label, short, snapshotFile } from './chart.js';
 import type { Io } from './main.js';
 
-export const BEACON_USAGE = '       commet beacon [list] | commet beacon [--] <file> <note> | commet beacon --remove [--] <file>\n';
+export const BEACON_USAGE = '       commet beacon [list] | commet beacon [--] <file> <note> | commet beacon --remove [--] <file> | commet beacon --remove-unplaced\n';
 
-type Job = { kind: 'list' } | { kind: 'set'; arg: string; text: string } | { kind: 'remove'; arg: string };
+type Job = { kind: 'list' } | { kind: 'set'; arg: string; text: string } | { kind: 'remove'; arg: string } | { kind: 'remove-unplaced' };
 
 const FOLDER_HINT = 'leave a beacon on one of its files';
 
 function parse(args: string[]): Job | string {
   if (args.length === 0 || (args.length === 1 && args[0] === 'list')) return { kind: 'list' };
+  if (args[0] === '--remove-unplaced') return args.length === 1 ? { kind: 'remove-unplaced' } : '--remove-unplaced takes no file';
   if (args[0] === '--remove') {
     const files = args[1] === '--' ? args.slice(2) : args.slice(1);
     if (args[1] !== '--' && files[0]?.startsWith('-')) return `unknown option ${JSON.stringify(files[0])}`;
@@ -38,7 +39,8 @@ async function list(src: FogSource, io: Io): Promise<number> {
   io.stdout(v.beacons.length === 0 ? `no beacons at ${short(v.head)}\n` : `${v.beacons.length} ${v.beacons.length === 1 ? 'beacon' : 'beacons'} at ${short(v.head)}, oldest first:\n`);
   for (const b of v.beacons) io.stdout(`${bodyName(src, b.home)}  ${label(b.path)}  ${b.text}\n`);
   if (v.unplaced > 0) {
-    io.stdout(`${v.unplaced} more can't be placed at ${short(v.head)}: their file was deleted, or they were left on another branch or before the scan's window\n`);
+    io.stdout(`${v.unplaced} more can't be placed at ${short(v.head)}: their file was deleted, or they were left on another branch or before the scan's window`
+      + ' (`commet beacon --remove-unplaced` removes them, those of other branches too)\n');
   }
   return 0;
 }
@@ -61,8 +63,16 @@ async function set(src: FogSource, io: Io, arg: string, text: string): Promise<n
 async function remove(src: FogSource, io: Io, arg: string): Promise<number> {
   const file = await snapshotFile(src, io, arg, FOLDER_HINT);
   if (!file) return EXIT.usage;
-  const n = await clearBeacons(src, file.id);
+  const n = await clearBeacons(src, { fileId: file.id, at: src.base.snapshot.repo.head });
   io.stdout(n === 0 ? `No beacon on ${label(file.path)}; nothing changed\n` : `Removed the beacon on ${label(file.path)}\n`);
+  return 0;
+}
+
+/** #79, Qodo 5b641808: the notes `list` counts as unplaced, which `--remove <file>` can't name. */
+async function removeUnplacedNotes(src: FogSource, io: Io): Promise<number> {
+  const { removed, head } = await clearUnplacedBeacons(src);
+  io.stdout(removed === 0 ? "No notes that can't be placed; nothing changed\n"
+    : `Removed ${removed} ${removed === 1 ? 'note' : 'notes'} that can't be placed at ${short(head)}\n`);
   return 0;
 }
 
@@ -75,7 +85,9 @@ export async function beaconCommand(args: string[], io: Io): Promise<number> {
   }
   try {
     const src = await openFogSource(io.cwd);
-    return job.kind === 'list' ? await list(src, io) : job.kind === 'set' ? await set(src, io, job.arg, job.text) : await remove(src, io, job.arg);
+    if (job.kind === 'list') return await list(src, io);
+    if (job.kind === 'set') return await set(src, io, job.arg, job.text);
+    return job.kind === 'remove' ? await remove(src, io, job.arg) : await removeUnplacedNotes(src, io);
   } catch (e) {
     if (e instanceof CommetError) {
       io.stderr(`commet: ${e.message}\n`);

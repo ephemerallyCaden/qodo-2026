@@ -2,7 +2,7 @@
 // filtering or anti-aliasing (Rule 4), and a dist/web that suits the server's CSP and carries no dev
 // fixtures. Colour literals in web/ are test/palette.test.ts's job (Rule 5); clocks are ESLint's (Rule 3).
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = join(import.meta.dirname, '../..');
@@ -23,6 +23,26 @@ describe('web source', () => {
 
   it('uses no stock lit materials, shadow maps, smoothing filters, mipmaps or anti-aliasing (Rule 4)', () => {
     expect(hits(/Mesh(Standard|Physical|Phong|Lambert|Toon|Basic)Material|shadowMap|LinearFilter|LinearMipmap|generateMipmaps: true|antialias: true|EffectComposer/)).toEqual([]);
+  });
+
+  it('reaches src/core only through modules with no package imports, as the render stand-ins serve src/core unbundled (#79 PR #165 CI)', () => {
+    // The fog-events and stand-in pages mount web/src and src/core as plain ES modules, so a package
+    // import anywhere in the core files the view uses (e.g. the fog core's @noble/hashes) stops the page.
+    const seen = new Set<string>();
+    const bare: string[] = [];
+    const visit = (file: string) => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      for (const m of read(file).matchAll(/^\s*(?:import|export)\s[^'"]*?from\s+'([^']+)'|^\s*import\s+'([^']+)'/gm)) {
+        const spec = (m[1] ?? m[2])!;
+        if (!spec.startsWith('.')) { if (file.startsWith(join(ROOT, 'src/core'))) bare.push(`${relative(ROOT, file)}: ${spec}`); continue; }
+        const target = resolve(dirname(file), spec).replace(/\.js$/, '.ts');
+        if (target.startsWith(join(ROOT, 'src/core')) && existsSync(target)) visit(target);
+      }
+    };
+    for (const f of sources.filter((x) => x.endsWith('.ts') && x.startsWith(join(WEB, 'src')))) visit(f);
+    expect([...seen].some((f) => f.startsWith(join(ROOT, 'src/core')))).toBe(true); // not vacuous
+    expect(bare).toEqual([]);
   });
 
 });

@@ -2,7 +2,7 @@
 // field the view reads is checked here, the note against the same rule the server stores it by
 // (beaconTextProblem): one plain line, no control or bidi characters. Notes only ever reach the page as
 // bitmap-font labels or DOM textContent, never as HTML. Pure: no three.js, no DOM.
-import { beaconTextProblem } from '../../../src/core/beacons.js';
+import { beaconTextProblem } from '../../../src/core/beacon-text.js';
 import { MAX_BEACONS, type BeaconResult, type BeaconView } from '../../../src/core/contract/beacons.js';
 import { CORONA } from './star.js';
 import { planetCentre, type SystemModel } from './system.js';

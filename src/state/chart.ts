@@ -237,6 +237,9 @@ export async function openFogSource(repoDir: string): Promise<FogSource> {
 
 export const currentFog = async (src: FogSource): Promise<FogView> => fogFrom(src.base, await readChart(src.dir));
 
+/** Whether `src` is still of the snapshot and layout on disk: false once a scan published a new pair (#79, as writeChart checks). */
+export const sourceIsCurrent = (src: FogSource): boolean => snapshotKey(src.dir) === src.key;
+
 /**
  * Serialises chart writes with an exclusive lock file. That holds within this process too (a second
  * write waits on the file like any other), so `fn` may await. Scans don't take it (a write

@@ -5,7 +5,7 @@
 // diff lives in memory while it's shown, and nowhere else (Rule 2). Charting can leave a one-line
 // captain's log note (#79), which becomes a beacon on the planet.
 import type { DiffView, UnseenFile } from '../../../src/core/contract/api.js';
-import { beaconTextProblem, cleanBeaconText } from '../../../src/core/beacons.js';
+import { beaconTextProblem, cleanBeaconText } from '../../../src/core/beacon-text.js';
 import { BEACON_TEXT_MAX, type BeaconView } from '../../../src/core/contract/beacons.js';
 import type { ChartAction, FogView } from '../../../src/core/contract/fog.js';
 import type { DirId } from '../../../src/core/snapshot/types.js';
@@ -304,7 +304,9 @@ export class Panel {
     input.placeholder = 'what did you learn? (optional)';
     input.setAttribute('aria-label', `Captain's log: an optional one-line note on what you learned, at most ${BEACON_TEXT_MAX} characters, shown as a beacon on the planet when you chart`);
     input.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
+      // An Enter that confirms an IME composition (isComposing, or Safari's keyCode 229 just after it)
+      // is part of typing, never a chart, which the view can't undo (Qodo 5d3773a4).
+      if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       void this.chart();
     });

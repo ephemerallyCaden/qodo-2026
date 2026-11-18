@@ -334,6 +334,26 @@ test.describe('#79 captain\'s log', () => {
     await expect.poll(() => f.posted.map((a) => a.text), { timeout: 10_000 }).toEqual(['half a note']);
   });
 
+  test('an Enter that confirms an IME composition never charts; a plain Enter does (Qodo 5d3773a4)', async ({ page }) => {
+    const f = await fixture();
+    await open(page, f, 'aa');
+    await openFile(page, 'aa/one.ts');
+    await page.waitForSelector('#panel input[data-key="note"]');
+    // What browsers send when Enter commits a composition: isComposing (Chrome, Firefox), or keyCode 229 (Safari, after compositionend).
+    await page.$eval('#panel input[data-key="note"]', (i) => {
+      i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true }));
+      const safari = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      Object.defineProperty(safari, 'keyCode', { get: () => 229 });
+      i.dispatchEvent(safari);
+    });
+    await page.waitForTimeout(1500);
+    expect(existsSync(join(f.dir, '.git', 'commet', 'chart.json'))).toBe(false);
+    expect(await page.$('#panel pre.diff')).not.toBeNull();
+    await page.focus('#panel input[data-key="note"]');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => listed(page), { timeout: 10_000 }).toEqual(['aa/two.ts']);
+  });
+
   test('a beacon that fails after another diff was opened is said in the status line, not on that diff, and focus stays (Qodo 9a76b01a)', async ({ page }) => {
     const f = await fixture();
     const g = gate();

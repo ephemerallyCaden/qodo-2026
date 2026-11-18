@@ -3,8 +3,9 @@
 // commit the user saw (`at`, #58), and followed to the current head through the fog's rename map, so a
 // renamed file keeps its note and a deleted one's note is counted as unplaced, never dropped (Rule 1).
 // State holds file ids, SHAs and the note text only: no paths, no time, nothing from agent logs (Rule 2).
+import { beaconTextProblem } from './beacon-text.js';
 import type { Beacon, BeaconAction, BeaconView } from './contract/beacons.js';
-import { BEACON_TEXT_MAX, MAX_BEACONS } from './contract/beacons.js';
+import { MAX_BEACONS } from './contract/beacons.js';
 import type { ChartUnknownHead } from './contract/fog.js';
 import { chartedFileId, type FogBase } from './fog/index.js';
 import type { FileId, Sha } from './snapshot/types.js';
@@ -20,28 +21,7 @@ export interface BeaconState {
 
 export const emptyBeacons = (): BeaconState => ({ schemaVersion: 'beacons.1', beacons: [] });
 
-/**
- * Characters a one-line plain note can't hold: controls (newlines and tabs included), line and
- * paragraph separators, bidi controls (which can make a note read differently from what it holds)
- * and lone surrogates (not text at all).
- */
-const FORBIDDEN = /[\p{Cc}\p{Zl}\p{Zp}\p{Cs}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
-
-/** A note as the user typed it, ready to send: only the surrounding whitespace goes. */
-export const cleanBeaconText = (raw: string): string => raw.trim();
-
-/**
- * Why `text` can't be a note, or null when it can. Fixed wording that never quotes the text. A note
- * is refused, never rewritten: the server and the state file only ever hold what the user sent.
- */
-export function beaconTextProblem(text: unknown): string | null {
-  if (typeof text !== 'string') return 'the note must be text';
-  if (text.trim() === '') return 'the note is empty';
-  if (FORBIDDEN.test(text)) return 'the note must be one line of plain text, without control characters';
-  if (text !== text.trim()) return 'the note must not start or end with spaces';
-  if ([...text].length > BEACON_TEXT_MAX) return `the note is longer than ${BEACON_TEXT_MAX} characters`;
-  return null;
-}
+export { beaconTextProblem, cleanBeaconText } from './beacon-text.js';
 
 const FILE_ID = /^f_[0-9a-f]{12}$/;
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -92,13 +72,25 @@ export function applyBeaconAction(base: FogBase, state: BeaconState, action: Bea
   const target = headFile(base, action);
   if (target === null) return { ok: false, error: 'no such file at that head' };
   const kept = state.beacons.filter((b) => headFile(base, b) !== target);
-  if (kept.length >= MAX_BEACONS) return { ok: false, error: `there are already ${MAX_BEACONS} beacons; remove some with \`commet beacon --remove\`` };
+  if (kept.length >= MAX_BEACONS) {
+    return { ok: false, error: `there are already ${MAX_BEACONS} beacons; remove some with \`commet beacon --remove <file>\`, or the ones that can't be placed with \`commet beacon --remove-unplaced\`` };
+  }
   return { ok: true, state: { ...state, beacons: [...kept, { fileId: action.fileId, at: action.at, text: action.text }] } };
 }
 
 /** Removes every note on the file that is `fileId` at HEAD; `removed` counts them (0: there was none). */
 export function removeBeacons(base: FogBase, state: BeaconState, fileId: FileId): { state: BeaconState; removed: number } {
   const kept = state.beacons.filter((b) => headFile(base, b) !== fileId);
+  return { state: { ...state, beacons: kept }, removed: state.beacons.length - kept.length };
+}
+
+/**
+ * Removes every note that can't be placed at HEAD (BeaconView.unplaced): its file was deleted, or it
+ * was left on another branch or before the scan's window. Only on the user's own command, so a cap
+ * full of them never blocks new notes for good (Qodo 5b641808); never as a side effect (Rule 1).
+ */
+export function removeUnplaced(base: FogBase, state: BeaconState): { state: BeaconState; removed: number } {
+  const kept = state.beacons.filter((b) => headFile(base, b) !== null);
   return { state: { ...state, beacons: kept }, removed: state.beacons.length - kept.length };
 }
 

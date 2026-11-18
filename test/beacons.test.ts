@@ -11,7 +11,7 @@ import { BEACON_TEXT_MAX, MAX_BEACONS } from '../src/core/contract/beacons.js';
 import { EXIT } from '../src/core/errors.js';
 import { fileIdOf } from '../src/core/fog/index.js';
 import type { FileId } from '../src/core/snapshot/types.js';
-import { BEACONS_FILE, readBeacons, writeBeacon } from '../src/state/beacons.js';
+import { BEACONS_FILE, clearBeacons, readBeacons, writeBeacon } from '../src/state/beacons.js';
 import { openFogSource, readFog } from '../src/state/chart.js';
 import { cli } from './fixtures/cli.js';
 import { realTempDir } from './fixtures/tmp.js';
@@ -249,5 +249,49 @@ describe('commet beacon on a real repo', () => {
     expect(r2.ok).toBe(false);
     expect(!r2.ok && r2.error).toMatch(/already 1000 beacons/);
     expect(beaconViewFrom(base, full)).toMatchObject({ beacons: [], unplaced: MAX_BEACONS });
+  });
+
+  it('a scan that lands before a note gets the lock: the note is applied on the new snapshot, and its answer is of the new head (Qodo 306e57b3)', async () => {
+    const r = await repo();
+    const before = await openFogSource(r.dir); // the CLI or the server opened the source...
+    const old = before.base.snapshot.repo.head;
+    r.commit(() => r.git('mv', 'aa/one.ts', 'aa/uno.ts')); // ...then a scan published a rename
+    await r.scan();
+    const now = (await readFog(r.dir)).head;
+    const res = await writeBeacon(before, { fileId: fileIdOf('aa/one.ts'), at: old, text: 'left as the scan landed' });
+    expect(res.ok).toBe(true);
+    expect(res.ok && res.beacons.head).toBe(now);
+    expect(res.ok && res.beacons.beacons.map((b) => [b.path, b.text])).toEqual([['aa/uno.ts', 'left as the scan landed']]);
+  });
+
+  it('a removal opened before a scan still finds the note left after it (Qodo 306e57b3)', async () => {
+    const r = await repo();
+    const before = await openFogSource(r.dir);
+    const old = before.base.snapshot.repo.head;
+    r.commit(() => r.git('mv', 'aa/one.ts', 'aa/uno.ts'));
+    await r.scan();
+    expect((await r.run('beacon', 'aa/uno.ts', 'left at the new head')).code).toBe(0);
+    expect(await clearBeacons(before, { fileId: fileIdOf('aa/one.ts'), at: old })).toBe(1);
+    expect(r.stored().beacons).toEqual([]);
+  });
+
+  it('--remove-unplaced clears notes that can\'t be placed, so a full cap of them never blocks new notes for good (Qodo 5b641808)', async () => {
+    const r = await repo();
+    const unplaced = Array.from({ length: MAX_BEACONS }, (_, i) => ({ fileId: `f_${i.toString(16).padStart(12, '0')}`, at: 'd'.repeat(40), text: `old ${i}` }));
+    writeFileSync(r.file, JSON.stringify({ schemaVersion: 'beacons.1', beacons: unplaced }), { mode: 0o600 });
+    const full = await r.run('beacon', 'aa/one.ts', 'a new note');
+    expect(full.code).toBe(EXIT.state);
+    expect(full.err).toContain('commet beacon --remove-unplaced');
+    const list = await r.run('beacon', 'list');
+    expect(list.out).toContain(`${MAX_BEACONS} more can't be placed`);
+    expect(list.out).toContain('commet beacon --remove-unplaced');
+    const prune = await r.run('beacon', '--remove-unplaced');
+    expect(prune.code).toBe(0);
+    expect(prune.out).toMatch(new RegExp(`^Removed ${MAX_BEACONS} notes that can't be placed at [0-9a-f]{7}\\n$`));
+    expect((await r.run('beacon', 'aa/one.ts', 'a new note')).code).toBe(0);
+    expect(r.stored().beacons.map((b) => b.text)).toEqual(['a new note']);
+    // A placed note is never touched, and a second run says there was nothing to remove.
+    expect((await r.run('beacon', '--remove-unplaced')).out).toBe('No notes that can\'t be placed; nothing changed\n');
+    expect(r.stored().beacons.map((b) => b.text)).toEqual(['a new note']);
   });
 });
