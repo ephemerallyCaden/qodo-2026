@@ -1,17 +1,18 @@
 // The star system as a three.js scene: starfield, star, moonlets and planets, posed purely from
 // (model, frame, camera pose). Building is deterministic from the layout; posing holds no state
-// between frames, so any frame can be drawn in any order (principle 3).
+// between frames, so any frame can be drawn in any order (principle 3). The scene is drawn
+// relative to the camera's target (a floating origin, #60): see pose().
 import * as THREE from 'three';
 import type { FogView } from '../../../src/core/contract/fog.js';
 import { palette } from '../../../src/core/palette.js';
-import { ASPECT, FAR, FOV_DEG, NEAR, basis, eyeOf, fovOf, project, projectedRadius, systemDepth, type OrbitPose } from '../camera/pose.js';
+import { ASPECT, FAR, FOV_DEG, NEAR, basis, fovOf, project, projectedRadius, systemDepth, type OrbitPose } from '../camera/pose.js';
 import type { DepthStretch } from '../model/depth.js';
 import { fileFogAt, foggedBy, planetPulse, planetTally, type FogEvent } from '../model/fog.js';
 import { loopPhase, TURNS, turnAngle } from '../model/motion.js';
 import { frameWidth } from '../model/pixels.js';
 import { mulberry32 } from '../model/prng.js';
 import { MOON_RADIUS, MOONLET_RADIUS, moonOffset, moonletPosition, planetCentre, type SystemModel } from '../model/system.js';
-import { add, scale, type Sphere, type Vec3 } from '../model/vec.js';
+import { add, scale, sub, type Sphere, type Vec3 } from '../model/vec.js';
 import { LIGHT_VIEW, orbitingSpheres, placeSpheres, ramp, shaderMaterial, SHARED, toonMaterial } from './materials.js';
 import { FOG_SHARED, moonFogAttribute, setMoonFog } from './fog.js';
 import { DroneFleet } from './drone-fleet.js';
@@ -54,6 +55,7 @@ export class SystemScene {
   readonly fleet = new DroneFleet();
   private readonly starfield = makeStarfield();
   private readonly starMat: THREE.ShaderMaterial;
+  private readonly star: THREE.Mesh;
   private readonly moonlets: THREE.InstancedMesh | null;
   private readonly moonletFog: THREE.InstancedBufferAttribute | null;
   /** The fog drawn (null: no usable fog view, so every file is fogged) and the events over it. */
@@ -76,9 +78,9 @@ export class SystemScene {
       uDisc: { value: ramp(palette.world.starDisc, 5) }, uCorona: { value: ramp(palette.world.starCorona, 2) },
       uChurn: { value: new THREE.Vector2(1, 0) }, uSpin: { value: new THREE.Vector2(1, 0) },
     }, { side: THREE.BackSide });
-    const star = new THREE.Mesh(STAR_GEO, this.starMat);
-    star.scale.setScalar(model.star.radius * STAR.span);
-    this.scene.add(star);
+    this.star = new THREE.Mesh(STAR_GEO, this.starMat);
+    this.star.scale.setScalar(model.star.radius * STAR.span);
+    this.scene.add(this.star);
     this.disposables.push(this.starMat);
 
     // Moonlets (root files, unmatched tests): the planets' test-moon look (star-art.md S6: warm peach,
@@ -150,31 +152,42 @@ export class SystemScene {
 
   /** Poses everything for exactly this frame, camera pose and internal height. */
   pose(frame: number, view: OrbitPose, pixelHeight: number): void {
-    const eye = eyeOf(view);
+    // A floating origin at the camera's target: everything is placed at its world position minus the
+    // target, so the GPU's float32 world maths sees the same numbers for a body the camera follows at
+    // every frame, and a focused planet draws the same pixels as it orbits (#60). Without it, rounding
+    // at the planet's absolute position flipped single pixels, and the fog's screen anchor (exactly on
+    // a pixel edge at the centre of the frame) jumped by one. Picking and labels stay in world units.
+    const origin = view.target;
+    const b = basis(view.yaw, view.pitch);
+    const eye = scale(b.back, view.dist); // eyeOf(view) - origin, exactly: it depends on the angles and distance only
     this.camera.position.set(eye[0], eye[1], eye[2]);
     this.camera.up.set(0, 1, 0);
     this.camera.fov = fovOf(view); // the pixel pass updates the projection before it renders
-    this.camera.lookAt(view.target[0], view.target[1], view.target[2]);
+    this.camera.lookAt(0, 0, 0);
     this.camera.updateMatrixWorld(true);
     SHARED.uEye.value.set(eye[0], eye[1], eye[2]);
     SHARED.uDepthStretch.value.set(this.depth.squeeze, this.depth.shift); // shared by every scene: set per draw, like the eye
     // The key light is view-relative, so every planet keeps its top-left crescent from any angle.
-    const b = basis(view.yaw, view.pitch);
     SHARED.uLight.value.set(...add(add(scale(b.right, LIGHT_VIEW.x), scale(b.up, LIGHT_VIEW.y)), scale(b.back, LIGHT_VIEW.z))).normalize();
     this.starfield.position.copy(this.camera.position);
     FOG_SHARED.uFogView.value.set(frameWidth(pixelHeight), pixelHeight);
     this.poseFog(frame);
 
+    const star = sub([0, 0, 0], origin);
+    this.star.position.set(star[0], star[1], star[2]);
     const centres = this.centres(frame);
     this.planets.forEach((p, i) => {
       const c = centres[i]!, at = project(view, c);
-      p.update(frame, c, at ? projectedRadius(p.model.radius, at.depth, fovOf(view)) * (pixelHeight / 2) : 0);
+      p.update(frame, sub(c, origin), at ? projectedRadius(p.model.radius, at.depth, fovOf(view)) * (pixelHeight / 2) : 0);
     });
-    this.fleet.pose(this.model, frame, fovOf(view), pixelHeight);
+    this.fleet.pose(this.model, frame, fovOf(view), pixelHeight, origin);
     const churn = turnAngle(frame, TURNS.starChurn), spin = turnAngle(frame, TURNS.starSpin);
     (this.starMat.uniforms['uChurn']!.value as THREE.Vector2).set(Math.cos(churn), Math.sin(churn));
     (this.starMat.uniforms['uSpin']!.value as THREE.Vector2).set(Math.cos(spin), Math.sin(spin));
-    if (this.moonlets) placeSpheres(this.moonlets, this.model.star.moonlets.map((m) => moonletPosition(m, frame)), MOONLET_RADIUS);
+    if (this.moonlets) {
+      this.moonlets.position.set(star[0], star[1], star[2]); // the moonlets are placed round the star, in the mesh's own frame
+      placeSpheres(this.moonlets, this.model.star.moonlets.map((m) => moonletPosition(m, frame)), MOONLET_RADIUS);
+    }
   }
 
   dispose(): void {

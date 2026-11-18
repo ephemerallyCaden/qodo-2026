@@ -94,14 +94,24 @@ test('teal stays off the frame at rest (it marks events only)', async ({ page })
   expect(view.errors).toEqual([]);
 });
 
-test('the hatch drift closes the 24 s loop: one loop on, the fogged planet followed along its orbit draws the same pixels', async ({ page }) => {
+test('the hatch drift closes the 24 s loop: the fogged planet, followed along its orbit, draws the same pixels one to five loops on', async ({ page }) => {
   // web fills its hero frame (src has the star behind it, which the orbit moves); the planets left the loop (#60), so the
-  // camera follows web as focus does, and the frames are pinned: 0, one loop on, and a frame inside the loop
+  // camera follows web as focus does, and the frames are pinned: 0, five whole loops on (until the star comes into view
+  // behind web, past frame 4000), and a frame inside the loop. Before the floating origin (render/scene.ts) float32 rounding
+  // at web's position changed 1 px at frame 720 in CI and 572 px (the fog anchor a pixel over) at frames 1440 and 2880 here.
   const view = await openView(page, systemView());
   const at = async (n: number) => (await render(view, { layout: MINI, fog: null, ...focus('web', n) }, [n]))[0]!;
-  const [a, b, c] = [await at(0), await at(LOOP_FRAMES), await at(LATER)];
-  for (const r of [a, b, c]) assertRendered(r.pixels, r.stats);
-  expect(diffPixels(a.pixels, b.pixels)).toBe(0);
+  const a = await at(0), c = await at(LATER);
+  const loops = [1, 2, 3, 4, 5].map((k) => k * LOOP_FRAMES);
+  const diffs: number[] = [];
+  for (const n of loops) {
+    const b = await at(n);
+    assertRendered(b.pixels, b.stats);
+    diffs.push(diffPixels(a.pixels, b.pixels));
+  }
+  for (const r of [a, c]) assertRendered(r.pixels, r.stats);
+  console.log(`hatch loop, web followed at 360 px: frames ${loops.join(', ')} differ from frame 0 by ${diffs.join(', ')} px`);
+  expect(diffs, `frames ${loops.join(', ')} vs frame 0`).toEqual(loops.map(() => 0));
   expect(diffPixels(a.pixels, c.pixels), 'not vacuous: the frame moves within the loop').toBeGreaterThan(0);
   expect(view.errors).toEqual([]);
 });

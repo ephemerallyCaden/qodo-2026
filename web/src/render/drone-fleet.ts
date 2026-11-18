@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { FPS, LOOP_SECONDS, loopPhase } from '../model/motion.js';
 import type { SystemModel } from '../model/system.js';
-import type { Sphere } from '../model/vec.js';
+import type { Sphere, Vec3 } from '../model/vec.js';
 import { DRONE_SCALE, DRONE_PICK_RADIUS, placeDrone } from '../drones/place.js';
 import { Drone, lookOf } from './drone.js';
 
@@ -38,15 +38,18 @@ export class DroneFleet {
     });
   }
 
-  /** Poses every drone for exactly this frame; `fovDeg` and `pixelHeight` size its crisp sparkles. */
-  pose(model: SystemModel, frame: number, fovDeg: number, pixelHeight: number): void {
+  /**
+   * Poses every drone for exactly this frame; `fovDeg` and `pixelHeight` size its crisp sparkles. Drones
+   * are placed relative to `origin`, the scene's floating origin (SystemScene.pose).
+   */
+  pose(model: SystemModel, frame: number, fovDeg: number, pixelHeight: number, origin: Vec3 = [0, 0, 0]): void {
     const seconds = loopPhase(frame) * LOOP_SECONDS;
     const pixK = (2 * Math.tan((fovDeg * Math.PI) / 360)) / pixelHeight;
     for (const { entry, drone } of this.items) {
       const at = placeDrone(model, entry.home, entry.seed, frame);
       drone.root.visible = at !== null;
       if (!at) continue;
-      drone.root.position.set(...at.centre);
+      drone.root.position.set(at.centre[0] - origin[0], at.centre[1] - origin[1], at.centre[2] - origin[2]);
       drone.root.rotation.set(0, at.yaw, 0);
       drone.root.scale.setScalar(DRONE_SCALE);
       drone.update(Math.round(seconds * FPS) / FPS, pixK);

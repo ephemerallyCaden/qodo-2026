@@ -41,26 +41,35 @@ test.describe('slow orbits (#60)', () => {
     expect(view.errors).toEqual([]);
   });
 
-  test('focus follows the planet: with the camera following it, the planet draws the same pixels one loop on, while the system turns past it', async ({ page }) => {
+  test('focus follows the planet: with the camera following it, the planet draws the same pixels one to three loops on, while the system turns past it', async ({ page }) => {
+    // Pixel-stable because the scene is drawn relative to the camera's target (render/scene.ts): before that, float32
+    // rounding at the planet's absolute position flipped single pixels, and the fog anchor at the frame's centre jumped a
+    // pixel (283 px of web at frame 1440). Three loops: by the fourth the star turns into view behind src's moons.
     const view = await openView(page, systemView());
+    const loops = [1, 2, 3].map((k) => k * LOOP_FRAMES);
     const around: Record<string, number> = {};
     for (const path of ['src', 'web']) {
       const p = model.planets.find((x) => x.path === path)!;
-      const [a] = await render(view, { ...MINI_INPUT, camera: following(model, path, 0) }, [0]);
-      const [b] = await render(view, { ...MINI_INPUT, camera: following(model, path, LOOP_FRAMES) }, [LOOP_FRAMES]);
+      const followed = async (n: number) => (await render(view, { ...MINI_INPUT, camera: following(model, path, n) }, [n]))[0]!;
+      const a = await followed(0);
       const [still] = await render(view, { ...MINI_INPUT, camera: following(model, path, 0) }, [LOOP_FRAMES]); // the camera left at frame 0
-      for (const r of [a, b, still]) assertRendered(r!.pixels, r!.stats, LOW_RES);
       // the planet and its moons: their reach on screen, round the frame's centre where the focus puts them
       const pose = fromCameraPose(following(model, path, LOOP_FRAMES));
       const q = project(pose, planetCentre(p, LOOP_FRAMES))!;
       const centre: [number, number] = [((q.x + 1) / 2) * LOW_RES.width, ((1 - q.y) / 2) * LOW_RES.height];
       const reach = projectedRadius(planetReach(p), q.depth) * (LOW_RES.height / 2) + 2;
-      const held = diffIn(a!.pixels, b!.pixels, centre, reach, true);
-      around[path] = diffIn(a!.pixels, b!.pixels, centre, reach, false);
-      const left = diffIn(a!.pixels, still!.pixels, centre, reach, true);
-      console.log(`${path} followed: centre (${centre.map((v) => v.toFixed(1)).join(', ')}), reach ${reach.toFixed(1)} px; frame ${LOOP_FRAMES} vs 0: ${held} px differ on the planet, ${around[path]} px around it; camera left at frame 0: ${left} px differ on the planet`);
+      const held: number[] = [];
+      for (const n of loops) {
+        const b = await followed(n);
+        assertRendered(b.pixels, b.stats, LOW_RES);
+        held.push(diffIn(a.pixels, b.pixels, centre, reach, true));
+        if (n === LOOP_FRAMES) around[path] = diffIn(a.pixels, b.pixels, centre, reach, false);
+      }
+      for (const r of [a, still!]) assertRendered(r.pixels, r.stats, LOW_RES);
+      const left = diffIn(a.pixels, still!.pixels, centre, reach, true);
+      console.log(`${path} followed: centre (${centre.map((v) => v.toFixed(1)).join(', ')}), reach ${reach.toFixed(1)} px; frames ${loops.join(', ')} vs 0: ${held.join(', ')} px differ on the planet, ${around[path]} px around it one loop on; camera left at frame 0: ${left} px differ on the planet`);
       expect(Math.hypot(centre[0] - LOW_RES.width / 2, centre[1] - LOW_RES.height / 2), `${path} is centred`).toBeLessThan(0.5);
-      expect(held, `${path} followed: the same pixels one loop on`).toBe(0);
+      expect(held, `${path} followed: the same pixels at frames ${loops.join(', ')}`).toEqual(loops.map(() => 0));
       expect(left, `${path} not followed: it has moved off the centre`).toBeGreaterThan(0);
     }
     // src orbits next to the star, which is in its frame: the system has turned past it (web's moons fill its frame)
