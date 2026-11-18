@@ -3,7 +3,7 @@
 // inside a line or a CRLF. Each event's data is one LiveEvent; anything else is counted, not used.
 import type { LiveEvent, ResourceEvent } from '../../../src/core/contract/api.js';
 
-const TYPES = ['snapshot', 'layout', 'fog'];
+const TYPES = ['snapshot', 'layout', 'fog', 'beacons'];
 /** A runaway line (no newline for this long) is dropped rather than buffered forever. */
 const MAX_LINE = 64 * 1024;
 

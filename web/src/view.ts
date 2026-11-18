@@ -1,15 +1,18 @@
 // The view: one star system drawn through the pixel pass, with labels on top. A frame is a pure
 // function of (layout, fog, camera pose, focus, frame number); nothing here keeps time.
 import type { RenderStats } from '../../src/core/contract/api.js';
+import type { BeaconView } from '../../src/core/contract/beacons.js';
 import type { FogView } from '../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
-import { pick, startPose, type OrbitPose } from './camera/pose.js';
+import { fovOf, pick, project, projectedRadius, startPose, type OrbitPose } from './camera/pose.js';
 import { ViewError } from './data/client.js';
+import { beaconSpots, spotBody } from './model/beacons.js';
 import { FogLedger } from './model/fog.js';
-import { infoLines, HELP } from './model/describe.js';
+import { focusedNotes, infoLines, HELP, type BeaconInfo } from './model/describe.js';
 import { systemModel, type SystemModel } from './model/system.js';
 import { LabelLayer, lineHeight, type Label } from './labels/overlay.js';
 import { placeLabels } from './labels/place.js';
+import { BEACON_MARK } from './render/beacons.js';
 import { SHARED } from './render/materials.js';
 import { PixelPass } from './render/pixel.js';
 import { DroneFleet, type FleetEntry } from './render/drone-fleet.js';
@@ -27,6 +30,10 @@ const DRONE_MIN_NDC = 0.015;
 export const MAX_LABELS = 50;
 /** Of them, at most this many go to drones. */
 const MAX_DRONE_LABELS = 8;
+/** The focused planet's newest beacon notes labelled over its marker (#79); the rest are counted in one more line. */
+const MAX_NOTE_LABELS = 3;
+/** A note label's longest text; the whole note is in the screen-reader summary and `commet beacon list`. */
+const NOTE_LABEL_CHARS = 48;
 
 /** The star's disc and corona at a frame: they hide the planets and drones behind them from picking and labels. */
 const starBlockers = (s: SystemScene, frame: number): Occluder[] => starOccluders(s.model.star.radius, frame);
@@ -47,6 +54,9 @@ export class View {
   private dronesHead: string | null = null;
   private layoutHead: string | null = null;
   selectedDrone: string | null = null;
+  /** The beacons drawn (#79), kept across layout reloads of the same scan, and the head they belong to. */
+  private beaconView: BeaconView | null = null;
+  private beaconHead: string | null = null;
   /** The per-pixel depth fade (RenderInput.depthFade); off leaves only palette colours. */
   depthFade = true;
   showHelp = true;
@@ -56,6 +66,12 @@ export class View {
   }
 
   get model(): SystemModel | null { return this.system?.model ?? null; }
+
+  /** The beacons drawn over the current layout, for the info lines and summary; null when none are loaded. */
+  get beacons(): BeaconInfo | null {
+    const m = this.system?.model;
+    return m && this.beaconView && this.beaconHead === this.layoutHead ? beaconSpots(this.beaconView, m) : null;
+  }
 
   /** The fog drawn: the last one applied. null: no usable fog view, so every file is drawn fogged (Rule 1). */
   get fog(): FogView | null { return this.fogs.fog; }
@@ -114,6 +130,7 @@ export class View {
     const next = new SystemScene(systemModel(layout));
     try {
       next.fleet.set(this.dronesHead === layout.source.head ? this.drones : []);
+      next.beacons.set(this.beaconHead === layout.source.head ? beaconSpots(this.beaconView, next.model).spots : []);
       next.pose(0, startPose(next.model), this.pass.height);
       // Compile every program up front, hidden ones (small planets' cloud shadows) included, and force
       // three's error check, which it otherwise defers to a program's first draw.
@@ -169,6 +186,20 @@ export class View {
     return true;
   }
 
+  /**
+   * Draws these beacons (#79; null: none), which belong to the scan `head`. Returns false, changing
+   * nothing, when the drawn layout is of another scan (the answer is stale); before any layout they're
+   * kept for the first load of that head. The marker's shader is built with the scene, so nothing compiles here.
+   */
+  setBeacons(view: BeaconView | null, head: string): boolean {
+    const s = this.system;
+    if (s && head !== this.layoutHead) return false;
+    this.beaconView = view;
+    this.beaconHead = head;
+    s?.beacons.set(beaconSpots(view, s.model).spots);
+    return true;
+  }
+
   /** Fits the view to the space available (CSS px) at the device pixel ratio. */
   resize(pixelHeight: number, cssW: number, cssH: number, dpr: number): void {
     this.pass.resize(pixelHeight, Math.floor(cssW * dpr), Math.floor(cssH * dpr), dpr);
@@ -193,8 +224,10 @@ export class View {
     const W = this.pass.canvas.width, H = this.pass.canvas.height, px = this.labels.px, lh = lineHeight(px);
     const { ink, accent: mark, dim } = UI_COLOURS;
     const out: Label[] = [];
-    infoLines(s.model, focus, this.fogs.fog).forEach((text, k) => out.push({ text, x: 2 * px, y: 2 * px + k * lh, align: 'left', colour: k === 0 && focus !== null ? mark : ink }));
+    const beacons = this.beacons;
+    infoLines(s.model, focus, this.fogs.fog, beacons).forEach((text, k) => out.push({ text, x: 2 * px, y: 2 * px + k * lh, align: 'left', colour: k === 0 && focus !== null ? mark : ink }));
     if (this.showHelp) out.push({ text: HELP, x: 2 * px, y: H - lh, align: 'left', colour: dim });
+    out.push(...this.noteLabels(s, frame, pose, focus, beacons, H, lh));
     // drone labels come first in the budget (a few at most), so a busy system never drops a selected drone's name
     const drones = this.droneLabels(s, frame, pose, W, H, 2 * px, MAX_DRONE_LABELS);
     for (const l of placeLabels(pose, s.spheres(frame), starBlockers(s, frame), W, H, 2 * px, MAX_LABELS - out.length - drones.length)) {
@@ -202,6 +235,26 @@ export class View {
     }
     out.push(...drones);
     return out;
+  }
+
+  /**
+   * The beacon notes (#79) of the body in view, the focused planet or in free flight the star (Qodo
+   * 36a4f942), newest nearest, stacked over its marker: the marker stands BEACON_MARK.gap internal px
+   * above the disc's top (render/beacons.ts), so the labels sit above that. Bitmap glyphs only, never HTML.
+   */
+  private noteLabels(s: SystemScene, frame: number, pose: OrbitPose, focus: number | null, beacons: BeaconInfo | null, H: number, lh: number): Label[] {
+    const notes = focusedNotes(beacons, focus);
+    const spot = beacons?.spots.find((x) => x.planet === (focus ?? -1));
+    if (notes.length === 0 || !spot) return [];
+    const body = spotBody(s.model, spot, frame);
+    const at = project(pose, body.centre);
+    if (!at) return [];
+    const x = ((at.x + 1) / 2) * this.pass.canvas.width;
+    const top = ((1 - at.y) / 2) * H - projectedRadius(body.radius, at.depth, fovOf(pose)) * (H / 2) - (BEACON_MARK.gap + BEACON_MARK.size + 1) * this.pass.scale;
+    const short = (t: string) => ([...t].length > NOTE_LABEL_CHARS ? `${[...t].slice(0, NOTE_LABEL_CHARS - 3).join('')}...` : t);
+    const lines = notes.slice(0, MAX_NOTE_LABELS).map(short);
+    if (notes.length > MAX_NOTE_LABELS) lines.push(`+${notes.length - MAX_NOTE_LABELS} more`);
+    return lines.map((text, k) => ({ text, x, y: top - (k + 1) * lh, align: 'centre', colour: k === 0 ? UI_COLOURS.ink : UI_COLOURS.dim }));
   }
 
   /** Labels for the drones that have one (the generic drone's tool, "inferred") and the selected drone, under each. */

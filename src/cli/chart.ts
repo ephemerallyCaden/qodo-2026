@@ -2,20 +2,32 @@
 // file here stands in for opening its diff until the view (#30) exists.
 import { lstatSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, posix, relative, sep } from 'node:path';
+import { beaconTextProblem, cleanBeaconText } from '../core/beacons.js';
 import { byCodepoint } from '../core/canonical-json.js';
 import type { FogView } from '../core/contract/fog.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import { chartedFileId, fogFrom } from '../core/fog/index.js';
-import type { FileId } from '../core/snapshot/types.js';
+import type { FileEntry, FileId } from '../core/snapshot/types.js';
 import { gitRunner, tryGit } from '../scan/git.js';
+import { writeBeacon } from '../state/beacons.js';
 import { currentFog, openFogSource, writeChart, type FogSource } from '../state/chart.js';
 import type { Io } from './main.js';
 
-export const CHART_USAGE = '       commet chart status | commet chart baseline [--undo] | commet chart [--] <file>\n';
+export const CHART_USAGE = '       commet chart status | commet chart baseline [--undo] | commet chart [--note <text>] [--] <file>\n';
 
-type Job = { kind: 'status' } | { kind: 'baseline'; undo: boolean } | { kind: 'file'; arg: string };
+/** `note`: the captain's log line to leave on the file once it's charted (#79), already checked. */
+type Job = { kind: 'status' } | { kind: 'baseline'; undo: boolean } | { kind: 'file'; arg: string; note: string | null };
 
 function parse(args: string[]): Job | string {
+  if (args[0] === '--note') {
+    if (args.length < 2) return '--note takes the note text (quote it)';
+    const note = cleanBeaconText(args[1]!);
+    const problem = beaconTextProblem(note);
+    if (problem) return problem;
+    const job = parse(args.slice(2));
+    if (typeof job === 'string') return job;
+    return job.kind === 'file' ? { ...job, note } : '--note goes with charting one file';
+  }
   const [sub, ...more] = args;
   if (sub === undefined) return 'chart needs `status`, `baseline` or a file';
   if (sub === 'status') return more.length === 0 ? { kind: 'status' } : `unknown option ${JSON.stringify(more[0])}`;
@@ -26,14 +38,14 @@ function parse(args: string[]): Job | string {
   const files = sub === '--' ? more : args;
   if (sub !== '--' && sub.startsWith('-')) return `unknown option ${JSON.stringify(sub)}`;
   if (files.length !== 1 || files[0] === '') return 'chart one file at a time';
-  return { kind: 'file', arg: files[0]! };
+  return { kind: 'file', arg: files[0]!, note: null };
 }
 
-const short = (sha: string) => sha.slice(0, 7);
+export const short = (sha: string) => sha.slice(0, 7);
 /** A scan replaced the snapshot with one that doesn't know the head the command read: nothing was written. */
 const unknownHead = (head: string) => new CommetError(`the snapshot changed while charting (now at ${short(head)}); nothing was written, run the command again`, EXIT.state);
 /** Paths are shown as git has them; one holding control characters is quoted so it can't drive the terminal. */
-const label = (path: string) => (/\p{Cc}/u.test(path) ? JSON.stringify(path) : path);
+export const label = (path: string) => (/\p{Cc}/u.test(path) ? JSON.stringify(path) : path);
 
 interface Row { name: string; files: number; fogged: number; charted: number; clear: number }
 const row = (name: string): Row => ({ name, files: 0, fogged: 0, charted: 0, clear: 0 });
@@ -128,20 +140,31 @@ async function repoPath(cwd: string, arg: string): Promise<string | null> {
   return prefix === null ? null : relativeRepoPath(prefix.replace(/\n$/, ''), arg);
 }
 
-async function chartFile(src: FogSource, io: Io, arg: string): Promise<number> {
+/**
+ * The snapshot's file for a file argument (`commet chart`, `commet beacon`), or null once the reason
+ * is said on stderr: outside the repository, a folder, or not in the latest snapshot.
+ */
+export async function snapshotFile(src: FogSource, io: Io, arg: string, folderHint: string): Promise<FileEntry | null> {
   const path = await repoPath(io.cwd, arg);
   if (path === null) {
     io.stderr(`commet: ${isAbsolute(arg) ? 'that path' : label(arg)} is not a file in this repository\n`);
-    return EXIT.usage;
+    return null;
   }
   const files = src.base.snapshot.files;
   const file = files.find((f) => f.path === path);
   if (!file) {
     const folder = path === '.' || files.some((f) => f.path.startsWith(`${path}/`));
-    io.stderr(folder ? `commet: ${label(path)} is a folder: chart its files one at a time, or set a baseline\n`
+    io.stderr(folder ? `commet: ${label(path)} is a folder: ${folderHint}\n`
       : `commet: ${label(path)} isn't in the latest snapshot (excluded, uncommitted or newer than the scan: run \`commet scan\`)\n`);
-    return EXIT.usage;
+    return null;
   }
+  return file;
+}
+
+async function chartFile(src: FogSource, io: Io, arg: string, note: string | null): Promise<number> {
+  const file = await snapshotFile(src, io, arg, 'chart its files one at a time, or set a baseline');
+  if (!file) return EXIT.usage;
+  const path = file.path;
   const at = src.base.snapshot.repo.head;
   const r = await writeChart(src, { kind: 'chart', fileId: file.id, at });
   if (!r.ok && r.head !== undefined) throw unknownHead(r.head);
@@ -159,6 +182,14 @@ async function chartFile(src: FogSource, io: Io, arg: string): Promise<number> {
   io.stdout(`Charted ${label(path)} at ${short(at)}. ${before}${still}\n`);
   const where = tally({ ...src, base: r.base }, after).rowOf.get(id)!;
   io.stdout(`${where.name}: ${where.fogged} of ${where.files} files fogged\n`);
+  if (note === null) return 0;
+  // #79: the note, on the same base and at the same head the chart was recorded at.
+  const b = await writeBeacon({ ...src, base: r.base }, { fileId: file.id, at, text: note });
+  if (!b.ok) {
+    io.stderr(`commet: charted, but the beacon was not left: ${b.head !== undefined ? 'the snapshot changed meanwhile; run `commet beacon` again' : b.error}\n`);
+    return EXIT.state;
+  }
+  io.stdout(`Beacon left on ${label(path)}: ${note}\n`);
   return 0;
 }
 
@@ -193,7 +224,7 @@ export async function chartCommand(args: string[], io: Io): Promise<number> {
   }
   try {
     const src = await openFogSource(io.cwd);
-    const code = job.kind === 'status' ? await status(src, io) : job.kind === 'baseline' ? await baseline(src, io, job.undo) : await chartFile(src, io, job.arg);
+    const code = job.kind === 'status' ? await status(src, io) : job.kind === 'baseline' ? await baseline(src, io, job.undo) : await chartFile(src, io, job.arg, job.note);
     io.stderr(await notes(src, io.cwd));
     return code;
   } catch (e) {

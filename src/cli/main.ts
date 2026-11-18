@@ -7,6 +7,7 @@ import { formatLayout } from '../core/layout/index.js';
 import { formatSummary } from '../core/summary.js';
 import { scan } from '../scan/index.js';
 import { QODO_CACHE_FILE } from '../scan/qodo.js';
+import { BEACON_USAGE, beaconCommand } from './beacon.js';
 import { CHART_USAGE, chartCommand } from './chart.js';
 import { loadOrCreateKey } from '../state/key.js';
 import { stateDir, writeAtomic } from '../state/io.js';
@@ -29,6 +30,7 @@ export interface Io {
 const USAGE = 'usage: commet scan [--window <months>] [--no-ingest] [--with-qodo] [--out <file>] [--root <dir>]... [--no-root] [--ask]\n'
   + '       commet open [--port <n>] [--no-open (keeps the token out of process lists)]\n'
   + CHART_USAGE
+  + BEACON_USAGE
   + HOOK_USAGE
   + '  --with-qodo  opt in to reading this repo\'s Qodo review findings (read-only, over the network via gh and qodo)\n'
   + '  --root <dir> a main folder whose subfolders become planets (repeatable; saved), --no-root: none (saved),\n'
@@ -124,6 +126,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
   }
   if (cmd === 'open') return runOpen(rest, io);
   if (cmd === 'chart') return chartCommand(rest, io);
+  if (cmd === 'beacon') return beaconCommand(rest, io);
   if (cmd === 'hook') return hookCommand(rest, io, (quiet) => runScan([], quiet));
   if (cmd !== 'scan') {
     io.stderr(`commet: ${cmd ? `unknown command ${JSON.stringify(cmd)}` : 'missing command'}\n${USAGE}`);

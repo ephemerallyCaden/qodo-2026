@@ -2,6 +2,7 @@
 // so each one has a direct unit test as well as the real-socket round trips in test/server.test.ts.
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { STAR_HOME, type DiffQuery, type UnseenQuery } from '../core/contract/api.js';
+import type { BeaconAction } from '../core/contract/beacons.js';
 import type { ChartAction } from '../core/contract/fog.js';
 import type { DirId, FileId } from '../core/snapshot/types.js';
 
@@ -99,4 +100,17 @@ export function parseChartAction(value: unknown): ChartAction | null {
   }
   if (o['kind'] === 'baseline' || o['kind'] === 'baseline-undo') return keys === 'at,kind' ? { kind: o['kind'], at } : null;
   return null;
+}
+
+/**
+ * A `BeaconAction` (#79) with exactly the contract's keys, or null: a file id, the head the view
+ * shows and a string note. The note's own rule (length, one plain line) is beaconTextProblem's.
+ */
+export function parseBeaconAction(value: unknown): BeaconAction | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const o = value as Record<string, unknown>;
+  if (Object.keys(o).sort().join(',') !== 'at,fileId,text') return null;
+  const { at, fileId, text } = o;
+  return typeof at === 'string' && SHA.test(at) && typeof fileId === 'string' && FILE_ID.test(fileId) && typeof text === 'string'
+    ? { fileId: fileId as FileId, at, text } : null;
 }

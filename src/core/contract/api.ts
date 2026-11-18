@@ -1,15 +1,17 @@
 // Phase 2 contract (#29): the local HTTP surface of `commet open` (#32) and the deterministic render
 // hook the view (#30) exposes to the render tests (#31). See docs/contracts/phase2.md.
 import type { DirId, FileId, Sha } from '../snapshot/types.js';
+import type { BeaconView } from './beacons.js';
 import type { DroneView } from './drones.js';
 import type { ChartUnknownHead, FogReason, FogView } from './fog.js';
 import type { LayoutV1 } from './layout.js';
 
 /**
- * Data routes. All need the token header; GET only, except `chart` (POST a ChartAction, JSON body).
- * `beacon` is reserved for R10 and answers 501 until then. `events` is a text/event-stream that the
- * view reads with fetch (not EventSource), so the token travels in a header, never in a URL.
- * `unseen` and `diff` (#75) take query parameters: see UnseenQuery and DiffQuery.
+ * Data routes. All need the token header; GET only, except `chart` (POST a ChartAction, JSON body)
+ * and `beacon` (#79, R10: POST a BeaconAction, JSON body). `beacons` is the beacon view (GET).
+ * `events` is a text/event-stream that the view reads with fetch (not EventSource), so the token
+ * travels in a header, never in a URL. `unseen` and `diff` (#75) take query parameters: see
+ * UnseenQuery and DiffQuery.
  */
 export const API = {
   snapshot: '/api/snapshot',
@@ -18,6 +20,7 @@ export const API = {
   drones: '/api/drones',
   chart: '/api/chart',
   beacon: '/api/beacon',
+  beacons: '/api/beacons',
   events: '/api/events',
   unseen: '/api/unseen',
   diff: '/api/diff',
@@ -32,8 +35,8 @@ export const WEB_DIST = 'dist/web';
 /** One `data:` line of the events stream. The view refetches the named resource, or (`rescan`) says how the server's own rescan went. */
 export type LiveEvent = ResourceEvent | RescanEvent;
 
-/** A state resource changed: the view refetches it. `head` is the scan's (for `fog`, the fog's). */
-export interface ResourceEvent { type: 'snapshot' | 'layout' | 'fog'; head: Sha }
+/** A state resource changed: the view refetches it. `head` is the scan's (for `fog` and `beacons` (#79), that view's). */
+export interface ResourceEvent { type: 'snapshot' | 'layout' | 'fog' | 'beacons'; head: Sha }
 
 /**
  * #95: `commet open` rescans when HEAD or a branch moves. Sent when a rescan fails (`ok: false`, with
@@ -131,6 +134,8 @@ export interface RenderInput {
   fog?: FogView | null;
   /** The drone view to draw (#80); the view draws at most 16 of its placed sessions. Default: none. */
   drones?: DroneView | null;
+  /** The beacons to draw (#79), of the same scan as the layout. Default: none. */
+  beacons?: BeaconView | null;
   reducedMotion?: boolean;
   /** Internal resolution height in pixels, 120..480. Default 180. */
   pixelHeight?: number;

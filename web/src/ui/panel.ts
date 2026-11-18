@@ -2,8 +2,11 @@
 // focused), a file's unseen diff, and Chart, plus the first-run baseline. Crisp UI outside the pixel
 // pass: titles and buttons in the bitmap font with their names in DOM text, diff lines and notes in
 // plain monospace in palette colours (principle 4). Text only ever goes in through textContent. A
-// diff lives in memory while it's shown, and nowhere else (Rule 2).
+// diff lives in memory while it's shown, and nowhere else (Rule 2). Charting can leave a one-line
+// captain's log note (#79), which becomes a beacon on the planet.
 import type { DiffView, UnseenFile } from '../../../src/core/contract/api.js';
+import { beaconTextProblem, cleanBeaconText } from '../../../src/core/beacons.js';
+import { BEACON_TEXT_MAX, type BeaconView } from '../../../src/core/contract/beacons.js';
 import type { ChartAction, FogView } from '../../../src/core/contract/fog.js';
 import type { DirId } from '../../../src/core/snapshot/types.js';
 import { ViewError, type DataClient } from '../data/client.js';
@@ -13,7 +16,7 @@ import { UI_COLOURS } from './colours.js';
 import { byId } from './dom.js';
 
 export interface PanelHost {
-  client: Pick<DataClient, 'fog' | 'unseen' | 'diff' | 'chart'>;
+  client: Pick<DataClient, 'fog' | 'unseen' | 'diff' | 'chart' | 'beacon'>;
   /** The view's fog entry point (View.fogTicket / applyFog): a ticket before each fog-carrying request. */
   fogTicket(): number;
   applyFog(fog: FogView, ticket: number): boolean;
@@ -21,6 +24,9 @@ export interface PanelHost {
   announce(text: string): void;
   /** Hands keyboard focus back to the 3D view. */
   release(): void;
+  /** #79: a ticket taken before a note is sent, and the beacon view its write answered with, to draw under it (Qodo 29b6e331). */
+  beaconTicket(): number;
+  applyBeacons(view: BeaconView, ticket: number): void;
 }
 
 const STAR_NAME = 'the star: root files and unmatched tests';
@@ -28,8 +34,11 @@ const STAR_NAME = 'the star: root files and unmatched tests';
 const LIST_PAGE = 200;
 const say = (e: unknown) => (e instanceof ViewError ? e.title : 'something went wrong');
 
-/** An open diff: what it was opened from, the answer, and its lines, built once (they never depend on the text scale). */
-interface OpenDiff { file: UnseenFile; view: DiffView; pre: HTMLPreElement }
+/**
+ * An open diff: what it was opened from, the answer, its lines and its captain's log field, each built
+ * once (they never depend on the text scale, and a rebuild must keep what the user typed).
+ */
+interface OpenDiff { file: UnseenFile; view: DiffView; pre: HTMLPreElement; log: HTMLInputElement }
 
 export class Panel {
   private readonly root = byId<HTMLElement>('panel');
@@ -171,7 +180,7 @@ export class Panel {
       const r = await this.host.client.diff(file.fileId, fog.head);
       if (gen !== this.diffGen) return;
       if (r.ok) {
-        this.open = { file, view: r, pre: this.lines(r, file.path) };
+        this.open = { file, view: r, pre: this.lines(r, file.path), log: this.logField() };
         this.note = '';
         this.render('chart');
         this.host.announce(`showing the unseen diff of ${file.path}`);
@@ -227,6 +236,14 @@ export class Panel {
   private async chart(): Promise<void> {
     const o = this.open;
     if (!o || !this.fog || diffFreshness(o.view, this.fog) === 'stale') return;
+    // #79: an invalid note stops the chart before anything is written, so the user can fix it.
+    const note = cleanBeaconText(o.log.value);
+    const problem = note === '' ? null : beaconTextProblem(note);
+    if (problem) {
+      this.note = `Nothing was charted: ${problem}.`;
+      this.render('note');
+      return;
+    }
     // Only this diff closes: the user may have opened another while the write was out (PR #108 r1 #5).
     let closed = false;
     const close = () => { if (this.open === o) { this.open = null; closed = true; } };
@@ -238,11 +255,61 @@ export class Panel {
     // The local filter is only for the moment between: the list is reloaded from the server, so a file
     // still unseen (a newer fog won the ticket race, or newer work arrived) comes back (Qodo local r1 #1).
     if (r === 'ok') void this.loadList();
-    // Focus follows only when this diff closed; otherwise it stays where the user moved it.
+    // Focus follows only when this diff closed; otherwise it stays where the user moved it. Done before
+    // the note is sent, so its round trip never moves focus after the user has moved on (Qodo 9a76b01a).
     this.render(closed ? 'list' : undefined);
+    // The note is left on the file just charted, at the head the chart was recorded at.
+    if (r === 'ok' && note !== '') await this.leaveBeacon(o, note);
+  }
+
+  /**
+   * #79: one note, after its chart was written. A refusal or failure is always said in the status line;
+   * it's written in the panel only while the panel still shows what the chart left (no diff opened or
+   * closed, no other planet chosen since), so it never lands on another review (Qodo 9a76b01a). The
+   * chart stands either way.
+   */
+  private async leaveBeacon(o: OpenDiff, text: string): Promise<void> {
+    const gen = this.diffGen;
+    const ticket = this.host.beaconTicket();
+    let failed: string;
+    try {
+      const r = await this.host.client.beacon({ fileId: o.view.fileId, at: o.view.at, text });
+      if (r.ok) {
+        this.host.applyBeacons(r.beacons, ticket);
+        this.host.announce(`charted ${o.file.path} and left a beacon: ${text}`);
+        return;
+      }
+      failed = `Charted, but the beacon was not left: ${r.head !== undefined ? 'the repository moved on' : r.error}.`;
+    } catch (e) {
+      failed = `Charted, but the beacon was not left: ${say(e)}`;
+    }
+    this.host.announce(failed);
+    if (gen !== this.diffGen) return;
+    this.note = failed;
+    this.render();
   }
 
   // ---- DOM ----
+
+  /**
+   * The captain's log field of an open diff: plain text, one line; Enter charts. No `maxLength`: it
+   * counts UTF-16 units and would cut a note of emoji at half the limit, so the shared rule alone
+   * decides and says why when it refuses (Qodo 68bd470a).
+   */
+  private logField(): HTMLInputElement {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.dataset['key'] = 'note';
+    input.autocomplete = 'off';
+    input.placeholder = 'what did you learn? (optional)';
+    input.setAttribute('aria-label', `Captain's log: an optional one-line note on what you learned, at most ${BEACON_TEXT_MAX} characters, shown as a beacon on the planet when you chart`);
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      void this.chart();
+    });
+    return input;
+  }
 
   private bitmap(text: string, colour: string = UI_COLOURS.ink): HTMLCanvasElement {
     return textCanvas(text, this.px, this.dpr, colour);
@@ -360,6 +427,12 @@ export class Panel {
       }));
     }
     if (fresh === 'newer') box.append(this.text(`Newer commits arrived. Chart covers what this diff shows, up to ${shortSha(v.at)}; anything newer stays fogged.`));
+    if (v.since !== null) {
+      const log = document.createElement('div');
+      log.className = 'log';
+      log.append(this.bitmap("captain's log", UI_COLOURS.dim), o.log);
+      box.append(log);
+    }
     const actions = document.createElement('div');
     actions.className = 'actions';
     const stale = fresh === 'stale';

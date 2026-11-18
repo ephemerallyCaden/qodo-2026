@@ -2,13 +2,16 @@
 // Host-checked, token-gated data routes, no CORS. Surface: docs/contracts/phase2.md.
 import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from 'node:http';
 import { API, TOKEN_HEADER, type ChartResult, type DiffQuery, type DiffResult, type LiveEvent, type ResourceEvent, type UnseenQuery, type UnseenResult } from '../core/contract/api.js';
+import { beaconTextProblem } from '../core/beacons.js';
+import type { BeaconAction, BeaconResult, BeaconView } from '../core/contract/beacons.js';
 import type { DroneView } from '../core/contract/drones.js';
 import type { ChartAction, FogView } from '../core/contract/fog.js';
 import { CommetError } from '../core/errors.js';
+import { BEACONS_FILE } from '../state/beacons.js';
 import { CHART_FILE } from '../state/chart.js';
 import { readStateBytes } from '../state/io.js';
 import { bundleKey, contentType, loadBundle, NO_SNAPSHOT, readBundleFile, STATE_FILES } from './files.js';
-import { BIND_HOST, hostAllowed, parseChartAction, parseDiffQuery, parseUnseenQuery, sameOrigin, tokenMatches } from './guard.js';
+import { BIND_HOST, hostAllowed, parseBeaconAction, parseChartAction, parseDiffQuery, parseUnseenQuery, sameOrigin, tokenMatches } from './guard.js';
 import { watchState, type StateWatcher } from './watch.js';
 
 export interface ServerOptions {
@@ -29,6 +32,13 @@ export interface ServerOptions {
   chart?: (action: ChartAction) => Promise<ChartResult>;
   /** #80: the drone view, from the same snapshot/layout pair as the fog. Without it, `GET /api/drones` answers 501. */
   drones?: () => Promise<DroneView>;
+  /** #79 (R10): the beacon view. Without it, `GET /api/beacons` answers 501. */
+  beacons?: () => Promise<BeaconView>;
+  /**
+   * #79 (R10): one note left on a file. Without it, `POST /api/beacon` answers 501. Its result maps to
+   * 200, 409 (an `at` the snapshot doesn't know: refetch) or 400, as a chart write's does.
+   */
+  beacon?: (action: BeaconAction) => Promise<BeaconResult>;
   /** #75: a planet's or the star's fogged files. Without it, `GET /api/unseen` answers 501. */
   unseen?: (q: UnseenQuery) => Promise<UnseenResult>;
   /**
@@ -118,9 +128,12 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
         : sendJson(res, 501, { error: 'drone view not available' }),
     }],
     [API.chart, { method: 'POST', handle: (req, res) => chart(req, res) }],
-    [API.beacon, {
-      method: 'POST',
-      handle: async (_req, res) => sendJson(res, 501, { ok: false, error: 'beacons are not implemented yet (R10)' }),
+    [API.beacon, { method: 'POST', handle: (req, res) => beacon(req, res) }],
+    [API.beacons, {
+      method: 'GET',
+      handle: async (_req, res) => o.beacons
+        ? sendJson(res, 200, await o.beacons())
+        : sendJson(res, 501, { error: 'beacon view not available' }),
     }],
     [API.events, { method: 'GET', handle: async (req, res) => events(req, res) }],
     [API.unseen, { method: 'GET', handle: (req, res) => unseen(req, res) }],
@@ -168,17 +181,22 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
     send(res, 200, body, 'application/json; charset=utf-8');
   }
 
-  async function chart(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  /** A write's JSON body (`what` names it in the refusals), or undefined once a refusal was sent: 415, 413 or 400. */
+  async function jsonBody(req: IncomingMessage, res: ServerResponse, what: string): Promise<unknown> {
     const type = (req.headers['content-type'] ?? '').split(';', 1)[0]!.trim().toLowerCase();
-    if (type !== 'application/json') return sendJson(res, 415, { ok: false, error: 'chart actions are application/json' });
+    if (type !== 'application/json') return void sendJson(res, 415, { ok: false, error: `${what} are application/json` });
     const raw = await readBody(req, MAX_BODY);
-    if (raw === null) return sendJson(res, 413, { ok: false, error: `chart actions are at most ${MAX_BODY} bytes` }, { connection: 'close' });
-    let parsed: unknown;
+    if (raw === null) return void sendJson(res, 413, { ok: false, error: `${what} are at most ${MAX_BODY} bytes` }, { connection: 'close' });
     try {
-      parsed = JSON.parse(raw.toString('utf8'));
+      return JSON.parse(raw.toString('utf8'));
     } catch {
-      return sendJson(res, 400, { ok: false, error: 'body is not JSON' });
+      return void sendJson(res, 400, { ok: false, error: 'body is not JSON' });
     }
+  }
+
+  async function chart(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const parsed = await jsonBody(req, res, 'chart actions');
+    if (parsed === undefined) return;
     const action = parseChartAction(parsed);
     if (!action) return sendJson(res, 400, { ok: false, error: 'not a chart action' });
     if (!o.chart) return sendJson(res, 501, { ok: false, error: 'chart writes are not implemented yet (R5)' } satisfies ChartResult);
@@ -186,6 +204,23 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
     // No event here: the write changes chart.json, which the watcher announces to every view, the
     // same as a `commet chart` run while the view is open.
     // 409 Conflict: the action names a head this snapshot doesn't know (#58); the view refetches and asks again.
+    sendJson(res, result.ok ? 200 : result.head !== undefined ? 409 : 400, result);
+  }
+
+  /**
+   * #79: one note. The text is user input: checked here, and again where it's stored, against one
+   * rule (beaconTextProblem), refused rather than rewritten, and only ever echoed back as JSON data.
+   */
+  async function beacon(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const parsed = await jsonBody(req, res, 'beacons');
+    if (parsed === undefined) return;
+    const action = parseBeaconAction(parsed);
+    if (!action) return sendJson(res, 400, { ok: false, error: 'not a beacon' });
+    const problem = beaconTextProblem(action.text);
+    if (problem) return sendJson(res, 400, { ok: false, error: problem });
+    if (!o.beacon) return sendJson(res, 501, { ok: false, error: 'beacon writes are not available' } satisfies BeaconResult);
+    const result = await o.beacon(action);
+    // No event here either: the watcher announces the beacons.json change to every view.
     sendJson(res, result.ok ? 200 : result.head !== undefined ? 409 : 400, result);
   }
 
@@ -262,12 +297,17 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
 
   let watcher: StateWatcher;
   try {
-    watcher = await watchState(o.stateDir, [...Object.values(STATE_FILES), CHART_FILE], (name, body, change) => {
+    watcher = await watchState(o.stateDir, [...Object.values(STATE_FILES), CHART_FILE, BEACONS_FILE], (name, body, change) => {
       // Chart state changed, went away, or turned unreadable or readable again, from this server, a
       // `commet chart` run or by hand: the fog changed, or now fails. Either way the view refetches;
       // a failed fog read still announces, at the last head, so the view can show the state error.
       if (name === CHART_FILE) {
         if (o.fog) o.fog().then((f) => broadcast({ type: 'fog', head: f.head }), () => lastHead && broadcast({ type: 'fog', head: lastHead }));
+        return;
+      }
+      // Beacons changed (#79), from this server or `commet beacon`: the same, for the beacon view.
+      if (name === BEACONS_FILE) {
+        if (o.beacons) o.beacons().then((b) => broadcast({ type: 'beacons', head: b.head }), () => lastHead && broadcast({ type: 'beacons', head: lastHead }));
         return;
       }
       // A snapshot or layout that vanished or can't be read has nothing to announce: its GET route reports it.

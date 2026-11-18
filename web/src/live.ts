@@ -2,6 +2,7 @@
 // planet focus, the HUD and live updates. Reduced motion freezes the frame, draws only on input and
 // cuts instead of gliding (AC7).
 import type { FogView } from '../../src/core/contract/fog.js';
+import { Beacons } from './beacons/controller.js';
 import { PARKED_POSE, startPoseAt } from './camera/pose.js';
 import { FreeFlightRig } from './camera/rig.js';
 import { ViewError, type DataClient } from './data/client.js';
@@ -63,7 +64,8 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   const rig = new FreeFlightRig(PARKED_POSE); // replaced by the start pose once a layout loads
   // #75: review and chart the focused planet's unseen files (the star's in free flight).
   const panel = new Panel({ client, fogTicket: () => view.fogTicket(), applyFog: (f, t) => view.applyFog(f, t),
-    announce: (t) => hud.announce(t), release: () => view.pass.canvas.focus({ preventScroll: true }) });
+    announce: (t) => hud.announce(t), release: () => view.pass.canvas.focus({ preventScroll: true }),
+    beaconTicket: () => beacons.ticket(), applyBeacons: (b, t) => beacons.apply(b, drawnHead, t) }); // #79: a note left with a chart
 
   /** Something changed that needs a redraw: mark it and wake the loop. */
   const redraw = () => { dirty = true; loop.wake(); };
@@ -83,7 +85,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     const m = view.model;
     const p = focus === null ? null : m?.planets[focus];
     hud.announce(p ? `focused ${planetLines(p, view.fog).join(', ')}` : 'free flight');
-    if (m) hud.summary(summaryText(m, focus, view.fog));
+    if (m) hud.summary(summaryText(m, focus, view.fog, view.beacons));
   };
   const setFocus = (i: number | null) => {
     focus = i;
@@ -105,9 +107,15 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     if (cleared || refogged) hud.announce(fogChanged = [cleared ? `charted ${files(cleared)}` : '', refogged ? `${files(refogged)} refogged` : ''].filter(Boolean).join(', '));
     else if (notice && notice !== 'no fog view') hud.announce(`${notice}: every file is drawn uncharted until the next update`); // a fog refused through the panel's path
     const m = view.model;
-    if (m) hud.summary(summaryText(m, focus, view.fog));
+    if (m) hud.summary(summaryText(m, focus, view.fog, view.beacons));
     redraw();
   };
+  // #79: the captain's log beacons, refetched with every layout load, snapshot and beacons event.
+  const beacons = new Beacons({ view, client, announce: (t) => hud.announce(t), changed: () => {
+    const m = view.model;
+    if (m) hud.summary(summaryText(m, focus, view.fog, view.beacons));
+    redraw();
+  } });
   // #80: the agent drones, refetched with every layout load and snapshot event.
   const drones = new Drones({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }) });
 
@@ -144,6 +152,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       if (paired.notice) hud.announce(paired.notice); // after say(), so the status line keeps it
       if (rescanFailed) hud.announce(rescanFailed); // still true after a reload (#95): the drawn scan is the last good one
       void drones.refresh(drawnHead);
+      void beacons.refresh(drawnHead);
       redraw();
     } catch (e) {
       const err = describeError(e);
@@ -231,7 +240,8 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       rescanFailed = ev.ok ? null : `automatic rescan failed (exit ${ev.exitCode}): showing the last scan; the terminal running \`commet open\` says why`;
       hud.announce(rescanFailed ?? 'automatic rescan works again');
     } else if (ev.type === 'layout' || ev.type === 'fog') void update(ev.type);
-    else if (ev.type === 'snapshot' && ev.head === drawnHead) void drones.refresh(drawnHead); // a new head's layout event refetches for itself
+    else if (ev.type === 'snapshot' && ev.head === drawnHead) { void drones.refresh(drawnHead); void beacons.refresh(drawnHead); } // a new head's layout event refetches for itself
+    else if (ev.type === 'beacons') void beacons.refresh(drawnHead); // #79: a note left here or by `commet beacon`
   }, (status) => {
     // The server keeps no backlog, so a change made while the stream was down (or before it first
     // connected) would be lost: every (re)connect reloads. A resumed stream is announced once.

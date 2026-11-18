@@ -13,6 +13,7 @@ import { systemModel, type SystemModel } from '../../../web/src/model/system.js'
 import type { Hud } from '../../../web/src/ui/hud.js';
 import type { View } from '../../../web/src/view.js';
 import type { DroneView } from '../../../src/core/contract/drones.js';
+import type { BeaconView } from '../../../src/core/contract/beacons.js';
 import type { FleetEntry } from '../../../web/src/render/drone-fleet.js';
 import { miniFog, miniLayout } from '../../fixtures/contract/mini.js';
 import type { DirId } from '../../../src/core/snapshot/types.js';
@@ -26,6 +27,9 @@ const HEAD = miniLayout.source.head;
 const OTHER = 'b'.repeat(40);
 const layoutAt = (head: string): LayoutV1 => ({ ...miniLayout, source: { ...miniLayout.source, head } });
 const fogAt = (head: string, baseline: string | null = null): FogView => ({ ...miniFog, head, baseline });
+/** A beacon view of `head` with one note per text, on the mini fixture's first planet. */
+const beaconsAt = (head: string, texts: string[] = []): BeaconView => ({ schemaVersion: 'beacons.1', head, unplaced: 0,
+  beacons: texts.map((text, i) => ({ fileId: `f_${String(i).padStart(12, '0')}`, path: `a/${i}.ts`, home: miniLayout.planets[0]!.dirId, at: head, text })) });
 
 /** The page's elements by id, as the drone controller finds them. */
 const els = new Map<string, { textContent: string; hidden: boolean; contains?: (n: unknown) => boolean }>();
@@ -61,6 +65,9 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
   /** Answers for the drone view, in turn; with none queued, an empty one of the layout's head. */
   const droneAnswers: (() => Promise<DroneView>)[] = [];
   let droneCalls = 0;
+  /** Answers for the beacon view (#79), in turn; with none queued, an empty one of the layout's head. */
+  const beaconAnswers: (() => Promise<BeaconView>)[] = [];
+  let beaconCalls = 0;
   const fogs: (() => Promise<FogView>)[] = [async () => { if (first.fog instanceof Error) throw first.fog; return first.fog; }];
   let fogCalls = 0;
   let onEvent: (ev: LiveEvent) => void = () => {};
@@ -73,6 +80,8 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }),
     chart: async () => ({ ok: false, error: 'not used' }),
+    beacons: () => { beaconCalls++; return (beaconAnswers.shift() ?? (async () => beaconsAt(head)))(); },
+    beacon: async () => ({ ok: false, error: 'not used' }),
   };
   let model: SystemModel | null = null;
   const view = {
@@ -96,6 +105,8 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     selectedDrone: null as string | null,
     drawn: [] as readonly FleetEntry[],
     setDrones: async (e: readonly FleetEntry[]) => { view.drawn = e; return true; },
+    beaconsDrawn: null as BeaconView | null,
+    setBeacons: (v: BeaconView | null) => { view.beaconsDrawn = v; return true; },
     droneAt: null as string | null,
     planetAt: null as number | null,
     pickDroneAt: () => view.droneAt,
@@ -116,7 +127,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     await vi.waitFor(() => expect(layouts.length + fogs.length).toBe(0));
     await new Promise((r) => setTimeout(r, 10));
   };
-  return { view, status, layouts, fogs, droneAnswers, droneCalls: () => droneCalls, emit, send: (ev: LiveEvent) => onEvent(ev), connection: (st: string) => onStatus(st), fogCalls: () => fogCalls, last: () => status.at(-1) ?? '' };
+  return { view, status, layouts, fogs, droneAnswers, droneCalls: () => droneCalls, beaconAnswers, beaconCalls: () => beaconCalls, emit, send: (ev: LiveEvent) => onEvent(ev), connection: (st: string) => onStatus(st), fogCalls: () => fogCalls, last: () => status.at(-1) ?? '' };
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 10));
@@ -457,5 +468,61 @@ describe('the server\'s own rescans in live mode (#95)', () => {
     expect(l.last()).toBe(FAILED);
     await reload(() => l.send({ type: 'layout', head: HEAD }));
     expect(l.last()).toBe(FAILED);
+  });
+});
+
+describe('beacons in live mode (#79)', () => {
+  it('draws the beacons of the drawn layout, and refetches on a beacons event and on a layout event, not on a fog event', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await vi.waitFor(() => expect(l.beaconCalls()).toBe(1));
+    await settle();
+    expect(l.view.beaconsDrawn?.head).toBe(HEAD);
+    const noted = beaconsAt(HEAD, ['the parser keeps NUL framing']);
+    l.beaconAnswers.push(async () => noted);
+    l.send({ type: 'beacons', head: HEAD });
+    await vi.waitFor(() => expect(l.view.beaconsDrawn).toBe(noted));
+    expect(l.beaconCalls()).toBe(2);
+    l.fogs.push(async () => fogAt(HEAD));
+    await l.emit({ type: 'fog', head: HEAD });
+    expect(l.beaconCalls()).toBe(2);
+    l.layouts.push(async () => miniLayout);
+    l.fogs.push(async () => fogAt(HEAD));
+    await l.emit({ type: 'layout', head: HEAD });
+    await vi.waitFor(() => expect(l.beaconCalls()).toBe(3));
+  });
+
+  it('beacons of another scan are not applied over this layout, and the HUD says so', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await vi.waitFor(() => expect(l.beaconCalls()).toBe(1));
+    await settle();
+    const kept = l.view.beaconsDrawn;
+    l.beaconAnswers.push(async () => beaconsAt(OTHER, ['from another scan']));
+    l.send({ type: 'beacons', head: OTHER });
+    await vi.waitFor(() => expect(l.last()).toMatch(new RegExp(`beacons not applied.*${OTHER.slice(0, 7)}.*${HEAD.slice(0, 7)}`)));
+    expect(l.view.beaconsDrawn).toBe(kept);
+  });
+
+  it('a failed fetch is announced and the map stays (Rule 1: never silent)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await vi.waitFor(() => expect(l.beaconCalls()).toBe(1));
+    l.beaconAnswers.push(() => Promise.reject(new ViewError('/api/beacons answered 500.')));
+    l.send({ type: 'beacons', head: HEAD });
+    await vi.waitFor(() => expect(l.last()).toMatch(/beacons unavailable: .*500/));
+    expect(l.view.model).not.toBeNull();
+  });
+
+  it('an older beacon answer that lands after a newer one changes nothing', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await vi.waitFor(() => expect(l.beaconCalls()).toBe(1));
+    await settle();
+    const slow = deferred<BeaconView>();
+    const newer = beaconsAt(HEAD, ['newer']);
+    l.beaconAnswers.push(() => slow.promise, async () => newer);
+    l.send({ type: 'beacons', head: HEAD });
+    l.send({ type: 'beacons', head: HEAD });
+    await vi.waitFor(() => expect(l.view.beaconsDrawn).toBe(newer));
+    slow.resolve(beaconsAt(HEAD, ['older']));
+    await settle();
+    expect(l.view.beaconsDrawn).toBe(newer);
   });
 });

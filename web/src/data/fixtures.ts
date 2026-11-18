@@ -36,5 +36,8 @@ export function fixtureClient(name: string): DataClient {
     unseen: () => Promise.reject(new ViewError('Reviewing needs `commet open`: the dev fixtures have no diffs.')),
     diff: () => Promise.reject(new ViewError('Reviewing needs `commet open`: the dev fixtures have no diffs.')),
     chart: () => Promise.reject(new ViewError('Charting needs `commet open`: the dev fixtures have no chart state.')),
+    // No beacons in the fixtures (#79): an empty view of the fixture's own head.
+    beacons: async () => ({ schemaVersion: 'beacons.1', head: JSON.parse(await file('mini.fog.json')).head as string, beacons: [], unplaced: 0 }),
+    beacon: () => Promise.reject(new ViewError('Beacons need `commet open`: the dev fixtures have no beacon state.')),
   };
 }

@@ -87,16 +87,16 @@ export function tryLock(lock: string): (() => void) | null {
 
 /**
  * Runs `fn` holding the lock, waiting up to `tries` × `waitMs` for another holder to finish. Null
- * when it never came free (the caller says what that means).
+ * when it never came free (the caller says what that means). An async `fn` holds it until it settles.
  */
-export async function withLock<T>(lock: string, fn: () => T, tries = 250, waitMs = 20): Promise<{ value: T } | null> {
+export async function withLock<T>(lock: string, fn: () => T | Promise<T>, tries = 250, waitMs = 20): Promise<{ value: T } | null> {
   let release: (() => void) | null;
   for (let i = 0; !(release = tryLock(lock)); i++) {
     if (i >= tries) return null;
     await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
   try {
-    return { value: fn() };
+    return { value: await fn() };
   } finally {
     release();
   }

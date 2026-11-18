@@ -4,14 +4,20 @@
 // test/server/diff.test.ts. Each test gets its own repo and server, with hooks to delay or replace
 // a route's answer.
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { WEB_DIST, type ChartResult, type DiffQuery, type DiffResult } from '../../src/core/contract/api.js';
+import type { BeaconAction, BeaconResult } from '../../src/core/contract/beacons.js';
 import type { ChartAction, FogView } from '../../src/core/contract/fog.js';
 import { fileIdOf } from '../../src/core/fog/index.js';
+import type { LayoutV1 } from '../../src/core/contract/layout.js';
+import { fovOf, project, projectedRadius, startPose } from '../../web/src/camera/pose.js';
+import { CORONA } from '../../web/src/model/star.js';
+import { systemModel } from '../../web/src/model/system.js';
 import { newToken } from '../../src/server/guard.js';
 import { startServer, type CommetServer } from '../../src/server/server.js';
+import { applyBeacon, readBeacons } from '../../src/state/beacons.js';
 import { applyChart, readFog } from '../../src/state/chart.js';
 import { readDiff, readUnseen } from '../../src/state/diff.js';
 import { cli } from '../fixtures/cli.js';
@@ -24,8 +30,9 @@ interface Hooks {
   fog?: () => Promise<FogView>;
   diff?: (q: DiffQuery, s: AbortSignal) => Promise<DiffResult>;
   chart?: (a: ChartAction) => Promise<ChartResult>;
+  beacon?: (a: BeaconAction) => Promise<BeaconResult>;
 }
-interface Fixture { dir: string; server: CommetServer; hooks: Hooks; commit(at: string, change: () => void): void; scan(): Promise<void> }
+interface Fixture { dir: string; server: CommetServer; hooks: Hooks; posted: BeaconAction[]; commit(at: string, change: () => void): void; scan(): Promise<void> }
 
 const servers: CommetServer[] = [];
 test.afterEach(async () => {
@@ -57,14 +64,17 @@ async function fixture(): Promise<Fixture> {
   });
   await scan();
   const hooks: Hooks = {};
+  const posted: BeaconAction[] = [];
   const server = await startServer({
     stateDir: join(dir, '.git', 'commet'), webRoot: WEB, port: 0, token: newToken(), pollMs: 100,
     fog: () => (hooks.fog ?? (() => readFog(dir)))(), unseen: (q) => readUnseen(dir, q),
     diff: (q, s) => (hooks.diff ?? ((x, y) => readDiff(dir, x, y)))(q, s),
     chart: (a) => (hooks.chart ?? ((x) => applyChart(dir, x)))(a),
+    // #79: beacons through the real state module; `beacon` records every note the page sends.
+    beacons: () => readBeacons(dir), beacon: (a) => { posted.push(a); return (hooks.beacon ?? ((x) => applyBeacon(dir, x)))(a); },
   });
   servers.push(server);
-  return { dir, server, hooks, commit, scan };
+  return { dir, server, hooks, posted, commit, scan };
 }
 
 /** New layout.json bytes with the same layout: the server announces it and the view reloads layout and fog. */
@@ -251,5 +261,144 @@ test.describe('#75 review panel', () => {
     f.commit('2026-10-10T10:00:00Z', () => execFileSync('git', ['mv', 'aa', 'cc'], { cwd: f.dir }));
     await f.scan();
     await expect.poll(() => heading(page), { timeout: 15_000 }).toBe('cc');
+  });
+});
+
+test.describe('#79 captain\'s log', () => {
+  const beaconsFile = (f: Fixture) => join(f.dir, '.git', 'commet', 'beacons.json');
+  const status = (page: Page) => page.$eval('#status', (s) => s.textContent ?? '');
+  const chartWith = async (page: Page, note: string) => {
+    await page.waitForSelector('#panel input[data-key="note"]');
+    await page.fill('#panel input[data-key="note"]', note);
+    await page.click('#panel button[data-key="chart"]');
+  };
+
+  test('a note typed with the chart becomes a beacon, stored and shown as text, never as HTML', async ({ page }) => {
+    const f = await fixture();
+    await open(page, f, 'aa');
+    await openFile(page, 'aa/one.ts');
+    const note = '<img src=x onerror="window.__pwned=1">one is the <b>entry</b> point';
+    await chartWith(page, `  ${note}  `);
+    await expect.poll(() => f.posted.map((a) => a.text), { timeout: 10_000 }).toEqual([note]);
+    const fog = await readFog(f.dir);
+    expect(f.posted).toEqual([{ fileId: fileIdOf('aa/one.ts'), at: fog.head, text: note }]);
+    expect(JSON.parse(readFileSync(beaconsFile(f), 'utf8'))).toEqual({ schemaVersion: 'beacons.1', beacons: [{ fileId: fileIdOf('aa/one.ts'), at: fog.head, text: note }] });
+    // Said as text, in the status line and the canvas's text equivalent; nothing it holds became markup or ran.
+    await expect.poll(() => status(page), { timeout: 10_000 }).toBe(`charted aa/one.ts and left a beacon: ${note}`);
+    await expect.poll(() => page.$eval('#summary', (s) => s.textContent ?? ''), { timeout: 10_000 }).toContain(`beacon notes, newest first: ${note}`);
+    expect(await page.$$eval('img, b, script:not([src])', (xs) => xs.length)).toBe(0);
+    expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
+    expect(await listed(page)).toEqual(['aa/two.ts']);
+  });
+
+  test('charting with no note (or only spaces) leaves no beacon', async ({ page }) => {
+    const f = await fixture();
+    await open(page, f, 'aa');
+    await openFile(page, 'aa/one.ts');
+    await chartWith(page, '   ');
+    await expect.poll(() => listed(page), { timeout: 10_000 }).toEqual(['aa/two.ts']);
+    expect(f.posted).toEqual([]);
+    expect(existsSync(beaconsFile(f))).toBe(false);
+  });
+
+  test('a note the rule refuses stops the chart before anything is written, and keeps what was typed', async ({ page }) => {
+    const f = await fixture();
+    await open(page, f, 'aa');
+    await openFile(page, 'aa/one.ts');
+    await page.waitForSelector('#panel input[data-key="note"]');
+    // A text field drops newlines, but a pasted bidi override or a script can still put one in.
+    await page.$eval('#panel input[data-key="note"]', (i) => { (i as HTMLInputElement).value = 'safe\u202etxt.exe'; });
+    await page.click('#panel button[data-key="chart"]');
+    await expect.poll(() => page.$eval('#panel', (p) => p.textContent ?? ''), { timeout: 10_000 }).toContain('Nothing was charted: the note must be one line of plain text, without control characters.');
+    expect(await page.$eval('#panel input[data-key="note"]', (i) => (i as HTMLInputElement).value)).toBe('safe\u202etxt.exe');
+    expect(await activeInPanel(page)).toBe('INPUT:note');
+    expect(f.posted).toEqual([]);
+    expect(existsSync(join(f.dir, '.git', 'commet', 'chart.json'))).toBe(false);
+  });
+
+  test('Enter in the note charts, and what was typed survives the panel redrawing under it', async ({ page }) => {
+    const f = await fixture();
+    await open(page, f, 'aa');
+    await openFile(page, 'aa/one.ts');
+    await page.waitForSelector('#panel input[data-key="note"]');
+    await page.focus('#panel input[data-key="note"]');
+    await page.keyboard.type('half a no');
+    // A smaller window halves the text scale, so the panel rebuilds every control (Panel.scale → render).
+    const before = await page.$('#panel input[data-key="note"]');
+    await page.setViewportSize({ width: 640, height: 360 });
+    await expect.poll(() => page.$eval('#panel canvas', (c) => (c as HTMLCanvasElement).height), { timeout: 10_000 }).toBeLessThan(16);
+    expect(await before!.evaluate((i) => i.isConnected)).toBe(true); // the same field, reattached
+    expect(await activeInPanel(page)).toBe('INPUT:note');
+    await page.keyboard.type('te');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => f.posted.map((a) => a.text), { timeout: 10_000 }).toEqual(['half a note']);
+  });
+
+  test('a beacon that fails after another diff was opened is said in the status line, not on that diff, and focus stays (Qodo 9a76b01a)', async ({ page }) => {
+    const f = await fixture();
+    const g = gate();
+    f.hooks.beacon = async () => { await g.wait; return { ok: false, error: 'no such file at that head' }; };
+    await open(page, f, 'aa');
+    await openFile(page, 'aa/one.ts');
+    await chartWith(page, 'a note that will fail');
+    await expect.poll(() => f.posted.length, { timeout: 10_000 }).toBe(1);
+    // While the beacon's answer is out, the user opens the next file and starts typing its note.
+    await page.waitForSelector(`#panel button[data-key="file:${fileIdOf('aa/two.ts')}"]`, { timeout: 10_000 });
+    await openFile(page, 'aa/two.ts');
+    await page.waitForSelector('#panel input[data-key="note"]');
+    await page.focus('#panel input[data-key="note"]');
+    g.open();
+    await expect.poll(() => status(page), { timeout: 10_000 }).toContain('Charted, but the beacon was not left: no such file at that head.');
+    await page.waitForTimeout(300);
+    expect(await page.$eval('#panel', (p) => p.textContent ?? '')).not.toContain('beacon was not left');
+    expect(await page.$eval('#panel h3 .sr', (h) => h.textContent)).toBe('aa/two.ts');
+    expect(await activeInPanel(page)).toBe('INPUT:note');
+  });
+
+  test('a note of 120 emoji is sent whole from the panel, and 121 gets the rule\'s own message (Qodo 68bd470a)', async ({ page }) => {
+    const f = await fixture();
+    await open(page, f, 'aa');
+    await openFile(page, 'aa/one.ts');
+    await page.waitForSelector('#panel input[data-key="note"]');
+    await page.focus('#panel input[data-key="note"]');
+    const emoji = '\u{1F6F0}'.repeat(120); // 120 characters, 240 UTF-16 units
+    await page.keyboard.type(emoji);
+    expect(await page.$eval('#panel input[data-key="note"]', (i) => [...(i as HTMLInputElement).value].length)).toBe(120);
+    await page.click('#panel button[data-key="chart"]');
+    await expect.poll(() => f.posted.map((a) => a.text), { timeout: 10_000 }).toEqual([emoji]);
+    await page.waitForSelector(`#panel button[data-key="file:${fileIdOf('aa/two.ts')}"]`, { timeout: 10_000 });
+    await openFile(page, 'aa/two.ts');
+    await page.waitForSelector('#panel input[data-key="note"]');
+    await page.focus('#panel input[data-key="note"]');
+    await page.keyboard.type(`${emoji}x`);
+    await page.click('#panel button[data-key="chart"]');
+    await expect.poll(() => page.$eval('#panel', (p) => p.textContent ?? ''), { timeout: 10_000 }).toContain('Nothing was charted: the note is longer than 120 characters.');
+    expect(f.posted).toHaveLength(1);
+  });
+
+  test('in free flight the star\'s note is labelled over the star and read in the summary (Qodo 36a4f942)', async ({ page }) => {
+    const f = await fixture();
+    await page.goto(f.server.url);
+    await page.waitForSelector('#panel:not([hidden]) li button');
+    await page.click('#panel button[data-key="dismiss"]');
+    await page.check('#motion'); // reduced motion holds the frame, so the label canvas changes only with the note
+    await page.waitForTimeout(500);
+    // The region just above the star's corona on the label canvas (device px; 1280x720 at x4, dpr 1).
+    const model = systemModel(JSON.parse(readFileSync(join(f.dir, '.git', 'commet', 'layout.json'), 'utf8')) as LayoutV1);
+    const pose = startPose(model);
+    const at = project(pose, [0, 0, 0])!;
+    const [sx, sy] = [((at.x + 1) / 2) * 1280, ((1 - at.y) / 2) * 720];
+    const top = sy - projectedRadius(model.star.radius * CORONA.reach, at.depth, fovOf(pose)) * 360;
+    const box = { x: Math.round(sx - 200), y: Math.max(0, Math.round(top - 140)), w: 400, h: Math.round(Math.min(140, top)) };
+    const ink = () => page.$eval('#labels', (c, b) => {
+      const d = (c as HTMLCanvasElement).getContext('2d')!.getImageData(b.x, b.y, b.w, b.h).data;
+      let n = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i]! > 0) n++;
+      return n;
+    }, box);
+    const before = await ink();
+    await applyBeacon(f.dir, { fileId: fileIdOf('README.md'), at: (await readFog(f.dir)).head, text: 'the readme explains the setup' });
+    await expect.poll(() => page.$eval('#summary', (s) => s.textContent ?? ''), { timeout: 10_000 }).toContain('beacon notes, newest first: the readme explains the setup');
+    await expect.poll(ink, { timeout: 5_000 }).toBeGreaterThan(before + 100);
   });
 });

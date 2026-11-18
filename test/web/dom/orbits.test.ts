@@ -59,6 +59,7 @@ async function live(reduced = false) {
     async load() { model = systemModel(miniLayout); },
     selectedDrone: null,
     setDrones: async () => true,
+    setBeacons: () => true,
     pickDroneAt: () => null,
     planetAt: null as number | null,
     pickAt: () => view.planetAt,
@@ -74,6 +75,8 @@ async function live(reduced = false) {
     unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }),
     chart: async () => ({ ok: false, error: 'not used' }),
+    beacons: async () => ({ schemaVersion: 'beacons.1', head: miniLayout.source.head, beacons: [], unplaced: 0 }),
+    beacon: async () => ({ ok: false, error: 'not used' }),
   };
   // runLive sets onReducedMotion: what the HUD's reduce-motion checkbox calls
   const hud = { announce: () => {}, summary: () => {}, scale: () => {}, clearError: () => {}, error: () => {}, setReducedMotion: () => {}, onReducedMotion: (() => {}) as (on: boolean) => void };

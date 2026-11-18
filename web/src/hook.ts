@@ -4,6 +4,7 @@
 import type { RenderHook, RenderInput, RenderStats } from '../../src/core/contract/api.js';
 import { fromCameraPose, startPose, type OrbitPose } from './camera/pose.js';
 import { checkDrones } from './drones/check.js';
+import { checkBeacons } from './model/beacons.js';
 import { entryOf, selectDrones } from './drones/select.js';
 import { effectiveFrame } from './model/motion.js';
 import { checkLayout } from './model/validate.js';
@@ -30,8 +31,15 @@ export function renderHook(view: View, viewport: () => { w: number; h: number; d
         const planets = new Set<string>(checked.value.planets.map((p) => p.dirId));
         drones = selectDrones(d.value, (h) => h === 'star' || planets.has(h)).shown;
       }
+      const head = checked.value.source.head;
+      if (next.beacons) {
+        const b = checkBeacons(next.beacons);
+        if (!b.ok) throw new Error(`invalid beacons: ${b.errors.join('; ')}`);
+        if (b.value.head !== head) throw new Error(`beacons are of ${b.value.head.slice(0, 7)} but the layout of ${head.slice(0, 7)} (different scans)`);
+      }
       await view.load(checked.value, next.fog ?? null, { animate: false }); // no fronts: a frame is a pure function of (input, n)
-      await view.setDrones(drones.map(entryOf), checked.value.source.head);
+      await view.setDrones(drones.map(entryOf), head);
+      view.setBeacons(next.beacons ?? null, head); // this input's beacons, never a previous load's
       const vp = viewport();
       view.showHelp = false;
       view.depthFade = next.depthFade ?? true;

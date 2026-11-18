@@ -1,11 +1,13 @@
 // The view's data source. Live: the hardened local server (#32), every request carrying the
 // per-launch token in TOKEN_HEADER (contract). Nothing here talks to any other origin.
 import { API, STAR_HOME, TOKEN_HEADER, type ChartResult, type DiffResult, type LiveEvent, type UnseenResult } from '../../../src/core/contract/api.js';
+import type { BeaconAction, BeaconResult, BeaconView } from '../../../src/core/contract/beacons.js';
 import type { ChartAction, FogView } from '../../../src/core/contract/fog.js';
 import type { DroneView } from '../../../src/core/contract/drones.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
 import type { DirId, FileId, Sha } from '../../../src/core/snapshot/types.js';
 import { checkDrones } from '../drones/check.js';
+import { checkBeaconResult, checkBeacons } from '../model/beacons.js';
 import { checkChartResult, checkDiff, checkFog, checkLayout, checkUnseen, type Checked } from '../model/validate.js';
 import { EventStreamParser } from './sse.js';
 
@@ -30,6 +32,10 @@ export interface DataClient {
   diff(fileId: FileId, at: Sha): Promise<DiffResult>;
   /** #75: one chart write; the answer carries the new fog, or a refusal. */
   chart(action: ChartAction): Promise<ChartResult>;
+  /** #79: the captain's log beacons at the server's head. A failure is announced, not fatal. */
+  beacons(): Promise<BeaconView>;
+  /** #79: leaves one note on a file; the answer carries the new beacon view, or a refusal. */
+  beacon(action: BeaconAction): Promise<BeaconResult>;
 }
 
 const HINTS: Record<number, string> = {
@@ -66,6 +72,7 @@ function parseChecked<T>(text: string, what: string, source: string, check: (v: 
 export const parseLayout = (text: string, source: string): LayoutV1 => parseChecked(text, 'layout', source, checkLayout);
 export const parseFog = (text: string, source: string): FogView => parseChecked(text, 'fog view', source, checkFog);
 export const parseDrones = (text: string, source: string): DroneView => parseChecked(text, 'drone view', source, checkDrones);
+export const parseBeacons = (text: string, source: string): BeaconView => parseChecked(text, 'beacon view', source, checkBeacons);
 
 /** Statuses whose JSON body is an answer the view acts on (a refusal it can explain), not an error. */
 const ANSWERS = [200, 400, 404, 409];
@@ -107,6 +114,8 @@ export function serverClient(token: string): DataClient {
     unseen: (home, at) => answer(`${API.unseen}?${new URLSearchParams({ home: home ?? STAR_HOME, at })}`, API.unseen, 'unseen list', checkUnseen),
     diff: (fileId, at) => answer(`${API.diff}?${new URLSearchParams({ fileId, at })}`, API.diff, 'diff', checkDiff),
     chart: (action) => answer(API.chart, API.chart, 'chart answer', checkChartResult, JSON.stringify(action)),
+    beacons: async () => parseBeacons(await get(API.beacons), API.beacons),
+    beacon: (action) => answer(API.beacon, API.beacon, 'beacon answer', checkBeaconResult, JSON.stringify(action)),
     follow(onEvent, onStatus) {
       const abort = new AbortController();
       let attempt = 0;

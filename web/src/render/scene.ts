@@ -15,6 +15,7 @@ import { MOON_RADIUS, MOONLET_RADIUS, moonOffset, moonletPosition, planetCentre,
 import { add, scale, sub, type Sphere, type Vec3 } from '../model/vec.js';
 import { LIGHT_VIEW, orbitingSpheres, placeSpheres, ramp, shaderMaterial, SHARED, toonMaterial } from './materials.js';
 import { FOG_SHARED, moonFogAttribute, setMoonFog } from './fog.js';
+import { BeaconMarkers } from './beacons.js';
 import { DroneFleet } from './drone-fleet.js';
 import { MOON_GEO, makePlanet, type PlanetObject } from './planet.js';
 import { STAR, STAR_FRAG, STARFIELD_FRAG, STARFIELD_VERT } from './shaders.js';
@@ -53,6 +54,8 @@ export class SystemScene {
   readonly planets: PlanetObject[];
   /** The agent drones (#80): at most DRONE_CAP, one draw call each. */
   readonly fleet = new DroneFleet();
+  /** The captain's log beacons (#79): one draw call, none when there are no beacons. */
+  readonly beacons = new BeaconMarkers();
   private readonly starfield = makeStarfield();
   private readonly starMat: THREE.ShaderMaterial;
   private readonly star: THREE.Mesh;
@@ -71,6 +74,7 @@ export class SystemScene {
     this.depth = systemDepth(model);
     this.scene.add(this.starfield);
     this.scene.add(this.fleet.group);
+    this.scene.add(this.beacons.points);
     this.disposables.push(this.starfield.geometry, this.starfield.material as THREE.Material);
 
     // The Day 1 sun (star-art.md): one draw, disc and corona, on the inside of a sphere that holds both.
@@ -181,6 +185,7 @@ export class SystemScene {
       p.update(frame, sub(c, origin), at ? projectedRadius(p.model.radius, at.depth, fovOf(view)) * (pixelHeight / 2) : 0);
     });
     this.fleet.pose(this.model, frame, fovOf(view), pixelHeight, origin);
+    this.beacons.pose(this.model, frame, pixelHeight, origin);
     const churn = turnAngle(frame, TURNS.starChurn), spin = turnAngle(frame, TURNS.starSpin);
     (this.starMat.uniforms['uChurn']!.value as THREE.Vector2).set(Math.cos(churn), Math.sin(churn));
     (this.starMat.uniforms['uSpin']!.value as THREE.Vector2).set(Math.cos(spin), Math.sin(spin));
@@ -192,6 +197,7 @@ export class SystemScene {
 
   dispose(): void {
     this.fleet.dispose();
+    this.beacons.dispose();
     for (const p of this.planets) p.dispose();
     for (const d of this.disposables) d.dispose();
   }
