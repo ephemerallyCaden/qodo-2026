@@ -4,7 +4,7 @@
 import { byFolderThenName } from '../../../src/core/drones.js';
 import type { DroneDetail, DroneDetailFile, DroneDetailResult } from '../../../src/core/contract/drones.js';
 import { ViewError } from '../data/client.js';
-import { plain, utc } from './select.js';
+import { utc } from './select.js';
 
 /** What the panel's detail section shows. */
 export type DetailState =
@@ -22,8 +22,18 @@ export const INFERRED_NOTE = 'file detail is for agent sessions only';
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 export const edits = (n: number): string => count(n, 'edit', 'edits');
 
-/** Paths are shown whole (the validator bounds them), so two long ones never look alike (Qodo a9080e71). */
-const WHOLE = Number.MAX_SAFE_INTEGER;
+/** Characters a reader can't see or tell apart: controls, format and bidi controls, lone surrogates, separators other than a plain space. */
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]|(?! )\p{Zs}/gu;
+
+/**
+ * A repo path as the panel shows it, so distinct names stay distinct (Qodo PR #167 780cbbf2). It is shown
+ * whole (the validator bounds it; a9080e71), with its spaces kept (the panel lays them out with
+ * `white-space: pre-wrap`). Each invisible character shows as an escape (`\u{7}`), never a space, and a
+ * backslash as `\\`, so no path reads as another's escape. Nothing in it can reorder the panel (bidi).
+ */
+export function pathLabel(path: string): string {
+  return path.replace(/\\/g, '\\\\').replace(INVISIBLE, (c) => `\\u{${c.codePointAt(0)!.toString(16)}}`);
+}
 
 export interface FolderGroup { folder: string; files: { name: string; edits: string }[] }
 
@@ -33,11 +43,11 @@ export function detailGroups(files: readonly DroneDetailFile[]): FolderGroup[] {
   for (const f of [...files].sort((a, b) => byFolderThenName(a.path, b.path))) {
     const i = f.path.lastIndexOf('/');
     const raw = i < 0 ? '' : f.path.slice(0, i);
-    const file = { name: plain(f.path.slice(i + 1), WHOLE), edits: edits(f.edits) };
+    const file = { name: pathLabel(f.path.slice(i + 1)), edits: edits(f.edits) };
     // Grouped by the folder itself, not by its label.
     const last = groups.at(-1);
     if (last && last.raw === raw) last.files.push(file);
-    else groups.push({ raw, folder: raw === '' ? 'top level' : plain(`${raw}/`, WHOLE), files: [file] });
+    else groups.push({ raw, folder: raw === '' ? 'top level' : pathLabel(`${raw}/`), files: [file] });
   }
   return groups.map(({ folder, files: list }) => ({ folder, files: list }));
 }
@@ -52,6 +62,22 @@ export function otherLine(d: Pick<DroneDetail, 'otherFiles' | 'otherEdits'>): st
 export function timelineCells(buckets: readonly number[], rows: number): number[] {
   const max = Math.max(0, ...buckets);
   return buckets.map((n) => (n <= 0 || max === 0 ? 0 : Math.max(1, Math.ceil((n * rows) / max))));
+}
+
+/**
+ * The one line said for an answer (Qodo PR #167 ef145633): the counts, never the list itself, which stays
+ * readable in the panel. Null for "loading".
+ */
+export function detailAnnouncement(state: DetailState): string | null {
+  if (state.kind === 'loading') return null;
+  if (state.kind === 'failed') return `session files unavailable: ${state.text}`;
+  if (state.kind === 'note') return state.text;
+  const d = state.detail;
+  if (d.files.length === 0 && d.otherFiles === 0) return 'this session edited no files';
+  const atHead = d.files.reduce((a, f) => a + f.edits, 0);
+  const parts = [`${d.files.length} at HEAD with ${edits(atHead)}`];
+  if (d.otherFiles > 0) parts.push(`${count(d.otherFiles, 'other file', 'other files')} with ${edits(d.otherEdits)}`);
+  return `this session's files: ${parts.join(', ')}`;
 }
 
 /** A duration as h:mm:ss, floored to the second, or h:mm:ss.mmm with `ms`. */

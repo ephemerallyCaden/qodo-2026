@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { DETAIL_BUCKETS, type DroneDetail } from '../../src/core/contract/drones.js';
 import { checkDroneDetail } from '../../web/src/drones/check.js';
-import { detailGroups, detailState, otherLine, timelineCells, timelineText } from '../../web/src/drones/detail.js';
+import { detailAnnouncement, detailGroups, detailState, otherLine, pathLabel, timelineCells, timelineText } from '../../web/src/drones/detail.js';
 import { ViewError } from '../../web/src/data/client.js';
 
 const HEAD = '1'.repeat(40);
@@ -86,6 +86,18 @@ describe('the file list (AC 4, Rule 6)', () => {
     expect(g.map((x) => x.files[0]!.name)).toEqual([`${'n'.repeat(130)}1.ts`, `${'n'.repeat(130)}2.ts`]);
   });
 
+  it('keeps distinct names distinct: whitespace is kept and invisible characters show as escapes (Qodo PR #167 780cbbf2)', () => {
+    const names = (paths: string[]) => detailGroups(paths.map((path, i) => ({ fileId: `f_${String(i + 1).padStart(12, '0')}` as const, path, edits: 1 })))
+      .flatMap((g) => g.files.map((x) => x.name));
+    expect(names(['src/a.ts', 'src/ a.ts'])).toEqual([' a.ts', 'a.ts']);
+    const ctl = names(['src/a\u0007.ts', 'src/a\u0008.ts', 'src/a\\u{7}.ts']);
+    expect(new Set(ctl).size).toBe(3);
+    expect(ctl).toContain('a\\u{7}.ts');
+    expect(ctl).toContain('a\\\\u{7}.ts'); // a literal backslash is escaped too, so no path reads as another's escape
+    expect(pathLabel('x\u202Ey\u00A0z ')).toBe('x\\u{202e}y\\u{a0}z ');
+    expect(detailGroups([{ fileId: 'f_000000000001', path: ' src/a.ts', edits: 1 }])[0]!.folder).toBe(' src/');
+  });
+
   it('strips control and bidirectional characters from paths, so a file name cannot reorder the panel', () => {
     const g = detailGroups([{ fileId: 'f_000000000001', path: 'src‮/evil\u0007.ts', edits: 1 }]);
     expect(g.flatMap((x) => [x.folder, ...x.files.map((f) => f.name)]).join('')).not.toMatch(/[\p{Cc}\p{Cf}]/u);
@@ -130,6 +142,16 @@ describe('the timeline (AC 4, 6)', () => {
     const at = '2026-11-10T09:00:00Z';
     expect(timelineText(detail({ startedAt: at, endedAt: at, spanMs: 800, buckets: buckets([0, 2], [23, 1]), files: [], otherFiles: 1, otherEdits: 3 })))
       .toBe('3 edits from 2026-11-10 09:00:00 UTC to 2026-11-10 09:00:00 UTC, in 24 slices of 0:00:00.033: 2 in 0:00:00.000–0:00:00.034, 1 in 0:00:00.768–0:00:00.801 after the start');
+  });
+});
+
+describe('what is announced (Qodo PR #167 ef145633)', () => {
+  it('one short line per answer: the counts, never the list', () => {
+    expect(detailAnnouncement({ kind: 'ready', detail: detail() })).toBe("this session's files: 4 at HEAD with 16 edits, 2 other files with 3 edits");
+    expect(detailAnnouncement({ kind: 'ready', detail: detail({ files: [], otherFiles: 0, otherEdits: 0, buckets: buckets() }) })).toBe('this session edited no files');
+    expect(detailAnnouncement({ kind: 'failed', text: 'boom' })).toBe('session files unavailable: boom');
+    expect(detailAnnouncement({ kind: 'note', text: 'no file detail for this session' })).toBe('no file detail for this session');
+    expect(detailAnnouncement({ kind: 'loading' })).toBeNull();
   });
 });
 

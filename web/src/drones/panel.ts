@@ -101,8 +101,9 @@ export class DronePanel {
     top.append(title, close);
     const list = el('dl');
     for (const [name, value] of droneRows(session, homeName)) list.append(el('dt', name), el('dd', value));
+    // Not a live region: replacing it would make a screen reader re-read the whole list; the controller
+    // says each answer in one line instead (Qodo PR #167 ef145633).
     this.section = el('section', undefined, 'detail');
-    this.section.setAttribute('aria-live', 'polite');
     const hadFocus = this.root.contains(document.activeElement); // a refresh rebuilds the panel: the keyboard stays on its button
     this.root.replaceChildren(top, list, this.section);
     this.root.hidden = false;

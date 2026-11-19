@@ -494,6 +494,21 @@ describe("the drone panel's session detail (#148)", () => {
     expect(kinds()).toEqual(['loading', 'loading', 'ready', 'loading']);
   });
 
+  it('announces one short line per answer on selection, and nothing when a refresh reloads the list (Qodo PR #167 ef145633)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    const ready = { ...emptyDetail(session(1, a!).key, HEAD), files: [{ fileId: 'f_000000000001' as const, path: 'src/a.ts', edits: 2 }], buckets: [2, ...new Array<number>(DETAIL_BUCKETS - 1).fill(0)] };
+    l.detailAnswers.push(async () => ready, async () => ready);
+    await drawAndPick(l, [session(1, a!)], session(1, a!).key);
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready']));
+    const fileLines = () => l.status.filter((t) => /files/.test(t));
+    expect(fileLines()).toEqual(["this session's files: 1 at HEAD with 2 edits"]);
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!)]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.detailAsked).toHaveLength(2));
+    await vi.waitFor(() => expect(kinds().at(-1)).toBe('ready'));
+    expect(fileLines()).toEqual(["this session's files: 1 at HEAD with 2 edits"]);
+  });
+
   it('a failed request is a line in the panel and an announcement; the map and the drones stay', async () => {
     const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
     l.detailAnswers.push(() => Promise.reject(new ViewError('/api/drone-detail answered 500.')));
@@ -501,6 +516,7 @@ describe("the drone panel's session detail (#148)", () => {
     await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'failed']));
     expect(detailShown[1]!.text).toMatch(/500/);
     expect(l.last()).toMatch(/session files unavailable: .*500/);
+    expect(l.status.filter((t) => /session files unavailable/.test(t))).toHaveLength(1); // once (ef145633)
     expect(l.view.model).not.toBeNull();
     expect(l.view.drawn.length).toBe(1);
   });

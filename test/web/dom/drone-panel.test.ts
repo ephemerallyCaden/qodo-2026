@@ -68,7 +68,8 @@ describe('the drone panel\'s session detail (#148)', () => {
   it('sits below the rows, and says it is loading until the answer comes', () => {
     open().showDetail({ kind: 'loading' });
     expect(root.children.map((c) => c.tag)).toEqual(['div', 'dl', 'section']);
-    expect(section().attrs['aria-live']).toBe('polite');
+    // Not a live region: replacing it would make a screen reader re-read the whole list (Qodo PR #167 ef145633).
+    expect(section().attrs['aria-live']).toBeUndefined();
     expect(section().text()).toBe('loading files…');
   });
 
@@ -125,5 +126,6 @@ describe('the drone panel\'s session detail (#148)', () => {
       buckets: [1, ...new Array<number>(DETAIL_BUCKETS - 1).fill(0)] } });
     for (const e of root.all()) expect(Object.prototype.hasOwnProperty.call(e, 'innerHTML'), e.tag).toBe(false);
     expect(section().text()).not.toMatch(/[\p{Cc}\p{Cf}]/u);
+    expect(section().text()).toMatch(/x\\u\{7\}\.ts/); // shown as an escape, so it can't pass for another name (780cbbf2)
   });
 });

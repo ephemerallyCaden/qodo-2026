@@ -7,7 +7,7 @@ import type { OrbitPose } from '../camera/pose.js';
 import { ViewError, type DataClient } from '../data/client.js';
 import { byId } from '../ui/dom.js';
 import type { View } from '../view.js';
-import { detailState, INFERRED_NOTE, LOADING, type DetailState } from './detail.js';
+import { detailAnnouncement, detailState, INFERRED_NOTE, LOADING, type DetailState } from './detail.js';
 import { DronePanel } from './panel.js';
 import { droneStatus, entryOf, selectDrones } from './select.js';
 
@@ -100,26 +100,41 @@ export class Drones {
     this.host.redraw();
   }
 
-  private showPanel(s: DroneSession, takeFocus = true): void {
+  /** `selected`: the user picked it (say its answer); otherwise a refresh rebuilds it (say only a failure). */
+  private showPanel(s: DroneSession, takeFocus = true, selected = takeFocus): void {
     const home = s.home === 'star' || s.home === null ? 'the star' : this.host.view.model?.planets.find((p) => p.dirId === s.home)?.path ?? 'unknown';
     this.panel.show(s, home, takeFocus);
-    this.showDetail(s);
+    this.showDetail(s, selected);
   }
 
   /**
    * The panel's files and timeline (#148). Never asked for an inferred pseudo-session (Rule 6). The same
    * session of the same drone view keeps what it has (a failed refresh rebuilds the panel); anything else asks again.
    */
-  private showDetail(s: DroneSession): void {
+  private showDetail(s: DroneSession, selected: boolean): void {
     if (s.inferred) { this.dropDetail(); this.panel.showDetail({ kind: 'note', text: INFERRED_NOTE }); return; }
     const head = this.data?.head;
     if (head === undefined) return;
     const had = this.detail;
-    if (had && had.key === s.key && had.head === head && had.state.kind !== 'failed') { this.panel.showDetail(had.state); return; }
-    void this.loadDetail(s.key, head);
+    if (had && had.key === s.key && had.head === head && had.state.kind !== 'failed') {
+      this.panel.showDetail(had.state);
+      if (selected) this.say(had.state, true);
+      return;
+    }
+    void this.loadDetail(s.key, head, selected);
   }
 
-  private async loadDetail(key: string, head: string): Promise<void> {
+  /**
+   * The panel isn't a live region (Qodo PR #167 ef145633): an answer is said in one short line, the counts
+   * and never the list. It is said when the user picked the drone, and a failure is said once in any case;
+   * a refresh that reloads the list says nothing else.
+   */
+  private say(state: DetailState, selected: boolean): void {
+    const line = detailAnnouncement(state);
+    if (line !== null && (selected || state.kind === 'failed')) this.host.announce(line);
+  }
+
+  private async loadDetail(key: string, head: string, selected: boolean): Promise<void> {
     const gen = ++this.detailGen;
     this.detail = { key, head, state: LOADING, gen };
     this.panel.showDetail(LOADING);
@@ -134,7 +149,7 @@ export class Drones {
     const state = detailState(got, key, head);
     this.detail = { key, head, state, gen };
     this.panel.showDetail(state);
-    if (state.kind === 'failed') this.host.announce(`session files unavailable: ${state.text}`);
+    this.say(state, selected);
   }
 
   /** A click on the view: selects the drone under it and opens its panel. False when none is there. */
@@ -143,8 +158,8 @@ export class Drones {
     const s = key === null ? undefined : this.shown.find((d) => d.key === key);
     if (!s) return false;
     this.host.view.selectedDrone = s.key;
-    this.showPanel(s);
     this.host.announce(`selected a ${s.tool} agent session`);
+    this.showPanel(s);
     this.host.redraw();
     return true;
   }
