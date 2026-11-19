@@ -61,6 +61,7 @@ The design mockups live on `feature/asset-library` (the art line) under `mockups
 - `JOURNAL.md` and `.archive/` are gitignored and absent from worktrees. Reference them by absolute path, e.g. `<main-checkout>/JOURNAL.md` and `<main-checkout>/.archive/...`, where `<main-checkout>` is `$(git rev-parse --path-format=absolute --git-common-dir)/..`.
 - Qodo can't see binary files. Report visual results as text (test output, colour counts) in PRs.
 - `refs/notes/commet` is reserved for attribution events, not user notes.
+- A temp clone gets 0 drones from `commet scan`: agent logs match a repo by its git common dir, and a clone has its own. For drone footage, scan a worktree of the real repo read-only (Day 7 GIF, `day7-scratch/gif-tools/scan-real.mjs` in the archive).
 
 ## Context management
 - When context feels long (50+ tool calls, or responses getting shorter): write your current plan to PLAN.md, then run `/compact`.
