@@ -13,7 +13,7 @@ import type { FileFog, FogView } from '../../../src/core/contract/fog.js';
 import { FPS } from './motion.js';
 import { centresOf, searchWindow, territories, type Territory } from './territory.js';
 
-/** Event lengths in seconds (fog lab EVENT): one-shot, on the frame clock, outside the 24 s loop like the debris sweep. */
+/** Event lengths in seconds (fog lab EVENT): one-shot, on the frame clock, outside the loop like the debris sweep. */
 export const FOG_EVENT_SECONDS = { clear: 1.0, refog: 2.4, pulse: 0.9 } as const;
 /** The same in loop frames. */
 export const FOG_EVENT_FRAMES = {

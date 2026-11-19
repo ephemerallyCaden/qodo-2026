@@ -1,15 +1,22 @@
 // Slow orbits on the real view (#60; human, 2026-11-10): planets turn round the star once per
-// ORBIT_FRAMES (10 minutes), off the 24 s loop, so these tests pin the frames they compare instead of
-// assuming frame 720 is frame 0. From a fixed camera, one loop on only the orbits have moved (every
-// other layer is loop-locked) and one orbit on (25 loops) the frame is frame 0 again; with the camera
-// following a planet as focus does, that planet draws the same pixels one loop on while the rest of
-// the system turns past it; reduced motion holds the orbits on frame 0. Every frame fails when blank.
+// ORBIT_FRAMES (12 minutes since #174), off the 48 s loop, so these tests pin the frames they compare
+// instead of assuming frame LOOP_FRAMES is frame 0. From a fixed camera, one loop on only the orbits have
+// moved (every other layer is loop-locked) and one orbit on (15 loops) the frame is frame 0 again; with
+// the camera following a planet as focus does, that planet draws the same pixels one loop on while the
+// rest of the system turns past it; reduced motion holds the orbits on frame 0. Every frame fails when blank.
 import { expect, test } from '@playwright/test';
 import { project, projectedRadius, fromCameraPose } from '../../web/src/camera/pose.js';
 import { LOOP_FRAMES, ORBIT_FRAMES } from '../../web/src/model/motion.js';
 import { planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
 import { assertRendered, diffPixels, LOW_RES, type Frame } from './frame.js';
 import { following, MINI, MINI_INPUT, openView, render, systemView } from './harness.js';
+
+/**
+ * How far round its orbit (in frames) a followed src stays clear of the star: by 48° the star is still out of
+ * its reach on screen, by 57.6° it has turned into view behind src's moons (measured: 3 of the 24 s loops, 43.2°,
+ * were clear and the fourth was not; 2 of #174's 48 s loops, 48°, are clear and the third, 72°, is not).
+ */
+const SRC_CLEAR_OF_STAR = (ORBIT_FRAMES * 48) / 360;
 
 const model = systemModel(MINI);
 
@@ -27,7 +34,7 @@ function diffIn(a: Frame, b: Frame, centre: [number, number], radius: number, in
 }
 
 test.describe('slow orbits (#60)', () => {
-  test('from a fixed camera, one loop on only the orbits have moved, and one orbit on (25 loops) is frame 0 again', async ({ page }) => {
+  test('from a fixed camera, one loop on only the orbits have moved, and one orbit on (15 loops) is frame 0 again', async ({ page }) => {
     const view = await openView(page, systemView());
     const rs = await render(view, { ...MINI_INPUT }, [0, LOOP_FRAMES, ORBIT_FRAMES, ORBIT_FRAMES / 2, 0]);
     for (const r of rs) assertRendered(r.pixels, r.stats, LOW_RES);
@@ -36,17 +43,18 @@ test.describe('slow orbits (#60)', () => {
     console.log(`orbits, fixed start-pose camera: frame ${LOOP_FRAMES} differs from 0 by ${moved} px, frame ${ORBIT_FRAMES / 2} by ${turned} px, frame ${ORBIT_FRAMES} by ${diffPixels(f0!, orbit!)} px`);
     expect(moved, `frame ${LOOP_FRAMES} is no longer frame 0: the planets have moved`).toBeGreaterThan(0);
     expect(turned, 'half an orbit on, the planets are elsewhere').toBeGreaterThan(moved);
-    expect(diffPixels(f0!, orbit!), `frame ${ORBIT_FRAMES} (one orbit, 25 loops) is frame 0`).toBe(0);
+    expect(diffPixels(f0!, orbit!), `frame ${ORBIT_FRAMES} (one orbit, ${ORBIT_FRAMES / LOOP_FRAMES} loops) is frame 0`).toBe(0);
     expect(diffPixels(f0!, again!), 'frame 0 again after the others').toBe(0);
     expect(view.errors).toEqual([]);
   });
 
-  test('focus follows the planet: with the camera following it, the planet draws the same pixels one to three loops on, while the system turns past it', async ({ page }) => {
+  test('focus follows the planet: with the camera following it, the planet draws the same pixels on every whole loop until the star turns into view, while the system turns past it', async ({ page }) => {
     // Pixel-stable because the scene is drawn relative to the camera's target (render/scene.ts): before that, float32
     // rounding at the planet's absolute position flipped single pixels, and the fog anchor at the frame's centre jumped a
-    // pixel (283 px of web at frame 1440). Three loops: by the fourth the star turns into view behind src's moons.
+    // pixel (283 px of web at frame 1440, on the 24 s loop). The loops stop where the star turns into view behind src's moons.
     const view = await openView(page, systemView());
-    const loops = [1, 2, 3].map((k) => k * LOOP_FRAMES);
+    const loops = [1, 2, 3].map((k) => k * LOOP_FRAMES).filter((n) => n <= SRC_CLEAR_OF_STAR);
+    expect(loops.length, 'more than one whole loop to compare').toBeGreaterThanOrEqual(2);
     const around: Record<string, number> = {};
     for (const path of ['src', 'web']) {
       const p = model.planets.find((x) => x.path === path)!;

@@ -10,7 +10,8 @@ import { checkDrones } from '../../web/src/drones/check.js';
 import { DRONE_TURNS, placeDrone } from '../../web/src/drones/place.js';
 import { pick } from '../../web/src/camera/pose.js';
 import { capLabels, DRONE_CAP, droneLabels, droneRows, droneStatus, entryOf, selectDrones } from '../../web/src/drones/select.js';
-import { LOOP_FRAMES } from '../../web/src/model/motion.js';
+import { FPS, LOOP_FRAMES, LOOP_SECONDS } from '../../web/src/model/motion.js';
+import { MOTION_LOOP, sessionParams } from '../../web/src/render/drone.js';
 import { planetCentre, systemModel } from '../../web/src/model/system.js';
 import { miniDrones, miniLayout } from '../fixtures/contract/mini.js';
 import { droneView, repoDrones, session, viewDrones } from '../fixtures/drones.js';
@@ -149,11 +150,25 @@ describe('orbits (AC 5, Rule 4)', () => {
   /** Where the drone is relative to its home planet, which orbits the star itself (#60). */
   const off = (f: number) => { const c = at(f).centre, h = planetCentre(model.planets[0]!, f); return c.map((x, i) => +(x - h[i]!).toFixed(6)); };
 
-  it('is a pure function of (seed, frame) and loops whole turns per 24 s round its planet', () => {
+  it('is a pure function of (seed, frame) and loops whole turns per loop round its planet: one turn per 24 s (#174)', () => {
     expect(at(10)).toEqual(at(10));
     expect(DRONE_TURNS).toBe(2);
     expect(off(0)).toEqual(off(LOOP_FRAMES));
     expect(off(0)).toEqual(off(LOOP_FRAMES / 2));
+    expect(LOOP_SECONDS / DRONE_TURNS).toBe(24);
+  });
+
+  it('draws each drone\'s idle phase within its own motion loop, so the scene loop\'s length never moves a drone at frame 0 (#174)', () => {
+    expect(LOOP_SECONDS % MOTION_LOOP).toBe(0); // the idle loop closes inside the scene's loop
+    for (const look of ['claude', 'generic'] as const) {
+      const times = Array.from({ length: 400 }, (_, seed) => sessionParams(look, seed).time);
+      for (const t of times) {
+        expect(t).toBeGreaterThanOrEqual(0);
+        expect(t).toBeLessThan(MOTION_LOOP);
+        expect(Math.abs(t * FPS - Math.round(t * FPS))).toBeLessThan(1e-9); // a whole number of frames
+      }
+      expect(Math.max(...times), 'spread over the whole idle loop').toBeGreaterThan(MOTION_LOOP * 0.9);
+    }
   });
 
   it('moves with its planet along the planet\'s orbit, so it never lags behind or drifts off (#60)', () => {

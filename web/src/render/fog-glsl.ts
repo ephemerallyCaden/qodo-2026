@@ -26,7 +26,7 @@ import { FOG_TEX_ROWS } from '../model/fog.js';
 
 /** Event front widths, internal px: the teal core, the inverted rim behind it, the thin-fog band behind that, the refog's rolling edge. */
 export const FRONT = { core: 1, rim: 2.5, thin: 7, roll: 5 } as const;
-/** The veil's hatching: line spacing (px), dash on and period (px), and hatch spacings drifted per 24 s loop (whole cycles: loop-locked). */
+/** The veil's hatching: line spacing (px), dash on and period (px), and hatch spacings drifted per loop (whole cycles: loop-locked). */
 export const HATCH = { spacing: 9, on: 4, period: 10, cycles: 2 } as const;
 /** Fogged pixels within this many px of the planet's silhouette take the halo colour. */
 export const LIMB_PX = 2;

@@ -125,7 +125,7 @@ describe('focus follows an orbiting planet (#60)', () => {
     l.key(']');
     l.tick(Math.ceil(GLIDE_MS / 100) + 1); // the glide lands on the moving planet
     const landed = l.drawn.length;
-    l.tick(LOOP_FRAMES / 3); // one 24 s loop on: the planet has turned 1/25 of its orbit
+    l.tick(LOOP_FRAMES / 3); // one 48 s loop on (100 ms ticks): the planet has turned 1/15 of its orbit
     const m = l.model();
     const after = l.drawn.slice(landed);
     expect(after.at(-1)!.frame - after[0]!.frame).toBeGreaterThanOrEqual(LOOP_FRAMES - 3);

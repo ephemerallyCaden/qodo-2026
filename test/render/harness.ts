@@ -39,7 +39,7 @@ export function standin(patch?: Target['patch']): Target {
   return {
     name: 'standin',
     entry: '/test/render/standin/index.html',
-    mounts: ['test/render/standin', 'src/core', 'node_modules/three/build'].map((d) => ({ url: `/${d}/`, dir: d })),
+    mounts: ['test/render/standin', 'src/core', 'web/src/model', 'node_modules/three/build'].map((d) => ({ url: `/${d}/`, dir: d })),
     ...(patch ? { patch } : {}),
   };
 }

@@ -3,7 +3,7 @@
 // (world.starDisc, world.starCorona; never teal), core at the centre and each band further out, with a
 // flat, lumpy corona past the limb, drawn where its CPU trace says (picking and labels hide behind it);
 // the middle of the disc is the core on every frame of the loop, seen from two sides and under reduced
-// motion; frame 720 (one 24 s loop) is frame 0 and the seam is no bigger
+// motion; frame LOOP_FRAMES (one 48 s loop, #174) is frame 0 and the seam is no bigger
 // than any other step (the star alone: its layers stay loop-locked, only planet orbits left the loop, #60); reduced motion holds it; far away it fades at 0.15 (S5); fog never covers it
 // (#74); its moonlets wear the planets' moon look (S6); and a drone (#80) still draws in front of it.
 // Every check fails on an empty frame.
@@ -116,26 +116,26 @@ test.describe('the star (#81)', () => {
     expect(view.errors).toEqual([]);
   });
 
-  test('S4: loop-locked: frame 720 is frame 0, the seam is no bigger than a step, and the surface churns', async ({ page }) => {
+  test('S4: loop-locked: one loop on is frame 0, the seam is no bigger than a step, and the surface churns', async ({ page }) => {
     const view = await openView(page, systemView());
-    const step = 15;
-    const frames = Array.from({ length: LOOP_FRAMES / step + 1 }, (_, i) => i * step); // 0, 15, ... 720
+    const step = LOOP_FRAMES / 48; // 48 steps a loop, each 1/48 of a turn (30 frames since #174's 48 s loop)
+    const frames = Array.from({ length: LOOP_FRAMES / step + 1 }, (_, i) => i * step); // 0, step, ... LOOP_FRAMES
     const pose = close(ALONE);
     const input: RenderInput = { layout: ALONE, camera: cam(pose), depthFade: false };
     const rs = await render(view, input, [...frames, 2 * LOOP_FRAMES]);
     for (const r of rs) assertStar(r, ALONE, pose.dist);
     const at = (n: number) => rs.find((r) => r.frame === n)!.pixels;
-    expect(LOOP_FRAMES).toBe(720);
-    expect(diffPixels(at(0), at(720)), 'frame 720 vs frame 0').toBe(0);
-    expect(diffPixels(at(0), at(1440)), 'frame 1440 vs frame 0').toBe(0);
+    const half = LOOP_FRAMES / 2;
+    expect(diffPixels(at(0), at(LOOP_FRAMES)), `frame ${LOOP_FRAMES} vs frame 0`).toBe(0);
+    expect(diffPixels(at(0), at(2 * LOOP_FRAMES)), `frame ${2 * LOOP_FRAMES} vs frame 0`).toBe(0);
     const steps = frames.slice(1, -1).map((n) => diffPixels(at(n - step), at(n)));
-    const seam = diffPixels(at(720 - step), at(720));
+    const seam = diffPixels(at(LOOP_FRAMES - step), at(LOOP_FRAMES));
     const median = [...steps].sort((a, b) => a - b)[steps.length >> 1]!;
-    console.log(`star loop: seam (frame ${720 - step} → 720) ${seam} px vs median ${step}-frame step ${median} px; frame 360 vs 0: ${diffPixels(at(0), at(360))} px`);
+    console.log(`star loop: seam (frame ${LOOP_FRAMES - step} → ${LOOP_FRAMES}) ${seam} px vs median ${step}-frame step ${median} px; frame ${half} vs 0: ${diffPixels(at(0), at(half))} px`);
     expect(median, 'the star moves over the loop').toBeGreaterThan(0);
     expect(seam, 'the seam is no bigger than a step').toBeLessThanOrEqual(median * 1.5);
-    expect(diffPixels(at(0), at(360)), 'half a loop later the granulation has moved').toBeGreaterThan(200);
-    assertTraced(outline(at(360), colours(at(360))), discPx(ALONE, pose.dist), 360); // the lumps churn with the frame, on the CPU too
+    expect(diffPixels(at(0), at(half)), 'half a loop later the granulation has moved').toBeGreaterThan(200);
+    assertTraced(outline(at(half), colours(at(half))), discPx(ALONE, pose.dist), half); // the lumps churn with the frame, on the CPU too
     // The granulation wobbles every band edge, the core's too (S1), yet the core band stays inside the cream band.
     const cores = rs.map((r) => { const px = colours(r.pixels); return [meanRadius(r.pixels, px, DISC[4]!), meanRadius(r.pixels, px, DISC[3]!)] as const; });
     expect(cores.filter(([core, cream]) => !(core < cream)), 'the core band sits inside the cream band on every frame').toEqual([]);
@@ -147,7 +147,7 @@ test.describe('the star (#81)', () => {
     const MIDDLE = 0.1; // of the disc's radius: the shader holds the core out to STAR.core[0]
     const grid: Frame = { ...LOW_RES, rgba: new Uint8Array(0) };
     const centre = (grid.height / 2) * grid.width + grid.width / 2;
-    // The close view, and one from below where the granulation runs coolest at the centre (55 of 720 frames before the fix).
+    // The close view, and one from below where the granulation runs coolest at the centre (55 of the 24 s loop's 720 frames before the fix).
     const poses: [string, OrbitPose][] = [['close', close(ALONE)], ['below', { ...close(ALONE), yaw: -1.25, pitch: -0.8 }]];
     for (const [name, pose] of poses) {
       const input: RenderInput = { layout: ALONE, camera: cam(pose), depthFade: false };
@@ -169,8 +169,10 @@ test.describe('the star (#81)', () => {
       for (let from = 0; from < LOOP_FRAMES; from += 120) {
         for (const r of await render(view, input, Array.from({ length: 120 }, (_, i) => from + i))) check(r, '');
       }
-      // Reduced motion holds frame 0, including on frames whose centre cooled before the fix (75, 289, 510 in the close view).
-      for (const r of await render(view, { ...input, reducedMotion: true }, [0, 75, 180, 289, 360, 510])) check(r, 'reduced ');
+      // Reduced motion holds frame 0, including on frames whose centre cooled before the fix (75, 289 and 510 of the
+      // 24 s loop in the close view; the same moments of the star's turn are twice those frames on #174's 48 s loop).
+      const ofOldLoop = (f: number) => (f * LOOP_FRAMES) / 720;
+      for (const r of await render(view, { ...input, reducedMotion: true }, [0, 75, 180, 289, 360, 510].map(ofOldLoop))) check(r, 'reduced ');
       console.log(`star middle, ${name} (${middle.length} px within ${MIDDLE} of the ${disc.toFixed(1)} px disc radius): all core in ${frames - cooled.length} of ${frames} frames; the centre pixel core in ${centreCore}`);
       expect.soft(cooled, `${name}: frames whose middle is not all core: [frame, px]`).toEqual([]);
     }
@@ -182,10 +184,10 @@ test.describe('the star (#81)', () => {
     const pose = close(ALONE);
     const input: RenderInput = { layout: ALONE, camera: cam(pose), depthFade: false };
     const still = await render(view, { ...input, reducedMotion: true }, [0, 180, 360]);
-    const moving = await render(view, input, [0, 360]);
+    const moving = await render(view, input, [0, LOOP_FRAMES / 2]); // half a loop: half a turn of the star's churn
     for (const r of [...still, ...moving]) assertStar(r, ALONE, pose.dist);
     for (const r of still) expect(diffPixels(r.pixels, moving[0]!.pixels), `reduced motion, frame ${r.frame} vs frame 0`).toBe(0);
-    expect(diffPixels(moving[1]!.pixels, moving[0]!.pixels), 'without reduced motion frame 360 has moved').toBeGreaterThan(200);
+    expect(diffPixels(moving[1]!.pixels, moving[0]!.pixels), `without reduced motion frame ${LOOP_FRAMES / 2} has moved`).toBeGreaterThan(200);
     expect(view.errors).toEqual([]);
   });
 

@@ -7,7 +7,7 @@ import { expect, test } from '@playwright/test';
 import type { FogView } from '../../src/core/contract/fog.js';
 import { palette } from '../../src/core/palette.js';
 import { focusPose, startPose, toCameraPose } from '../../web/src/camera/pose.js';
-import { LOOP_FRAMES } from '../../web/src/model/motion.js';
+import { LOOP_FRAMES, ORBIT_FRAMES } from '../../web/src/model/motion.js';
 import { planetCentre, systemModel } from '../../web/src/model/system.js';
 import { assertRendered, diffPixels } from './frame.js';
 import { fogFor, following, MINI, MINI_FOG, MINI_INPUT, openView, render, systemView, type Rendered } from './harness.js';
@@ -94,15 +94,17 @@ test('teal stays off the frame at rest (it marks events only)', async ({ page })
   expect(view.errors).toEqual([]);
 });
 
-test('the hatch drift closes the 24 s loop: the fogged planet, followed along its orbit, draws the same pixels one to five loops on', async ({ page }) => {
+test('the hatch drift closes the loop: the fogged planet, followed along its orbit, draws the same pixels on every whole loop of its first fifth of an orbit', async ({ page }) => {
   // web fills its hero frame (src has the star behind it, which the orbit moves); the planets left the loop (#60), so the
-  // camera follows web as focus does, and the frames are pinned: 0, five whole loops on (until the star comes into view
-  // behind web, past frame 4000), and a frame inside the loop. Before the floating origin (render/scene.ts) float32 rounding
-  // at web's position changed 1 px at frame 720 in CI and 572 px (the fog anchor a pixel over) at frames 1440 and 2880 here.
+  // camera follows web as focus does, and the frames are pinned: 0, every whole loop on until the star comes into view
+  // behind web (past 80° round the orbit: five 24 s loops, 72°, were clear, as are three of #174's 48 s loops; the fourth,
+  // 96°, is not), and a frame inside the loop. Before the floating origin (render/scene.ts) float32 rounding at web's
+  // position changed 1 px at frame 720 in CI and 572 px (the fog anchor a pixel over) at frames 1440 and 2880 here (24 s loop).
   const view = await openView(page, systemView());
   const at = async (n: number) => (await render(view, { layout: MINI, fog: null, ...focus('web', n) }, [n]))[0]!;
   const a = await at(0), c = await at(LATER);
-  const loops = [1, 2, 3, 4, 5].map((k) => k * LOOP_FRAMES);
+  const loops = [1, 2, 3, 4, 5].map((k) => k * LOOP_FRAMES).filter((n) => n <= ORBIT_FRAMES / 5);
+  expect(loops.length, 'more than one whole loop to compare').toBeGreaterThanOrEqual(2);
   const diffs: number[] = [];
   for (const n of loops) {
     const b = await at(n);

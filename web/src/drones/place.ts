@@ -6,7 +6,7 @@ import { mulberry32 } from '../model/prng.js';
 import { MOONLET_RADIUS, planetCentre, planetReach, type SystemModel } from '../model/system.js';
 import { type Vec3 } from '../model/vec.js';
 
-/** Whole turns round its home per 24 s loop. */
+/** Whole turns round its home per loop (motion.ts LOOP_SECONDS): one every 24 s on the 48 s loop. */
 export const DRONE_TURNS = 2;
 /** One drone's size (render units per lab unit); a drone is about half an astronaut. */
 export const DRONE_SCALE = 0.8;

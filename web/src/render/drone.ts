@@ -2,19 +2,20 @@
 // ported from the drone lab (mockups/drone-lab/drone.js at 968bc0c). A drone is a single mesh, a proxy
 // box whose fragment shader raymarches the body, so it costs one draw call. Everything here is a pure
 // function of (look, seed, time t in seconds): bob, drift, banking, looking around, blinking, the working
-// face and the smoke all run on the lab's 12 s motion loop, which divides the scene's 24 s loop twice
-// (AGENTS.md Rule 4). The seed (from the snapshot, never a hash of a session id) only picks details.
+// face and the smoke all run on the lab's 12 s motion loop, in real seconds, which divides the scene's 48 s
+// loop four times (AGENTS.md Rule 4). It is character animation, not planetary motion, so #174's slower loop
+// kept its rate; only the drone's orbit round its home (drones/place.ts) turns per loop. The seed (from the snapshot, never a hash of a session id) only picks details.
 import * as THREE from 'three';
 import { palette } from '../../../src/core/palette.js';
 import { mulberry32 } from '../model/prng.js';
-import { FPS, LOOP_FRAMES } from '../model/motion.js';
+import { FPS } from '../model/motion.js';
 import { ramp, SHARED } from './materials.js';
 import { BMAX, BMIN, DRONE_FRAG, DRONE_VERT, MAX_LEGS, MAX_PUFFS, MAX_SPARKS } from './drone-shader.js';
 
 export type DroneLook = 'claude' | 'generic';
 
-/** The lab's motion loop (s). */
-const MOTION_LOOP = 12;
+/** The lab's motion loop (s). It must divide the scene's LOOP_SECONDS, so the loop still closes. */
+export const MOTION_LOOP = 12;
 const PUFF_PERIOD = 1.5;
 const TAU = Math.PI * 2;
 const W12 = TAU / MOTION_LOOP;
@@ -42,7 +43,9 @@ export const lookOf = (tool: string): DroneLook => (tool === 'claude-code' ? 'cl
 export function sessionParams(look: DroneLook, seed: number): { P: Params; time: number; trim: number } {
   const r = mulberry32(seed);
   const P = { ...(look === 'claude' ? CLAUDE : GENERIC) };
-  const time = Math.floor(r() * LOOP_FRAMES) / FPS; // a whole number of frames, so idle phases differ and the loop still closes
+  // Where in its idle loop the drone starts: a whole number of frames within one motion loop, so idle phases differ,
+  // the loop still closes, and the scene loop's length never moves a drone (#174).
+  const time = Math.floor(r() * MOTION_LOOP * FPS) / FPS;
   const trim = Math.floor(r() * 3);
   P.puffRate += (r() - 0.5) * 0.16;
   P.gaze += (r() - 0.5) * 2;

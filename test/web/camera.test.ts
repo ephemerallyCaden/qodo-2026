@@ -5,6 +5,7 @@ import { FreeFlightRig, GLIDE_MS, MIN_FOCUS_DIST, type FlyKey } from '../../web/
 import { coronaEdge, starOccluders } from '../../web/src/render/corona.js';
 import { STAR } from '../../web/src/render/shaders.js';
 import { placeLabels } from '../../web/src/labels/place.js';
+import { LOOP_FRAMES } from '../../web/src/model/motion.js';
 import { CORONA } from '../../web/src/model/star.js';
 import { planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
 import type { Vec3 } from '../../web/src/model/vec.js';
@@ -74,7 +75,7 @@ describe('poses', () => {
     const m = systemModel(miniLayout);
     const s0 = startPose(m);
     expect(startPoseAt(m, 0)).toEqual(s0);
-    for (const f of [720, 4500, 13_333]) {
+    for (const f of [LOOP_FRAMES, 4500, 13_333]) { // one loop on, and two frames inside the orbit
       const s = startPoseAt(m, f);
       expect([s.pitch, s.dist]).toEqual([s0.pitch, s0.dist]);
       for (const p of m.planets) {

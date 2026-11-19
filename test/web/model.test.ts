@@ -4,7 +4,7 @@ import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { infoLines, planetLines, summaryText, systemLines } from '../../web/src/model/describe.js';
 import { startPose, project } from '../../web/src/camera/pose.js';
 import { MIN_FLY_SPEED } from '../../web/src/camera/rig.js';
-import { FPS, LOOP_FRAMES, ORBIT_FRAMES, ORBIT_SECONDS, REDUCED_MOTION_FRAME, TURNS, effectiveFrame, loopPhase, orbitAngle, turnAngle } from '../../web/src/model/motion.js';
+import { FPS, LOOP_FRAMES, LOOP_SECONDS, ORBIT_FRAMES, ORBIT_SECONDS, REDUCED_MOTION_FRAME, TURNS, effectiveFrame, loopPhase, orbitAngle, turnAngle } from '../../web/src/model/motion.js';
 import { clampPixelHeight, frameWidth, upscaleFactor } from '../../web/src/model/pixels.js';
 import { mulberry32 } from '../../web/src/model/prng.js';
 import { HEALTHY_LOOKS, MOON_RADIUS, MILLI_PER_RENDER_UNIT, lookOf, moonOffset, moonletPosition, planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
@@ -100,12 +100,23 @@ describe('systemModel', () => {
 });
 
 describe('loop-locked motion', () => {
-  it('runs 24 s at 30 fps and closes the loop exactly', () => {
-    expect(LOOP_FRAMES).toBe(720);
+  it('runs 48 s at 30 fps and closes the loop exactly (#174: twice the old 24 s loop)', () => {
+    expect(LOOP_SECONDS).toBe(48);
+    expect(LOOP_FRAMES).toBe(1440);
     expect(loopPhase(0)).toBe(0);
     expect(loopPhase(LOOP_FRAMES)).toBe(0);
-    expect(loopPhase(-1)).toBeCloseTo(719 / 720, 12);
+    expect(loopPhase(-1)).toBeCloseTo(1439 / 1440, 12);
     for (const turns of Object.values(TURNS)) expect(Number.isInteger(turns)).toBe(true);
+  });
+
+  it('keeps every layer\'s whole turns per loop, so each runs at half its old rate: the surface turns every 24 s, clouds every 16 s, moons every 24 s, the star every 48 s (#174)', () => {
+    expect(TURNS).toEqual({ surface: 2, clouds: 3, moons: 2, lava: 2, starSpin: 1, starChurn: 1 }); // unchanged, and so every ratio
+    const period = (turns: number) => LOOP_SECONDS / turns; // seconds per turn
+    expect([TURNS.surface, TURNS.clouds, TURNS.moons, TURNS.lava, TURNS.starSpin, TURNS.starChurn].map(period)).toEqual([24, 16, 24, 24, 48, 48]);
+    // One surface turn is 24 s of frames: half a turn after 12 s, where the 24 s loop had a whole one.
+    expect(turnAngle(12 * FPS, TURNS.surface)).toBeCloseTo(Math.PI, 12);
+    expect(turnAngle(24 * FPS - 1, TURNS.surface)).toBeLessThan(2 * Math.PI);
+    expect(turnAngle(24 * FPS, TURNS.surface)).toBeCloseTo(2 * Math.PI, 12);
   });
 
   it('turns at a constant rate (no easing)', () => {
@@ -135,17 +146,19 @@ describe('slow orbits (#60)', () => {
   const angleOf = (c: readonly number[]) => Math.atan2(-c[2]!, c[0]!);
   const turn = (a: number) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 
-  it('turns once every ORBIT_SECONDS (10 minutes), a whole number of loops, so it is the only motion off the loop', () => {
-    expect(ORBIT_SECONDS).toBe(600);
-    expect(ORBIT_FRAMES).toBe(18_000);
-    expect(ORBIT_FRAMES % LOOP_FRAMES).toBe(0); // 25 loops: every 18 000 frames the whole scene is frame 0 again
+  it('turns once every ORBIT_SECONDS (12 minutes, #174), a whole number of loops, so it is the only motion off the loop', () => {
+    expect(ORBIT_SECONDS).toBe(720);
+    expect(ORBIT_FRAMES).toBe(21_600);
+    expect(ORBIT_FRAMES / LOOP_FRAMES).toBe(15); // 15 loops: every 21 600 frames the whole scene is frame 0 again
+    expect(loopPhase(ORBIT_FRAMES)).toBe(0); // so every loop-locked layer is back at its start too
     expect(orbitAngle(0)).toBe(0);
     expect(orbitAngle(ORBIT_FRAMES)).toBe(0);
     expect(orbitAngle(-1)).toBeCloseTo(2 * Math.PI * (1 - 1 / ORBIT_FRAMES), 12);
-    expect(orbitAngle(LOOP_FRAMES)).toBeCloseTo((2 * Math.PI) / 25, 12); // not loop-locked: one loop is 1/25 of a turn
+    expect(orbitAngle(LOOP_FRAMES)).toBeCloseTo((2 * Math.PI) / 15, 12); // not loop-locked: one loop is 1/15 of a turn
     for (const p of m.planets) {
       expect(planetCentre(p, ORBIT_FRAMES)).toEqual(planetCentre(p, 0));
       expect(planetCentre(p, LOOP_FRAMES)).not.toEqual(planetCentre(p, 0));
+      for (const moon of p.moons) expect(moonOffset(moon, ORBIT_FRAMES)).toEqual(moonOffset(moon, 0));
     }
   });
 
@@ -173,7 +186,7 @@ describe('slow orbits (#60)', () => {
 
   it('keeps every planet where it was relative to the others: the system turns as one', () => {
     const gaps = (f: number) => m.planets.slice(1).map((p) => turn(angleOf(planetCentre(p, f)) - angleOf(planetCentre(m.planets[0]!, f))));
-    for (const f of [1234, 9000, 17_999]) gaps(f).forEach((g, i) => expect(g).toBeCloseTo(gaps(0)[i]!, 9));
+    for (const f of [1234, 9000, ORBIT_FRAMES - 1]) gaps(f).forEach((g, i) => expect(g).toBeCloseTo(gaps(0)[i]!, 9));
   });
 
   it('is slow enough not to fight free flight: from the start pose no planet crosses more than 1.5% of the frame a second, and the fastest moves under the slowest flight', () => {

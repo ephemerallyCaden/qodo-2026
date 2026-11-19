@@ -13,12 +13,12 @@ import {
 import { TEST_MODE_PARAM, type CameraPose, type RenderHook, type RenderInput, type RenderStats } from '../../../src/core/contract/api.js';
 import { fibonacciCell, type HealthBand } from '../../../src/core/contract/layout.js';
 import { palette, type Ramp } from '../../../src/core/palette.js';
+import { LOOP_FRAMES } from '../../../web/src/model/motion.js';
 
 // Palette hex values go to the GPU untouched: the target holds exactly the palette's bytes.
 ColorManagement.enabled = false;
 
-/** 24 s at 30 frames per second. Every orbit completes a whole number of turns per loop (Rule 4). */
-const FRAMES_PER_LOOP = 720;
+/** Every orbit completes a whole number of turns per loop (motion.ts LOOP_FRAMES, Rule 4). */
 const MOON_TURNS_PER_LOOP = 4;
 const STARS = 240;
 const SUN_RADIUS = 7;
@@ -183,7 +183,7 @@ function build(input: RenderInput): Loaded {
 
 /** Puts every body where frame n has it: a pure function of the layout and n. Reduced motion holds frame 0. */
 function place(s: Loaded, n: number): void {
-  const t = s.reducedMotion ? 0 : n / FRAMES_PER_LOOP;
+  const t = s.reducedMotion ? 0 : n / LOOP_FRAMES;
   const dummy = new Object3D();
   for (const p of s.planets) {
     const a = 2 * Math.PI * (p.phase + p.turns * t);
