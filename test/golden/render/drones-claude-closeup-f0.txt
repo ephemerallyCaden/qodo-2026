@@ -2,35 +2,36 @@
 name     drones-claude-closeup-f0
 env      {"arch":"x64","browser":"158.0.8127.18","platform":"linux","playwright":"1.65.0","webgl":"ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"}
 size     320x180 (57600 px)
-rgba     sha256 545669e70fa3cf85b6f4a2a6e2f908e674b09e98901223ecdc0a9d672c2f2b4e
+rgba     sha256 c76ba4d8816cb9a4ad5c212effaf7e5e268b6805f2476d0225689acb7fe53b1c
 stats    drawCalls 15, triangles 123430
-colours  42 (24 palette, 18 off-palette: 327 px)
+colours  43 (25 palette, 18 off-palette: 327 px)
 
     px    share  colour   bbox x0,y0-x1,y1  palette entries
- 37973   65.92%  #0d0b16  0,0-319,179      world.space
+ 38048   66.05%  #0d0b16  0,0-319,179      world.space
     22    0.03%  #3b3866  42,14-298,175    world.stars[0]
      5    0.00%  #9a90e0  20,6-286,179     world.stars[1]
-    77    0.13%  #ffffff  141,73-164,117   world.cap[3], world.ice[4], world.haze.ice, crew.suit[3], crew.glint, drone.generic.trim[3], drone.generic.smoke[2], drone.claude.smoke[2]
-   706    1.22%  #30285a  81,0-238,128     world.cloud[0], world.halo
+    14    0.02%  #ffffff  126,85-162,112   world.cap[3], world.ice[4], world.haze.ice, crew.suit[3], crew.glint, drone.generic.trim[3], drone.generic.smoke[2], drone.claude.smoke[2]
+   751    1.30%  #30285a  81,0-238,128     world.cloud[0], world.halo
    270    0.46%  #c9361a  0,25-10,84       world.glow[0], world.starDisc[0], world.starCorona[0]
     24    0.04%  #ff761a  0,55-3,70        world.glow[1], world.starDisc[1]
    690    1.19%  #481a18  0,9-16,100       world.starCorona[1], world.gasB[0]
-   715    1.24%  #12173d  150,77-209,104   crew.visor[0]
-   887    1.53%  #29174c  152,68-207,104   crew.visor[1]
-   328    0.56%  #3f233c  149,54-212,125   crew.contributors.coral[0], drone.claude.shell[0], drone.claude.trim[0], drone.claude.accent[0], drone.claude.trimB[0]
-   357    0.61%  #872a38  138,52-212,125   crew.contributors.coral[1], drone.claude.shell[1], drone.claude.trim[1], drone.claude.accent[1], drone.claude.trimB[1], drone.claude.trimC[0]
-   700    1.21%  #cc5250  137,53-209,123   crew.contributors.coral[2], drone.claude.shell[2], drone.claude.trim[2], drone.claude.accent[2], drone.claude.trimB[2], drone.claude.trimC[1]
-   887    1.53%  #ff965f  138,58-198,120   drone.claude.shell[3], drone.claude.accent[3], drone.claude.smoke[0], drone.claude.trimB[3], drone.claude.trimC[2]
-    44    0.07%  #ffe091  143,115-172,120  drone.claude.smoke[1], drone.claude.trimC[3]
-    46    0.07%  #00bc9c  169,43-191,115   accent.teal[2]
-    88    0.15%  #00ffd5  165,45-196,92    accent.teal[3]
- 10635   18.46%  #28314b  83,0-234,109     fog.veil.ice.lit
-  1222    2.12%  #1b1f31  101,35-236,126   fog.veil.ice.night
-   552    0.95%  #3a4a6d  84,0-236,125     fog.veil.ice.hatch
+   661    1.14%  #12173d  121,73-178,105   crew.visor[0]
+   639    1.10%  #29174c  122,68-177,106   crew.visor[1]
+   329    0.57%  #3f233c  124,52-190,124   crew.contributors.coral[0], drone.claude.shell[0], drone.claude.trim[0], drone.claude.accent[0], drone.claude.trimB[0]
+   331    0.57%  #872a38  118,53-190,124   crew.contributors.coral[1], drone.claude.shell[1], drone.claude.trim[1], drone.claude.accent[1], drone.claude.trimB[1], drone.claude.trimC[0]
+   669    1.16%  #cc5250  117,54-189,123   crew.contributors.coral[2], drone.claude.shell[2], drone.claude.trim[2], drone.claude.accent[2], drone.claude.trimB[2], drone.claude.trimC[1]
+   931    1.61%  #ff965f  119,56-183,110   drone.claude.shell[3], drone.claude.accent[3], drone.claude.smoke[0], drone.claude.trimB[3], drone.claude.trimC[2]
+    12    0.02%  #ffe091  157,112-163,114  drone.claude.smoke[1], drone.claude.trimC[3]
+    43    0.07%  #007c66  125,80-133,91    accent.teal[1]
+   120    0.20%  #00bc9c  133,43-174,110   accent.teal[2]
+   196    0.34%  #00ffd5  128,44-162,105   accent.teal[3]
+ 10081   17.50%  #28314b  83,0-234,106     fog.veil.ice.lit
+  1816    3.15%  #1b1f31  101,35-236,126   fog.veil.ice.night
+   557    0.96%  #3a4a6d  84,0-236,125     fog.veil.ice.hatch
      4    0.00%  #0f0f20  152,126-167,126  fog.veil.crevasse.night
-   674    1.17%  #43291e  0,17-289,150     fog.veil.moonBody.lit
-    95    0.16%  #291a1a  3,26-288,150     fog.veil.moonBody.night
-   272    0.47%  #7a4725  0,17-289,147     fog.veil.moonBody.line
+   688    1.19%  #43291e  0,17-289,150     fog.veil.moonBody.lit
+    97    0.16%  #291a1a  3,26-288,150     fog.veil.moonBody.night
+   275    0.47%  #7a4725  0,17-289,147     fog.veil.moonBody.line
      7    0.01%  #191a3c  284,52-293,53    (off-palette)
    103    0.17%  #1d1f46  282,41-296,52    (off-palette)
      7    0.01%  #222553  283,41-294,51    (off-palette)
