@@ -52,6 +52,11 @@ export function systemView(): Target {
   return { name: 'view', entry: '/index.html', mounts: [{ url: '/', dir: WEB_DIST }] };
 }
 
+/** The events page (test/render/events): the real View, driven directly through `window.__events`, its TypeScript transpiled per request. */
+export function eventsPage(): Target {
+  return { name: 'events', entry: '/test/render/events/index.html', mounts: ['test/render/events', 'web/src', 'src/core', 'node_modules/three/build'].map((d) => ({ url: `/${d}/`, dir: d })) };
+}
+
 /** The contract's `mini` fixture (test/fixtures/contract). */
 export const MINI = JSON.parse(readFileSync(join(ROOT, 'test/fixtures/contract/mini.layout.json'), 'utf8')) as LayoutV1;
 /** Its fog view (#74): the toxic `web` planet's one surface file and one moonlet fogged, one file charted, the rest clear. */

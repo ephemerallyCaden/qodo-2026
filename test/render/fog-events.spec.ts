@@ -6,16 +6,13 @@ import { expect, test } from '@playwright/test';
 import { palette } from '../../src/core/palette.js';
 import { FOG_EVENT_FRAMES } from '../../web/src/model/fog.js';
 import { systemModel } from '../../web/src/model/system.js';
-import { fogFor, following, MINI, openView } from './harness.js';
+import { eventsPage, fogFor, following, MINI, openView } from './harness.js';
 
-const target = { name: 'events', entry: '/test/render/events/index.html', mounts: ['test/render/events', 'web/src', 'src/core', 'node_modules/three/build'].map((d) => ({ url: `/${d}/`, dir: d })) };
+const target = eventsPage();
 const veil = new Set<string>(Object.values(palette.fog.veil.moonBody));
 /** The moons orbit between the sampled frames, so the visible veil area drifts a little (3813 against 3596 at rest). */
 const SLACK = 1.1;
 const hex = (rgba: readonly number[], p: number) => `#${[0, 1, 2].map((c) => rgba[p * 4 + c]!.toString(16).padStart(2, '0')).join('')}`;
-
-interface Events { setup(l: unknown, f: unknown, c: unknown, h: number): Promise<void>; change(f: unknown, n: number): boolean; frame(n: number): { width: number; height: number; rgba: number[] } }
-declare global { interface Window { __events: Events } }
 
 test('moons: a refog rolls in towards fogged, a chart clears towards clear, never the reverse', async ({ page }) => {
   const model = systemModel(MINI);
