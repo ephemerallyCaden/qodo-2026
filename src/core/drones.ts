@@ -3,7 +3,8 @@
 // file on the same planet from the same snapshot/layout pair. Rule 1: a session with no files at HEAD is
 // unplaced (null), never guessed. droneDetail(snapshot, key) (#148) gives one session's own detail.
 import { byCodepoint } from './canonical-json.js';
-import { DETAIL_BUCKETS, type DroneDetail, type DroneDetailFile, type DroneSession, type DroneView } from './contract/drones.js';
+import type { DroneDetail, DroneDetailFile, DroneSession, DroneView } from './contract/drones.js';
+import { droneDetailProblems, isSessionEntry, sessionDetailProblems } from './drone-detail-check.js';
 import type { DirId, FileId, Session, SessionKey, SnapshotV02 } from './snapshot/types.js';
 
 type Home = DroneSession['home'];
@@ -83,31 +84,6 @@ export function byFolderThenName(a: string, b: string): number {
   return byCodepoint(fa, fb) || byCodepoint(na, nb);
 }
 
-const isCount = (n: unknown, min = 0): n is number => typeof n === 'number' && Number.isInteger(n) && n >= min;
-
-/** A sessions[] entry that can be read at all: an object with a string key. */
-export const isSessionEntry = (x: unknown): boolean =>
-  typeof x === 'object' && x !== null && !Array.isArray(x) && typeof (x as { key?: unknown }).key === 'string';
-
-/**
- * Whether a session's #148 fields can be read: `old` when none is there (scanned before #148), `damaged`
- * when any is there but malformed, or the counts don't add up.
- */
-function detailFields(s: Session): 'ok' | 'old' | 'damaged' {
-  const raw = s as Partial<Pick<Session, 'fileEdits' | 'editsOutside' | 'editBuckets'>> & Pick<Session, 'filesOutside'>;
-  if (raw.fileEdits === undefined && raw.editsOutside === undefined && raw.editBuckets === undefined) return 'old';
-  const edits = raw.fileEdits;
-  if (!Array.isArray(edits) || !isCount(raw.editsOutside) || !isCount(raw.filesOutside) || !Array.isArray(raw.editBuckets)) return 'damaged';
-  if (!edits.every((e: unknown) => typeof e === 'object' && e !== null && typeof (e as { id?: unknown }).id === 'string'
-    && (e as { id: string }).id.startsWith('f_') && isCount((e as { n?: unknown }).n, 1))) return 'damaged';
-  // Each file once: the view refuses a list with a repeat, so the server must not serve one (Qodo PR #167 1eabd165).
-  if (new Set(edits.map((e) => e.id)).size !== edits.length) return 'damaged';
-  const buckets: unknown[] = raw.editBuckets;
-  if (buckets.length !== DETAIL_BUCKETS || !buckets.every((b) => isCount(b))) return 'damaged';
-  const sum = (buckets as number[]).reduce((a, b) => a + b, 0);
-  return sum === edits.reduce((a, e) => a + e.n, 0) + raw.editsOutside ? 'ok' : 'damaged';
-}
-
 /**
  * One agent session's own detail (#148, AGENTS.md Rule 6's session-detail exception): its files at HEAD
  * with their edit counts, its other edited paths counted, and its timeline. It reads only that session,
@@ -116,26 +92,31 @@ function detailFields(s: Session): 'ok' | 'old' | 'damaged' {
  * counts can't be read, so the caller reports damaged state instead of serving a bad detail.
  */
 export function droneDetail(snapshot: Pick<SnapshotV02, 'repo' | 'files' | 'sessions'>, key: SessionKey): DroneDetail | 'damaged' | null {
-  // An entry that isn't a session object means the file is damaged, whichever key is asked (Qodo PR #167 af483acc).
+  // An entry that isn't a session object means the file is damaged, whichever key is asked (af483acc).
   if (!snapshot.sessions.every(isSessionEntry)) return 'damaged';
   const s = snapshot.sessions.find((x) => x.key === key);
   if (!s || (s.inferred as boolean)) return null;
   const base = { ok: true, schemaVersion: 'drone-detail.1', head: snapshot.repo.head, key: s.key, startedAt: s.startedAt, endedAt: s.endedAt } as const;
-  const fields = detailFields(s);
-  if (fields === 'damaged') return 'damaged';
-  if (fields === 'old') return { ...base, files: [], otherFiles: 0, otherEdits: 0, buckets: [], needsRescan: true };
-  const pathOf = new Map<FileId, string>(snapshot.files.map((f) => [f.id, f.path]));
-  const files: DroneDetailFile[] = [];
-  let otherFiles = s.filesOutside;
-  let otherEdits = s.editsOutside;
-  for (const { id, n } of s.fileEdits) {
-    const path = pathOf.get(id);
-    // An id with no file in this snapshot is counted with the other paths, never named (Rule 1).
-    if (path === undefined) {
-      otherFiles++;
-      otherEdits += n;
-    } else files.push({ fileId: id, path, edits: n });
+  // One rule set, shared with the view (src/core/drone-detail-check.ts): the record first, then what was built from it.
+  const record = sessionDetailProblems(s);
+  let detail: DroneDetail;
+  if (record === 'old') detail = { ...base, files: [], otherFiles: 0, otherEdits: 0, buckets: [], spanMs: 0, needsRescan: true };
+  else if (record.length > 0) return 'damaged';
+  else {
+    const pathOf = new Map<FileId, string>(snapshot.files.map((f) => [f.id, f.path]));
+    const files: DroneDetailFile[] = [];
+    let otherFiles = s.filesOutside;
+    let otherEdits = s.editsOutside;
+    for (const { id, n } of s.fileEdits) {
+      const path = pathOf.get(id);
+      // An id with no file in this snapshot is counted with the other paths, never named (Rule 1).
+      if (path === undefined) {
+        otherFiles++;
+        otherEdits += n;
+      } else files.push({ fileId: id, path, edits: n });
+    }
+    files.sort((a, b) => byFolderThenName(a.path, b.path));
+    detail = { ...base, files, otherFiles, otherEdits, buckets: [...s.editBuckets], spanMs: s.editSpanMs, needsRescan: false };
   }
-  files.sort((a, b) => byFolderThenName(a.path, b.path));
-  return { ...base, files, otherFiles, otherEdits, buckets: [...s.editBuckets], needsRescan: false };
+  return droneDetailProblems(detail).length === 0 ? detail : 'damaged';
 }

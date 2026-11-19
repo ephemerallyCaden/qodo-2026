@@ -69,6 +69,7 @@ it('sessions[].fileEdits holds only their own f_ ids and integers; the counts ad
     expect(s.editBuckets).toHaveLength(DETAIL_BUCKETS);
     expect(s.editBuckets.every(int)).toBe(true);
     expect(s.editBuckets.reduce((a, b) => a + b, 0)).toBe(s.fileEdits.reduce((a, e) => a + e.n, 0) + s.editsOutside);
+    expect(int(s.editSpanMs)).toBe(true);
   }
   expect(snap.sessions.some((s) => s.fileEdits.length > 0 && s.editsOutside > 0)).toBe(true);
 });

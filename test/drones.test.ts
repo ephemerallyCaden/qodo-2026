@@ -15,7 +15,7 @@ const home = new Map<FileId, DirId | null>([[f(1), A], [f(2), A], [f(3), B], [f(
 const session = (key: string, over: Partial<Session> = {}): Session => ({
   key: `s_${key}` as SessionKey, tool: 'claude-code', kind: 'main', startedAt: '2026-11-01T00:00:00Z', endedAt: '2026-11-01T01:00:00Z',
   filesTouched: 0, files: [], filesOutside: 0, fileEdits: [], editsOutside: 0, editBuckets: new Array<number>(DETAIL_BUCKETS).fill(0),
-  linesAdded: 0, linesRemoved: 0, commits: [], inferred: false, seed: 7, ...over,
+  editSpanMs: 3_600_000, linesAdded: 0, linesRemoved: 0, commits: [], inferred: false, seed: 7, ...over,
 });
 const snap = (sessions: Session[]) => ({ repo: { head: HEAD }, sessions }) as Pick<SnapshotV02, 'repo' | 'sessions'>;
 const homesOf = (sessions: Session[], m = home) => Object.fromEntries(droneView(snap(sessions), m).sessions.map((s) => [s.key, s.home]));
@@ -84,7 +84,7 @@ describe('droneDetail (#148)', () => {
     const s = edited('a', { 'src/a.ts': 3 });
     expect(detail(s)).toEqual({
       ok: true, schemaVersion: 'drone-detail.1', head: HEAD, key: 's_a', startedAt: s.startedAt, endedAt: s.endedAt,
-      files: [{ fileId: idOf('src/a.ts'), path: 'src/a.ts', edits: 3 }], otherFiles: 0, otherEdits: 0, buckets: s.editBuckets, needsRescan: false,
+      files: [{ fileId: idOf('src/a.ts'), path: 'src/a.ts', edits: 3 }], otherFiles: 0, otherEdits: 0, buckets: s.editBuckets, spanMs: 3_600_000, needsRescan: false,
     });
   });
 
@@ -113,7 +113,7 @@ describe('droneDetail (#148)', () => {
     const s = edited('a', { 'src/a.ts': 1 });
     const busy = edited('b', { 'src/a.ts': 40, 'src/b.ts': 9 }, 3, 3);
     expect(detail(s, [busy])).toEqual(detail(s));
-    expect(Object.keys(detail(s)!).sort()).toEqual(['buckets', 'endedAt', 'files', 'head', 'key', 'needsRescan', 'ok', 'otherEdits', 'otherFiles', 'schemaVersion', 'startedAt']);
+    expect(Object.keys(detail(s)!).sort()).toEqual(['buckets', 'endedAt', 'files', 'head', 'key', 'needsRescan', 'ok', 'otherEdits', 'otherFiles', 'schemaVersion', 'spanMs', 'startedAt']);
     expect(Object.keys(detail(s)!.files[0]!).sort()).toEqual(['edits', 'fileId', 'path']);
   });
 
@@ -123,8 +123,8 @@ describe('droneDetail (#148)', () => {
   });
 
   it('an old snapshot (no per-file counts) needsRescan, with nothing listed', () => {
-    const old = { ...edited('a', { 'src/a.ts': 2 }), fileEdits: undefined, editsOutside: undefined, editBuckets: undefined } as unknown as Session;
-    expect(detail(old)).toMatchObject({ needsRescan: true, files: [], otherFiles: 0, otherEdits: 0, buckets: [] });
+    const old = { ...edited('a', { 'src/a.ts': 2 }), fileEdits: undefined, editsOutside: undefined, editBuckets: undefined, editSpanMs: undefined } as unknown as Session;
+    expect(detail(old)).toMatchObject({ needsRescan: true, files: [], otherFiles: 0, otherEdits: 0, buckets: [], spanMs: 0 });
   });
 
   it('a damaged session (malformed counts or slices) is "damaged", never a throw or a bad detail (Qodo 7105505d)', () => {
@@ -135,6 +135,14 @@ describe('droneDetail (#148)', () => {
       { editBuckets: [3, ...s.editBuckets.slice(1)] }, { filesOutside: -1 },
       // A file listed twice, whose counts still add up: damaged, never a detail the view refuses (Qodo PR #167 1eabd165).
       { fileEdits: [{ id: s.fileEdits[0]!.id, n: 1 }, { id: s.fileEdits[0]!.id, n: 1 }] },
+      // Counts past MAX_SAFE_INTEGER that still add up (Qodo local backstop 582ea944).
+      { fileEdits: [{ id: s.fileEdits[0]!.id, n: 2 ** 53 }], editBuckets: [2 ** 53, ...s.editBuckets.slice(1)] },
+      // Missing or broken times (5f2af634).
+      { startedAt: undefined as never }, { endedAt: 'yesterday' }, { startedAt: '2026-13-45T25:61:61Z' },
+      // Counts for files the session doesn't list, a listed file without a count, and broken totals (3bc5a746).
+      { files: [] }, { files: [...s.files, f(9)], filesTouched: s.filesTouched + 1 }, { filesTouched: 9 },
+      // A span that doesn't match the times, or isn't a count (d23a7a91).
+      { editSpanMs: -1 }, { editSpanMs: 99_999_999 }, { editSpanMs: undefined as never },
     ];
     for (const over of damaged) expect(droneDetail(snapOf([{ ...s, ...over }]), s.key), JSON.stringify(over)).toBe('damaged');
   });

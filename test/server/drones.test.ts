@@ -80,7 +80,7 @@ describe('GET /api/drone-detail', () => {
   const detail: DroneDetail = {
     ok: true, schemaVersion: 'drone-detail.1', head: HEAD, key: KEY, startedAt: '2026-11-10T09:00:00Z', endedAt: '2026-11-10T10:00:00Z',
     files: [{ fileId: 'f_000000000001', path: 'src/a.ts', edits: 2 }], otherFiles: 1, otherEdits: 1,
-    buckets: [2, ...new Array<number>(DETAIL_BUCKETS - 2).fill(0), 1], needsRescan: false,
+    buckets: [2, ...new Array<number>(DETAIL_BUCKETS - 2).fill(0), 1], spanMs: 3_600_000, needsRescan: false,
   };
   const answer = async (q: DroneDetailQuery): Promise<DroneDetailResult> => {
     asked.push(q);

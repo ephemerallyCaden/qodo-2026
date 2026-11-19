@@ -7,7 +7,8 @@ import { canonicalJson } from '../core/canonical-json.js';
 import type { ChartResult } from '../core/contract/api.js';
 import type { DroneDetailQuery, DroneDetailResult, DroneView } from '../core/contract/drones.js';
 import type { ChartAction, ChartUnknownHead, FogView } from '../core/contract/fog.js';
-import { droneDetail, droneView, isSessionEntry } from '../core/drones.js';
+import { isSessionEntry } from '../core/drone-detail-check.js';
+import { droneDetail, droneView } from '../core/drones.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import {
   applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges, type ChartState, type FogBase,

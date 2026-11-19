@@ -142,7 +142,7 @@ const settle = () => new Promise((r) => setTimeout(r, 10));
 /** A session's detail with no edits, of `key` at `at` (#148). */
 const emptyDetail = (key: string, at: string): DroneDetail => ({
   ok: true, schemaVersion: 'drone-detail.1', head: at, key: key as DroneDetail['key'], startedAt: '2026-11-10T09:00:00Z', endedAt: '2026-11-10T10:00:00Z',
-  files: [], otherFiles: 0, otherEdits: 0, buckets: new Array<number>(DETAIL_BUCKETS).fill(0), needsRescan: false,
+  files: [], otherFiles: 0, otherEdits: 0, buckets: new Array<number>(DETAIL_BUCKETS).fill(0), spanMs: 3_600_000, needsRescan: false,
 });
 
 describe('live mode applies a fog only over its own scan\'s layout (#64)', () => {
@@ -516,11 +516,12 @@ describe("the drone panel's session detail (#148)", () => {
     l.detailAnswers.push(async () => after);
     l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!)]));
     l.send({ type: 'snapshot', head: HEAD });
-    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'loading', 'ready']));
+    // The refresh marks the list at once (34ee1e52), then the new request loads and lands.
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'loading', 'loading', 'ready']));
     before.resolve(emptyDetail(session(1, a!).key, HEAD));
     await settle();
-    expect(kinds()).toEqual(['loading', 'loading', 'ready']);
-    expect(detailShown[2]!.detail).toEqual(after);
+    expect(kinds()).toEqual(['loading', 'loading', 'loading', 'ready']);
+    expect(detailShown[3]!.detail).toEqual(after);
     expect(l.detailAsked).toHaveLength(2);
   });
 
@@ -530,8 +531,33 @@ describe("the drone panel's session detail (#148)", () => {
     await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready']));
     l.droneAnswers.push(() => Promise.reject(new ViewError('/api/drones answered 500.')));
     l.send({ type: 'snapshot', head: HEAD });
-    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready', 'loading', 'ready']));
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready', 'loading', 'loading', 'ready']));
     expect(l.detailAsked).toHaveLength(2);
+  });
+
+  it('a refresh clears the open file list at once, before the new drones arrive (Qodo local backstop 34ee1e52)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await drawAndPick(l, [session(1, a!)], session(1, a!).key);
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready']));
+    const slow = deferred<DroneView>();
+    l.droneAnswers.push(() => slow.promise);
+    l.send({ type: 'snapshot', head: HEAD });
+    // The old scan's files are gone while the drone view is out.
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready', 'loading']));
+    slow.resolve(droneView(HEAD, [session(1, a!)]));
+    await vi.waitFor(() => expect(kinds().at(-1)).toBe('ready'));
+  });
+
+  it('when the new drones cannot be drawn, the open list says so instead of showing the old scan (34ee1e52)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await drawAndPick(l, [session(1, a!)], session(1, a!).key);
+    await vi.waitFor(() => expect(kinds()).toEqual(['loading', 'ready']));
+    l.view.setDrones = async () => { throw new ViewError('the drones could not be compiled'); };
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!)]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(kinds().at(-1)).toBe('failed'));
+    expect(detailShown.at(-1)!.text).toMatch(/could not be drawn/);
+    expect(l.detailAsked).toHaveLength(1);
   });
 
   it('returning to a drone whose request was dropped asks again, and never stays loading (Qodo PR #167 7fdffd82)', async () => {

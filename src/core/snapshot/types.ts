@@ -69,6 +69,8 @@ export interface Session {
    * (the times behind startedAt and endedAt). Sums to the `fileEdits` counts plus `editsOutside`.
    */
   editBuckets: number[];
+  /** #148: the milliseconds editBuckets divide (last minus first edit or git record), which startedAt/endedAt drop. */
+  editSpanMs: number;
   linesAdded: number;
   linesRemoved: number;
   commits: Sha[];

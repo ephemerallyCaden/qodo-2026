@@ -21,7 +21,7 @@ const detail = (over: Partial<DroneDetail> = {}): DroneDetail => ({
     { fileId: 'f_000000000003', path: 'src/b.ts', edits: 2 },
     { fileId: 'f_000000000004', path: 'src/a/c.ts', edits: 9 },
   ],
-  otherFiles: 2, otherEdits: 3, buckets: buckets([0, 10], [5, 6], [23, 3]), needsRescan: false, ...over,
+  otherFiles: 2, otherEdits: 3, buckets: buckets([0, 10], [5, 6], [23, 3]), spanMs: 7_200_000, needsRescan: false, ...over,
 });
 
 describe('checkDroneDetail', () => {
@@ -36,7 +36,7 @@ describe('checkDroneDetail', () => {
     expect(checkDroneDetail(detail()).ok).toBe(true);
     expect(checkDroneDetail({ ok: false, error: 'unknown-head', head: HEAD }).ok).toBe(true);
     expect(checkDroneDetail({ ok: false, error: 'no-such-session' }).ok).toBe(true);
-    expect(checkDroneDetail(detail({ files: [], otherFiles: 0, otherEdits: 0, buckets: [], needsRescan: true })).ok).toBe(true);
+    expect(checkDroneDetail(detail({ files: [], otherFiles: 0, otherEdits: 0, buckets: [], spanMs: 0, needsRescan: true })).ok).toBe(true);
   });
 
   it('refuses a malformed reply with reasons, never half-showing it', () => {
@@ -56,6 +56,10 @@ describe('checkDroneDetail', () => {
     // Edits with no file to explain them would sit in the timeline with no line in the list (Qodo 05ffa5a8).
     expect(bad((d) => { d.otherFiles = 0; })).toMatch(/otherEdits/);
     expect(bad((d) => { d.needsRescan = true; })).toMatch(/needsRescan/);
+    // The span the buckets divide must be a count that matches the times to within the second they drop (d23a7a91).
+    expect(bad((d) => { d.spanMs = -1; })).toMatch(/spanMs/);
+    expect(bad((d) => { d.spanMs = 99_999_999; })).toMatch(/spanMs/);
+    expect(bad((d) => { delete (d as Partial<DroneDetail>).spanMs; })).toMatch(/spanMs/);
     expect(checkDroneDetail({ ok: false, error: 'unknown-head' }).ok).toBe(false);
     expect(checkDroneDetail({ ok: false, error: 'nope' }).ok).toBe(false);
     expect(checkDroneDetail(null).ok).toBe(false);
@@ -118,14 +122,21 @@ describe('the timeline (AC 4, 6)', () => {
 
   it('a zero-length session says its edits happened at its one time', () => {
     const at = '2026-11-10T09:00:00Z';
-    expect(timelineText(detail({ startedAt: at, endedAt: at, buckets: buckets([0, 19]) }))).toBe('19 edits, all at 2026-11-10 09:00:00 UTC');
+    expect(timelineText(detail({ startedAt: at, endedAt: at, spanMs: 0, buckets: buckets([0, 19]) }))).toBe('19 edits, all at 2026-11-10 09:00:00 UTC');
+  });
+
+  it('a session under a second long is said in milliseconds, slice for slice as the scanner put them (Qodo local backstop d23a7a91)', () => {
+    // 800 ms: the scanner's slice i holds offsets from ceil(i × 801 / 24) ms; times are only to the second.
+    const at = '2026-11-10T09:00:00Z';
+    expect(timelineText(detail({ startedAt: at, endedAt: at, spanMs: 800, buckets: buckets([0, 2], [23, 1]), files: [], otherFiles: 1, otherEdits: 3 })))
+      .toBe('3 edits from 2026-11-10 09:00:00 UTC to 2026-11-10 09:00:00 UTC, in 24 slices of 0:00:00.033: 2 in 0:00:00.000–0:00:00.034, 1 in 0:00:00.768–0:00:00.801 after the start');
   });
 });
 
 describe('what each reply shows', () => {
   it('a detail of this session and head is ready; a rescan-needing one says so', () => {
     expect(detailState(detail(), KEY, HEAD)).toEqual({ kind: 'ready', detail: detail() });
-    expect(detailState(detail({ files: [], otherFiles: 0, otherEdits: 0, buckets: [], needsRescan: true }), KEY, HEAD)).toEqual({ kind: 'note', text: "rescan to see this session's files" });
+    expect(detailState(detail({ files: [], otherFiles: 0, otherEdits: 0, buckets: [], spanMs: 0, needsRescan: true }), KEY, HEAD)).toEqual({ kind: 'note', text: "rescan to see this session's files" });
   });
 
   it('a refusal, a failure, or a reply for another session or head is a line, never a list', () => {

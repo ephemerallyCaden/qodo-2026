@@ -48,6 +48,8 @@ describe('buildSessions: edits per file and over time (#148)', () => {
     want[12] = 1;
     want[23] = 1;
     expect(s.editBuckets).toEqual(want);
+    // The span the slices divide, in milliseconds, for the panel's words (d23a7a91).
+    expect(s.editSpanMs).toBe(23_999);
   });
 
   it('a zero-length span puts every edit in slice 0', () => {
@@ -97,6 +99,7 @@ describe('buildSessions: edits per file and over time (#148)', () => {
     want[10] = 1;
     want[23] = 1;
     expect(s.editBuckets).toEqual(want);
+    expect(s.editSpanMs).toBe(23_999);
   });
 
   it("an edit both parses read counts its lines once, like its event (Qodo PR #167 b7385767)", () => {

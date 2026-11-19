@@ -49,7 +49,7 @@ describe('readDroneDetail on a scanned repo (#148)', () => {
     expect(d).toEqual({
       ok: true, schemaVersion: 'drone-detail.1', head, key: sessionKey('claude-code', SID), startedAt: '2026-10-10T08:10:10Z', endedAt: '2026-10-10T08:20:10Z',
       files: [{ fileId: fileIdOf('src/a.ts'), path: 'src/a.ts', edits: 1 }, { fileId: fileIdOf('src/b.ts'), path: 'src/b.ts', edits: 1 }],
-      otherFiles: 0, otherEdits: 0, buckets, needsRescan: false,
+      otherFiles: 0, otherEdits: 0, buckets, spanMs: 600_000, needsRescan: false,
     });
   });
 

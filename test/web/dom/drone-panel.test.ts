@@ -55,7 +55,7 @@ buckets[23] = 3;
 const detail: DroneDetail = {
   ok: true, schemaVersion: 'drone-detail.1', head: HEAD, key: session(1, 'star').key, startedAt: '2026-11-10T09:00:00Z', endedAt: '2026-11-10T11:00:00Z',
   files: [{ fileId: 'f_000000000002', path: 'src/a.ts', edits: 9 }, { fileId: 'f_000000000001', path: 'README.md', edits: 5 }, { fileId: 'f_000000000003', path: 'src/b.ts', edits: 2 }],
-  otherFiles: 2, otherEdits: 3, buckets, needsRescan: false,
+  otherFiles: 2, otherEdits: 3, buckets, spanMs: 7_200_000, needsRescan: false,
 };
 const open = () => {
   const p = new DronePanel();

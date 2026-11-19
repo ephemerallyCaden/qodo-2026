@@ -90,7 +90,14 @@ export interface DroneDetail {
    * (`startedAt`..`endedAt`); they sum to the files' edits plus `otherEdits`. Empty when `needsRescan`.
    */
   buckets: number[];
-  /** True when the snapshot predates #148 (no per-file counts): no files, counts or buckets then. */
+  /**
+   * The milliseconds the buckets divide: from the first to the last edit or git record (the times behind
+   * `startedAt`..`endedAt`, which drop them), so the panel's words can place each slice as precisely as the
+   * scanner did (amended 2026-11-19, Qodo d23a7a91). Slice i holds the offsets from ceil(i × (spanMs + 1) / 24).
+   * 0 when `needsRescan`.
+   */
+  spanMs: number;
+  /** True when the snapshot predates #148 (no per-file counts): no files, counts, buckets or span then. */
   needsRescan: boolean;
 }
 

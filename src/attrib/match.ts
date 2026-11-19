@@ -152,7 +152,7 @@ export function buildSessions(metas: Iterable<SessionMeta>, commitOrder: string[
     const sorted = [...ids].sort(byCodepoint);
     sessions.push({ ...rest, tool: 'claude-code', startedAt: isoUtc(firstTs), endedAt: isoUtc(lastTs),
       filesTouched: files.size, files: sorted, filesOutside: files.size - ids.size,
-      fileEdits: sorted.map((id) => ({ id, n: perId.get(id) ?? 0 })), editsOutside, editBuckets: buckets,
+      fileEdits: sorted.map((id) => ({ id, n: perId.get(id) ?? 0 })), editsOutside, editBuckets: buckets, editSpanMs: lastTs - firstTs,
       commits, inferred: false, seed: u32(rest.key) });
   }
   return sessions.sort((a, b) => byCodepoint(a.startedAt, b.startedAt) || byCodepoint(a.key, b.key));

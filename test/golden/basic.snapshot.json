@@ -616,6 +616,7 @@
         0,
         2
       ],
+      "editSpanMs": 603060000,
       "editsOutside": 1,
       "endedAt": "2026-10-09T09:30:00Z",
       "fileEdits": [
@@ -693,6 +694,7 @@
         0,
         0
       ],
+      "editSpanMs": 0,
       "editsOutside": 1,
       "endedAt": "2026-10-05T09:00:00Z",
       "fileEdits": [],
@@ -736,6 +738,7 @@
         0,
         0
       ],
+      "editSpanMs": 0,
       "editsOutside": 1,
       "endedAt": "2026-10-05T09:10:00Z",
       "fileEdits": [],
@@ -784,6 +787,7 @@
         0,
         0
       ],
+      "editSpanMs": 0,
       "editsOutside": 0,
       "endedAt": "2026-10-06T09:59:58Z",
       "fileEdits": [
@@ -838,6 +842,7 @@
         0,
         0
       ],
+      "editSpanMs": 0,
       "editsOutside": 1,
       "endedAt": "2026-10-25T09:00:00Z",
       "fileEdits": [],

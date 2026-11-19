@@ -54,28 +54,33 @@ export function timelineCells(buckets: readonly number[], rows: number): number[
   return buckets.map((n) => (n <= 0 || max === 0 ? 0 : Math.max(1, Math.ceil((n * rows) / max))));
 }
 
-/** A duration as h:mm:ss, floored to the second. */
-function clock(ms: number): string {
-  const s = Math.floor(ms / 1000);
+/** A duration as h:mm:ss, floored to the second, or h:mm:ss.mmm with `ms`. */
+function clock(duration: number, ms: boolean): string {
+  const whole = Math.floor(duration);
+  const s = Math.floor(whole / 1000);
   const two = (n: number) => String(n).padStart(2, '0');
-  return `${Math.floor(s / 3600)}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}`;
+  const base = `${Math.floor(s / 3600)}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}`;
+  return ms ? `${base}.${String(whole % 1000).padStart(3, '0')}` : base;
 }
 
 /**
  * The timeline in words, for screen readers and as its caption: the total, the span, and how many edits
  * fell in each slice that has any, by its offset from the start, so it says what the graph shows
- * (Qodo PR #167 4dfd03c0). Slice edges are to the second.
+ * (Qodo PR #167 4dfd03c0). Slices are placed from `spanMs` exactly as the scanner placed the edits (slice i
+ * holds the offsets from ceil(i × (spanMs + 1) / 24)), in milliseconds when a slice is under a second
+ * (d23a7a91).
  */
-export function timelineText(d: Pick<DroneDetail, 'buckets' | 'startedAt' | 'endedAt'>): string {
+export function timelineText(d: Pick<DroneDetail, 'buckets' | 'startedAt' | 'endedAt' | 'spanMs'>): string {
   const total = d.buckets.reduce((a, b) => a + b, 0);
   const start = utc(d.startedAt);
   if (total === 0) return `no edits from ${start} to ${utc(d.endedAt)}`;
-  const span = Date.parse(d.endedAt) - Date.parse(d.startedAt);
-  if (!(span > 0)) return total === 1 ? `1 edit, at ${start}` : `${edits(total)}, all at ${start}`;
+  if (d.spanMs === 0) return total === 1 ? `1 edit, at ${start}` : `${edits(total)}, all at ${start}`;
   const n = d.buckets.length;
-  const edge = (i: number) => Math.floor((i * span) / n);
-  const slices = d.buckets.flatMap((b, i) => (b > 0 ? [`${b} in ${clock(edge(i))}–${clock(edge(i + 1))}`] : []));
-  return `${edits(total)} from ${start} to ${utc(d.endedAt)}, in ${n} slices of ${clock(span / n)}: ${slices.join(', ')} after the start`;
+  const width = (d.spanMs + 1) / n;
+  const ms = width < 1000;
+  const edge = (i: number) => Math.ceil((i * (d.spanMs + 1)) / n);
+  const slices = d.buckets.flatMap((b, i) => (b > 0 ? [`${b} in ${clock(edge(i), ms)}–${clock(edge(i + 1), ms)}`] : []));
+  return `${edits(total)} from ${start} to ${utc(d.endedAt)}, in ${n} slices of ${clock(width, ms)}: ${slices.join(', ')} after the start`;
 }
 
 /** What a reply (or a failed request) shows for the session `key` at `head`. A reply for anything else is a failure, never shown. */

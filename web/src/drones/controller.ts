@@ -53,7 +53,9 @@ export class Drones {
     const gen = ++this.gen;
     // A refresh means a new scan (a snapshot or layout event), maybe of the same head: the open panel asks
     // for its detail again however the drone view fetch goes, and an answer still out is dropped (Qodo PR #167 09393e2b).
+    // The list on show is of the old scan, so it goes at once too, not only from the cache (34ee1e52).
     this.dropDetail();
+    if (this.openAgentSession()) this.panel.showDetail(LOADING);
     if (this.data && this.data.head !== head) { // a layout of another scan: its sessions are gone from the scene, so are their details
       this.data = null;
       this.shown = [];
@@ -82,7 +84,10 @@ export class Drones {
     try {
       drawn = await this.host.view.setDrones(sel ? sel.shown.map(entryOf) : [], head);
     } catch (e) {
-      if (gen === this.gen) this.host.announce(`drones not drawn: ${describe(e)}`);
+      if (gen !== this.gen) return;
+      this.host.announce(`drones not drawn: ${describe(e)}`);
+      // The open panel's files would be of the old scan: say so rather than leave them (34ee1e52).
+      if (this.openAgentSession()) this.panel.showDetail({ kind: 'failed', text: `the drones could not be drawn (${describe(e)}); this session's files will show after the next update` });
       return;
     }
     if (!drawn || gen !== this.gen) return; // stale: a newer refresh or a layout reload owns the state now
@@ -142,6 +147,12 @@ export class Drones {
     this.host.announce(`selected a ${s.tool} agent session`);
     this.host.redraw();
     return true;
+  }
+
+  /** The selected drone when its panel lists files: an agent session, not an inferred one. */
+  private openAgentSession(): DroneSession | undefined {
+    const s = this.shown.find((d) => d.key === this.host.view.selectedDrone);
+    return s && !s.inferred ? s : undefined;
   }
 
   /** Forgets the open panel's detail and drops any answer still out for it. */
