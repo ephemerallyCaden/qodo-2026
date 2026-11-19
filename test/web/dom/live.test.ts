@@ -390,27 +390,48 @@ describe('drones in live mode (#80)', () => {
     expect(l.view.selectedDrone).not.toBeNull();
     els.get('drone-panel')!.hidden = false;
   };
-  const escape = (l: Awaited<ReturnType<typeof live>>) =>
-    l.view.pass.canvas.dispatchEvent(Object.assign(new Event('keydown'), { key: 'Escape', code: 'Escape', altKey: false, ctrlKey: false, metaKey: false, preventDefault: () => {} }));
-
-  it('closing the panel while keyboard focus is inside it hands focus back to the view (Qodo 048c2a94)', async () => {
+  // A layout of another scan closes the panel at once, before its drones arrive (Drones.refresh), with no key
+  // press: keys only reach the view's canvas (ui/input.ts), never while focus is on the panel (#180, Qodo local
+  // 910817f8). #180's proof: without deselect()'s focus return (62ecda1) this fails (2, not 3).
+  it('a layout of another scan that closes the panel while keyboard focus is inside it hands focus back to the view (Qodo 048c2a94)', async () => {
     const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
     await openPanel(l);
-    const before = (l.view.pass.canvas as unknown as { focused: number }).focused;
+    const focused = () => (l.view.pass.canvas as unknown as { focused: number }).focused;
+    const before = focused();
     activeElement = PANEL_BUTTON;
-    escape(l);
-    expect(l.view.selectedDrone).toBeNull();
-    expect((l.view.pass.canvas as unknown as { focused: number }).focused).toBe(before + 1);
+    const slow = deferred<DroneView>();
+    l.droneAnswers.push(() => slow.promise);
+    l.layouts.push(async () => layoutAt(OTHER));
+    l.fogs.push(async () => fogAt(OTHER));
+    l.send({ type: 'layout', head: OTHER });
+    await vi.waitFor(() => expect(l.view.selectedDrone).toBeNull());
+    expect(focused()).toBe(before + 1);
+    slow.resolve(droneView(OTHER, []));
   });
 
-  it('closing the panel with focus elsewhere does not steal it', async () => {
+  // A rescan whose drone view no longer has the open session closes the panel by itself. The panel's own
+  // close button and Escape always hand focus back (DronePanel.onClose); this close is the one deselect()'s
+  // focus return is for (#180). #180's proof: without the focus return (62ecda1) the second half fails
+  // (3, not 4); with focus handed back always, the first half fails (3, not 2).
+  it('a rescan that closes the panel hands focus back to the view only when focus was inside it (Qodo 048c2a94)', async () => {
     const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    const focused = () => (l.view.pass.canvas as unknown as { focused: number }).focused;
+    const rescanWithoutIt = async () => {
+      l.droneAnswers.push(async () => droneView(HEAD, []));
+      l.send({ type: 'snapshot', head: HEAD });
+      await vi.waitFor(() => expect(l.view.selectedDrone).toBeNull());
+      await settle();
+    };
     await openPanel(l);
-    const before = (l.view.pass.canvas as unknown as { focused: number }).focused;
     activeElement = { id: 'somewhere else' };
-    escape(l);
-    expect(l.view.selectedDrone).toBeNull();
-    expect((l.view.pass.canvas as unknown as { focused: number }).focused).toBe(before);
+    let before = focused();
+    await rescanWithoutIt();
+    expect(focused(), 'focus elsewhere is not stolen').toBe(before);
+    await openPanel(l);
+    activeElement = PANEL_BUTTON;
+    before = focused();
+    await rescanWithoutIt();
+    expect(focused(), 'focus inside the closed panel goes back to the view').toBe(before + 1);
   });
 
   it('a layout of another scan closes the selected drone at once, before its drone view arrives', async () => {
