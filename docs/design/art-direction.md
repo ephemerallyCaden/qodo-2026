@@ -287,7 +287,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 The asset viewer is the reference implementation (`mockups/asset-viewer/`):
 - **`planet-ramps.js`:** `V2_PLANET_RAMPS` (the world palette).
 - **`palette-map.js`:** `mapPalette('blk-36')` (the crew).
-- **`viewer.js`:** `DEPTH_RANGES` (12/26/44), `LOOP` (24 s, 2:3), `WEATHER` (cover and float), `CRACKS` (crack frequency and cut).
+- **`viewer.js`:** `DEPTH_RANGES` (12/26/44), `LOOP` (24 s, 2:3; the mockup's own loop; the product's is §7), `WEATHER` (cover and float), `CRACKS` (crack frequency and cut).
 - **`npm test`** guards the solid clouds, the cloud shadow, crack width, per-pixel depth and loop seams.
 
 References live in `<main-checkout>/.archive/docs/design/refs/`. That folder is gitignored, so use absolute paths: `planetarium-teal-ring.png`, `moodboard-planet-gif/planet.gif`, `vibe-neon-ring-gif-frame.png`, `planet-variety-grid-64.png`, `ascii-cyberbrutalist-lime.png`, `ascii-glyph-mosaic.png`. The colour research is in `.archive/docs/design/colour-research/`.
