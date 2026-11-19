@@ -77,3 +77,10 @@ One lush planet (clouds + optional ring) and one astronaut in 3 contributor colo
 - Lava fissures and ice crevasses (human, 2026-11-04): thicker (≥2 internal px main lines, 1 px tips), pointed and jagged so they read through the pixel filter.
 - Lava and ice (human, 2026-11-04): more open areas (pure lava pools/seas on lava worlds, open water leads on ice worlds) alongside the cracks. Lava is more orange, with yellow only as accents. Lava rock is shaded slightly bluer.
 - New ref: `<main-checkout>/.archive/docs/design/refs/planet-variety-grid-64.png`, a 64-planet pixel-art grid (dithered and hatched shading, orange lava with yellow accents, ice sheets over blue water, chunky moons, asteroid belts, swirl storms).
+
+### Slower loop (human, 2026-11-19, #174)
+- Trigger: "the planets are spinning way too fast for the orbiting planets." On the 24 s loop each planet spun every 12 s (clouds 8 s, moons 12 s) and orbited every 10 minutes: 50 spins per orbit.
+- **The loop is now 48 s**, with the same whole turns per loop (surface 2, clouds 3, moons 2, lava 2, star spin 1, star churn 1), so every looped layer runs at half its old rate and every ratio holds. The surface turns every 24 s, clouds every 16 s, moons and drones round their homes every 24 s, the star every 48 s; the fog hatch drifts half as fast.
+- **The orbit is now 12 minutes** (720 s, 15 loops), replacing #60's 10 minutes, which isn't a whole number of 48 s loops; the whole scene is frame 0 again every 21 600 frames.
+- Kept at their rate (lead's decision on the human's ticket): a drone's idle on its own 12 s loop, which is character animation, not planetary motion, and divides 48 s. Its starting idle phase is now drawn within that 12 s loop, so the scene loop's length never moves a drone at frame 0.
+- Debris nav lights stay 8 blinks per loop (now per 48 s). The alternative loop becomes 72 s at 3:4.

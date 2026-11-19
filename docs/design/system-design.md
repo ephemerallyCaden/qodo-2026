@@ -391,7 +391,7 @@ That's ≤ 20 typical, with a **hard budget of 100 draw calls and ≤ 50k instan
 
 **`frame(snapshot, chart, camera, n, opts) → FrameSpec`:**
 - Pure. It returns typed arrays of instance attributes plus a uniforms record.
-- `t = (n mod LOOP_FRAMES) / 30`, with `LOOP_FRAMES = 720` (24 s), for every loop-locked layer. Planet orbits (#60) use `n mod ORBIT_FRAMES`, with `ORBIT_FRAMES = 18 000` (10 minutes, 25 loops).
+- `t = (n mod LOOP_FRAMES) / 30`, with `LOOP_FRAMES = 1440` (48 s since #174), for every loop-locked layer. Planet orbits (#60) use `n mod ORBIT_FRAMES`, with `ORBIT_FRAMES = 21 600` (12 minutes, 15 loops).
 - The renderer only uploads FrameSpec. It holds no logic.
 - Live mode: `web/src/loop.ts` computes `n` from `performance.now()`.
 - Test mode: `?frame=N&cam=<base64 pose>&fixture=<name>` plus `window.__commet.renderFrame(n): Promise<ImageData>`, using `preserveDrawingBuffer` in test builds only.

@@ -14,7 +14,7 @@ Data meaning (R5 and #33):
 - [x] F4 (uniform by default; reasons sheet in the lab) **Reasons, maybe.** #33 gives each fogged file a reason (agent, mixed, teammate, unknown, self-committed-agent-written, lineage-unknown). Explore whether fog shows the reason subtly (e.g. glyph choice) or stays uniform. The default is uniform; drones already show agent work.
 - [x] F5 **Charting moment.** Charting a file clears its fog with a short wavefront (the §9 inverted-lightness wavefront; [OIII] teal allowed, as it's an event). Clearing a planet's last file can end in a small landing moment, but the flag and beacon are a later feature.
 - [x] F6 **Refog.** A later change that isn't yours refogs the whole file, in a distinct "rolling back in" motion so it never looks like a glitch.
-- [x] F7 **House rules:** live 3D through the pixel pass; glyphs are hand-drawn 5–8 px pixel glyphs (§9), never font text; deterministic; ambient drift loop-locked to 24 s; per-pixel depth fade; teal under 10% of pixels and only on events.
+- [x] F7 **House rules:** live 3D through the pixel pass; glyphs are hand-drawn 5–8 px pixel glyphs (§9), never font text; deterministic; ambient drift loop-locked to the loop (24 s then, 48 s since #174); per-pixel depth fade; teal under 10% of pixels and only on events.
 - [x] F8 **Works with everything else:** clouds, moons (test files can be fogged too), debris, drones and artefacts. It must not be mistaken for clouds, ash smoke, artefacts (glitch sectors) or the toxic band's smoke.
 
 ## Assumptions
