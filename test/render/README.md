@@ -1,0 +1,133 @@
+# Render tests (R8, #31)
+
+Playwright drives a view through the contract's render hook (`window.__commet`, see
+`docs/contracts/phase2.md`, Render hook) in Chromium on SwiftShader. It reads the **low-res internal
+target** with `lowResPixels()`, never the upscaled canvas. `suite.ts` registers the same checks for
+each view:
+
+| View | Spec | Goldens |
+|---|---|---|
+| The real system view (`web/`, #30), built into `dist/web` | `view.spec.ts` | `view-mini-f0`, `view-mini-f0-reduced`, `view-mini-f180`, `view-mini-f180-reduced` |
+| The stand-in (`standin/`, below) | `standin.spec.ts` | `standin-mini-f0`, `standin-mini-f180`, `standin-mini-f180-reduced` |
+
+`drones.spec.ts` (#80) renders a repo-sized fixture (11 planets, 90 sessions) with `RenderInput.drones`: drones add at most 16 draw calls and the frame stays in budget, both looks draw in palette colours, frames are pure and reduced motion freezes the idle. Its goldens (`drones-claude-closeup-f0`, `drones-generic-closeup-f0`) skip locally until committed from CI's artifact. Provenance: each golden twin records the pinned CI environment it came from, and the commit that adds or changes one carries a `Golden-Update:` line naming the CI run whose `render-goldens` artifact it is (`git log --grep Golden-Update -- test/golden/render/drones-*`).
+
+`star.spec.ts` (#81) checks the star, the Day 1 sun (`docs/features/star-art.md`), on its own and in `mini`, with no goldens of its own: with the depth fade off it draws only `world.starDisc` and `world.starCorona`, core at the centre and each band further out, with a corona past the limb whose edge is lumpy and undithered, and lies within 1.5 px of its CPU trace (`render/corona.ts`, what picking and labels hide behind) at frames 0 and half a loop on; the middle tenth of the disc's radius is the core on every frame of the loop (`LOOP_FRAMES`, 1440 since #174), from the close view and from below, and under reduced motion; one loop on is frame 0 and the seam is no bigger than a step of 1/48 of the loop; reduced motion holds frame 0; at 60 units it fades at 0.15; fog never changes a star pixel; its moonlets wear the planets' warm-peach moon look (S6); and a drone at the star draws in front of it. The star alone draws 6 colours, so its frames are checked for every star colour and 80% of the disc's area instead of the fixtures' 12-colour floor.
+
+`orbits.spec.ts` (#60) checks the slow orbits: planets turn round the star once per `ORBIT_FRAMES` (21 600 frames, 12 minutes since #174), off the 48 s loop (`LOOP_FRAMES`, 1440 frames), so one loop on is no longer frame 0 and no test may assume it is. Tests pin the frames they compare instead, from the constants in `web/src/model/motion.ts`: from the fixed start-pose camera, frame `LOOP_FRAMES` differs from frame 0 (only the orbits moved) and frame `ORBIT_FRAMES` (one orbit, 15 loops) is frame 0 again; with the camera following a planet as focus does (`harness.ts` `following`, a camera per frame), that planet draws the same pixels on every whole loop of its first 48° of orbit (two loops) while the star moves past it, and from a camera left at frame 0 it has moved; reduced motion holds the orbits on frame 0 at any frame. `fog.spec.ts` checks the hatch loop on web followed for every whole loop of its first fifth of an orbit (three loops), and `fog-events.spec.ts` the fronts on a followed planet, for the same reason. Those windows are angles of the orbit, not loop counts: further round, the star turns into view behind the followed planet. A followed planet is pixel-stable only because the view draws the scene relative to the camera's target (`web/src/render/scene.ts`, a floating origin): float32 rounding at the planet's absolute position used to flip a pixel (1 px at frame 720 in CI), and the fog's screen anchor, exactly on a pixel edge at the frame's centre, jumped by one (572 px of web at 360 px tall). The suite's goldens are still frames 0 and 180 of the start pose; frame 180 is 1/8 of the 48 s loop since #174 (a quarter turn of the surface), and `view-mini-f180` shows the planets 3° round their orbits. The stand-in takes its loop from `LOOP_FRAMES` too (#174).
+
+`review.spec.ts` (#75) isn't a render check: it drives the review panel in the same built view against a real `startServer` on a temp repo (keyboard focus, request ordering), because Vitest has no DOM.
+
+Both render the contract's `mini` fixture from the view's own start pose, and every check below runs
+on both:
+
+| Check | Where | Fails when |
+|---|---|---|
+| Empty output | `frame.ts` `frameProblems`, `harness.ts` `openView` | no hook, no canvas, a pixel that isn't opaque, fewer than 12 colours, or under 5% of the frame off space |
+| Palette | `twin.ts` `paletteProblems` | with `depthFade: false`, even one pixel isn't a `src/core/palette.ts` colour |
+| Determinism | `suite.ts` | frame *n* differs between renders in any order, or in a fresh browser |
+| Reduced motion | `suite.ts` | with `reducedMotion`, frame 180 differs from frame 0 (system-design §7: *n* is fixed at 0) |
+| Draw budget | `frame.ts` `statsProblems` | `renderer.info` draw calls or triangles are 0 or over `BUDGET` (never FPS) |
+| Goldens | `golden.ts` `checkGolden` | the frame differs from `test/golden/render/<name>.png` by more than `PIXELS` |
+
+Every threshold lives in `thresholds.ts`, with the values from `docs/design/system-design.md` §10.
+
+## Overview readability
+`overview.spec.ts` (#59) renders the real view on two self-like layouts (`test/fixtures/overview.ts`:
+the shape of Commet's own scan without and with a content root) from their start poses. It takes the
+farthest planet on screen, draws it in each health look (lava, toxic, ash, lush, ocean, ice) in its
+own slot, and measures it against the same frame without it (`legibility.ts`, the health-looks lab's
+OKLab look vector). It fails when that planet fades past `OVERVIEW.maxFarFade` (0.72), when a
+neighbouring band step is under `OVERVIEW.minBandStep` (0.05), or when the planet is too small to
+measure. It has no goldens. The 5% anti-empty floor applies to the golden fixtures only, not to these
+overviews (system-design §10), so their frames pass `OVERVIEW.minNonSpaceFraction` (0.5%) instead, and
+still need 12 colours. `legibility.test.ts` checks the pure parts in Vitest, including the
+start-pose fade on `mini` and both self-like layouts.
+
+## Commands
+```sh
+npm run test:render                 # Playwright specs: test/render/*.spec.ts (builds dist/web first)
+npx playwright test -g "<name>"     # one render test
+npm test                            # Vitest, which includes test/render/checks.test.ts (no browser)
+UPDATE_GOLDEN=1 npm run test:render # rewrite goldens, on purpose only (below)
+```
+Vitest only runs `*.test.ts` and Playwright only runs `*.spec.ts`, so neither picks up the other's files.
+
+## How a page is served
+`harness.ts` answers every request by interception at `http://render.commet.test`, from an
+allowlist of repo directories. No socket is opened, and requests to any other origin are refused,
+so a render can't depend on the network or send anything to it. The real view is served from
+`dist/web` only, the bundle `commet open` serves, so the build is under test too.
+`global-setup.ts` rebuilds it with the same `vite build` as `npm run build` before every run, so it
+is never stale. The stand-in's TypeScript is transpiled per request.
+
+## Empty output
+A render test once passed after a shader compile error. Here a frame fails with fewer than
+`BLANK.minColours` (12) unique colours or with less than `BLANK.minNonSpaceFraction` (5%) of its
+pixels off the space colour (§10's anti-empty asserts). A broken body shader leaves space and the
+1 px stars: 4 colours and well under 1% of the frame. A wrong clear colour fails on colours.
+`checkGolden` runs the same check before writing, so `UPDATE_GOLDEN=1` can never save a blank golden.
+
+`negative.spec.ts` proves this against the stand-in, broken in memory: a body shader that fails to
+compile (stars still draw, the frame fails), a depth fade that ignores `depthFade: false` (the palette
+check fails), no canvas, and no `?test=1`. A control test runs the
+intact stand-in through the same checks, so the negative tests can't pass by accident.
+
+## Where goldens are authoritative
+**Only in the CI `render` job's container**: `mcr.microsoft.com/playwright:v<version>-noble`, pinned
+by digest in `.github/workflows/ci.yml`, linux/x64. `test/ci.test.ts` keeps the tag equal to the exact
+`@playwright/test` version, so the browser build matches the image.
+
+Why: SwiftShader is a CPU renderer whose JIT output can differ by CPU architecture, OS and
+browser build, usually by one band at a shading edge. One pinned image fixes all of them, which is
+what lets the thresholds sit at 0.
+
+Each golden's text twin records, on its `env` line, where that golden was made: Playwright, browser,
+platform, arch and WebGL renderer. `checks.test.ts` requires every committed golden to share one
+linux/x64 SwiftShader environment. On each run:
+
+- **Same environment:** strict. More than `PIXELS.maxDiffPixels` differing pixels, or a changed
+  twin, fails.
+- **CI in any other environment:** fails, so CI can never quietly skip the compare.
+- **Locally anywhere else** (for example macOS arm64, which also runs SwiftShader): never red
+  against the CI goldens. Determinism, empty output, the budget and SwiftShader itself are still
+  enforced; the golden compare is informational, and the test passes with a `golden-informational`
+  annotation saying goldens are authoritative in CI and how many pixels differ.
+
+## Updating goldens
+Only with `UPDATE_GOLDEN=1`, in the pinned image, for a render change you meant, with a
+`Golden-Update: <reason>` line in the commit. CI's `goldens` job fails any PR commit that changes
+`test/golden/` without that line (`.github/scripts/golden-update.sh`). Review the `.txt` diff before
+committing.
+
+- **From CI** (no Docker needed): push. When the `render` job fails, it reruns the suite with
+  `UPDATE_GOLDEN=1` in the same image and uploads what that wrote to `test/golden/render/` as the
+  `render-goldens` artifact. Nothing is uploaded if that run fails too: a blank or over-budget frame
+  is never written. Take it with
+  `gh run download <run-id> -n render-goldens -D test/golden/render`, and name the run ID and image
+  digest in the `Golden-Update:` line.
+- **With Docker**, in a separate worktree (`npm ci` replaces `node_modules` with Linux builds):
+  `docker run --rm -v "$PWD":/work -w /work <image from ci.yml> bash -c 'npm ci && UPDATE_GOLDEN=1 npm run test:render'`
+
+A golden written anywhere else records that environment on its `env` line. `npm test` then fails,
+because `checks.test.ts` requires every committed golden to come from linux/x64 SwiftShader, and so
+does the CI `render` job.
+
+## Text twins
+Each golden PNG has a `.txt` twin, so a reviewer who can't see images (Qodo) can review a render
+change. For every colour it lists the pixel count, the share, the bounding box and every palette
+entry with that colour. Off-palette colours come after (the depth fade is the one allowed source).
+The RGBA SHA-256 changes whenever any pixel does, the `stats` line pins the draw calls and
+triangles, and the `env` line says where the golden was made. `checks.test.ts` re-derives every committed twin from its PNG, so a twin can't drift from
+its image.
+
+## The stand-in
+`standin/` is the smallest three.js scene that implements the render hook: sun, planets by health
+band, moons as one InstancedMesh, and 1 px stars, at 320×180, upscaled with nearest filtering. A
+stepped depth fade is its one off-palette output, and it honours `depthFade: false`. It proved
+the harness before the real view (#30) landed, and gives the negative tests something to break. It
+is not a design reference.
+
+Its goldens stay beside the real view's. They pin the scene the negative tests break, and they
+tell the two kinds of golden change apart: a change to `web/` moves only the `view-*` goldens, while
+a Playwright, browser or three.js bump (or a harness change) moves the stand-in's too.

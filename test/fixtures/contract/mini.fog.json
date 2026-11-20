@@ -1,0 +1,255 @@
+{
+  "baseline": null,
+  "files": [
+    {
+      "fileId": "f_000000000001",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_000000000002",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_000000000003",
+      "reasons": [
+        "unknown"
+      ],
+      "since": "3333333333333333333333333333333333333333",
+      "state": "fogged"
+    },
+    {
+      "fileId": "f_00000000000a",
+      "reasons": [],
+      "since": null,
+      "state": "charted"
+    },
+    {
+      "fileId": "f_00000000000b",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_00000000000c",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_00000000000d",
+      "reasons": [
+        "agent",
+        "self-committed-agent-written"
+      ],
+      "since": "2222222222222222222222222222222222222222",
+      "state": "fogged"
+    },
+    {
+      "fileId": "f_00000000000e",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_00000000000f",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_000000000010",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_000000000011",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_000000000012",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000a1",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000b0",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000b1",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000b2",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000b3",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000b4",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000b5",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000b6",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000b7",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000b8",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000b9",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000ba",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000bb",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000bc",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000bd",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000be",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000bf",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000c0",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000c1",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000c2",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000c3",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000c4",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000c5",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000c6",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    },
+    {
+      "fileId": "f_0000000000c7",
+      "reasons": [],
+      "since": null,
+      "state": "clear"
+    }
+  ],
+  "head": "1111111111111111111111111111111111111111",
+  "planets": [
+    {
+      "dirId": "d_00000000000a",
+      "fogged": 0,
+      "total": 4
+    },
+    {
+      "dirId": "d_00000000000c",
+      "fogged": 1,
+      "total": 25
+    },
+    {
+      "dirId": "d_00000000000d",
+      "fogged": 0,
+      "total": 3
+    }
+  ],
+  "schemaVersion": "fog.1",
+  "star": {
+    "fogged": 1,
+    "total": 5
+  }
+}

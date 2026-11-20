@@ -1,11 +1,11 @@
 // Qodo PR #6 findings on the Issue #5 fix. Each case scans a tiny repo twice: a control without
 // the triggering record (must be human or agent as stated) and the case itself.
 import { describe, expect, it } from 'vitest';
-import { copyFileSync, existsSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { copyFileSync, existsSync, lutimesSync, mkdirSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { discoverClaude, parseClaude, runsGitCommit } from '../src/attrib/parsers/claude.js';
 import { createResult, miniClaude, miniRepo, scanMini, session, type Row } from './fixtures/mini.js';
+import { realTempDir } from './fixtures/tmp.js';
 
 const SID = '12121212-1212-4121-8121-121212121212';
 const IDLE = '34343434-3434-4343-8343-343434343434';
@@ -95,7 +95,7 @@ describe('Qodo PR6 #4: edits above a symlinked cwd', () => {
 
   it('a session whose cwd is a subdirectory reached through a symlinked repo root matches edits above the cwd (agent)', async () => {
     const { control, withCase } = await controlAndCase((dir, trigger) => {
-      const root = trigger ? join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-alias-'))), 'repo-link') : dir;
+      const root = trigger ? join(realTempDir('commet-alias-'), 'repo-link') : dir;
       if (trigger) symlinkSync(dir, root);
       return { [SID]: writer(join(root, 'docs'), join(root, PATH)) };
     }, withDocs);
@@ -113,7 +113,7 @@ describe('Qodo PR6 #4: edits above a symlinked cwd', () => {
   });
 
   it('an edit clearly outside the repo (a home dotfile, another repo) stays ignored', async () => {
-    const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), 'commet-elsewhere-')));
+    const elsewhere = realTempDir('commet-elsewhere-');
     const { withCase } = await controlAndCase((dir) => ({ [IDLE]: idle(dir), [SID]: writer(join(dir, 'docs'), join(elsewhere, '.zshrc')) }), withDocs);
     expect(withCase.logs.dropped).toBe(0);
     expect(withCase.attr('target')).toMatchObject({ class: 'human' });
@@ -231,7 +231,7 @@ describe('Qodo PR8 #2: a transcript that can\'t be read is a blind span', () => 
       const rows = { [IDLE]: idle(dir) };
       if (!trigger) return rows;
       // Planted after the projects dir exists: a transcript reached through a symlink is never read.
-      const real = join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-linked-log-'))), 'real.jsonl');
+      const real = join(realTempDir('commet-linked-log-'), 'real.jsonl');
       writeFileSync(real, writer(dir).map((r) => JSON.stringify(r)).join('\n') + '\n');
       return { ...rows, [`link:${real}`]: [] };
     });
@@ -361,7 +361,7 @@ describe('Qodo PR10 #6: a symlinked transcript stays a gap', () => {
   it('a commit after the link\'s own mtime is still blind', async () => {
     const [a, b] = [repoWith(), repoWith()];
     const control = await scanMini(a, miniClaude({ [IDLE]: idle(a.dir) }));
-    const real = join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-linked-log-'))), 'real.jsonl');
+    const real = join(realTempDir('commet-linked-log-'), 'real.jsonl');
     writeFileSync(real, '{}\n');
     const projects = miniClaude({ [IDLE]: idle(b.dir), [`link:${real}`]: [] });
     // The link was made before the commit; the file behind it can still grow, so its gap never closes.
@@ -388,7 +388,7 @@ describe('Qodo PR10 #1 and #4: an outside transcript that can\'t be fully inspec
     const repo = repoWith();
     const projects = miniClaude({ [SID]: outsideWriter(repo.dir) });
     const file = join(projects, '-mini', `${SID}.jsonl`);
-    const copy = join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-swap-'))), 'copy.jsonl');
+    const copy = join(realTempDir('commet-swap-'), 'copy.jsonl');
     copyFileSync(file, copy);
     // Discovery awaits the self-commit times right before inspecting outside sessions.
     const times = { then: (done: (v: number[]) => void) => {
@@ -455,7 +455,7 @@ describe('Qodo PR10 #5: a foreign session\'s git command must target this repo',
 
   it('a quoted directory holding a separator still marks it (Qodo local r2 #1)', async () => {
     // A directory outside whose name holds a `;`, symlinked to this repo, entered with the `;` escaped.
-    const linkDir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-semi-')));
+    const linkDir = realTempDir('commet-semi-');
     const linkTo = (d: string) => {
       if (!existsSync(join(linkDir, 'to;repo'))) symlinkSync(d, join(linkDir, 'to;repo'));
       return `${linkDir}/to\\;repo`;

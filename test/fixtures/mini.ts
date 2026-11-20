@@ -2,19 +2,19 @@
 // synthetic transcripts (v2.1.31x key names, synthetic content only). Each case is scanned with
 // and without the record that triggers it, so a test can't pass vacuously.
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { CommitAttribution } from '../../src/core/snapshot/types.js';
 import { scan } from '../../src/scan/index.js';
 import { SELF } from './build/basic.js';
+import { realTempDir } from './tmp.js';
 
 export interface MiniCommit { id: string; at: string; path: string; lines: string[]; subject?: string; author?: { name: string; email: string } }
 export interface MiniRepo { dir: string; sha: Record<string, string> }
 
 /** Commits each entry as self, in order, at its fixed date. */
 export function miniRepo(commits: MiniCommit[], setup?: (dir: string) => void): MiniRepo {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-mini-')));
+  const dir = realTempDir('commet-mini-');
   const git = (args: string[], env: Record<string, string> = {}) =>
     execFileSync('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env } }).trim();
   git(['init', '-q', '-b', 'main']);
@@ -62,7 +62,7 @@ export const createResult = (filePath: string, lines: string[]) =>
 
 /** Writes transcripts under `<claude>/projects/-mini/<name>.jsonl`; returns the projects dir. */
 export function miniClaude(transcripts: Record<string, Row[]>): string {
-  const projects = join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-mini-claude-'))), 'projects');
+  const projects = join(realTempDir('commet-mini-claude-'), 'projects');
   mkdirSync(join(projects, '-mini'), { recursive: true });
   for (const [name, rows] of Object.entries(transcripts)) {
     // `link:<file>` plants a symlink to an existing file; `mode000:<name>` writes an unreadable file.

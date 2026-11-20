@@ -27,3 +27,39 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+
+  render:
+    # R8 render tests (#31). Goldens are authoritative only in this image: test/render/README.md.
+    # Bump the tag together with @playwright/test, and re-pin the digest with it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      # Builds dist/web first (test/render/global-setup.ts): view.spec.ts drives the built view.
+      - run: npm run test:render
+      # On a failure, rerun with UPDATE_GOLDEN=1 in this image and upload what it wrote, so a deliberate
+      # update needs no Docker (test/render/README.md). A blank or over-budget frame fails this step too.
+      - run: UPDATE_GOLDEN=1 npm run test:render
+        id: update
+        if: failure()
+      - if: failure() && steps.update.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-goldens
+          path: test/golden/render/
+
+  goldens:
+    # Every commit that changes test/golden/ needs a `Golden-Update: <reason>` line (AGENTS.md Testing).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: sh .github/scripts/golden-update.sh "$BASE" "$HEAD"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}

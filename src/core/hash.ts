@@ -1,11 +1,14 @@
 import { hmac } from '@noble/hashes/hmac.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
-import type { SessionKey, Tool } from './snapshot/types.js';
+import type { FileId, SessionKey, Tool } from './snapshot/types.js';
 
 export function sha256Hex(text: string): string {
   return bytesToHex(sha256(utf8ToBytes(text)));
 }
+
+/** A file's id: 'f_' + sha256(path)[:12]. Path-keyed, so a rename is a new id. */
+export const fileId = (path: string): FileId => `f_${sha256Hex(path).slice(0, 12)}`;
 
 /** First four bytes of sha256(text) as a big-endian uint32. */
 export function u32(text: string): number {

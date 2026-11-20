@@ -1,9 +1,10 @@
 // Synthetic Claude Code transcripts in the v2.1.31x shape (probed key names only), planted with
 // privacy canaries. Generated at test time because `cwd` and file paths must be absolute.
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { AGENT_FILE, CONTROL, CORE_AGENT, HELPER, LATE, NOTES, SPACED, SPACED_LINES, type FixtureRepo } from '../build/basic.js';
+import { realTempDir } from '../tmp.js';
 
 export const CANARIES = {
   prompt: 'CANARY_PROMPT_7f3a',
@@ -16,6 +17,8 @@ export const CANARIES = {
   // Bash commands are only tested against the git-commit regex, never stored (Qodo PR6 #2).
   command: 'CANARY_COMMAND_8c4e',
   home: '/Users/canary-home',
+  // An in-repo file the session edited that is not in the snapshot: counted, never named (#80).
+  editedFile: 'CANARY_EDITED_FILE_5a1e',
   code: 'const CANARY_CODE = 1;',
   // Path-shaped metadata (Qodo #3): each must be dropped, never output.
   metaModel: 'canary-model',
@@ -31,7 +34,7 @@ const OTHER_SESSION = '22222222-2222-4222-8222-222222222222';
 export interface ClaudeFixture { claudeDir: string; transcripts: string[] }
 
 export function writeClaudeFixture(repo: FixtureRepo, o: { fileSymlink?: boolean } = {}): ClaudeFixture {
-  const claudeDir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-claude-')));
+  const claudeDir = realTempDir('commet-claude-');
   const at = (p: string) => join(repo.dir, p);
   const base = { sessionId: MAIN_SESSION, cwd: repo.dir, gitBranch: 'main', version: '2.1.31', userType: 'external', isSidechain: false };
   const call = (uuid: string, timestamp: string, name: string, input: object) => ({ ...base, type: 'assistant', uuid, timestamp,
@@ -58,6 +61,8 @@ export function writeClaudeFixture(repo: FixtureRepo, o: { fileSymlink?: boolean
       toolUseResult: { type: 'create', filePath: at('docs/notes.md'), content: NOTES.join('\n') } },
     { ...base, type: 'api-request', uuid: 'api', timestamp: '2026-10-04T09:00:01.000Z', body: CANARIES.apiRequest,
       toolUseResult: { type: 'create', filePath: at('docs/notes.md'), content: NOTES.join('\n') } },
+    result('u8', 'a6', '2026-10-03T09:40:00.000Z', { type: 'create', filePath: at(`src/${CANARIES.editedFile}.ts`), content: 'export const e = 1;',
+      structuredPatch: [] }),
     // An edit outside the repo is dropped.
     result('u9', 'a6', '2026-10-04T09:10:00.000Z', { type: 'create', filePath: `${CANARIES.home}/secret.ts`, content: CANARIES.code }),
     // Written after c6 was committed (but before its later author date): must not count.

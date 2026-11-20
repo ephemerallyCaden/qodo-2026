@@ -7,7 +7,7 @@ import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import type { CommitAttribution, SnapshotV01 } from '../src/core/snapshot/types.js';
+import type { CommitAttribution, SnapshotV02 } from '../src/core/snapshot/types.js';
 import { formatSummary } from '../src/core/summary.js';
 import { scan, type LogStats } from '../src/scan/index.js';
 import { buildBasicRepo, type FixtureRepo } from './fixtures/build/basic.js';
@@ -21,7 +21,7 @@ const KEY = () => new Uint8Array(32).fill(7);
 
 let repo: FixtureRepo;
 let claude: NeverHumanClaude;
-let snapshot: SnapshotV01;
+let snapshot: SnapshotV02;
 let logs: LogStats;
 const attr = (id: string): CommitAttribution => {
   const c = snapshot.commits.find((x) => x.sha === repo.commits[id]!.sha);
@@ -30,7 +30,7 @@ const attr = (id: string): CommitAttribution => {
 };
 
 beforeAll(async () => {
-  repo = buildNeverHumanRepo();
+  repo = await buildNeverHumanRepo();
   claude = writeNeverHumanClaude(repo);
   ({ snapshot, logs } = await scan({ repoDir: repo.dir, windowMonths: 24, ingest: true,
     claudeProjectsDir: join(claude.claudeDir, 'projects'), keyFor: KEY }));
@@ -174,7 +174,7 @@ describe('Issue #5 case 5: self identity under .mailmap', () => {
   const CANONICAL = 'ada@canonical.example';
   /** Scans the basic fixture with a .mailmap and, optionally, a different raw user.email / user.name. */
   const scanMapped = async (mailmap: string, config: Record<string, string> = {}) => {
-    const basic = buildBasicRepo();
+    const basic = await buildBasicRepo();
     const c = writeClaudeFixture(basic);
     writeFileSync(join(basic.dir, '.mailmap'), mailmap);
     for (const [k, v] of Object.entries(config)) execFileSync('git', ['config', k, v], { cwd: basic.dir });
