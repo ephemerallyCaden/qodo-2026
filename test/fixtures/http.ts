@@ -6,7 +6,7 @@ import { connect } from 'node:net';
 export interface RawResponse { status: number; headers: Record<string, string>; body: string; raw: string }
 
 /** Sends `text` as-is and reads until the server closes the connection. Status 0: closed with no response. */
-export function rawHttp(port: number, text: string, host = '127.0.0.1'): Promise<RawResponse> {
+export function rawHttp(port: number, text: string | Buffer, host = '127.0.0.1'): Promise<RawResponse> {
   return new Promise((resolve, reject) => {
     const s = connect(port, host);
     let data = '';
@@ -36,7 +36,8 @@ export interface Req {
   /** null sends no Host header. Default `127.0.0.1:<port>`. */
   host?: string | null;
   headers?: Record<string, string>;
-  body?: string;
+  /** A Buffer goes out byte for byte, so a test can send a body that isn't UTF-8 (#184). */
+  body?: string | Buffer;
 }
 
 export function req(port: number, r: Req = {}): Promise<RawResponse> {
@@ -45,7 +46,8 @@ export function req(port: number, r: Req = {}): Promise<RawResponse> {
   if (host !== null) text += `Host: ${host}\r\n`;
   for (const [k, v] of Object.entries(r.headers ?? {})) text += `${k}: ${v}\r\n`;
   if (r.body !== undefined) text += `Content-Length: ${Buffer.byteLength(r.body)}\r\n`;
-  return rawHttp(port, `${text}Connection: close\r\n\r\n${r.body ?? ''}`);
+  const head = `${text}Connection: close\r\n\r\n`;
+  return rawHttp(port, Buffer.isBuffer(r.body) ? Buffer.concat([Buffer.from(head), r.body]) : head + (r.body ?? ''));
 }
 
 export interface Stream { text: () => string; close: () => void; status: Promise<number> }

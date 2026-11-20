@@ -1,5 +1,6 @@
 // The hardened local server behind `commet open` (R14). The only listener Commet has: 127.0.0.1,
 // Host-checked, token-gated data routes, no CORS. Surface: docs/contracts/phase2.md.
+import { isUtf8 } from 'node:buffer';
 import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from 'node:http';
 import { API, TOKEN_HEADER, type ChartResult, type DiffQuery, type DiffResult, type LiveEvent, type ResourceEvent, type UnseenQuery, type UnseenResult } from '../core/contract/api.js';
 import { beaconTextProblem } from '../core/beacons.js';
@@ -193,12 +194,17 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
     send(res, 200, body, 'application/json; charset=utf-8');
   }
 
-  /** A write's JSON body (`what` names it in the refusals), or undefined once a refusal was sent: 415, 413 or 400. */
+  /**
+   * A write's JSON body (`what` names it in the refusals), or undefined once a refusal was sent: 415, 413 or 400.
+   * Bytes that aren't UTF-8 are refused (#184): decoding them would turn each into U+FFFD, so a note
+   * would be stored rewritten, not as sent.
+   */
   async function jsonBody(req: IncomingMessage, res: ServerResponse, what: string): Promise<unknown> {
     const type = (req.headers['content-type'] ?? '').split(';', 1)[0]!.trim().toLowerCase();
     if (type !== 'application/json') return void sendJson(res, 415, { ok: false, error: `${what} are application/json` });
     const raw = await readBody(req, MAX_BODY);
     if (raw === null) return void sendJson(res, 413, { ok: false, error: `${what} are at most ${MAX_BODY} bytes` }, { connection: 'close' });
+    if (!isUtf8(raw)) return void sendJson(res, 400, { ok: false, error: 'body is not UTF-8' });
     try {
       return JSON.parse(raw.toString('utf8'));
     } catch {

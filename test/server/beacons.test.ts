@@ -59,7 +59,7 @@ describe('the beacon routes', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  const post = (text: string, headers: Record<string, string> = { ...auth, ...json }, port = withRoutes.port) =>
+  const post = (text: string | Buffer, headers: Record<string, string> = { ...auth, ...json }, port = withRoutes.port) =>
     req(port, { method: 'POST', path: API.beacon, headers, body: text });
 
   it('GET answers the beacon view as JSON, never echoing the token; 501 when unwired', async () => {
@@ -140,6 +140,30 @@ describe('the beacon routes', () => {
       expect(JSON.parse(r.body)).toEqual({ ok: true, beacons: VIEW });
     }
     expect(seen.map((a) => a.text)).toEqual([html, emoji, 'naïve café: the ünïcode note']);
+    seen.length = 0;
+  });
+
+  it('refuses a body that isn\'t UTF-8 instead of storing U+FFFD in its place, before the state is touched (#184)', async () => {
+    // A note's bytes as a non-browser client might send them: `text` is `caf` and then `bytes`.
+    const note = (bytes: number[], prefix: number[] = []) => Buffer.concat([Buffer.from(prefix),
+      Buffer.from(`{"fileId":"${FILE}","at":"${AT}","text":"caf`), Buffer.from(bytes), Buffer.from('"}')]);
+    const malformed: [string, number[]][] = [
+      ['Latin-1 é', [0xe9]], ['a cut-off sequence', [0xc3]], ['a surrogate encoded as CESU-8', [0xed, 0xa0, 0x80]],
+      ['an overlong /', [0xc0, 0xaf]], ['a byte UTF-8 never uses', [0xff]],
+    ];
+    for (const [what, bytes] of malformed) {
+      const r = await post(note(bytes));
+      expect(r.status, what).toBe(400);
+      expect(JSON.parse(r.body), what).toEqual({ ok: false, error: 'body is not UTF-8' });
+    }
+    expect(seen).toEqual([]);
+    // A leading BOM is still refused by JSON.parse, as before.
+    const bom = await post(note([0xc3, 0xa9], [0xef, 0xbb, 0xbf]));
+    expect([bom.status, JSON.parse(bom.body)]).toEqual([400, { ok: false, error: 'body is not JSON' }]);
+    expect(seen).toEqual([]);
+    // The same note in UTF-8 reaches the state exactly as sent.
+    expect((await post(note([0xc3, 0xa9]))).status).toBe(200);
+    expect(seen.map((a) => a.text)).toEqual(['café']);
     seen.length = 0;
   });
 
