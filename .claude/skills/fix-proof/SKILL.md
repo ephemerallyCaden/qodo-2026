@@ -55,7 +55,11 @@ git rev-parse --path-format=absolute --git-common-dir   # MAIN = the directory a
 mkdir -p /tmp/fix-proof-<SHORT>               # logs live here, never in the worktree
 ```
 Stop and ask if the tree isn't clean, the fix isn't in HEAD, or the scratch branch name is taken.
-Start the record (step 7) now with these values.
+
+**Create the record file now, before step 2** (path and sections in step 7): write its title, a
+`Status: running` line and the start state. Then keep it current: right after each later step, and
+before starting the next, append that step's commands and results to the file. Don't hold them back
+to write at the end: if the run stops or dies midway, the file must already show every step done.
 
 ### 2. Read the fix and isolate its logic
 ```sh
@@ -117,10 +121,11 @@ git branch -D scratch/fix-proof-<SHORT>       # only the branch this run created
 ```
 The script must print `restored: yes`. If it doesn't, fix what it names before anything else.
 
-### 7. Write the evidence record
+### 7. The evidence record (created in step 1, finished here)
 Path: `<MAIN>/.archive/docs/hackathon/evidence/fix-proof-<SHORT>.md` (gitignored; `<MAIN>` is the
 main checkout from step 1). If it exists, use `fix-proof-<SHORT>-2.md` and so on; never overwrite.
-Write repo-relative paths only, never absolute ones. It holds:
+Write repo-relative paths only, never absolute ones. By now steps 1 to 6 are in it; finish it by
+setting `Status: complete` and writing the summary and verdict. It holds:
 
 1. **Title and summary**: the fix (SHA, subject), the tests, and the verdict in one or two sentences.
 2. **Start state**: branch, HEAD, clean tree; the scratch branch's name.
@@ -161,5 +166,5 @@ git branch -D scratch/fix-proof-<SHORT>       # if this run created it
 .claude/skills/fix-proof/scripts/check-restored.sh <START_BRANCH or -> <START_HEAD> scratch/fix-proof-<SHORT>
 ```
 If you stop with the removal applied but not yet committed, commit it on the scratch branch first
-(step 4's commit), so the switch back is clean. Write the record up to where you stopped, marked
-**incomplete**, with the reason.
+(step 4's commit), so the switch back is clean. The record already holds every step done; set
+`Status: incomplete`, with the reason and the step you stopped at.
