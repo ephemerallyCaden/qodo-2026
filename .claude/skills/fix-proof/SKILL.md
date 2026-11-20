@@ -38,6 +38,13 @@ Missing the fix or the tests, or unsure which is which: stop and ask (see "Stop 
 - **One browser at a time.** SwiftShader is CPU-bound and other agents share the machine: run
   Playwright commands one after another, never two at once and never in the background beside
   another, and keep the config's single worker.
+- **Run every named test command through the runner**, never through a pipe of your own:
+  `.claude/skills/fix-proof/scripts/run-tests.sh <SHORT> <fixed|removed|restored> <command> [args...]`.
+  It appends the command's whole output and its real `exit=<status>` to
+  `/tmp/fix-proof-<SHORT>/<phase>.log`, so a second command in a phase never overwrites the first
+  one's messages. (A plain `| tee` reports tee's status, 0, even when the tests failed.) Judge each
+  test by its own reporter line (`✓` or `✘`/`×`) and the command's `exit=`: a nonzero exit with no
+  failed test line (a crash, a config error) is a failure to run, not a result.
 - Shell variables don't survive between tool calls. Write the values from step 1 into the record
   as you go, and use them literally in later commands.
 
@@ -48,8 +55,13 @@ Missing the fix or the tests, or unsure which is which: stop and ask (see "Stop 
 git branch --show-current                     # START_BRANCH (empty: detached HEAD)
 git rev-parse HEAD                            # START_HEAD
 git status --porcelain                        # must print nothing
+# the fix is a commit:
 git rev-parse --verify '<fix>^{commit}'       # FIX (full SHA); SHORT = its first 7
 git merge-base --is-ancestor <FIX> HEAD && echo fix-in-head
+# the fix is a diff file (outside the worktree, so the tree stays clean):
+git apply -R --check <diff file> && echo fix-in-head   # its changes are all in the tree
+git hash-object <diff file>                   # SHORT = its first 7; FIX is the file's path
+# either way:
 git rev-parse --verify --quiet refs/heads/scratch/fix-proof-<SHORT> || echo scratch-name-free
 git rev-parse --path-format=absolute --git-common-dir   # MAIN = the directory above it
 mkdir -p /tmp/fix-proof-<SHORT>               # logs live here, never in the worktree
@@ -63,22 +75,26 @@ to write at the end: if the run stops or dies midway, the file must already show
 
 ### 2. Read the fix and isolate its logic
 ```sh
-git show --stat --format='%H%n%s%n%n%b' <FIX>
-git diff --name-status <FIX>^ <FIX>
+git show --stat --format='%H%n%s%n%n%b' <FIX>     # a diff file: git apply --numstat <diff file>
+git diff --name-status <FIX>^ <FIX>               # a diff file: read the file itself
 ```
 - Split the changed files into **tests** (under `test/`, or named `*.test.ts` / `*.spec.ts`) and
   **product code** (everything else that ships: `src/`, `web/`, `factory/`). The tests stay as they
   are at HEAD. The removal is the product-code part of the fix only.
-- Read every product hunk: `git diff <FIX>^ <FIX> -- <product paths>`. Each must be fix logic or its
+- Read every product hunk: `git diff <FIX>^ <FIX> -- <product paths>` (a diff file: its hunks for
+  those paths). Each must be fix logic or its
   wiring. A hunk that renames, moves or reformats code, or changes something the bug doesn't need,
   is a refactor: stop and ask which hunks are the fix.
 - Docs and comments in the fix are not logic; leave them out of the removal if they are in their own
   files.
-- For a diff file instead of a commit, use its paths the same way.
 
 ### 3. Run the named tests on the fixed code (the baseline)
-Run each named test command, one at a time, `2>&1 | tee /tmp/fix-proof-<SHORT>/fixed.log`. Every named
-test must pass. If one fails on the fixed code, stop and ask: the proof needs a green start.
+Run each named test command, one at a time, through the runner with phase `fixed`, for example:
+```sh
+.claude/skills/fix-proof/scripts/run-tests.sh <SHORT> fixed npx playwright test <spec> -g "<grep>" --reporter=list
+```
+Every named test must pass, with `exit=0`. If one fails on the fixed code, stop and ask: the proof
+needs a green start.
 
 ### 4. Remove the fix's logic on a scratch branch
 ```sh
@@ -95,9 +111,9 @@ git diff <START_HEAD> HEAD > /tmp/fix-proof-<SHORT>/removal.patch   # goes into 
   step 2, and no test file.
 
 ### 5. Run the named tests without the fix
-Run the same commands, one at a time, `2>&1 | tee /tmp/fix-proof-<SHORT>/removed.log`. For each named
-test record **pass** or **fail** and, for a failure, its exact message: the assertion's own text and
-the `Expected` / `Received` lines, copied from the log, not paraphrased.
+Run the same commands, one at a time, through the runner with phase `removed`. For each named test
+record **pass** or **fail** and, for a failure, its exact message: the assertion's own text and the
+`Expected` / `Received` lines, copied from `removed.log`, not paraphrased.
 
 Then judge each test:
 - **fails on its assertion**: it catches the bug.
@@ -114,7 +130,7 @@ Then judge each test:
 ```sh
 git switch <START_BRANCH>                     # detached start: git switch --detach <START_HEAD>
 ```
-Run the named tests again, `2>&1 | tee /tmp/fix-proof-<SHORT>/restored.log`: all must pass. Then:
+Run the named tests again through the runner with phase `restored`: all must pass, with `exit=0`. Then:
 ```sh
 git branch -D scratch/fix-proof-<SHORT>       # only the branch this run created
 .claude/skills/fix-proof/scripts/check-restored.sh <START_BRANCH or -> <START_HEAD> scratch/fix-proof-<SHORT>
