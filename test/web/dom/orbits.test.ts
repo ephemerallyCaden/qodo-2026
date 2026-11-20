@@ -33,6 +33,7 @@ function stubPage(reduced: boolean): void {
   vi.stubGlobal('document', { activeElement: null, getElementById: (id: string) => { if (!els.has(id)) els.set(id, { textContent: '', hidden: true, contains: () => false }); return els.get(id); } });
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { queued.push(cb); return queued.length; });
   vi.stubGlobal('cancelAnimationFrame', () => {});
+  vi.stubGlobal('ResizeObserver', class { observe() {} }); // the open panels' size redraws the labels (#169)
 }
 
 beforeEach(() => { queued = []; now = 0; });

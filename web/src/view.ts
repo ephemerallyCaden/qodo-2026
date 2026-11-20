@@ -10,8 +10,8 @@ import { beaconSpots, spotBody } from './model/beacons.js';
 import { FogLedger } from './model/fog.js';
 import { focusedNotes, infoLines, HELP, type BeaconInfo } from './model/describe.js';
 import { systemModel, type SystemModel } from './model/system.js';
-import { LabelLayer, lineHeight, type Label } from './labels/overlay.js';
-import { placeLabels } from './labels/place.js';
+import { LabelLayer, labelBox, lineHeight, type Label } from './labels/overlay.js';
+import { clearOf, placeLabels, type Rect } from './labels/place.js';
 import { BEACON_MARK } from './render/beacons.js';
 import { SHARED } from './render/materials.js';
 import { PixelPass } from './render/pixel.js';
@@ -60,6 +60,8 @@ export class View {
   /** The per-pixel depth fade (RenderInput.depthFade); off leaves only palette colours. */
   depthFade = true;
   showHelp = true;
+  /** The parts of the label canvas the open panels cover (#169), read every frame: note and drone labels move out from under them. */
+  covered: () => readonly Rect[] = () => [];
   constructor(viewCanvas: HTMLCanvasElement, labelCanvas: HTMLCanvasElement) {
     this.pass = new PixelPass(viewCanvas);
     this.labels = new LabelLayer(labelCanvas);
@@ -225,11 +227,12 @@ export class View {
     const { ink, accent: mark, dim } = UI_COLOURS;
     const out: Label[] = [];
     const beacons = this.beacons;
+    const covers = this.covered();
     infoLines(s.model, focus, this.fogs.fog, beacons).forEach((text, k) => out.push({ text, x: 2 * px, y: 2 * px + k * lh, align: 'left', colour: k === 0 && focus !== null ? mark : ink }));
     if (this.showHelp) out.push({ text: HELP, x: 2 * px, y: H - lh, align: 'left', colour: dim });
-    out.push(...this.noteLabels(s, frame, pose, focus, beacons, H, lh));
+    out.push(...this.clear(this.noteLabels(s, frame, pose, focus, beacons, H, lh), covers, W, H));
     // drone labels come first in the budget (a few at most), so a busy system never drops a selected drone's name
-    const drones = this.droneLabels(s, frame, pose, W, H, 2 * px, MAX_DRONE_LABELS);
+    const drones = this.droneLabels(s, frame, pose, W, H, 2 * px, MAX_DRONE_LABELS).map((l) => this.clear([l], covers, W, H)[0]!);
     for (const l of placeLabels(pose, s.spheres(frame), starBlockers(s, frame), W, H, 2 * px, MAX_LABELS - out.length - drones.length)) {
       out.push({ text: s.model.planets[l.i]!.path, x: l.x, y: l.y, align: 'centre', colour: l.i === focus ? mark : ink });
     }
@@ -255,6 +258,20 @@ export class View {
     const lines = notes.slice(0, MAX_NOTE_LABELS).map(short);
     if (notes.length > MAX_NOTE_LABELS) lines.push(`+${notes.length - MAX_NOTE_LABELS} more`);
     return lines.map((text, k) => ({ text, x, y: top - (k + 1) * lh, align: 'centre', colour: k === 0 ? UI_COLOURS.ink : UI_COLOURS.dim }));
+  }
+
+  /**
+   * Moves these labels as one block, as little as it can, fully into the W×H frame and out from under
+   * the open panels (#169: they are DOM laid over the label canvas, so a label under one can't be read).
+   */
+  private clear(group: Label[], covers: readonly Rect[], W: number, H: number): Label[] {
+    if (group.length === 0) return group;
+    const px = this.labels.px;
+    const boxes = group.map((l) => labelBox(l, px));
+    const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y));
+    const block = { x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y };
+    const { dx, dy } = clearOf(block, covers, W, H, 2 * px);
+    return group.map((l) => ({ ...l, x: l.x + dx, y: l.y + dy }));
   }
 
   /** Labels for the drones that have one (the generic drone's tool, "inferred") and the selected drone, under each. */

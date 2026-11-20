@@ -7,9 +7,11 @@ import { PARKED_POSE, startPoseAt } from './camera/pose.js';
 import { FreeFlightRig } from './camera/rig.js';
 import { ViewError, type DataClient } from './data/client.js';
 import { Drones } from './drones/controller.js';
+import { coveredBy } from './labels/overlay.js';
 import { startLoop } from './loop.js';
 import { planetLines, summaryText } from './model/describe.js';
 import { PIXEL_HEIGHT } from './model/pixels.js';
+import { byId } from './ui/dom.js';
 import type { Hud } from './ui/hud.js';
 import { Input } from './ui/input.js';
 import { Panel } from './ui/panel.js';
@@ -230,6 +232,13 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   view.reducedMotion = reduced;
   media.addEventListener('change', () => { if (!userSetMotion) setReduced(media.matches); });
   addEventListener('resize', fit);
+  // #169: the review and drone panels are DOM laid over the label canvas, so the note and drone labels
+  // move out from under the open ones. A panel that opens, closes or grows (a list that loaded) redraws,
+  // which reduced motion's still frame would otherwise not.
+  const panels = [byId('panel'), byId('drone-panel')];
+  view.covered = () => coveredBy(view.labels.canvas, panels);
+  const watch = new ResizeObserver(redraw);
+  for (const p of panels) watch.observe(p);
   fit();
 
   await update('layout');

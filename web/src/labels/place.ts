@@ -1,5 +1,6 @@
 // Where planet labels go: centred under each visible planet's disc, nearest planets first, and
-// never for a planet (or a label) hidden behind a nearer planet or the star. Pure (no DOM), so it's testable.
+// never for a planet (or a label) hidden behind a nearer planet or the star; and where a label moves
+// to stay clear of the open panels (#169). Pure (no DOM), so it's testable.
 import { flatHit, fovOf, project, projectedRadius, type OrbitPose } from '../camera/pose.js';
 import type { Occluder, Sphere } from '../model/vec.js';
 
@@ -33,4 +34,31 @@ export function placeLabels(pose: OrbitPose, planets: readonly Sphere[], occlude
   });
   out.sort((a, b) => a.depth - b.depth || a.i - b.i); // nearest first, so the cap keeps the nearest
   return out.slice(0, Math.max(0, max)).map(({ i, x, y }) => ({ i, x, y }));
+}
+
+/** A box in device px of the label canvas: its left, top, width and height. */
+export interface Rect { x: number; y: number; w: number; h: number }
+
+const overlap = (a: Rect, b: Rect): number =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
+/**
+ * How far to move a label's box so it sits fully inside the W×H frame and clear of `covers`, the open
+ * DOM panels drawn over the label canvas (#169). It moves as little as it can: to beside, above or below
+ * a cover, `gap` px from it. When no place is fully clear (a frame too small for it), it goes where the
+ * least of it is covered.
+ */
+export function clearOf(box: Rect, covers: readonly Rect[], W: number, H: number, gap: number): { dx: number; dy: number } {
+  const fit = (v: number, size: number, max: number) => Math.max(0, Math.min(v, max - size)); // a box bigger than the frame starts at 0
+  const xs = [box.x, ...covers.flatMap((c) => [c.x - gap - box.w, c.x + c.w + gap])].map((x) => fit(x, box.w, W));
+  const ys = [box.y, ...covers.flatMap((c) => [c.y - gap - box.h, c.y + c.h + gap])].map((y) => fit(y, box.h, H));
+  let best = { dx: 0, dy: 0, covered: Infinity, moved: Infinity };
+  for (const x of xs) {
+    for (const y of ys) {
+      const covered = covers.reduce((n, c) => n + overlap({ ...box, x, y }, c), 0);
+      const moved = Math.hypot(x - box.x, y - box.y);
+      if (covered < best.covered || (covered === best.covered && moved < best.moved)) best = { dx: x - box.x, dy: y - box.y, covered, moved };
+    }
+  }
+  return { dx: best.dx, dy: best.dy };
 }

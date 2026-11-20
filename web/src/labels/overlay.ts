@@ -3,6 +3,7 @@
 // as glyph bitmaps, never parsed as HTML.
 import { UI_COLOURS } from '../ui/colours.js';
 import { FONT_HEIGHT, rasterText, textWidth } from './font.js';
+import type { Rect } from './place.js';
 
 export interface Label {
   text: string;
@@ -17,6 +18,26 @@ export interface Label {
 export const fontScale = (upscale: number): number => Math.max(1, Math.floor(upscale / 2));
 /** Line height in device px. */
 export const lineHeight = (px: number): number => (FONT_HEIGHT + 2) * px;
+
+/** The box a label covers when drawn, its backing included, in device px of the label canvas. */
+export function labelBox(label: Pick<Label, 'text' | 'x' | 'y' | 'align'>, px: number): Rect {
+  const w = textWidth(label.text) * px;
+  return { x: (label.align === 'centre' ? label.x - w / 2 : label.x) - px, y: label.y - px, w: w + 2 * px, h: lineHeight(px) };
+}
+
+/**
+ * The parts of the label canvas under these elements (the open panels, DOM laid over it), in its device
+ * px (#169). A hidden element covers nothing.
+ */
+export function coveredBy(canvas: HTMLCanvasElement, els: readonly HTMLElement[]): Rect[] {
+  const c = canvas.getBoundingClientRect();
+  if (c.width === 0 || c.height === 0) return [];
+  const kx = canvas.width / c.width, ky = canvas.height / c.height;
+  return els.flatMap((e) => {
+    const r = e.hidden ? null : e.getBoundingClientRect();
+    return r && r.width > 0 && r.height > 0 ? [{ x: (r.left - c.left) * kx, y: (r.top - c.top) * ky, w: r.width * kx, h: r.height * ky }] : [];
+  });
+}
 
 /** Draws one line of text: a space-coloured backing (one font px of padding), then the glyph bits. */
 export function drawText(ctx: CanvasRenderingContext2D, label: Label, px: number): void {

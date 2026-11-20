@@ -51,6 +51,7 @@ beforeEach(() => {
   vi.stubGlobal('document', { get activeElement() { return activeElement; }, getElementById: (id: string) => { if (!els.has(id)) els.set(id, { textContent: '', hidden: true, contains: (n) => n === PANEL_BUTTON }); return els.get(id); } }); // the drone HUD line and panel host
   vi.stubGlobal('requestAnimationFrame', () => 1);
   vi.stubGlobal('cancelAnimationFrame', () => {});
+  vi.stubGlobal('ResizeObserver', class { observe() {} }); // the open panels' size redraws the labels (#169)
 });
 afterEach(() => { vi.unstubAllGlobals(); });
 

@@ -9,18 +9,25 @@ import { dirname, join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { WEB_DIST, type ChartResult, type DiffQuery, type DiffResult } from '../../src/core/contract/api.js';
 import type { BeaconAction, BeaconResult } from '../../src/core/contract/beacons.js';
+import { DETAIL_BUCKETS, type DroneDetailQuery, type DroneDetailResult, type DroneView } from '../../src/core/contract/drones.js';
 import type { ChartAction, FogView } from '../../src/core/contract/fog.js';
 import { fileIdOf } from '../../src/core/fog/index.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
-import { fovOf, project, projectedRadius, startPose } from '../../web/src/camera/pose.js';
+import type { DirId } from '../../src/core/snapshot/types.js';
+import { fovOf, project, projectedRadius, startPose, type OrbitPose } from '../../web/src/camera/pose.js';
+import { DRONE_PICK_RADIUS, placeDrone } from '../../web/src/drones/place.js';
+import { rasterText, textWidth } from '../../web/src/labels/font.js';
+import { fontScale, lineHeight } from '../../web/src/labels/overlay.js';
+import { placeLabels } from '../../web/src/labels/place.js';
 import { CORONA } from '../../web/src/model/star.js';
-import { systemModel } from '../../web/src/model/system.js';
+import { planetCentre, systemModel, type SystemModel } from '../../web/src/model/system.js';
 import { newToken } from '../../src/server/guard.js';
 import { startServer, type CommetServer } from '../../src/server/server.js';
 import { applyBeacon, readBeacons } from '../../src/state/beacons.js';
 import { applyChart, readFog } from '../../src/state/chart.js';
 import { readDiff, readUnseen } from '../../src/state/diff.js';
 import { cli } from '../fixtures/cli.js';
+import { droneView, session } from '../fixtures/drones.js';
 import { realTempDir, removeTempDirs } from '../fixtures/tmp.js';
 
 const WEB = join(import.meta.dirname, '../..', WEB_DIST);
@@ -31,6 +38,9 @@ interface Hooks {
   diff?: (q: DiffQuery, s: AbortSignal) => Promise<DiffResult>;
   chart?: (a: ChartAction) => Promise<ChartResult>;
   beacon?: (a: BeaconAction) => Promise<BeaconResult>;
+  /** #169: the drone view and a session's detail, when the fixture was made with `drones: true`. */
+  drones?: () => Promise<DroneView>;
+  droneDetail?: (q: DroneDetailQuery) => Promise<DroneDetailResult>;
 }
 interface Fixture { dir: string; server: CommetServer; hooks: Hooks; posted: BeaconAction[]; commit(at: string, change: () => void): void; scan(): Promise<void> }
 
@@ -40,8 +50,8 @@ test.afterEach(async () => {
 });
 test.afterAll(() => removeTempDirs());
 
-/** A repo with planets aa (two files) and bb (one), and a README on the star, all fogged; scanned and served. */
-async function fixture(): Promise<Fixture> {
+/** A repo with planets aa (two files) and bb (one), and a README on the star, all fogged; scanned and served. No drone route unless `drones`. */
+async function fixture(opts: { drones?: boolean } = {}): Promise<Fixture> {
   const dir = realTempDir('commet-review-');
   const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
   git('init', '-q', '-b', 'main');
@@ -72,6 +82,10 @@ async function fixture(): Promise<Fixture> {
     chart: (a) => (hooks.chart ?? ((x) => applyChart(dir, x)))(a),
     // #79: beacons through the real state module; `beacon` records every note the page sends.
     beacons: () => readBeacons(dir), beacon: (a) => { posted.push(a); return (hooks.beacon ?? ((x) => applyBeacon(dir, x)))(a); },
+    ...(opts.drones ? {
+      drones: () => (hooks.drones ?? (() => Promise.reject(new Error('no drone view set'))))(),
+      droneDetail: (q: DroneDetailQuery) => (hooks.droneDetail ?? (() => Promise.reject(new Error('no drone detail set'))))(q),
+    } : {}),
   });
   servers.push(server);
   return { dir, server, hooks, posted, commit, scan };
@@ -420,5 +434,113 @@ test.describe('#79 captain\'s log', () => {
     await applyBeacon(f.dir, { fileId: fileIdOf('README.md'), at: (await readFog(f.dir)).head, text: 'the readme explains the setup' });
     await expect.poll(() => page.$eval('#summary', (s) => s.textContent ?? ''), { timeout: 10_000 }).toContain('beacon notes, newest first: the readme explains the setup');
     await expect.poll(ink, { timeout: 5_000 }).toBeGreaterThan(before + 100);
+  });
+});
+
+test.describe('#169 labels clear of the open panels', () => {
+  /** Font px at 1280x720: the view is x4 there, so each font pixel is 2 device px (dpr 1). */
+  const PX = fontScale(4);
+  /** The device px a line of text inks, without its backing. */
+  const inkOf = (text: string) => rasterText(text).bits.reduce((n, b) => n + b, 0) * PX * PX;
+  /** Keeps the label canvas's pixels in the page, to diff against later. */
+  const keepLabels = (page: Page) => page.$eval('#labels', (c) => {
+    const canvas = c as HTMLCanvasElement;
+    (window as unknown as { __kept: Uint8ClampedArray }).__kept = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+  });
+  /** The label pixels changed since keepLabels: how many lie under `sel` (an open panel) and how many clear of it, with its box in canvas px. */
+  const changedLabels = (page: Page, sel: string) => page.$eval('#labels', (c, sel) => {
+    const canvas = c as HTMLCanvasElement;
+    const now = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    const kept = (window as unknown as { __kept: Uint8ClampedArray }).__kept;
+    const cr = canvas.getBoundingClientRect(), pr = document.querySelector(sel)!.getBoundingClientRect();
+    const k = canvas.width / cr.width;
+    const panel = { x0: (pr.left - cr.left) * k, y0: (pr.top - cr.top) * k, x1: (pr.right - cr.left) * k, y1: (pr.bottom - cr.top) * k };
+    let under = 0, clear = 0;
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const i = (y * canvas.width + x) * 4;
+        if (now[i] === kept[i] && now[i + 1] === kept[i + 1] && now[i + 2] === kept[i + 2] && now[i + 3] === kept[i + 3]) continue;
+        if (x >= panel.x0 && x < panel.x1 && y >= panel.y0 && y < panel.y1) under++;
+        else clear++;
+      }
+    }
+    return { under, clear, panel };
+  }, sel);
+  /** Waits until the label canvas holds still: reduced motion draws only when something changed. */
+  const settled = async (page: Page) => {
+    const sum = () => page.$eval('#labels', (c) => {
+      const d = (c as HTMLCanvasElement).getContext('2d')!.getImageData(0, 0, (c as HTMLCanvasElement).width, (c as HTMLCanvasElement).height).data;
+      let h = 0;
+      for (let i = 0; i < d.length; i++) h = (Math.imul(h, 31) + d[i]!) | 0;
+      return h;
+    });
+    let last = await sum();
+    await expect.poll(async () => { const now = await sum(); const same = now === last; last = now; return same; }, { intervals: [300], timeout: 10_000 }).toBe(true);
+  };
+
+  test("a focused planet's 48-character note sits fully clear of the open review panel, none of it under (AC 1, 2)", async ({ page }) => {
+    const f = await fixture();
+    await page.emulateMedia({ reducedMotion: 'reduce' }); // a still frame: the label canvas changes only with the note
+    await open(page, f, 'aa');
+    const note = 'the entry point reads its config before each run';
+    expect([...note].length).toBe(48);
+    await settled(page);
+    await keepLabels(page);
+    await applyBeacon(f.dir, { fileId: fileIdOf('aa/one.ts'), at: (await readFog(f.dir)).head, text: note });
+    await expect.poll(() => page.$eval('#summary', (s) => s.textContent ?? ''), { timeout: 10_000 }).toContain(`beacon notes, newest first: ${note}`);
+    const drawn = async () => { const c = await changedLabels(page, '#panel'); return c.under + c.clear; };
+    await expect.poll(drawn, { timeout: 5_000 }).toBeGreaterThanOrEqual(inkOf(note)); // drawn, wherever it is
+    await settled(page);
+    const got = await changedLabels(page, '#panel');
+    // The focused planet is framed mid-frame: the note centred on it would run under the panel.
+    expect(640 + (textWidth(note) * PX) / 2, 'the note, centred on the planet, reaches under the panel').toBeGreaterThan(got.panel.x0);
+    expect(got.under, 'note pixels under the open review panel').toBe(0);
+    expect(got.clear, 'note pixels clear of it').toBeGreaterThanOrEqual(inkOf(note));
+  });
+
+  /** The first drone seed, on any planet, whose drone at frame 0 sits low in the frame's left (where the drone panel opens) in front of its home. */
+  function lowLeftDrone(model: SystemModel, pose: OrbitPose) {
+    for (let seed = 0; seed < 5000; seed++) {
+      for (const p of model.planets) {
+        const d = placeDrone(model, p.dirId, seed, 0)!;
+        const at = project(pose, d.centre), home = project(pose, planetCentre(p, 0));
+        if (!at || !home || at.depth >= home.depth) continue;
+        const [l] = placeLabels(pose, [{ centre: d.centre, radius: DRONE_PICK_RADIUS }], [], 1280, 720, 2 * PX, 1);
+        if (l && l.x > 90 && l.x < 200 && l.y > 560 && l.y < 620) return { home: p.dirId, seed, click: { x: ((at.x + 1) / 2) * 1280, y: ((1 - at.y) / 2) * 720 }, label: l };
+      }
+    }
+    throw new Error('no seed puts a drone low on the left');
+  }
+
+  test("a selected drone's label low in the frame sits clear of its open panel, none of it under (#169 comment)", async ({ page }) => {
+    const f = await fixture({ drones: true });
+    const layout = JSON.parse(readFileSync(join(f.dir, '.git', 'commet', 'layout.json'), 'utf8')) as LayoutV1;
+    const model = systemModel(layout);
+    const drone = lowLeftDrone(model, startPose(model));
+    const s = session(1, drone.home as DirId, { seed: drone.seed });
+    f.hooks.drones = async () => droneView(layout.source.head, [s]);
+    // Its files, so the panel is as tall as a real one: one file edited 3 times, in the last slice.
+    f.hooks.droneDetail = async (q) => ({ ok: true, schemaVersion: 'drone-detail.1', head: q.at, key: q.key, startedAt: s.startedAt, endedAt: s.endedAt,
+      files: [{ fileId: fileIdOf('bb/three.ts'), path: 'bb/three.ts', edits: 3 }], otherFiles: 0, otherEdits: 0,
+      buckets: Array.from({ length: DETAIL_BUCKETS }, (_, i) => (i === DETAIL_BUCKETS - 1 ? 3 : 0)), spanMs: 3_600_000, needsRescan: false });
+    await page.emulateMedia({ reducedMotion: 'reduce' }); // frame 0, held: the drone stays where it was placed
+    await page.goto(f.server.url);
+    await page.waitForSelector('#panel:not([hidden]) li button');
+    await page.click('#panel button[data-key="dismiss"]');
+    await expect.poll(() => page.$eval('#drones-hud', (e) => e.textContent ?? ''), { timeout: 10_000 }).toContain('1 drone shown');
+    await settled(page);
+    await keepLabels(page);
+    await page.mouse.click(drone.click.x, drone.click.y);
+    await page.waitForSelector('#drone-panel:not([hidden]) li'); // open, with its file list
+    const drawn = async () => { const c = await changedLabels(page, '#drone-panel'); return c.under + c.clear; };
+    await expect.poll(drawn, { timeout: 5_000 }).toBeGreaterThanOrEqual(inkOf('claude-code')); // drawn, wherever it is
+    await settled(page); // the panel's list asked for its files: it may grow once more
+    const got = await changedLabels(page, '#drone-panel');
+    // Under its drone, where it was drawn before #169, the label would sit inside the open panel.
+    const w = textWidth('claude-code') * PX;
+    const was = { x: drone.label.x - w / 2 - PX, y: drone.label.y - PX, w: w + 2 * PX, h: lineHeight(PX) }; // centred, with its backing
+    expect(was.x < got.panel.x1 && was.x + was.w > got.panel.x0 && was.y < got.panel.y1 && was.y + was.h > got.panel.y0, `label box ${JSON.stringify(was)} vs panel ${JSON.stringify(got.panel)}`).toBe(true);
+    expect(got.under, 'selected drone label pixels under the open drone panel').toBe(0);
+    expect(got.clear, 'label pixels clear of it').toBeGreaterThanOrEqual(inkOf('claude-code'));
   });
 });
