@@ -71,4 +71,5 @@ The design mockups live on `feature/asset-library` (the art line) under `mockups
 - Before you report a finished task: typecheck, lint and the touched tests (no `/verify` after every edit, no `/simplify` sweeps).
 - When a build or test fails: run `/fix` with the error output.
 - Before committing: review `git diff --cached` for debug code, secrets and stray files.
+- Before a fix PR: `/fix-proof <fix commit> <tests>` (`.claude/skills/fix-proof`): proves each test fails without the fix.
 - When exploring unfamiliar code: use the `explorer` agent.
