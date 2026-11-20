@@ -127,6 +127,20 @@ const openFile = async (page: Page, path: string) => {
   await page.click(`#panel button[data-key="file:${fileIdOf(path)}"]`);
 };
 
+/** #170: aa/one.ts grows to 400 lines of over 200 characters, so its diff scrolls both ways. */
+async function longDiff(f: Fixture): Promise<void> {
+  f.commit('2026-10-10T10:00:00Z', () => writeFileSync(join(f.dir, 'aa/one.ts'), Array.from({ length: 400 }, (_, i) => `// line ${i} ${'='.repeat(200)}\n`).join('')));
+  await f.scan();
+}
+const panelText = (page: Page) => page.$eval('#panel', (p) => p.textContent ?? '');
+const diffScroll = (page: Page) => page.$eval('#panel pre.diff', (p) => [p.scrollTop, p.scrollLeft]);
+/** Scrolls the open diff to where the issue's reader was (scrollTop 1310), and some way right. */
+async function scrollDiff(page: Page): Promise<void> {
+  await page.$eval('#panel pre.diff', (p) => { p.scrollTop = 1310; p.scrollLeft = 240; });
+  // The diff really scrolled, so the checks after a redraw can't pass on a diff too short to move.
+  expect(await diffScroll(page)).toEqual([1310, 240]);
+}
+
 test.describe('#75 review panel', () => {
   test('a diff still loading for the old planet never opens under the new one (Qodo local r1 #2)', async ({ page }) => {
     const f = await fixture();
@@ -269,6 +283,20 @@ test.describe('#75 review panel', () => {
     expect(await page.$('#panel pre.diff')).toBeNull();
   });
 
+  test('a newer commit landing while a diff is read redraws the panel and keeps the diff where the reader was (#170)', async ({ page }) => {
+    const f = await fixture();
+    await longDiff(f);
+    await open(page, f, 'aa');
+    await openFile(page, 'aa/one.ts');
+    await page.waitForSelector('#panel pre.diff');
+    await scrollDiff(page);
+    // Another file's commit: the head moves on, the open diff stays chartable and gets a note above it.
+    f.commit('2026-10-10T11:00:00Z', () => appendFileSync(join(f.dir, 'bb/three.ts'), '// next\n'));
+    await f.scan();
+    await expect.poll(() => panelText(page), { timeout: 10_000 }).toContain('Newer commits arrived.');
+    expect(await diffScroll(page)).toEqual([1310, 240]);
+  });
+
   test('a planet renamed under its id gets its new name in the panel (PR #108 r1 #9)', async ({ page }) => {
     const f = await fixture();
     await open(page, f, 'aa');
@@ -325,6 +353,24 @@ test.describe('#79 captain\'s log', () => {
     await page.click('#panel button[data-key="chart"]');
     await expect.poll(() => page.$eval('#panel', (p) => p.textContent ?? ''), { timeout: 10_000 }).toContain('Nothing was charted: the note must be one line of plain text, without control characters.');
     expect(await page.$eval('#panel input[data-key="note"]', (i) => (i as HTMLInputElement).value)).toBe('safe\u202etxt.exe');
+    expect(await activeInPanel(page)).toBe('INPUT:note');
+    expect(f.posted).toEqual([]);
+    expect(existsSync(join(f.dir, '.git', 'commet', 'chart.json'))).toBe(false);
+  });
+
+  test('a note refused on Enter keeps the diff where the reader was, and the field as typed (#170)', async ({ page }) => {
+    const f = await fixture();
+    await longDiff(f);
+    await open(page, f, 'aa');
+    await openFile(page, 'aa/one.ts');
+    await page.waitForSelector('#panel input[data-key="note"]');
+    await scrollDiff(page);
+    const note = 'x'.repeat(121);
+    await page.fill('#panel input[data-key="note"]', note);
+    await page.press('#panel input[data-key="note"]', 'Enter');
+    await expect.poll(() => panelText(page), { timeout: 10_000 }).toContain('Nothing was charted: the note is longer than 120 characters.');
+    expect(await diffScroll(page)).toEqual([1310, 240]);
+    expect(await page.$eval('#panel input[data-key="note"]', (i) => (i as HTMLInputElement).value)).toBe(note);
     expect(await activeInPanel(page)).toBe('INPUT:note');
     expect(f.posted).toEqual([]);
     expect(existsSync(join(f.dir, '.git', 'commet', 'chart.json'))).toBe(false);
