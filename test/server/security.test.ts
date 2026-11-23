@@ -501,6 +501,20 @@ describe('R14 server: missing bundle, missing snapshot, and the R5 seams', () =>
     }
   });
 
+  it('refuses a chart body that isn\'t UTF-8 before parsing it, so a valid duplicate key can\'t carry it through (#184)', async () => {
+    const seen: ChartAction[] = [];
+    const f = await fixture({ fog: true, chart: async (a) => (seen.push(a), { ok: true, fog: miniFog }) });
+    try {
+      // JSON.parse keeps the last `at`, so before #184 the U+FFFD in the first one was dropped and the baseline written.
+      const body = Buffer.concat([Buffer.from('{"kind":"baseline","at":"'), Buffer.from([0xe9]), Buffer.from(`","at":"${AT}"}`)]);
+      const r = await req(f.port, { method: 'POST', path: API.chart, headers: { [TOKEN_HEADER]: f.token, 'content-type': 'application/json' }, body });
+      expect([r.status, JSON.parse(r.body)]).toEqual([400, { ok: false, error: 'body is not UTF-8' }]);
+      expect(seen).toEqual([]);
+    } finally {
+      await teardown(f);
+    }
+  });
+
   it('answers 409 for a chart action at an unknown head and 400 for other refusals, with no fog event (#58)', async () => {
     const head = 'b'.repeat(40);
     const results: ChartResult[] = [{ ok: false, error: 'unknown-head', head }, { ok: false, error: 'no such file at that head' }];
