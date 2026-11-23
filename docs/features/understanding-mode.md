@@ -27,7 +27,14 @@ Crew
 Views
 - [ ] U10. **Directory view.** A 2D file tree alongside the map, for people who'd rather browse folders. It shows each file's fog level, and clicking a file focuses it on the map.
 
-Agent bridge (shared by U4–U7 and U9)
+Understanding quality and connections (the human, 2026-11-23, after the loop review)
+- [ ] U4a. **Trustworthy answers** (in #203): every answer cites a real file and line that Commet checks. A "this question is wrong" button discards and replaces a question. Clearing needs at least one point-at-it answer.
+- [ ] U12. **Weighted mastery and a "start here" order**, from git-only weights (size, churn, connections).
+- [ ] U13. **Co-change constellations** (R9): files that usually change together, as lines on the focused item, with a "usually changes with X" flag.
+- [ ] U14. **Connections panel**: in / file / out columns with arrows (imports in, imports out), plus a dashed "changes together" group. Click a row to walk the chain, with a breadcrumb.
+- [ ] U15. **Agent debrief**: from a drone's panel, a quiz on what that session just changed. A notice offers it after a new session appears.
+
+Agent bridge (shared by U4–U7, U9 and U15)
 - [ ] U11. **Your own coding agent writes the questions**, e.g. Claude Code via `claude -p`. There's a one-time opt-in per repo, recorded locally, and everything non-AI works without it.
   - Agent runs get no tools: content goes in on stdin, and the output is untrusted JSON, validated and rendered as text only.
   - Secrets and excluded files (`.env`, keys, anything matching the scan's exclusions) are never sent.
@@ -52,7 +59,11 @@ Headline (challenge-day work):
 - #208 AI summary on demand (U9)
 - #204 Call-chain quiz (U5)
 - #206 Incident drills (U6, stretch)
+- #212 Connections panel (U14); needs the human's call on text-pattern import detection vs 'no language parsers'
+- #213 Agent debrief quiz (U15)
+- #210 Weighted mastery + 'start here' (U12)
 
 Side quests (small; ship off a challenge day and note them in a post):
 - #205 Daily mission (U7)
 - #209 Directory view (U10)
+- #211 Co-change constellations (U13, R9)
