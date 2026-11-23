@@ -449,9 +449,10 @@ export class Panel {
   }
 
   /**
-   * Rebuilds the panel (an open diff's lines are reattached, not rebuilt). Keyboard focus stays on
-   * the same control, by key, or moves to the control `focus` names; when that control is gone (a
-   * charted file leaves the list, or `focus` is 'list'), to the list's first file, else to close.
+   * Rebuilds the panel (an open diff's lines are reattached, not rebuilt, and keep their scroll
+   * position). Keyboard focus stays on the same control, by key, or moves to the control `focus`
+   * names; when that control is gone (a charted file leaves the list, or `focus` is 'list'), to the
+   * list's first file, else to close.
    */
   private render(focus?: string): void {
     const fog = this.fog;
@@ -464,6 +465,11 @@ export class Panel {
     }
     this.root.setAttribute('aria-busy', String(this.busy));
     const focused = document.activeElement instanceof HTMLElement && document.activeElement.closest('#panel') ? document.activeElement : null;
+    // Moving the diff's lines into the new box resets their scroll offsets, so a redraw (a refused
+    // note, a newer fog, a new text scale) would put the reader back at the top (#170). Read them
+    // first, while the lines are still shown.
+    const pre = this.open?.pre;
+    const kept = pre?.isConnected ? { pre, top: pre.scrollTop, left: pre.scrollLeft } : null;
     const top = document.createElement('div');
     top.className = 'top';
     top.append(this.heading(this.home.name, 'h2'), this.button('close', 'close', 'Close the review panel', () => this.close()));
@@ -473,6 +479,10 @@ export class Panel {
     parts.push(this.open ? this.diffBox(this.open, fog) : this.listBox());
     if (this.note) parts.push(this.text(this.note));
     this.root.replaceChildren(...parts);
+    if (kept) {
+      kept.pre.scrollTop = kept.top;
+      kept.pre.scrollLeft = kept.left;
+    }
     // Focus inside the panel never drops to the page: a control without a key (the diff text, after
     // Escape closed it) falls back like a removed one (Qodo local r1 #5).
     const key = focus ?? (focused === null ? undefined : focused === this.open?.pre ? 'pre' : focused.dataset['key'] ?? '');
