@@ -18,6 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -37,6 +38,8 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - run: npm ci
       # Builds dist/web first (test/render/global-setup.ts): view.spec.ts drives the built view.
       - run: npm run test:render
@@ -60,6 +63,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - run: sh .github/scripts/golden-update.sh "$BASE" "$HEAD"
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
