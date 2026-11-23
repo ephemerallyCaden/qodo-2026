@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>co-change lab · commet</title>
+  <!-- UI chrome only: every pixel of the view comes from the viewer's factories, the lab's overlay and the bitmap font. -->
+  <style>
+    html, body { margin: 0; height: 100%; background: #0d0b16; color: #e6e0ee; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+    body { display: grid; grid-template-columns: 280px 1fr; }
+    aside { padding: 10px 12px; background: #15121f; border-right: 1px solid #2f2a44; overflow-y: auto; }
+    h1 { font-size: 13px; margin: 0 0 10px; color: #fff6e4; font-weight: 600; }
+    label { display: grid; grid-template-columns: 80px 1fr; align-items: center; gap: 6px; margin: 6px 0; color: #a99cbf; }
+    select, input { font: inherit; color: #e6e0ee; background: #2a2440; border: 1px solid #4a4266; }
+    select:focus-visible, input:focus-visible, #out:focus-visible { outline: 2px solid #00ffd5; outline-offset: 1px; }
+    #status, .note { color: #8d83a6; margin-top: 10px; }
+    main { display: grid; place-items: center; overflow: hidden; }
+    #view { display: none; }
+    #out { image-rendering: pixelated; display: block; cursor: pointer; }
+    html.capture body { display: block; }
+    html.capture aside, html.capture #out { display: none; }
+  </style>
+  <script type="importmap">{ "imports": {
+    "three": "./node_modules/three/build/three.module.js",
+    "three/addons/": "./node_modules/three/examples/jsm/"
+  } }</script>
+  <!-- Library mode for ../asset-viewer/viewer.js: share its renderer, camera and factories; no viewer UI or loop. -->
+  <script>window.ASSET_VIEWER_LIBRARY = true; if (location.search.includes('capture')) document.documentElement.classList.add('capture');</script>
+</head>
+<body>
+  <aside aria-label="Controls">
+    <h1>co-change lab <span style="color:#8d83a6">· commet</span></h1>
+    <label>line style <select id="opt"></select></label>
+    <label>focus <select id="focus"></select></label>
+    <label>reduced motion <input id="reduced" type="checkbox"></label>
+    <label>play <input id="play" type="checkbox" checked></label>
+    <div id="status" role="status"></div>
+    <p class="note">Click a planet to focus it, or empty space to clear. Lines draw in from the focused planet (or file) to its strongest co-change partners. The teal pair glyph is the missing-pair flag. Reduced motion follows the system setting and freezes the frame where it was switched on.</p>
+  </aside>
+  <main><canvas id="view"></canvas><canvas id="out" tabindex="0" aria-label="The system view"></canvas></main>
+  <script type="module" src="./lab.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "cochange-lab",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Co-change constellations design lab (#211): three line styles for a focused planet's or file's strongest co-change partners, and the missing-pair flag, in the viewer's system scene.",
+  "type": "module",
+  "scripts": {
+    "dev": "node serve.mjs",
+    "lab": "node lab.mjs",
+    "test": "node --test --test-concurrency=1 test/pure.test.mjs test/render.test.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}
