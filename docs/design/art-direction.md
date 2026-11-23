@@ -184,6 +184,16 @@ Stale work (R13) drifts near the planets it touches, as tumbling satellite parts
 ### Moons
 Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on inclined elliptical orbits, passing in front at the bottom and fully behind the disc, depth-sorted. Their speed changes come only from circular projection, with no easing. Moons mean test files (#18, up to 24 per planet with the rest counted); how many moons read at a glance isn't designed yet.
 
+### Constellations (co-change)
+Files that usually change in the same commit (R9, #211; the human picked option B, "signal", from `mockups/cochange-lab/` on `feature/asset-library`, 2026-11-23). The view's code is `web/src/cochange/`.
+- **Only in focus:** lines are drawn only for the focused planet or file; an unfocused frame has none (no hairball). A planet draws one line per partner body, at most 4, at its strongest file pair there; a file one per body holding one of its 5 strongest partners. A partner on the file's own planet can't be drawn without crossing the disc, so it's named under the focused file ("with core/territory.ts"); file focus relies on labels, with no extra surface mark.
+- **The signal line:** a dim 2 px rail (`#3b3866`) with 1, 2 or 3 travelling beads by strength step (Jaccard from 0.15, 0.30, 0.50), each bead a `#fff8ff` head and a `#9a90e0` tail, running from the focus to the partner once every 3 s (16 trips a loop). These are the starfield's own three colours, never depth-faded: a constellation is drawn in starlight, as a HUD layer.
+- **Don't fight:** lines are whole 2 px stamps at the internal resolution, drawn only over empty space (space or a star) and stopping 1 px short of every body, cloud, moon, drone, beacon, the star and its corona, every label and every marker, then carrying on past it.
+- **Draw-in:** over 0.7 s from the focused end, strongest first, 0.1 s apart, easing out. Reduced motion draws them at once with the beads frozen (§7).
+- **Off screen:** a partner whose body is off the frame gets an edge arrow (a `#9a90e0` chevron) where its line leaves the frame, with the partner's name; clicking it focuses that partner (the star's: free flight).
+- **Missing-pair flag:** a flat teal 12×6 glyph, a filled `#00bc9c` dot linked to an empty `#00ffd5` ring (the pair's missing half), 2 px beside the flagged file's body at mid height, on the side with room for its text. It's an alert, so it's **always visible**, focused or not; its two lines of text ("<file>" / "usually changes with <file>") show while its pair is in focus, for at most 3 flags, strongest first, with the rest as one "+N more" line. Recent changes only (the human, 2026-11-23): a strong partner (3 or more shared commits) changed in the last 10 commits and the file didn't; an older skip is settled. It clears when a later change touches the file, or when the file is charted.
+- **Test pairs:** a file paired with its own test gets no line to the moon. The moon gets a 1 px teal tick (2 px tall, 1 px above it), and the planet's flag says "tests usually change with this".
+
 ## 7. Motion
 
 - **Loop lock:** every layer except the planets' orbits completes a whole number of cycles per loop. The default loop is **48 s** (human, 2026-11-19, #174; it was 24 s, so every looped layer now runs at half that rate, with the same turns per loop and so the same ratios):
@@ -260,8 +270,9 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 | Astronaut | Chibi SDF, 4:3 screen visor, ApprenticeHack V2 eyes, BLK 36 |
 | Code layer | Filter-style glyphs; planet artefacts adopted as a toggle |
 | Labels and UI | Bitmap pixel font at native resolution, outside the pixel pass |
+| Constellations | Option B "signal" (#211): focus only; a dim 2 px rail with 1–3 beads by strength in the starfield's colours, only over empty space, 1 px clear of everything; 0.7 s draw-in, at once under reduced motion; edge arrows; the teal missing-pair flag, always visible (§6 "Constellations") |
 
-**Not designed yet:** per-agent drones (the base drone D-final is picked on `feature/drone-lab`), captain's log beacons, co-change constellations, the suspicious-silence flag, many moons at a glance, warp transitions, and the label/UI layout.
+**Not designed yet:** per-agent drones (the base drone D-final is picked on `feature/drone-lab`), captain's log beacons, the suspicious-silence flag, many moons at a glance, warp transitions, and the label/UI layout.
 
 **In progress:** lava and ice open areas, orange lava with yellow accents, and bluer lava rock (§6); the pixel-smooth default switch (§5).
 

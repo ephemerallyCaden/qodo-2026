@@ -31,8 +31,8 @@ export function lookOf(band: HealthBand, biomeSeed: number): Look {
   }
 }
 
-/** A moon's orbit, in render units around its planet's centre. */
-export interface MoonModel { fileId: string; slot: number; orbit: number; incl: number; yaw: number; offset: number }
+/** A moon's orbit, in render units around its planet's centre, and what its test tests (#211: a file paired with its own test). */
+export interface MoonModel { fileId: string; testOf: string; slot: number; orbit: number; incl: number; yaw: number; offset: number }
 export interface MoonletModel { fileId: string; slot: number; orbit: number; incl: number; offset: number }
 
 export interface PlanetModel {
@@ -81,9 +81,10 @@ const MOON_LANE = { first: 1.36, step: 0.05 } as const;
 
 const ms = (milli: number) => milli / MILLI_PER_RENDER_UNIT;
 
-function moonModel(planetRadius: number, fileId: string, slot: number): MoonModel {
+function moonModel(planetRadius: number, fileId: string, testOf: string, slot: number): MoonModel {
   return {
     fileId,
+    testOf,
     slot,
     orbit: planetRadius * (MOON_LANE.first + MOON_LANE.step * slot) + MOON_RADIUS,
     incl: 0.2 + 0.3 * fract(slot * INV_PHI), // 0.2..0.5 rad: passes in front at the bottom, behind at the top
@@ -106,7 +107,7 @@ function planetModel(p: Planet): PlanetModel {
     orbit: ms(p.slot.radiusMilli),
     phase: p.slot.phaseMilliturn / 1000,
     slot: p.slot.index,
-    moons: p.moons.map((m) => moonModel(radius, m.fileId, m.slot)),
+    moons: p.moons.map((m) => moonModel(radius, m.fileId, m.testOf, m.slot)),
     surface: { cells: p.surface.grid.cells, settlements: p.surface.settlements.map((s) => ({ fileId: s.fileId, cell: s.cell })) },
     counts: {
       loc: p.loc,

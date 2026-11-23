@@ -570,6 +570,19 @@ export const STARFIELD_FRAG = /* glsl */ `
 
 /** The upscale: each output pixel copies exactly one internal texel (nearest neighbour, whole factor). */
 export const BLIT_VERT = /* glsl */ `void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+/**
+ * The constellation overlay (#211) into the internal target, texel for pixel: drawn texels replace the
+ * scene's pixel exactly (palette colours from the overlay's own table, no blending), the rest is left
+ * as it is. Not a post-process: it adds HUD marks at the internal resolution, as the lab drew them.
+ */
+export const OVERLAY_FRAG = /* glsl */ `
+  uniform sampler2D uOverlay;
+  void main() {
+    vec4 c = texelFetch(uOverlay, ivec2(floor(gl_FragCoord.xy)), 0);
+    if (c.a < 0.5) discard;
+    gl_FragColor = vec4(c.rgb, 1.0);
+  }
+`;
 export const BLIT_FRAG = /* glsl */ `
   uniform sampler2D uSource;
   uniform float uScale;

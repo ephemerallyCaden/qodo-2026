@@ -5,6 +5,7 @@ import type { RenderHook, RenderInput, RenderStats } from '../../src/core/contra
 import { fromCameraPose, startPose, type OrbitPose } from './camera/pose.js';
 import { checkDrones } from './drones/check.js';
 import { checkBeacons } from './model/beacons.js';
+import { checkCoChange } from './cochange/check.js';
 import { entryOf, selectDrones } from './drones/select.js';
 import { effectiveFrame } from './model/motion.js';
 import { checkLayout } from './model/validate.js';
@@ -14,6 +15,8 @@ import type { View } from './view.js';
 export function renderHook(view: View, viewport: () => { w: number; h: number; dpr: number }): RenderHook {
   let input: RenderInput | null = null;
   let pose: OrbitPose | null = null;
+  /** #211: the planet focused from frame 0 (RenderInput.focus), or null. */
+  let focus: number | null = null;
   return {
     // The renderer exists (the caller built the view) and the label font is bitmap data; this also
     // waits for any document font, so `ready` means fonts have loaded.
@@ -37,9 +40,21 @@ export function renderHook(view: View, viewport: () => { w: number; h: number; d
         if (!b.ok) throw new Error(`invalid beacons: ${b.errors.join('; ')}`);
         if (b.value.head !== head) throw new Error(`beacons are of ${b.value.head.slice(0, 7)} but the layout of ${head.slice(0, 7)} (different scans)`);
       }
+      if (next.cochange) {
+        const c = checkCoChange(next.cochange);
+        if (!c.ok) throw new Error(`invalid cochange: ${c.errors.join('; ')}`);
+        if (c.value.head !== head) throw new Error(`cochange is of ${c.value.head.slice(0, 7)} but the layout of ${head.slice(0, 7)} (different scans)`);
+      }
+      const focusAt = next.focus ? checked.value.planets.findIndex((p) => p.dirId === next.focus!.dirId) : -1;
+      if (next.focus && focusAt < 0) throw new Error('invalid focus: dirId is not a planet of the layout');
       await view.load(checked.value, next.fog ?? null, { animate: false }); // no fronts: a frame is a pure function of (input, n)
       await view.setDrones(drones.map(entryOf), head);
       view.setBeacons(next.beacons ?? null, head); // this input's beacons, never a previous load's
+      view.setCoChange(next.cochange ?? null, head); // #211: and its co-change, the same
+      view.reducedMotion = next.reducedMotion ?? false; // the constellation draws at once, its beads frozen (#211)
+      focus = next.focus ? focusAt : null;
+      view.focusFile = next.focus?.fileId ?? null;
+      view.focusSince = 0; // focused from frame 0: the lines draw in from it
       const vp = viewport();
       view.showHelp = false;
       view.depthFade = next.depthFade ?? true;
@@ -51,7 +66,7 @@ export function renderHook(view: View, viewport: () => { w: number; h: number; d
     },
     async renderFrame(n: number): Promise<RenderStats> {
       if (!input || !pose) throw new Error('renderFrame before load');
-      return view.draw(effectiveFrame(n, input.reducedMotion ?? false), pose, null);
+      return view.draw(effectiveFrame(n, input.reducedMotion ?? false), pose, focus);
     },
     lowResPixels() {
       if (!input) throw new Error('lowResPixels before load');

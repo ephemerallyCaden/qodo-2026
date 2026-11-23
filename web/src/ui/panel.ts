@@ -27,6 +27,8 @@ export interface PanelHost {
   /** #79: a ticket taken before a note is sent, and the beacon view its write answered with, to draw under it (Qodo 29b6e331). */
   beaconTicket(): number;
   applyBeacons(view: BeaconView, ticket: number): void;
+  /** #211: the file whose diff is open (null: none) changed: the map draws its constellation. */
+  focusFile?(fileId: string | null): void;
 }
 
 const STAR_NAME = 'the star: root files and unmatched tests';
@@ -64,6 +66,8 @@ export class Panel {
   /** Request generations: an answer for a selection or fog that has since changed is dropped. */
   private listGen = 0;
   private diffGen = 0;
+  /** The open diff's file last told to the host (#211). */
+  private told: string | null = null;
 
   constructor(private readonly host: PanelHost) {
     this.root.addEventListener('keydown', (e) => {
@@ -455,6 +459,9 @@ export class Panel {
    * list's first file, else to close.
    */
   private render(focus?: string): void {
+    // #211: every change to the open diff passes through here, so the map follows it from one place.
+    const open = this.closed ? null : this.open?.file.fileId ?? null;
+    if (open !== this.told) { this.told = open; this.host.focusFile?.(open); }
     const fog = this.fog;
     this.root.hidden = this.closed || (fog === null && !this.unavailable);
     if (this.root.hidden) return;

@@ -6,7 +6,7 @@ import type { RenderStats } from '../../../src/core/contract/api.js';
 import { palette } from '../../../src/core/palette.js';
 import { clampPixelHeight, frameWidth, PIXEL_HEIGHT, upscaleFactor } from '../model/pixels.js';
 import { color } from './materials.js';
-import { BLIT_FRAG, BLIT_VERT } from './shaders.js';
+import { BLIT_FRAG, BLIT_VERT, OVERLAY_FRAG } from './shaders.js';
 
 export class PixelPass {
   readonly renderer: THREE.WebGLRenderer;
@@ -19,6 +19,10 @@ export class PixelPass {
   scale = 1;
   /** Compile or link failures since the last takeShaderErrors(). */
   private shaderErrors: string[] = [];
+  /** #211: the constellation overlay, a nearest-sampled texture the size of the internal target, drawn over the scene into it. */
+  private readonly overlayScene = new THREE.Scene();
+  private readonly overlayMat: THREE.ShaderMaterial;
+  private overlayTex: THREE.DataTexture | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, depth: true, stencil: false, powerPreference: 'default' });
@@ -41,6 +45,13 @@ export class PixelPass {
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.blit);
     quad.frustumCulled = false;
     this.blitScene.add(quad);
+    this.overlayMat = new THREE.ShaderMaterial({
+      vertexShader: BLIT_VERT, fragmentShader: OVERLAY_FRAG, depthTest: false, depthWrite: false,
+      uniforms: { uOverlay: { value: null } },
+    });
+    const over = new THREE.Mesh(quad.geometry, this.overlayMat);
+    over.frustumCulled = false;
+    this.overlayScene.add(over);
   }
 
   private makeTarget(w: number, h: number): THREE.WebGLRenderTarget {
@@ -70,14 +81,20 @@ export class PixelPass {
     this.canvas.style.height = `${(h * this.scale) / dpr}px`;
   }
 
-  /** Renders the scene into the internal target, then upscales it to the canvas. Stats cover the whole frame: scene pass plus upscale. */
-  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera): RenderStats {
+  /**
+   * Renders the scene into the internal target, then upscales it to the canvas. Stats cover the whole frame: scene pass plus upscale.
+   * `overlay` (#211) is given a reader of the rendered target and returns RGBA rows (top-down, the target's size, alpha 0 where
+   * nothing is drawn) to draw over it before the upscale, or null for none: then the frame is exactly what it was without it.
+   */
+  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, overlay?: (pixels: () => Uint8Array) => Uint8Array | null): RenderStats {
     camera.aspect = this.width / this.height;
     camera.updateProjectionMatrix();
     const r = this.renderer;
     r.info.reset();
     r.setRenderTarget(this.target);
     r.render(scene, camera); // autoClear: space colour, fresh depth
+    const over = overlay?.(() => this.readTarget()) ?? null;
+    if (over) this.drawOverlay(over);
     r.setRenderTarget(null);
     r.render(this.blitScene, this.blitCamera);
     // autoReset is off and info was reset at the frame's start, so these count both passes
@@ -91,22 +108,52 @@ export class PixelPass {
     return out;
   }
 
-  /** RGBA bytes of the internal target, row 0 at the top (contract: lowResPixels). */
-  pixels(): { width: number; height: number; rgba: number[] } {
+  /** The internal target's RGBA bytes, row 0 at the top. */
+  private readTarget(): Uint8Array {
     const { width: w, height: h } = this;
     const buf = new Uint8Array(w * h * 4);
     this.renderer.readRenderTargetPixels(this.target, 0, 0, w, h, buf);
-    const rgba = new Array<number>(w * h * 4);
-    for (let y = 0; y < h; y++) {
-      const src = (h - 1 - y) * w * 4; // GL rows run bottom-up
-      for (let i = 0; i < w * 4; i++) rgba[y * w * 4 + i] = buf[src + i]!;
+    const out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) out.set(buf.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4); // GL rows run bottom-up
+    return out;
+  }
+
+  /** Draws RGBA rows (top-down) over the internal target, texel for pixel: one draw call, no blending. */
+  private drawOverlay(rgba: Uint8Array): void {
+    const { width: w, height: h } = this;
+    if (!this.overlayTex || this.overlayTex.image.width !== w || this.overlayTex.image.height !== h) {
+      this.overlayTex?.dispose();
+      this.overlayTex = new THREE.DataTexture(new Uint8Array(w * h * 4), w, h, THREE.RGBAFormat, THREE.UnsignedByteType);
+      this.overlayTex.minFilter = THREE.NearestFilter;
+      this.overlayTex.magFilter = THREE.NearestFilter;
+      this.overlayTex.generateMipmaps = false;
+      this.overlayMat.uniforms['uOverlay']!.value = this.overlayTex;
     }
-    return { width: w, height: h, rgba };
+    const data = this.overlayTex.image.data as Uint8Array;
+    for (let y = 0; y < h; y++) data.set(rgba.subarray(y * w * 4, (y + 1) * w * 4), (h - 1 - y) * w * 4); // texture rows run bottom-up
+    this.overlayTex.needsUpdate = true;
+    const r = this.renderer;
+    r.autoClear = false;
+    try {
+      r.render(this.overlayScene, this.blitCamera);
+    } finally {
+      r.autoClear = true;
+    }
+  }
+
+  /** Compiles the overlay's program, so View.load's shader check covers it before any frame needs it. */
+  compileOverlay(): void { this.renderer.compile(this.overlayScene, this.blitCamera); }
+
+  /** RGBA bytes of the internal target, row 0 at the top (contract: lowResPixels). */
+  pixels(): { width: number; height: number; rgba: number[] } {
+    return { width: this.width, height: this.height, rgba: Array.from(this.readTarget()) };
   }
 
   dispose(): void {
     this.target.dispose();
     this.blit.dispose();
+    this.overlayMat.dispose();
+    this.overlayTex?.dispose();
     this.renderer.dispose();
   }
 }

@@ -14,6 +14,7 @@ import type { Hud } from '../../../web/src/ui/hud.js';
 import type { View } from '../../../web/src/view.js';
 import { DETAIL_BUCKETS, type DroneDetail, type DroneDetailResult, type DroneView } from '../../../src/core/contract/drones.js';
 import type { BeaconView } from '../../../src/core/contract/beacons.js';
+import type { CoChangeView } from '../../../src/core/contract/cochange.js';
 import type { FleetEntry } from '../../../web/src/render/drone-fleet.js';
 import { miniFog, miniLayout } from '../../fixtures/contract/mini.js';
 import type { DirId } from '../../../src/core/snapshot/types.js';
@@ -32,6 +33,9 @@ const fogAt = (head: string, baseline: string | null = null): FogView => ({ ...m
 /** A beacon view of `head` with one note per text, on the mini fixture's first planet. */
 const beaconsAt = (head: string, texts: string[] = []): BeaconView => ({ schemaVersion: 'beacons.1', head, unplaced: 0,
   beacons: texts.map((text, i) => ({ fileId: `f_${String(i).padStart(12, '0')}`, path: `a/${i}.ts`, home: miniLayout.planets[0]!.dirId, at: head, text })) });
+
+/** An empty co-change view of `head` (#211). */
+const coAt = (head: string): CoChangeView => ({ schemaVersion: 'cochange.1', head, needsRescan: false, links: [], flags: [], dismissed: 0, files: [] });
 
 /** The page's elements by id, as the drone controller finds them. */
 const els = new Map<string, { textContent: string; hidden: boolean; contains?: (n: unknown) => boolean }>();
@@ -72,6 +76,9 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
   /** Answers for the beacon view (#79), in turn; with none queued, an empty one of the layout's head. */
   const beaconAnswers: (() => Promise<BeaconView>)[] = [];
   let beaconCalls = 0;
+  /** Answers for the co-change view (#211), in turn; with none queued, an empty one of the layout's head. */
+  const coAnswers: (() => Promise<CoChangeView>)[] = [];
+  let coCalls = 0;
   /** Answers for a session's detail (#148), in turn; with none queued, an empty detail of the asked key and head. */
   const detailAnswers: (() => Promise<DroneDetailResult>)[] = [];
   const detailAsked: { key: string; at: string }[] = [];
@@ -90,6 +97,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     chart: async () => ({ ok: false, error: 'not used' }),
     beacons: () => { beaconCalls++; return (beaconAnswers.shift() ?? (async () => beaconsAt(head)))(); },
     beacon: async () => ({ ok: false, error: 'not used' }),
+    cochange: () => { coCalls++; return (coAnswers.shift() ?? (async () => coAt(head)))(); },
   };
   let model: SystemModel | null = null;
   const view = {
@@ -115,6 +123,14 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     setDrones: async (e: readonly FleetEntry[]) => { view.drawn = e; return true; },
     beaconsDrawn: null as BeaconView | null,
     setBeacons: (v: BeaconView | null) => { view.beaconsDrawn = v; return true; },
+    coDrawn: null as CoChangeView | null,
+    setCoChange: (v: CoChangeView | null) => { view.coDrawn = v; return true; },
+    coChangeLines: () => [] as string[],
+    focusFile: null as string | null,
+    focusSince: 0,
+    /** What View.arrowAt answers for a click (#211): a planet's index, -1 the star, or null for no arrow there. */
+    arrowTo: null as number | null,
+    arrowAt: () => view.arrowTo,
     droneAt: null as string | null,
     planetAt: null as number | null,
     pickDroneAt: () => view.droneAt,
@@ -135,7 +151,8 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     await vi.waitFor(() => expect(layouts.length + fogs.length).toBe(0));
     await new Promise((r) => setTimeout(r, 10));
   };
-  return { view, status, layouts, fogs, droneAnswers, detailAnswers, detailAsked, droneCalls: () => droneCalls, beaconAnswers, beaconCalls: () => beaconCalls, emit, send: (ev: LiveEvent) => onEvent(ev), connection: (st: string) => onStatus(st), fogCalls: () => fogCalls, last: () => status.at(-1) ?? '' };
+  return { view, status, layouts, fogs, droneAnswers, detailAnswers, detailAsked, droneCalls: () => droneCalls, beaconAnswers, beaconCalls: () => beaconCalls,
+    coAnswers, coCalls: () => coCalls, emit, send: (ev: LiveEvent) => onEvent(ev), connection: (st: string) => onStatus(st), fogCalls: () => fogCalls, last: () => status.at(-1) ?? '' };
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 10));
@@ -354,6 +371,39 @@ describe('drones in live mode (#80)', () => {
     l.view.planetAt = 0;
     click(l);
     expect(l.view.selectedDrone).toBeNull();
+  });
+
+  it('clicking an edge arrow focuses the partner it points at, before a drone or planet under it (#211)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    l.droneAnswers.push(async () => droneView(HEAD, [session(1, a!)]));
+    l.send({ type: 'snapshot', head: HEAD });
+    await vi.waitFor(() => expect(l.view.drawn.length).toBe(1));
+    l.view.droneAt = session(1, a!).key;
+    click(l);
+    expect(l.view.selectedDrone).toBe(session(1, a!).key);
+    l.view.planetAt = 0;
+    l.view.arrowTo = 1;
+    const before = l.view.focusSince;
+    click(l);
+    expect(l.last()).toMatch(new RegExp(`^focused ${miniLayout.planets[1]!.path},`));
+    expect(l.view.selectedDrone).toBeNull(); // the arrow won: the drone under it isn't picked
+    expect(l.view.focusSince).toBeGreaterThanOrEqual(before); // the partner's own lines draw in from the click
+    l.view.arrowTo = -1; // the star's arrow: free flight, where the review panel lists the star's files
+    click(l);
+    expect(l.last()).toBe('free flight');
+  });
+
+  it('fetches co-change with the layout and again on a fog event (a chart dismisses a flag); one of another scan is not applied (#211)', async () => {
+    const l = await live({ layout: miniLayout, fog: fogAt(HEAD) });
+    await vi.waitFor(() => expect(l.view.coDrawn?.head).toBe(HEAD));
+    const before = l.coCalls();
+    l.fogs.push(async () => fogAt(HEAD, HEAD));
+    l.coAnswers.push(async () => coAt(OTHER));
+    await l.emit({ type: 'fog', head: HEAD });
+    await vi.waitFor(() => expect(l.coCalls()).toBe(before + 1));
+    await settle();
+    expect(l.view.coDrawn?.head).toBe(HEAD);
+    expect(l.status.join('\n')).toMatch(/co-change not applied/);
   });
 
   it('a snapshot event of another head does not refetch drones (its layout event does)', async () => {

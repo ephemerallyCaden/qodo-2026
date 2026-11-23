@@ -4,7 +4,7 @@
 // kept for the privacy scan (R5). runTake drives a page it is given (the render spec does that);
 // takeMain is a take in its own process: it starts the build's own server in-process, with the scene's
 // drones through its hooks (R12), and a fresh Chromium on SwiftShader (the render tests' settings).
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -339,6 +339,7 @@ type GuardModule = typeof import('../../../../src/server/guard.js');
 type ChartModule = typeof import('../../../../src/state/chart.js');
 type BeaconsModule = typeof import('../../../../src/state/beacons.js');
 type DiffModule = typeof import('../../../../src/state/diff.js');
+type CoChangeModule = typeof import('../../../../src/state/cochange.js');
 
 /** The build's own module (its dist/), so each side is served by its own code. */
 async function fromBuild<T>(build: string, rel: string): Promise<T> {
@@ -360,6 +361,8 @@ export async function takeMain(cfg: TakeConfig, scenes: Readonly<Record<string, 
     fromBuild<ServerModule>(cfg.build, 'server/server.js'), fromBuild<GuardModule>(cfg.build, 'server/guard.js'),
     fromBuild<ChartModule>(cfg.build, 'state/chart.js'), fromBuild<BeaconsModule>(cfg.build, 'state/beacons.js'), fromBuild<DiffModule>(cfg.build, 'state/diff.js'),
   ]);
+  // #211: the co-change route, as `commet open` serves it, for a build that has it (an older one answers 501, as its own server would)
+  const cochange = existsSync(join(cfg.build, 'dist', 'state', 'cochange.js')) ? await fromBuild<CoChangeModule>(cfg.build, 'state/cochange.js') : null;
   const files = JSON.parse(readFileSync(cfg.filesJson, 'utf8')) as string[];
   const repo = cfg.clone;
   const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg.claudeDir };
@@ -388,6 +391,7 @@ export async function takeMain(cfg: TakeConfig, scenes: Readonly<Record<string, 
         droneDetail: scripted?.detail ? async (q) => scripted.detail!(q) : (q) => chart.readDroneDetail(repo, q),
         beacons: () => beacons.readBeacons(repo), beacon: (a) => beacons.applyBeacon(repo, a),
         unseen: (q) => diff.readUnseen(repo, q), diff: (q, s) => diff.readDiff(repo, q, s),
+        ...(cochange ? { cochange: () => cochange.readCoChange(repo) } : {}),
         // A 500's route and message, never the request (open.ts's COMMET_DEBUG); into the take's errors
         onError: (e, route) => { serverErrors.push(`server: ${route} failed: ${e instanceof Error ? e.message : String(e)}`); },
       });

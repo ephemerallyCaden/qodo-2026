@@ -14,6 +14,7 @@ import { newToken } from '../../src/server/guard.js';
 import { startServer, type CommetServer } from '../../src/server/server.js';
 import { applyBeacon, readBeacons } from '../../src/state/beacons.js';
 import { applyChart, readDroneDetail, readFog } from '../../src/state/chart.js';
+import { readCoChange } from '../../src/state/cochange.js';
 import { readDiff, readUnseen } from '../../src/state/diff.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { findDrone, homePose, scriptedDrone } from '../../.claude/skills/visual-proof/scenes/helpers.js';
@@ -51,6 +52,7 @@ async function fixture(extra: Record<string, string> = {}, drones?: (l: LayoutV1
     stateDir: join(dir, '.git', 'commet'), webRoot: WEB, port: 0, token: newToken(), pollMs: 100,
     fog: () => readFog(dir), chart: (a) => applyChart(dir, a), unseen: (q) => readUnseen(dir, q), diff: (q, s) => readDiff(dir, q, s),
     beacons: () => readBeacons(dir), beacon: (a) => applyBeacon(dir, a),
+    cochange: () => readCoChange(dir), // #211, as `commet open` serves it
     ...(view ? { drones: async () => view, droneDetail: (q) => readDroneDetail(dir, q) } : {}),
   });
   servers.push(server);

@@ -2,10 +2,12 @@
 // per-launch token in TOKEN_HEADER (contract). Nothing here talks to any other origin.
 import { API, STAR_HOME, TOKEN_HEADER, type ChartResult, type DiffResult, type LiveEvent, type UnseenResult } from '../../../src/core/contract/api.js';
 import type { BeaconAction, BeaconResult, BeaconView } from '../../../src/core/contract/beacons.js';
+import type { CoChangeView } from '../../../src/core/contract/cochange.js';
 import type { ChartAction, FogView } from '../../../src/core/contract/fog.js';
 import type { DroneDetailResult, DroneView } from '../../../src/core/contract/drones.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
 import type { DirId, FileId, SessionKey, Sha } from '../../../src/core/snapshot/types.js';
+import { checkCoChange } from '../cochange/check.js';
 import { checkDroneDetail, checkDrones } from '../drones/check.js';
 import { checkBeaconResult, checkBeacons } from '../model/beacons.js';
 import { checkChartResult, checkDiff, checkFog, checkLayout, checkUnseen, type Checked } from '../model/validate.js';
@@ -38,6 +40,8 @@ export interface DataClient {
   beacons(): Promise<BeaconView>;
   /** #79: leaves one note on a file; the answer carries the new beacon view, or a refusal. */
   beacon(action: BeaconAction): Promise<BeaconResult>;
+  /** #211: co-change links and the missing-pair flags at the server's head. A failure is announced, not fatal. */
+  cochange(): Promise<CoChangeView>;
 }
 
 const HINTS: Record<number, string> = {
@@ -75,6 +79,7 @@ export const parseLayout = (text: string, source: string): LayoutV1 => parseChec
 export const parseFog = (text: string, source: string): FogView => parseChecked(text, 'fog view', source, checkFog);
 export const parseDrones = (text: string, source: string): DroneView => parseChecked(text, 'drone view', source, checkDrones);
 export const parseBeacons = (text: string, source: string): BeaconView => parseChecked(text, 'beacon view', source, checkBeacons);
+export const parseCoChange = (text: string, source: string): CoChangeView => parseChecked(text, 'co-change view', source, checkCoChange);
 
 /** Statuses whose JSON body is an answer the view acts on (a refusal it can explain), not an error. */
 const ANSWERS = [200, 400, 404, 409];
@@ -119,6 +124,7 @@ export function serverClient(token: string): DataClient {
     chart: (action) => answer(API.chart, API.chart, 'chart answer', checkChartResult, JSON.stringify(action)),
     beacons: async () => parseBeacons(await get(API.beacons), API.beacons),
     beacon: (action) => answer(API.beacon, API.beacon, 'beacon answer', checkBeaconResult, JSON.stringify(action)),
+    cochange: async () => parseCoChange(await get(API.cochange), API.cochange),
     follow(onEvent, onStatus) {
       const abort = new AbortController();
       let attempt = 0;

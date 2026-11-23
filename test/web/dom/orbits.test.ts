@@ -61,6 +61,11 @@ async function live(reduced = false) {
     selectedDrone: null,
     setDrones: async () => true,
     setBeacons: () => true,
+    setCoChange: () => true,
+    coChangeLines: () => [],
+    arrowAt: () => null,
+    focusFile: null,
+    focusSince: 0,
     pickDroneAt: () => null,
     planetAt: null as number | null,
     pickAt: () => view.planetAt,
@@ -79,6 +84,7 @@ async function live(reduced = false) {
     chart: async () => ({ ok: false, error: 'not used' }),
     beacons: async () => ({ schemaVersion: 'beacons.1', head: miniLayout.source.head, beacons: [], unplaced: 0 }),
     beacon: async () => ({ ok: false, error: 'not used' }),
+    cochange: async () => ({ schemaVersion: 'cochange.1', head: miniLayout.source.head, needsRescan: false, links: [], flags: [], dismissed: 0, files: [] }),
   };
   // runLive sets onReducedMotion: what the HUD's reduce-motion checkbox calls
   const hud = { announce: () => {}, summary: () => {}, scale: () => {}, clearError: () => {}, error: () => {}, setReducedMotion: () => {}, onReducedMotion: (() => {}) as (on: boolean) => void };

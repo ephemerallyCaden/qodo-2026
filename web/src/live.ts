@@ -3,6 +3,7 @@
 // cuts instead of gliding (AC7).
 import type { FogView } from '../../src/core/contract/fog.js';
 import { Beacons } from './beacons/controller.js';
+import { CoChange } from './cochange/controller.js';
 import { PARKED_POSE, startPoseAt } from './camera/pose.js';
 import { FreeFlightRig } from './camera/rig.js';
 import { ViewError, type DataClient } from './data/client.js';
@@ -67,7 +68,8 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   // #75: review and chart the focused planet's unseen files (the star's in free flight).
   const panel = new Panel({ client, fogTicket: () => view.fogTicket(), applyFog: (f, t) => view.applyFog(f, t),
     announce: (t) => hud.announce(t), release: () => view.pass.canvas.focus({ preventScroll: true }),
-    beaconTicket: () => beacons.ticket(), applyBeacons: (b, t) => beacons.apply(b, drawnHead, t) }); // #79: a note left with a chart
+    beaconTicket: () => beacons.ticket(), applyBeacons: (b, t) => beacons.apply(b, drawnHead, t), // #79: a note left with a chart
+    focusFile: (id) => { view.focusFile = id; view.focusSince = shown(); summarise(); redraw(); } }); // #211: the open diff's constellation
 
   /** Something changed that needs a redraw: mark it and wake the loop. */
   const redraw = () => { dirty = true; loop.wake(); };
@@ -83,14 +85,20 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   // it was switched on (frame 0 when it is on from the start) and resumes from there: switching it never
   // moves the planets (Qodo d094226d). The render hook draws frame 0 for reducedMotion (hook.ts).
   const shown = () => frame;
+  /** The screen-reader summary: what the canvas shows, the focus's co-change links and the flags included (#211). */
+  const summarise = () => {
+    const m = view.model;
+    if (m) hud.summary([summaryText(m, focus, view.fog, view.beacons), ...view.coChangeLines(focus)].join('. '));
+  };
   const say = () => {
     const m = view.model;
     const p = focus === null ? null : m?.planets[focus];
     hud.announce(p ? `focused ${planetLines(p, view.fog).join(', ')}` : 'free flight');
-    if (m) hud.summary(summaryText(m, focus, view.fog, view.beacons));
+    summarise();
   };
   const setFocus = (i: number | null) => {
     focus = i;
+    view.focusSince = shown(); // #211: the constellation draws in from here
     focusId = i === null ? null : view.model?.planets[i]?.dirId ?? null;
     rig.focus(i === null ? null : view.focusTarget(i, shown()), reduced);
     panel.select(focusId as DirId | null, i === null ? null : view.model?.planets[i]?.path ?? null);
@@ -108,16 +116,16 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     const notice = view.fogNotice;
     if (cleared || refogged) hud.announce(fogChanged = [cleared ? `charted ${files(cleared)}` : '', refogged ? `${files(refogged)} refogged` : ''].filter(Boolean).join(', '));
     else if (notice && notice !== 'no fog view') hud.announce(`${notice}: every file is drawn uncharted until the next update`); // a fog refused through the panel's path
-    const m = view.model;
-    if (m) hud.summary(summaryText(m, focus, view.fog, view.beacons));
+    summarise();
     redraw();
   };
   // #79: the captain's log beacons, refetched with every layout load, snapshot and beacons event.
   const beacons = new Beacons({ view, client, announce: (t) => hud.announce(t), changed: () => {
-    const m = view.model;
-    if (m) hud.summary(summaryText(m, focus, view.fog, view.beacons));
+    summarise();
     redraw();
   } });
+  // #211: co-change links and the missing-pair flags, refetched with every layout load, snapshot and fog event.
+  const cochange = new CoChange({ view, client, announce: (t) => hud.announce(t), changed: () => { summarise(); redraw(); } });
   // #80: the agent drones, refetched with every layout load and snapshot event.
   const drones = new Drones({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }),
     others: () => [byId('panel')] });
@@ -156,6 +164,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       if (rescanFailed) hud.announce(rescanFailed); // still true after a reload (#95): the drawn scan is the last good one
       void drones.refresh(drawnHead);
       void beacons.refresh(drawnHead);
+      void cochange.refresh(drawnHead);
       redraw();
     } catch (e) {
       const err = describeError(e);
@@ -193,7 +202,15 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
 
   const input = new Input(view.pass.canvas, {
     wake: () => loop.wake(),
-    click: (x, y) => { if (!loaded || drones.pick(x, y, rig.pose(), shown())) return; const i = view.pickAt(x, y, rig.pose(), shown()); if (i !== null) { drones.deselect(); setFocus(i); } },
+    click: (x, y) => {
+      if (!loaded) return;
+      // #211: an edge arrow focuses the partner it points at (the star's: free flight, where the panel lists the star's files)
+      const to = view.arrowAt(x, y);
+      if (to !== null) { drones.deselect(); setFocus(to < 0 ? null : to); return; }
+      if (drones.pick(x, y, rig.pose(), shown())) return;
+      const i = view.pickAt(x, y, rig.pose(), shown());
+      if (i !== null) { drones.deselect(); setFocus(i); }
+    },
     cycle: (dir) => {
       drones.deselect();
       const n = view.model?.planets.length ?? 0;
@@ -250,8 +267,10 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     if (ev.type === 'rescan') {
       rescanFailed = ev.ok ? null : `automatic rescan failed (exit ${ev.exitCode}): showing the last scan; the terminal running \`commet open\` says why`;
       hud.announce(rescanFailed ?? 'automatic rescan works again');
-    } else if (ev.type === 'layout' || ev.type === 'fog') void update(ev.type);
-    else if (ev.type === 'snapshot' && ev.head === drawnHead) { void drones.refresh(drawnHead); void beacons.refresh(drawnHead); } // a new head's layout event refetches for itself
+    } else if (ev.type === 'layout' || ev.type === 'fog') {
+      void update(ev.type);
+      if (ev.type === 'fog') void cochange.refresh(drawnHead); // #211: a chart may have dismissed a flag
+    } else if (ev.type === 'snapshot' && ev.head === drawnHead) { void drones.refresh(drawnHead); void beacons.refresh(drawnHead); void cochange.refresh(drawnHead); } // a new head's layout event refetches for itself
     else if (ev.type === 'beacons') void beacons.refresh(drawnHead); // #79: a note left here or by `commet beacon`
   }, (status) => {
     // The server keeps no backlog, so a change made while the stream was down (or before it first

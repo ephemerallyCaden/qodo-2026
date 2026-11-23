@@ -25,6 +25,7 @@ import { newToken } from '../../src/server/guard.js';
 import { startServer, type CommetServer } from '../../src/server/server.js';
 import { applyBeacon, readBeacons } from '../../src/state/beacons.js';
 import { applyChart, readFog } from '../../src/state/chart.js';
+import { readCoChange } from '../../src/state/cochange.js';
 import { readDiff, readUnseen } from '../../src/state/diff.js';
 import { cli } from '../fixtures/cli.js';
 import { droneView, session } from '../fixtures/drones.js';
@@ -82,6 +83,7 @@ async function fixture(opts: { drones?: boolean } = {}): Promise<Fixture> {
     chart: (a) => (hooks.chart ?? ((x) => applyChart(dir, x)))(a),
     // #79: beacons through the real state module; `beacon` records every note the page sends.
     beacons: () => readBeacons(dir), beacon: (a) => { posted.push(a); return (hooks.beacon ?? ((x) => applyBeacon(dir, x)))(a); },
+    cochange: () => readCoChange(dir), // #211, as `commet open` serves it
     ...(opts.drones ? {
       drones: () => (hooks.drones ?? (() => Promise.reject(new Error('no drone view set'))))(),
       droneDetail: (q: DroneDetailQuery) => (hooks.droneDetail ?? (() => Promise.reject(new Error('no drone detail set'))))(q),

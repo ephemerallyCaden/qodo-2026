@@ -2,6 +2,7 @@
 // function of (layout, fog, camera pose, focus, frame number); nothing here keeps time.
 import type { RenderStats } from '../../src/core/contract/api.js';
 import type { BeaconView } from '../../src/core/contract/beacons.js';
+import type { CoChangeView } from '../../src/core/contract/cochange.js';
 import type { FogView } from '../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { fovOf, pick, project, projectedRadius, startPose, type OrbitPose } from './camera/pose.js';
@@ -11,7 +12,11 @@ import { FogLedger } from './model/fog.js';
 import { focusedNotes, infoLines, HELP, type BeaconInfo } from './model/describe.js';
 import { systemModel, type SystemModel } from './model/system.js';
 import { LabelLayer, labelBox, lineHeight, type Label } from './labels/overlay.js';
-import { clearOf, placeLabels, type Rect } from './labels/place.js';
+import { textWidth } from './labels/font.js';
+import { clearOf, placeLabels, type Placed, type Rect } from './labels/place.js';
+import { coChangeIndex, coChangeLines, shortName, type CoIndex, type Focus } from './cochange/model.js';
+import { OVERLAY_COLOURS, planConstellation, rasterise, type Plan } from './cochange/overlay.js';
+import { FPS } from './model/motion.js';
 import { BEACON_MARK } from './render/beacons.js';
 import { SHARED } from './render/materials.js';
 import { PixelPass } from './render/pixel.js';
@@ -35,6 +40,9 @@ const MAX_NOTE_LABELS = 3;
 /** A note label's longest text; the whole note is in the screen-reader summary and `commet beacon list`. */
 const NOTE_LABEL_CHARS = 48;
 
+/** #211: the overlay's colour table as RGB bytes (index 0 draws nothing). */
+const OVERLAY_RGB = OVERLAY_COLOURS.map((c) => (c === null ? null : [1, 3, 5].map((k) => parseInt(c.slice(k, k + 2), 16))));
+
 /** The star's disc and corona at a frame: they hide the planets and drones behind them from picking and labels. */
 const starBlockers = (s: SystemScene, frame: number): Occluder[] => starOccluders(s.model.star.radius, frame);
 
@@ -57,6 +65,15 @@ export class View {
   /** The beacons drawn (#79), kept across layout reloads of the same scan, and the head they belong to. */
   private beaconView: BeaconView | null = null;
   private beaconHead: string | null = null;
+  /** The co-change view drawn (#211), kept across layout reloads of the same scan, the head it belongs to, and its files placed on this layout. */
+  private coView: CoChangeView | null = null;
+  private coHead: string | null = null;
+  private coIndex: CoIndex | null = null;
+  /** #211: the focused planet's file whose constellation is drawn (the review panel's open diff), and the frame the focus began (the draw-in). */
+  focusFile: string | null = null;
+  focusSince = 0;
+  /** #211: the edge arrows drawn last frame, in device px of the view canvas, with the body each focuses (-1: the star). */
+  private arrows: { box: Rect; body: number }[] = [];
   /** The per-pixel depth fade (RenderInput.depthFade); off leaves only palette colours. */
   depthFade = true;
   showHelp = true;
@@ -139,6 +156,7 @@ export class View {
       this.pass.takeShaderErrors();
       next.scene.traverse((o) => { o.visible = true; });
       await this.pass.renderer.compileAsync(next.scene, next.camera);
+      this.pass.compileOverlay(); // #211: the constellation overlay's one program
       for (const program of this.pass.renderer.info.programs ?? []) program.getUniforms();
       const failed = this.pass.takeShaderErrors();
       if (failed.length > 0) throw new ViewError('The view could not compile its shaders.', failed);
@@ -149,6 +167,7 @@ export class View {
     this.system?.dispose();
     this.system = next;
     this.layoutHead = layout.source.head;
+    this.coIndex = this.coView && this.coHead === this.layoutHead ? coChangeIndex(this.coView, next.model) : null;
     // The fog already drawn stays when it is newer than this load's, but only for the same scan;
     // fronts in progress carry over, by file.
     const dropped = this.fogs.setLayout(layout.source.head, animate);
@@ -202,6 +221,38 @@ export class View {
     return true;
   }
 
+  /**
+   * Draws this co-change view (#211; null: none), which belongs to the scan `head`: the focus's lines and
+   * every missing-pair flag. Returns false, changing nothing, when the drawn layout is of another scan;
+   * before any layout it's kept for the first load of that head.
+   */
+  setCoChange(view: CoChangeView | null, head: string): boolean {
+    const s = this.system;
+    if (s && head !== this.layoutHead) return false;
+    this.coView = view;
+    this.coHead = head;
+    this.coIndex = s && view ? coChangeIndex(view, s.model) : null;
+    return true;
+  }
+
+  /** #211: the focus's links and the standing flags in words, for the screen-reader summary. */
+  coChangeLines(focus: number | null): string[] {
+    const m = this.system?.model;
+    return m ? coChangeLines(this.coIndex, m, this.focusOf(focus), this.coView?.dismissed ?? 0) : [];
+  }
+
+  /** The body an edge arrow drawn at this point of the view canvas (CSS px from its top-left) focuses: a planet's index, -1 the star, or null. */
+  arrowAt(cssX: number, cssY: number): number | null {
+    const c = this.pass.canvas.getBoundingClientRect();
+    if (c.width === 0 || c.height === 0) return null;
+    const x = cssX * (this.pass.canvas.width / c.width), y = cssY * (this.pass.canvas.height / c.height);
+    return this.arrows.find((a) => x >= a.box.x && x < a.box.x + a.box.w && y >= a.box.y && y < a.box.y + a.box.h)?.body ?? null;
+  }
+
+  private focusOf(focus: number | null): Focus | null {
+    return focus === null ? null : { planet: focus, file: this.focusFile };
+  }
+
   /** Fits the view to the space available (CSS px) at the device pixel ratio. */
   resize(pixelHeight: number, cssW: number, cssH: number, dpr: number): void {
     this.pass.resize(pixelHeight, Math.floor(cssW * dpr), Math.floor(cssH * dpr), dpr);
@@ -228,12 +279,26 @@ export class View {
     this.lastFrame = frame;
     if (this.fogs.prune(frame)) this.pushFog();
     s.pose(frame, pose, this.pass.height);
-    const stats = this.pass.render(s.scene, s.camera);
-    this.labels.draw(this.labelsFor(s, frame, pose, focus));
+    // #211: the constellation's geometry first (its labels go with the others), then the scene, then the
+    // overlay fitted around what the scene drew and every label, then the labels.
+    const scale = this.pass.scale, px = this.labels.px;
+    const plan = planConstellation({ model: s.model, index: this.coIndex, focus: this.focusOf(focus), frame, pose, W: this.pass.width, H: this.pass.height,
+      textW: (t) => (textWidth(t) * px) / scale });
+    const labels = this.labelsFor(s, frame, pose, focus, plan);
+    const boxes = labels.map((l) => { const b = labelBox(l, px); return { x: b.x / scale, y: b.y / scale, w: b.w / scale, h: b.h / scale }; });
+    const since = Math.max(0, frame - this.focusSince) / FPS;
+    const stats = this.pass.render(s.scene, s.camera, (pixels) => {
+      const ov = rasterise(plan, { pixels, W: this.pass.width, H: this.pass.height, labels: boxes, since, reduced: this.reduced, frame });
+      if (!ov) return null;
+      const rgba = new Uint8Array(ov.length * 4);
+      ov.forEach((c, i) => { const rgb = OVERLAY_RGB[c]; if (rgb) { rgba.set(rgb, 4 * i); rgba[4 * i + 3] = 255; } });
+      return rgba;
+    });
+    this.labels.draw(labels);
     return stats;
   }
 
-  private labelsFor(s: SystemScene, frame: number, pose: OrbitPose, focus: number | null): Label[] {
+  private labelsFor(s: SystemScene, frame: number, pose: OrbitPose, focus: number | null, plan: Plan): Label[] {
     const W = this.pass.canvas.width, H = this.pass.canvas.height, px = this.labels.px, lh = lineHeight(px);
     const { ink, accent: mark, dim } = UI_COLOURS;
     const out: Label[] = [];
@@ -244,10 +309,82 @@ export class View {
     out.push(...this.clear(this.noteLabels(s, frame, pose, focus, beacons, H, lh), covers, W, H));
     // drone labels come first in the budget (a few at most), so a busy system never drops a selected drone's name
     const drones = this.droneLabels(s, frame, pose, W, H, 2 * px, MAX_DRONE_LABELS).map((l) => this.clear([l], covers, W, H)[0]!);
-    for (const l of placeLabels(pose, s.spheres(frame), starBlockers(s, frame), W, H, 2 * px, MAX_LABELS - out.length - drones.length)) {
-      out.push({ text: s.model.planets[l.i]!.path, x: l.x, y: l.y, align: 'centre', colour: l.i === focus ? mark : ink });
+    const placed = placeLabels(pose, s.spheres(frame), starBlockers(s, frame), W, H, 2 * px, MAX_LABELS - out.length - drones.length);
+    // #211: the constellation's names, stacked under the planet labels they belong to; the farthest planet labels give way to them
+    const co = this.coLabels(s, pose, plan, placed, W, H, px, lh, covers);
+    const anchors = new Set([focus, ...plan.lines.map((l) => l.body)]);
+    const room = MAX_LABELS - out.length - drones.length - co.length;
+    placed.forEach((l, k) => {
+      if (k < room || anchors.has(l.i)) out.push({ text: s.model.planets[l.i]!.path, x: l.x, y: l.y, align: 'centre', colour: l.i === focus ? mark : ink });
+    });
+    const plain = (l: Label & { arrow?: number }): Label => ({ text: l.text, x: l.x, y: l.y, align: l.align, colour: l.colour });
+    out.push(...co.slice(0, Math.max(0, MAX_LABELS - out.length - drones.length)).map(plain), ...drones);
+    // the arrows' click boxes (#211): the glyph and its name
+    const scale = this.pass.scale;
+    this.arrows = plan.arrows.map((a, k) => {
+      const glyph = { x: a.box.x * scale, y: a.box.y * scale, w: a.box.w * scale, h: a.box.h * scale };
+      const name = co.find((l) => l.arrow === k);
+      const b = name ? labelBox(name, px) : glyph;
+      const x = Math.min(glyph.x, b.x), y = Math.min(glyph.y, b.y);
+      return { body: a.body, box: { x: x - px, y: y - px, w: Math.max(glyph.x + glyph.w, b.x + b.w) - x + 2 * px, h: Math.max(glyph.y + glyph.h, b.y + b.h) - y + 2 * px } };
+    });
+    return out;
+  }
+
+  /**
+   * The constellation's labels (#211), in device px: under the focused planet's label, the focused file
+   * and the partners named with it (and "tests usually change with this" when its test moons do); under each
+   * partner planet's label, a focused file's partner files there; each edge arrow's name; and a flag's text
+   * while its pair is in focus. Bitmap glyphs only, never HTML.
+   */
+  private coLabels(s: SystemScene, pose: OrbitPose, plan: Plan, placed: readonly Placed[], W: number, H: number, px: number, lh: number,
+    covers: readonly Rect[]): (Label & { arrow?: number })[] {
+    if (!this.coIndex) return [];
+    const { ink, dim, accent } = UI_COLOURS;
+    const scale = this.pass.scale;
+    const out: (Label & { arrow?: number })[] = [];
+    const under = (body: number): { x: number; y: number } | null => {
+      if (body >= 0) { const l = placed.find((p) => p.i === body); return l ? { x: l.x, y: l.y + lh } : null; }
+      const at = project(pose, [0, 0, 0]);
+      if (!at) return null;
+      return { x: ((at.x + 1) / 2) * W, y: ((1 - at.y) / 2) * H + projectedRadius(s.model.star.radius, at.depth, fovOf(pose)) * (H / 2) + 2 * px };
+    };
+    const stack = (at: { x: number; y: number } | null, lines: [string, string][]) => {
+      if (at) lines.forEach(([text, colour], k) => out.push({ text, x: at.x, y: at.y + k * lh, align: 'centre', colour }));
+    };
+    const f = plan.focus;
+    const file = f?.file ? this.coIndex.files.get(f.file) : undefined;
+    if (f) {
+      const mine: [string, string][] = file && file.spot?.body === f.planet ? [[shortName(file.path), accent], ...plan.named.map((g): [string, string] => [`with ${shortName(g.path)}`, dim])] : [];
+      if (plan.tests) mine.push(['tests usually change with this', dim]);
+      stack(under(f.planet), mine);
+      if (file) for (const l of plan.lines) if (!plan.arrows.some((a) => a.body === l.body)) stack(under(l.body), l.files.map((g) => [shortName(g.path), dim]));
     }
-    out.push(...drones);
+    plan.arrows.forEach((a, k) => {
+      const name = file ? `${shortName(a.files[0]!.path)}${a.files.length > 1 ? ` +${a.files.length - 1}` : ''}` : a.body < 0 ? 'the star' : s.model.planets[a.body]!.path;
+      const w = textWidth(name) * px;
+      const [bx, by, bw, bh] = [a.box.x * scale, a.box.y * scale, a.box.w * scale, a.box.h * scale];
+      const mid = by + bh / 2 - (lh - 2 * px) / 2;
+      const at = a.edge === 'left' ? { x: bx + bw + 2 * px, y: mid } : a.edge === 'right' ? { x: bx - 2 * px - w, y: mid }
+        : a.edge === 'top' ? { x: Math.min(Math.max(bx + bw / 2 - w / 2, 2 * px), W - w - 2 * px), y: by + bh + 2 * px }
+          : { x: Math.min(Math.max(bx + bw / 2 - w / 2, 2 * px), W - w - 2 * px), y: by - lh };
+      out.push({ text: name, x: at.x, y: at.y, align: 'left', colour: dim, arrow: k });
+    });
+    // a flag's text beside its glyph; a later one moves clear of those already placed, so two bodies' texts never overlap
+    const taken: Rect[] = [];
+    for (const fl of plan.flags) {
+      if (!fl.show) continue;
+      const mid = (fl.box.y + fl.box.h / 2) * scale, top = mid - (fl.text.length * lh) / 2 + px;
+      const group: Label[] = fl.text.map((text, k) => {
+        const x = fl.right ? (fl.box.x + fl.box.w + 2) * scale : (fl.box.x - 2) * scale - textWidth(text) * px;
+        return { text, x, y: top + k * lh, align: 'left', colour: k % 2 === 0 && k < fl.text.length - (fl.text.length % 2) ? ink : dim };
+      });
+      const placedGroup = this.clear(group, [...covers, ...taken], W, H);
+      const boxes = placedGroup.map((l) => labelBox(l, px));
+      const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y));
+      taken.push({ x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y });
+      out.push(...placedGroup);
+    }
     return out;
   }
 
