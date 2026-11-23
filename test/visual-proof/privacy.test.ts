@@ -2,7 +2,7 @@
 // for what AGENTS.md Rule 2 keeps out of any output. A hit names its rule and where it was, never the
 // text it matched in full.
 import { describe, expect, it } from 'vitest';
-import { privacyHits, runTexts, servedTexts, takeTexts, type Scanned } from '../../.claude/skills/visual-proof/scripts/privacy.js';
+import { privacyHits, runTexts, screen, servedTexts, takeTexts, type Scanned } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 
 const TOKEN = 'Qx3vL0t9-mN_2bYk7RfA1sWc8dHe5jUp4gZiTo6aVyE';
 const ctx = { literals: [{ name: 'the launch token', value: TOKEN }, { name: 'HOME', value: '/Users/somebody' }] };
@@ -65,9 +65,15 @@ describe('servedTexts', () => {
     const body = JSON.stringify({ files: [{ path: 'src/attrib/originalFile-guard.ts', note: 'C:\\Users\\dave\\x' }], originalFile: 'x' });
     const hits = privacyHits(servedTexts({ path: '/api/diff?fileId=f_1', body }), ctx);
     expect(hits.map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual([
-      'absolute path @ GET /api/diff?fileId=f_1',
-      'agent-log field @ GET /api/diff?fileId=f_1',
+      'absolute path @ GET /api/diff',
+      'agent-log field @ GET /api/diff',
     ]);
+  });
+
+  it("names a response by its path, never its query, and scans the query itself (PR #199 r2: a hit's place is printed unmasked)", () => {
+    const hits = privacyHits(servedTexts({ path: `/api/diff?fileId=f_1&k=${TOKEN}`, body: '{"note":"/home/eve/x"}' }), ctx);
+    expect(hits.map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual(['absolute path @ GET /api/diff', 'the launch token @ GET /api/diff (query)', 'token-like string @ GET /api/diff (query)']);
+    for (const h of hits) expect(`${h.where} ${h.excerpt}`).not.toContain(TOKEN);
   });
 
   it('scans a body that is not JSON as it is', () => {
@@ -86,5 +92,19 @@ describe('takeTexts and runTexts', () => {
     const texts = runTexts({ base: { subject: 'fix: read /home/eve/keys first' }, head: { subject: `wip ${'aB3'.repeat(11)}` }, scene: { name: 's', summary: 'ok' } });
     expect(privacyHits(texts, ctx).map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual(['absolute path @ the base commit subject', 'token-like string @ the head commit subject']);
     expect(privacyHits(runTexts({ base: { subject: 'fix(view): labels' }, head: { subject: 'test: x' }, scene: { name: 's', summary: 'ok' } }), ctx)).toEqual([]);
+  });
+  it('scans the refs as given and the branch name too, which the record writes (PR #199 r2)', () => {
+    const texts = runTexts({ base: { subject: 'a' }, head: { subject: 'b' }, scene: { name: 's', summary: 'ok' }, refs: ['8cf028c', `wip/${'aB3'.repeat(11)}`], branch: 'feature/~/home/x' });
+    expect(privacyHits(texts, ctx).map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual(['token-like string @ the refs as given']);
+    expect(privacyHits(runTexts({ base: { subject: 'a' }, head: { subject: 'b' }, scene: { name: 's', summary: 'ok' }, branch: 'x /Users/eve/y' }), ctx).map((h) => h.where)).toEqual(['the branch']);
+  });
+});
+
+describe('screen', () => {
+  it("passes a command's output into the record only when the scan finds nothing in it (PR #199 r2: build, scan and setup output)", () => {
+    expect(screen(['vite v7 building', 'dist/web/index.html 1.2 kB'], 'the base build', ctx)).toEqual(['vite v7 building', 'dist/web/index.html 1.2 kB']);
+    const got = screen(['error TS2304 in /Users/somebody/repo/x.ts', `token ${TOKEN}`], 'the base build', ctx);
+    expect(got).toEqual(['(the base build output withheld: HOME, absolute path, the launch token, token-like string in it)']);
+    expect(got.join('')).not.toContain('somebody');
   });
 });

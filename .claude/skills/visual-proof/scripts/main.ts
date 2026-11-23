@@ -14,9 +14,9 @@ import { chromium } from '@playwright/test';
 import { SCENES } from '../scenes/index.js';
 import { compose, GITHUB_IMAGE_LIMIT } from './compose.js';
 import { addNodeModules, buildTree, bundleOf, changedFiles, contained, exportTree, git, makeClone, makeFixtureRepo, makeScratch, resolveRev, revisionEnv, SANDBOX_EXEC, sandboxProfile, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
-import { privacyHits, runTexts, servedTexts, takeTexts, type Scanned } from './privacy.js';
+import { privacyHits, runTexts, screen, servedTexts, takeTexts, type Scanned } from './privacy.js';
 import { RunRecord, redact, uniqueName, type Literal } from './record.js';
-import { compareTakes, dataPathsTouched, keepsScratch, missingTools, noViewChange, privacyStop, Stop, takeFailure, takesStop } from './rules.js';
+import { compareTakes, DATA_PATHS, dataPathsTouched, keepsScratch, missingTools, noViewChange, privacyStop, Stop, takeFailure, takesStop } from './rules.js';
 import { partsOf, type Scene, type ScenePart, type TakeLog } from './scene.js';
 import { summaryText, type RunSummary } from './summary.js';
 import { takeMain, type TakeConfig } from './take.js';
@@ -76,10 +76,11 @@ async function run(a: RunArgs): Promise<number> {
   const out = join(evidence, id);
   const literals: Literal[] = [
     { name: '$SCRATCH', value: scratch }, { name: '$SCRATCH', value: join('/tmp', id) },
-    { name: '$MAIN', value: main }, { name: '$CHECKOUT', value: top }, { name: '~', value: homedir() }, { name: '$TMPDIR', value: realpathSync(tmpdir()) },
+    { name: '$MAIN', value: main }, { name: '$CHECKOUT', value: top }, { name: '$HOME', value: homedir() }, { name: '$TMPDIR', value: realpathSync(tmpdir()) },
   ];
   // The commit subjects and the scene's words go into the record, captions and summary: scanned before any is written (PR #199 5b136d3c)
-  const early = privacyHits(runTexts({ base, head, scene }), { literals });
+  const branch = git(top, 'branch', '--show-current').trim();
+  const early = privacyHits(runTexts({ base, head, scene, refs: [...(a.base ? [a.base] : []), a.head ?? '--worktree'], branch }), { literals });
   if (early.length) {
     rmSync(scratch, { recursive: true, force: true });
     process.stdout.write(`STOP privacy: ${early.length} hit${early.length === 1 ? '' : 's'} in what the run would write; nothing was written\n`);
@@ -92,13 +93,15 @@ async function run(a: RunArgs): Promise<number> {
     ...(trying ? ['A try: one build and one take, to check the scene; no before, no comparison, no GIF.'] : [`Base (before): \`${base.sha}\` ${base.subject}`]),
     `Head (after): ${head.worktree ? `the working tree on \`${head.sha}\` (changes sha256 ${head.diffHash})` : `\`${head.sha}\``} ${head.subject}`,
     `Scene: ${scene.name}: ${scene.summary}`,
-    `Checkout: $CHECKOUT, branch ${git(top, 'branch', '--show-current').trim() || '(detached)'}; the skill's tools at \`${git(top, 'rev-parse', '--short', 'HEAD').trim()}\`${git(top, 'status', '--porcelain', '--', '.claude/skills/visual-proof').trim() ? ' with uncommitted changes' : ''}`,
+    `Checkout: $CHECKOUT, branch ${branch || '(detached)'}; the skill's tools at \`${git(top, 'rev-parse', '--short', 'HEAD').trim()}\`${git(top, 'status', '--porcelain', '--', '.claude/skills/visual-proof').trim() ? ' with uncommitted changes' : ''}`,
     `Scratch: $SCRATCH (builds, data clone, raw takes); images and summary: ${relative(main, out)}/`,
     'Paths: $MAIN is the main checkout, $CHECKOUT this checkout, $SCRATCH the run\'s temp dir.',
   ], literals);
   const say = (line: string) => process.stdout.write(`${redact(line, literals)}\n`);
   // Paths on the terminal are absolute, for the agent to open as they are; the record and summary keep $MAIN
   const where = (path: string) => process.stdout.write(`${path}\n`);
+  // A command's output, a stop's words: into the record only if the scan finds nothing once this machine's paths are names (PR #199 r2)
+  const screened = (lines: readonly string[], what: string) => screen(lines.map((l) => redact(l, literals)), what, { literals: [] });
   process.stdout.write(`record: ${record.path}\n`);
   try {
     // 1. Tools
@@ -124,7 +127,7 @@ async function run(a: RunArgs): Promise<number> {
     const sides = trying ? (['after'] as const) : SIDES;
     const changed = trying ? ['(a try: no base)'] : changedFiles(top, base, head);
     const data = trying ? [] : dataPathsTouched(changed);
-    if (!trying) record.step('The change', [`${changed.length} paths differ between base and head:`, ...block(changed), data.length ? `Data paths touched (R12): ${data.join(', ')}` : 'No scanner, attribution, layout, snapshot or contract path is touched (R12).']);
+    if (!trying) record.step('The change', [`${changed.length} paths differ between base and head:`, ...block(changed), data.length ? `Data paths touched (R12): ${data.join(', ')}` : `No path that makes or serves the data is touched (R12: ${DATA_PATHS.join(', ')}).`]);
     if (!changed.length) throw new Stop('no-view-change', 'base and head are the same tree');
 
     // 3. Builds
@@ -135,7 +138,7 @@ async function run(a: RunArgs): Promise<number> {
       const cmds = [...exportTree(top, rev, trees[side], join(scratch, `${side}.tar`)), ...addNodeModules(top, trees[side])];
       const { ms } = buildTree(trees[side], join(scratch, `build-${side}.log`), side, profile);
       bundles[side] = bundleOf(trees[side]);
-      record.step(`Build ${side} (${rev.short})`, [...block([...cmds, `npm run build   # in ${trees[side]}, ${secs(ms)}, output in $SCRATCH/build-${side}.log`]),
+      record.step(`Build ${side} (${rev.short})`, [...block(screened([...cmds, `sandbox-exec npm run build   # in ${trees[side]}, ${secs(ms)}, output in $SCRATCH/build-${side}.log`], `the ${side} build step`)),
         `dist/web: ${bundles[side].files.join(', ')}; sha256 ${bundles[side].digest}`]);
     }
 
@@ -177,7 +180,7 @@ async function run(a: RunArgs): Promise<number> {
     writeFileSync(filesJson, JSON.stringify(files));
     const parts = sceneStep('parts', () => partsOf(scene));
     const drones = sceneStep('drones', () => Math.max(0, ...parts.map((p) => (p.drones ?? scene.drones)?.({ layout, files }).view.sessions.length ?? 0)));
-    record.step('The data (R12)', [...block([...dataCmds, ...setupCmds]),
+    record.step('The data (R12)', [...block(screened([...dataCmds, ...setupCmds], 'the data step')),
       `${scene.fixture ? "the scene's own repo" : 'clone'} at \`${repoAt.sha}\` ${repoAt.subject}; ${layout.planets.length} planets; roots ${JSON.stringify(layout.source.roots)}; ${files.length} files`,
       `snapshot sessions: ${sessions} (--no-ingest, CLAUDE_CONFIG_DIR empty); scripted drones: ${drones}`,
       'state every take starts from:', ...block(stateDigest(stateStart))]);
@@ -200,9 +203,8 @@ async function run(a: RunArgs): Promise<number> {
         if (r.status !== 0) {
           // its output goes into the record only if the privacy scan passes it (PR #199 10bde0e3)
           const tail = `${r.stdout}${r.stderr}`.trimEnd().split('\n').slice(-12);
-          const inTail = privacyHits([{ where: `take ${name}'s output`, text: tail.join('\n') }], { literals });
           record.step(`Take ${name}`, [`sandbox-exec node <tools>/main.js take $SCRATCH/takes/${name}/take.json: exit ${r.status} after ${secs(ms)}`,
-            ...(inTail.length ? [`its output is withheld: ${inTail.map((h) => h.rule).join(', ')} in it`] : block(tail))]);
+            ...block(screened(tail, `take ${name}`))]);
           throw takeFailure(name, r.status, r.stdout ?? '');
         }
         const log = JSON.parse(readFileSync(join(dir, 'log.json'), 'utf8')) as TakeLog;
@@ -291,22 +293,26 @@ async function run(a: RunArgs): Promise<number> {
   } catch (e) {
     const at = record.stepCount;
     if (e instanceof Stop) {
+      // A privacy stop's words are masked hits already; any other stop's may carry a build's or a scene's output
+      const words = e.code === 'privacy' ? [e.message, ...e.detail] : screened([e.message, ...e.detail], `the ${e.code} stop`);
+      const [message, ...detail] = words.length === 1 + e.detail.length ? words : [words[0]!];
       const keepScratch = keepsScratch(e.code, a.keep);
       if (!keepScratch) rmSync(scratch, { recursive: true, force: true });
-      record.step(`STOP: ${e.code}`, [e.message, ...e.detail.map((d) => `- ${d}`), '',
+      record.step(`STOP: ${e.code}`, [message!, ...detail.map((d) => `- ${d}`), '',
         keepScratch ? 'The scratch dir is kept for a look: $SCRATCH (remove it with `rm -rf` when done).'
           : e.code === 'privacy' ? 'The scratch dir, with the raw takes that held it, was removed.' : 'Nothing was captured; the scratch dir (two builds) was removed.']);
-      record.finish(`stopped (${e.code}) after step ${at}: ${e.message}`);
+      record.finish(`stopped (${e.code}) after step ${at}: ${message}`);
       where(`record: ${record.path}`);
-      say(`STOP ${e.code}: ${e.message}`);
-      for (const d of e.detail) say(`  ${d}`);
+      say(`STOP ${e.code}: ${message}`);
+      for (const d of detail) say(`  ${d}`);
       return 3;
     }
     const msg = e instanceof Error ? e.message : String(e);
-    record.step('Internal error', block(redact(e instanceof Error ? (e.stack ?? msg) : msg, literals).split('\n').slice(0, 12)));
-    record.finish(`incomplete: internal error after step ${at}: ${msg.split('\n')[0]}`);
+    record.step('Internal error', block(screened((e instanceof Error ? (e.stack ?? msg) : msg).split('\n').slice(0, 12), 'the internal error')));
+    const first = screened([msg.split('\n')[0] ?? ''], 'the internal error')[0];
+    record.finish(`incomplete: internal error after step ${at}: ${first}`);
     where(`record: ${record.path}`);
-    say(`ERROR: ${msg.split('\n')[0]}`);
+    say(`ERROR: ${first}`);
     return 1;
   }
 }

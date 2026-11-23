@@ -49,14 +49,20 @@ export function privacyHits(items: readonly Scanned[], ctx: PrivacyContext): Hit
   return out;
 }
 
-/** What one served response holds, to scan: a JSON body's decoded strings and, apart, its keys; any other body as it is. */
+/**
+ * What one served response holds, to scan: a JSON body's decoded strings and, apart, its keys; any other
+ * body as it is; and its request's query. A hit is placed by the path alone, since its place is printed
+ * unmasked and a query could hold anything (PR #199 r2).
+ */
 export function servedTexts(r: { path: string; body: string }): Scanned[] {
-  const where = `GET ${r.path}`;
+  const q = r.path.indexOf('?');
+  const where = `GET ${q < 0 ? r.path : r.path.slice(0, q)}`;
+  const query: Scanned[] = q < 0 ? [] : [{ where: `${where} (query)`, text: [r.path.slice(q + 1), ...[...new URLSearchParams(r.path.slice(q + 1))].flat()].join('\n') }];
   let value: unknown;
   try {
     value = JSON.parse(r.body);
   } catch {
-    return [{ where, text: r.body }];
+    return [{ where, text: r.body }, ...query];
   }
   const strings: string[] = [], keys: string[] = [];
   const walk = (v: unknown): void => {
@@ -65,7 +71,7 @@ export function servedTexts(r: { path: string; body: string }): Scanned[] {
     else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { keys.push(k); walk(x); }
   };
   walk(value);
-  return [{ where, text: strings.join('\n') }, { where: `${where} (keys)`, text: keys.join('\n') }];
+  return [{ where, text: strings.join('\n') }, { where: `${where} (keys)`, text: keys.join('\n') }, ...query];
 }
 
 /** What one take saw, to scan: every distinct page text, every API response, the event stream and the scene's notes. */
@@ -81,10 +87,25 @@ export function takeTexts(name: string, log: { texts: readonly [string, number][
 }
 
 /** What the run itself writes into captions, the record and the summary: both commit subjects and the scene's own words (PR #199 5b136d3c). */
-export function runTexts(r: { base: { subject: string }; head: { subject: string }; scene: { name: string; summary: string } }): Scanned[] {
+export function runTexts(r: { base: { subject: string }; head: { subject: string }; scene: { name: string; summary: string }; refs?: readonly string[]; branch?: string }): Scanned[] {
   return [
     { where: 'the base commit subject', text: r.base.subject },
     { where: 'the head commit subject', text: r.head.subject },
     { where: 'the scene', text: `${r.scene.name}\n${r.scene.summary}` },
+    // the refs as typed and the checkout's branch go into the record's first lines too (PR #199 r2)
+    ...(r.refs ? [{ where: 'the refs as given', text: r.refs.join('\n') }] : []),
+    ...(r.branch !== undefined ? [{ where: 'the branch', text: r.branch }] : []),
   ];
+}
+
+/**
+ * A command's output for the record: as it is when the scan finds nothing in it, else one line saying it
+ * was withheld and why (rules only, never the text). For build, scan and setup output, stop details and
+ * a failed take's tail (PR #199 r2).
+ */
+export function screen(lines: readonly string[], what: string, ctx: PrivacyContext): string[] {
+  const hits = privacyHits([{ where: what, text: lines.join('\n') }], ctx);
+  if (!hits.length) return [...lines];
+  const rules = [...new Set(hits.map((h) => h.rule))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return [`(${what} output withheld: ${rules.join(', ')} in it)`];
 }
