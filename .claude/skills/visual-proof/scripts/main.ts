@@ -89,7 +89,9 @@ async function run(a: RunArgs): Promise<number> {
     'Paths: $MAIN is the main checkout, $CHECKOUT this checkout, $SCRATCH the run\'s temp dir.',
   ], literals);
   const say = (line: string) => process.stdout.write(`${redact(line, literals)}\n`);
-  say(`record: ${relative(main, record.path)} (in the main checkout)`);
+  // Paths on the terminal are absolute, for the agent to open as they are; the record and summary keep $MAIN
+  const where = (path: string) => process.stdout.write(`${path}\n`);
+  process.stdout.write(`record: ${record.path}\n`);
   try {
     // 1. Tools
     const node = process.versions.node.split('.').map(Number);
@@ -231,7 +233,7 @@ async function run(a: RunArgs): Promise<number> {
     if (leak) throw leak;
 
     mkdirSync(out);
-    if (trying) return tryResult(takes['after-1']!, id, out, main, record, scratch, a.keep, say);
+    if (trying) return tryResult(takes['after-1']!, id, out, main, record, scratch, a.keep, say, where);
 
     // 9. Before → after: shots, images, GIF
     const caption = (side: 'before' | 'after', rev: Rev) => `${side.toUpperCase()} ${rev.short} ${rev.subject}`.slice(0, 96);
@@ -259,8 +261,11 @@ async function run(a: RunArgs): Promise<number> {
       ...(tooBig.length ? [`Over GitHub's 10 MB image limit: ${tooBig.map((im) => im.file).join(', ')}; attach the pairs instead, or shorten the scene.`] : [])]);
     if (!a.keep) rmSync(scratch, { recursive: true, force: true });
     record.finish(`complete${a.keep ? '; scratch kept at $SCRATCH (--keep)' : '; scratch removed'}`);
-    say(`DONE: ${c.shots.length} shot(s); summary ${relative(main, join(out, 'summary.md'))}; GIF ${relative(main, join(out, `${id}.gif`))} (${c.gif.bytes} bytes)`);
-    process.stdout.write(`\n${summary}`);
+    say(`DONE: ${c.shots.length} shot(s); 0 of ${compared} frames differ between takes; 0 privacy hits. Read these three in full before you report:`);
+    where(`  sheet    ${join(out, c.sheet)}   (every shot, before | after)`);
+    where(`  summary  ${join(out, 'summary.md')}   (the text for the PR)`);
+    where(`  record   ${record.path}   (every step)`);
+    where(`images for the lead to attach, with the GIF (${c.gif.bytes} bytes): ${out}/`);
     return 0;
   } catch (e) {
     const at = record.stepCount;
@@ -270,6 +275,7 @@ async function run(a: RunArgs): Promise<number> {
       record.step(`STOP: ${e.code}`, [e.message, ...e.detail.map((d) => `- ${d}`), '',
         keepScratch ? 'The scratch dir is kept for a look: $SCRATCH (remove it with `rm -rf` when done).' : 'Nothing was captured; the scratch dir (two builds) was removed.']);
       record.finish(`stopped (${e.code}) after step ${at}: ${e.message}`);
+      where(`record: ${record.path}`);
       say(`STOP ${e.code}: ${e.message}`);
       for (const d of e.detail) say(`  ${d}`);
       return 3;
@@ -277,6 +283,7 @@ async function run(a: RunArgs): Promise<number> {
     const msg = e instanceof Error ? e.message : String(e);
     record.step('Internal error', block(redact(e instanceof Error ? (e.stack ?? msg) : msg, literals).split('\n').slice(0, 12)));
     record.finish(`incomplete: internal error after step ${at}: ${msg.split('\n')[0]}`);
+    where(`record: ${record.path}`);
     say(`ERROR: ${msg.split('\n')[0]}`);
     return 1;
   }
@@ -291,11 +298,12 @@ function viewAndMotion(scene: Scene, parts: readonly ScenePart[]): { viewport: s
 }
 
 /** A try's result: each still's frame, boxes and probes, and the take's notes, for whoever is writing the scene. */
-function tryResult(t: { dir: string; log: TakeLog }, id: string, out: string, main: string, record: RunRecord, scratch: string, keep: boolean, say: (l: string) => void): number {
-  const lines: string[] = [];
+function tryResult(t: { dir: string; log: TakeLog }, id: string, out: string, main: string, record: RunRecord, scratch: string, keep: boolean, say: (l: string) => void, where: (l: string) => void): number {
+  const lines: string[] = [], stills: string[] = [];
   t.log.stills.forEach((s, i) => {
     const file = `${id}-still${i + 1}.png`;
     cpSync(join(t.dir, 'raw', `${String(s.k).padStart(4, '0')}.png`), join(out, file));
+    stills.push(join(out, file));
     const f = t.log.frames[s.k]!;
     const box = (b: { x: number; y: number; w: number; h: number }) => `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.w)}x${Math.round(b.h)}`;
     lines.push(`still ${i + 1}, ${s.name} (take frame ${s.k}, view frame ${f.frame}): ${relative(main, join(out, file))}`,
@@ -307,6 +315,9 @@ function tryResult(t: { dir: string; log: TakeLog }, id: string, out: string, ma
   if (!keep) rmSync(scratch, { recursive: true, force: true });
   record.finish(`complete (a try)${keep ? '; scratch kept at $SCRATCH (--keep)' : '; scratch removed'}`);
   for (const l of lines) say(l);
+  say('Look at every still:');
+  for (const f of stills) where(`  ${f}`);
+  where(`record: ${record.path}`);
   return 0;
 }
 

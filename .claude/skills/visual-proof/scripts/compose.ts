@@ -4,11 +4,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { encodePng } from '../../../../test/render/png.js';
-import { changeMask, diffByRegion, downscale, sideBySide, withCaption, type Image, type Region } from './frames.js';
+import { changeMask, contactSheet, diffByRegion, downscale, sideBySide, withCaption, type Image, type Region } from './frames.js';
 import { decodeGif, GifWriter, PaletteBuilder, Quantiser } from './gif.js';
 import { readPng } from './png.js';
 import { Stop } from './rules.js';
-import type { Shot } from './summary.js';
+import { shotLines, type Shot } from './summary.js';
 import { REGIONS, type TakeLog } from './scene.js';
 
 /** GitHub's limit for an image attached to a PR or comment. */
@@ -17,7 +17,9 @@ const CAPTION_SCALE = 3;
 const FLICKS = 3, FLICK_CS = 70, HOLD_CS = 100;
 
 export interface SideIn { take: string; log: TakeLog; caption: string }
-export interface Composed { shots: Shot[]; images: { file: string; bytes: number; note: string }[]; gif: { frames: number; colours: number; bytes: number; decoded: number } }
+export interface Composed { shots: Shot[]; images: { file: string; bytes: number; note: string }[]; gif: { frames: number; colours: number; bytes: number; decoded: number }; sheet: string }
+/** The contact sheet's widest row (a 1920x1080 pair shrinks by 2), and its label scale. */
+const SHEET_WIDTH = 2000, SHEET_SCALE = 3;
 
 const frameFile = (take: string, k: number) => join(take, 'raw', `${String(k).padStart(4, '0')}.png`);
 const load = (take: string, k: number): Image => readPng(readFileSync(frameFile(take, k)));
@@ -61,13 +63,21 @@ export function compose(id: string, before: SideIn, after: SideIn, report: reado
     writeFileSync(join(out, file), png);
     images.push({ file, bytes: png.length, note });
   };
+  const pairs: Image[] = [];
   shots.forEach((s, i) => {
     const b = load(before.take, s.k), a = load(after.take, s.k);
-    write(`${id}-shot${i + 1}-pair.png`, sideBySide(withCaption(b, before.caption, CAPTION_SCALE, s.name), withCaption(a, after.caption, CAPTION_SCALE, s.name), 16), `shot ${i + 1}, before | after`);
+    const pair = sideBySide(withCaption(b, before.caption, CAPTION_SCALE, s.name), withCaption(a, after.caption, CAPTION_SCALE, s.name), 16);
+    pairs.push(pair);
+    write(`${id}-shot${i + 1}-pair.png`, pair, `shot ${i + 1}, before | after`);
     write(`${id}-shot${i + 1}-before.png`, b, `shot ${i + 1} before`);
     write(`${id}-shot${i + 1}-after.png`, a, `shot ${i + 1} after`);
     write(`${id}-shot${i + 1}-changes.png`, changeMask(b, a), `shot ${i + 1}, changed pixels in teal`);
   });
+
+  // Every shot's pair on one sheet, each labelled with its numbers: the one image to look at first
+  const sheet = `${id}-sheet.png`;
+  write(sheet, contactSheet(shots.map((s, i) => ({ title: `SHOT ${i + 1} OF ${shots.length}: ${s.name} (take frame ${s.k}), BEFORE | AFTER`, lines: shotLines(s), image: pairs[i]! })), SHEET_WIDTH, SHEET_SCALE),
+    `every shot, before | after, on one sheet`);
 
   // The GIF's frames, in order: [take, k, caption, delay in centiseconds]
   const seq: [string, number, string, number][] = [];
@@ -110,5 +120,5 @@ export function compose(id: string, before: SideIn, after: SideIn, report: reado
   const file = `${id}.gif`;
   writeFileSync(join(out, file), bytes);
   images.unshift({ file, bytes: bytes.length, note: `before → after${gifScale > 1 ? ` at 1/${gifScale} size` : ''}, ${seq.length} frames in loop time, then each still flicking` });
-  return { shots, images, gif: { frames: d.frames.length, colours: palette.length / 3, bytes: bytes.length, decoded: d.frames.length } };
+  return { shots, images, gif: { frames: d.frames.length, colours: palette.length / 3, bytes: bytes.length, decoded: d.frames.length }, sheet };
 }

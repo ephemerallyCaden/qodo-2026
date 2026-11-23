@@ -147,3 +147,32 @@ export function changeMask(before: Image, after: Image): Image {
   }
   return out;
 }
+
+/** A contact sheet row's label: a title line and `lines` detail lines in the label font, with a margin. */
+export const sheetLabelHeight = (scale: number, lines: number): number => (1 + lines) * (FONT_HEIGHT + 2) * scale + 2 * scale;
+/** Space between one row's image and the next row's label. */
+export const sheetGap = (scale: number): number => 8 * scale;
+
+/**
+ * Every shot on one image, top to bottom: each row its title and detail lines (one measure a line, so
+ * none is cut short), then its image, shrunk by the smallest whole number that fits `maxWidth`. One file
+ * to look at, so no shot goes unseen.
+ */
+export function contactSheet(rows: readonly { title: string; lines: readonly string[]; image: Image }[], maxWidth: number, scale: number): Image {
+  const imgs = rows.map((r) => downscale(r.image, Math.max(1, Math.ceil(r.image.width / maxWidth))));
+  const width = Math.max(1, ...imgs.map((i) => i.width));
+  const G = sheetGap(scale), lh = (FONT_HEIGHT + 2) * scale;
+  const height = rows.reduce((h, r, n) => h + sheetLabelHeight(scale, r.lines.length) + imgs[n]!.height + (n ? G : 0), 0);
+  const out = solid(width, height, SPACE);
+  const room = Math.floor((width - 2 * scale) / scale);
+  let y = 0;
+  rows.forEach((r, n) => {
+    if (n) y += G;
+    drawText(out, fitText(r.title, room), 0, y + scale, scale, ACCENT);
+    r.lines.forEach((l, i) => drawText(out, fitText(l, room), 0, y + scale + (i + 1) * lh, scale));
+    y += sheetLabelHeight(scale, r.lines.length);
+    blit(out, imgs[n]!, 0, y);
+    y += imgs[n]!.height;
+  });
+  return out;
+}

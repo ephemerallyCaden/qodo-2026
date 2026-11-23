@@ -1,7 +1,7 @@
 // visual-proof: pixel counts between two frames (takes and before/after), where the change lies, and
 // the images it writes (side by side, captioned, the change mask).
 import { describe, expect, it } from 'vitest';
-import { changeMask, diffByRegion, diffPixels, downscale, fitText, hexRgb, sideBySide, solid, withCaption, type Image } from '../../.claude/skills/visual-proof/scripts/frames.js';
+import { changeMask, contactSheet, diffByRegion, diffPixels, downscale, fitText, sheetGap, sheetLabelHeight, hexRgb, sideBySide, solid, withCaption, type Image } from '../../.claude/skills/visual-proof/scripts/frames.js';
 import { textWidth } from '../../web/src/labels/font.js';
 import { UI_COLOURS } from '../../web/src/ui/colours.js';
 
@@ -91,6 +91,28 @@ describe('the images', () => {
     expect(at(d, 2, 1)).toEqual([40, 20, 7, 255]);
     expect(downscale(img, 1)).toBe(img);
     expect(() => downscale(img, 1.5)).toThrow(/whole/);
+  });
+  it('lays every shot on one sheet, each under its title and one line per measure, shrunk by a whole number to fit the width', () => {
+    const a = solid(300, 20, [200, 0, 0]), b = solid(120, 10, [0, 200, 0]);
+    const sheet = contactSheet([
+      { title: 'SHOT 1 OF 2', lines: ['1468 px changed', 'drone visible: 0 of 2320 px before, 2320 of 2320 after'], image: a },
+      { title: 'SHOT 2 OF 2', lines: ['x'], image: b },
+    ], 160, 1);
+    const L1 = sheetLabelHeight(1, 2), L2 = sheetLabelHeight(1, 1), G = sheetGap(1);
+    // a is 300 wide: shrunk by 2 to 150 x 10; b fits as it is
+    expect([sheet.width, sheet.height]).toEqual([150, L1 + 10 + G + L2 + 10]);
+    expect(at(sheet, 0, L1)).toEqual([200, 0, 0, 255]);
+    expect(at(sheet, 149, L1 + 9)).toEqual([200, 0, 0, 255]);
+    expect(at(sheet, 0, L1 + 10 + G + L2)).toEqual([0, 200, 0, 255]);
+    expect(at(sheet, 119, L1 + 10 + G + L2 + 9)).toEqual([0, 200, 0, 255]);
+    expect(at(sheet, 120, L1 + 10 + G + L2)).toEqual([...SPACE, 255]);
+    // label text: the title in the accent, the measures in ink, each measure on a line of its own
+    const ink = (y0: number, y1: number) => { let n = 0; for (let y = y0; y < y1; y++) for (let x = 0; x < sheet.width; x++) if (at(sheet, x, y).slice(0, 3).join() !== SPACE.join()) n++; return n; };
+    const lh = (sheetLabelHeight(1, 1) - sheetLabelHeight(1, 0));
+    expect(ink(1, 1 + lh), 'shot 1 title').toBeGreaterThan(20);
+    expect(ink(1 + lh, 1 + 2 * lh), 'its first measure').toBeGreaterThan(20);
+    expect(ink(1 + 2 * lh, 1 + 3 * lh), 'its second measure, not cut onto the first').toBeGreaterThan(20);
+    expect(ink(L1 + 10 + G, L1 + 10 + G + L2), 'shot 2 labelled').toBeGreaterThan(20);
   });
   it('marks every changed pixel in the accent and dims the rest', () => {
     const m = changeMask(a, b);

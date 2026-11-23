@@ -43,7 +43,8 @@ then runs it. No image tool, no new dependency: the PNG reader, GIF writer and c
 ```
 Add `--keep` to keep the scratch dir (`/tmp/visual-proof-<id>`: both builds, the data clone, the raw
 takes); `--out <dir>` writes the record elsewhere. Exit codes: 0 done, 3 `STOP <code>: …` (stop and ask),
-2 usage, 1 internal error. A run takes about 3 minutes; a negative (no view change) about 20 seconds.
+2 usage, 1 internal error; the last line printed always says which (`vp.sh: exit <code> (…)`). A run takes
+1 to 5 minutes (`drone-panel`, at 1920x1080, about 5); a negative (no view change) about 20 seconds.
 
 ## Steps
 
@@ -60,9 +61,13 @@ run will say so and stop (R11), so you can say it now instead.
 ```sh
 .claude/skills/visual-proof/scripts/vp.sh run --base <base> --head <head> --scene <scene>
 ```
-It prints the record's path first (`.archive/docs/hackathon/evidence/visual-proof-<id>.md`, in the main
-checkout). The record exists from that moment with `Status: running`, and every step is appended as it
-ends (R8), so a run that dies still shows what it did. The steps, each a section of the record:
+**Run it in the foreground, with no pipe, and allow 10 minutes** (the Bash tool's `timeout: 600000`).
+A pipe (`| tail`, `| tee`) reports its own exit status, not the run's; the output is short anyway. The
+last line is always `vp.sh: exit <code> (…)`, and on a stop the whole STOP block comes just before it.
+
+It prints the record's absolute path first; **open every path it prints as it is** (they are absolute,
+on the terminal only; the record and summary write `$MAIN`). The record exists from that moment with
+`Status: running`, and every step is appended as it ends (R8), so a run that dies still shows what it did. The steps, each a section of the record:
 
 1. **Tools**: Node, git, tar, node_modules, Playwright's Chromium (R7: missing → `tool-missing`).
 2. **The change**: the paths base → head; any under `src/scan/`, `src/attrib/`, `src/core/layout/`,
@@ -91,19 +96,23 @@ ends (R8), so a run that dies still shows what it did. The steps, each a section
 10. **Summary**: `summary.md`, privacy-checked, for the PR description (R4).
 
 ### 3. Read what it made
-On `DONE`, read the record and `summary.md`, and look at each `-shotN-pair.png` (Read shows images):
-- Does each shot show what the change is about? A shot with `no pixel changed` proves nothing about it.
+**Read all three files `DONE` names, in full:** the sheet (every shot, before | after, on one image),
+`summary.md`, and the record. Don't grep them, and don't stop at the terminal output. Then check:
+- Every shot on the sheet: does it show what the change is about? A shot with `no pixel changed` proves
+  nothing about it. A shot that looks wrong: open its `-shotN-pair.png` for the full-size frames.
 - Do the numbers say it? For a fix, the probe that measures the bug should move (e.g. `798 before, 0 after`).
 - Did either build's page log errors (the record's take steps)? Say so; don't hide them.
 
 ### 4. Report
-Paste `summary.md` into the PR draft as it is. List the images for the lead to attach (the GIF and the
-pairs, with their sizes; GitHub takes 10 MB at most), and the record's path. Attach nothing yourself.
+**One line per shot, from the sheet: what its before and after show.** Then paste `summary.md` into the
+PR draft as it is. List the images for the lead to attach (the GIF, the sheet and the pairs, with their
+sizes; GitHub takes 10 MB at most), and the record's path. Attach nothing yourself.
 
 ## Expected result
 
 `DONE`: both builds built and differ, four takes with 0 frames differing between takes of a build,
-0 privacy hits, and for each still a before | after pair, a change mask, the measures, and one GIF.
+0 privacy hits, and for each still a before | after pair, a change mask and the measures, all on one
+contact sheet, and one GIF.
 Anything else is a `STOP` and is reported as it is.
 
 ## Stop and ask
@@ -132,8 +141,8 @@ Exit 1 is a bug in the skill: report the record's `Internal error` step.
 Only scratch goes in `/tmp` (`/tmp/visual-proof-<id>`: the builds, the data clone, the raw takes), and a
 restart can wipe it. What the run makes is kept in the main checkout's gitignored
 `.archive/docs/hackathon/evidence/`: the record `visual-proof-<id>.md`, and beside it the folder
-`visual-proof-<id>/` with `summary.md`, the GIF, and per shot the pair, the before and after frames and
-the change mask. The record's start lines say where both are.
+`visual-proof-<id>/` with `summary.md`, the GIF, the contact sheet (`-sheet.png`: every shot's pair,
+each labelled with its numbers), and per shot the pair, the before and after frames and the change mask. The record's start lines say where both are.
 
 ## Stopping (early or not)
 

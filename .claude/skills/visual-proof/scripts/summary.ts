@@ -39,6 +39,22 @@ const short = (sha: string) => sha.slice(0, 7);
 const size = (bytes: number) => (bytes >= 1 << 20 ? `${(Math.floor((bytes * 10) / (1 << 20)) / 10).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/** A shot's lines for the summary (and the contact sheet): what changed, where, and its measures before and after. */
+export function shotLines(shot: Shot): string[] {
+  const lines: string[] = [];
+  if (!shot.px) lines.push('no pixel changed between before and after');
+  else {
+    const b = shot.box!;
+    lines.push(`${shot.px} of ${shot.total} px changed (${share(shot.px, shot.total)}), box x ${b.x0}-${b.x1}, y ${b.y0}-${b.y1}`);
+    lines.push(`where: ${shot.where.map((w) => `${w.name} ${w.px}`).join(', ')}`);
+  }
+  // the drone measures read as one line: visible of drawn, before and after
+  const drawn = shot.probes.find((p) => p.name === 'drone px drawn'), visible = shot.probes.find((p) => p.name === 'drone px visible');
+  if (drawn && visible) lines.push(`drone visible: ${visible.before} of ${drawn.before} px before, ${visible.after} of ${drawn.after} after`);
+  for (const p of shot.probes) if (!(drawn && visible && (p === drawn || p === visible))) lines.push(`${p.name}: ${p.before} before, ${p.after} after`);
+  return lines;
+}
+
 export function summaryText(s: RunSummary): string {
   const lines = [
     `### Visual proof: ${s.scene.name}`,
@@ -52,18 +68,7 @@ export function summaryText(s: RunSummary): string {
     '',
   ];
   s.shots.forEach((shot, i) => {
-    lines.push(`**Shot ${i + 1}: ${shot.name} (take frame ${shot.k})**`);
-    if (!shot.px) lines.push('- no pixel changed between before and after');
-    else {
-      const b = shot.box!;
-      lines.push(`- ${shot.px} of ${shot.total} px changed (${share(shot.px, shot.total)}), box x ${b.x0}-${b.x1}, y ${b.y0}-${b.y1}`);
-      lines.push(`- where: ${shot.where.map((w) => `${w.name} ${w.px}`).join(', ')}`);
-    }
-    // the drone measures read as one line: visible of drawn, before and after
-    const drawn = shot.probes.find((p) => p.name === 'drone px drawn'), visible = shot.probes.find((p) => p.name === 'drone px visible');
-    if (drawn && visible) lines.push(`- drone visible: ${visible.before} of ${drawn.before} px before, ${visible.after} of ${drawn.after} after`);
-    for (const p of shot.probes) if (!(drawn && visible && (p === drawn || p === visible))) lines.push(`- ${p.name}: ${p.before} before, ${p.after} after`);
-    lines.push('');
+    lines.push(`**Shot ${i + 1}: ${shot.name} (take frame ${shot.k})**`, ...shotLines(shot).map((l) => `- ${l}`), '');
   });
   lines.push(
     `**Same data on both sides:** ${s.data.source}, scanned once with \`--no-ingest\` (${plural(s.data.sessions, 'agent session')} read)` +
