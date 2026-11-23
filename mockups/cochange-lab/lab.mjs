@@ -78,7 +78,7 @@ async function compare() {
     notes: [
       'A star chart: dotted, brighter and denser by strength · B signal: a dim rail, 1 / 2 / 3 beads by strength · C arcs: solid, bowed away from the star, 2 / 3 / 4 px by strength',
       'Lines show only for the focused item, in the starfield\'s own colours, and stop 1 px short of anything that isn\'t empty space (discs, clouds, rings, debris, the drone) and of every label.',
-      'The teal pair glyph right of web is the missing-pair flag: the latest change touched src/core/fog.ts but not web/src/model/fog.ts (Jaccard 0.88). Each still is 640×360 (×2).',
+      'The teal pair glyph beside web is the missing-pair flag: the latest change touched src/core/fog.ts but not web/src/model/fog.ts (Jaccard 0.88). Each still is 640×360 (×2).',
     ],
     rows: [
       { label: 'planet focus\nsrc', cells: col(FOCUS.planet) },
@@ -91,14 +91,17 @@ async function compare() {
 /** The flag beside the other map signals, close up (×4 crops of one still). */
 async function markers() {
   const cell = { option: 'A', focus: null, ...STILL };
-  const crop = (x, y, caption) => ({ cell, crop: [x, y, 72, 48], scale: 4, caption });
+  const crop = (around, caption, focus = null) => ({ cell: { ...cell, focus }, crop: { around, w: 80, h: 52 }, scale: 4, caption });
   await png('markers.png', await page.evaluate((s) => window.lab.sheet(s), {
     title: 'the missing-pair flag beside the other map signals (nothing focused; ×4 crops of the same frame)',
-    notes: ['The flag is a flat [OIII]-teal pair glyph: a filled dot linked to an empty ring, right of the left-out file\'s planet, at mid height.',
-      'The beacon stands above its disc on a mast (BLK 36 blue-white); debris is grey 3D junk with a red outline and lights; fog is white storm cloud on the disc;',
-      'the drone is a 3D BLK 36 figure with a screen; rings are planet-coloured bands round the disc.'],
+    notes: ['The flag is a flat [OIII]-teal pair glyph: a filled dot linked to an empty ring, beside the left-out file\'s planet at mid height, on the side with room for its text.',
+      'The beacon stands above its disc on a mast (BLK 36 blue-white). Debris is grey 3D junk with a red outline and red lights. Fog is white storm cloud on the disc.',
+      'The drone is a 3D BLK 36 figure with a screen. Rings are planet-coloured bands round the disc. Only the flag is flat, teal and beside the disc.'],
     labelW: 10,
-    rows: [{ label: '', cells: [crop(214, 43, 'flag beside fogged web'), crop(37, 40, 'beacon and ring on docs'), crop(32, 128, 'debris round scripts'), crop(176, 64, 'drone beside src')] }],
+    rows: [
+      { label: '', cells: [crop('flag', 'the flag beside fogged web'), { ...crop('flag', 'with src focused: its text', { planet: 'src' }), crop: { around: 'flag', w: 170, h: 52 } }, crop('docs', 'beacon and ring on docs')] },
+      { label: '', cells: [crop('scripts', 'debris round scripts'), crop('drone', 'the drone beside src'), crop('src', 'src: clouds, moons')] },
+    ],
   }));
 }
 

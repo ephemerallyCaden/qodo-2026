@@ -49,7 +49,7 @@ const drone = makeDrone();
   drone.setParams(params);
   drone.setPalette(palette);
 }
-const DRONE_AT = [1.5, 0.95, 1.1]; // beside src, where an agent session is working
+const DRONE_AT = [-1.35, -0.8, 1.3]; // beside src, where an agent session is working
 scene.add(drone.group);
 
 /** The fixed camera: the whole system in frame, the star upper left, as in the viewer's system view. */
@@ -163,6 +163,10 @@ const flagInFocus = (f, focus) => !!focus && (focus.planet === planetOf(f.file) 
 
 const shortName = (file) => file.split('/').slice(-2).join('/');
 const fontPx = (scale) => Math.max(1, Math.floor(scale / 2)); // web/src/labels/overlay.ts fontScale
+/** A label's width in internal px at an output scale. */
+const textW = (text, scale) => (rasterText(text, MICRO).w * fontPx(scale)) / scale;
+/** A flag's two lines of text: the left-out file, and the file it usually changes with. */
+const flagText = (f) => [f.file, `usually changes with ${f.with}`];
 
 /**
  * Labels in internal px: { text, x, y (top of the text), align, colour, box } where box is the label's
@@ -199,13 +203,9 @@ function labelsFor(cell, discs, flags) {
     }
   }
   for (const f of flags) {
-    if (!f.box || !flagInFocus(f, focus)) continue;
-    const text = [f.file, `usually changes with ${f.with}`];
-    const tw = Math.max(...text.map(widthOf));
-    const d = discs.get(planetOf(f.file));
-    const right = f.box.x + f.box.w + 2 + tw + u <= cell.w; // beside the glyph, or else left of the disc
-    const x = right ? f.box.x + f.box.w + 2 : d.x - d.r - 3, y = f.box.y + f.box.h / 2 - lh + u;
-    text.forEach((line, k) => add(line, x, y + k * lh, right ? 'left' : 'right', k ? UI.dim : UI.ink));
+    if (!flagInFocus(f, focus)) continue;
+    const x = f.right ? f.box.x + f.box.w + 2 : f.box.x - 2, y = f.box.y + f.box.h / 2 - lh + u;
+    flagText(f).forEach((line, k) => add(line, x, y + k * lh, f.right ? 'left' : 'right', k ? UI.dim : UI.ink));
   }
   return out;
 }
@@ -233,11 +233,15 @@ function frameOf(raw, sceneImg = null) {
     const d = discs.get(P.id);
     markers.push({ rows: BEACON_SHAPE, x: Math.round(d.x - BEACON_SHAPE[0].length / 2), y: Math.round(d.y - d.r - BEACON_GAP - BEACON_SHAPE.length), colours: { R: C.beaconRim, C: C.beaconCore, M: C.beaconMast } });
   }
+  // a flag stands beside its planet's disc at mid height, on the side with room for its text (fixed per
+  // layout, so it doesn't jump when the text comes and goes); the text goes beyond the glyph
+  const fw = FLAG_ROWS[0].length, fh = FLAG_ROWS.length;
   const flags = (cell.flags ? DATA.flags : []).map((f) => {
     const d = discs.get(planetOf(f.file));
-    const box = { x: Math.round(d.x + d.r + FLAG_GAP), y: Math.round(d.y - FLAG_ROWS.length / 2), w: FLAG_ROWS[0].length, h: FLAG_ROWS.length };
+    const right = d.x + d.r + FLAG_GAP + fw + 2 + Math.max(...flagText(f).map((l) => textW(l, cell.scale))) + 1 <= w;
+    const box = { x: Math.round(right ? d.x + d.r + FLAG_GAP : d.x - d.r - FLAG_GAP - fw), y: Math.round(d.y - fh / 2), w: fw, h: fh };
     markers.push({ rows: FLAG_ROWS, x: box.x, y: box.y, colours: { '#': C.teal, R: C.tealHi } });
-    return { ...f, box };
+    return { ...f, box, right };
   });
   const lines = linesFor(cell.focus);
   const labels = cell.labels ? labelsFor({ ...cell, lines }, discs, flags) : [];
@@ -346,18 +350,32 @@ function gifFrame(k, options = OPTIONS.map((o) => o.id), extra = {}) {
 
 // ------------------------------------------------------------------ the comparison sheet
 const SHEET = { bg: '#0d0b16', text: '#e6e0ee', dim: '#a99cbf', head: '#fff6e4', font: '13px ui-monospace, Menlo, monospace' };
+/** Where a crop centres: a planet's disc, the drone, or a flag (between its glyph and its disc). */
+function centreFor(fr, target) {
+  if (target === 'drone') return toScreen(new THREE.Vector3(...DRONE_AT), fr.cell.w, fr.cell.h);
+  if (target === 'flag') {
+    const f = fr.flags[0], d = fr.discs[planetOf(f.file)];
+    return { x: (f.box.x + f.box.w / 2 + d.x) / 2, y: d.y };
+  }
+  return fr.discs[target];
+}
+
 /**
- * A sheet: { title, notes: [lines], rows: [{ label, cells: [{ cell, caption, crop? [x, y, w, h] internal px, scale }] }] }.
- * Each cell is composed with its labels; crops are taken from the composed image.
+ * A sheet: { title, notes: [lines], rows: [{ label, cells: [{ cell, caption, crop?: { around, w, h } (internal px), scale }] }] }.
+ * Each cell is composed with its labels; a crop is a w×h window round a body (centreFor), inside the frame.
  */
 function sheet(spec) {
   const gap = 10, labelW = spec.labelW ?? 150, notes = spec.notes ?? [];
   const headH = 34 + notes.length * 16;
   const rows = spec.rows.map((r) => r.cells.map((c) => {
     const scale = c.scale ?? 2;
-    const cv = compose(frameOf({ ...c.cell, scale }));
+    const fr = frameOf({ ...c.cell, scale });
+    const cv = compose(fr);
     if (!c.crop) return { cv, caption: c.caption };
-    const [x, y, cw, ch] = c.crop.map((v) => v * scale);
+    const at = centreFor(fr, c.crop.around);
+    const cx = Math.min(Math.max(Math.round(at.x - c.crop.w / 2), 0), fr.cell.w - c.crop.w);
+    const cy = Math.min(Math.max(Math.round(at.y - c.crop.h / 2), 0), fr.cell.h - c.crop.h);
+    const [x, y, cw, ch] = [cx, cy, c.crop.w, c.crop.h].map((v) => v * scale);
     const d = Object.assign(document.createElement('canvas'), { width: cw, height: ch });
     d.getContext('2d').drawImage(cv, x, y, cw, ch, 0, 0, cw, ch);
     return { cv: d, caption: c.caption };
@@ -366,7 +384,10 @@ function sheet(spec) {
   const colW = Array.from({ length: cols }, (_, j) => Math.max(...rows.map((r) => r[j]?.cv.width ?? 0)));
   const capH = (r) => 6 + 15 * Math.max(0, ...r.map((c) => String(c.caption ?? '').split('\n').filter(Boolean).length));
   const rowH = rows.map((r) => Math.max(...r.map((c) => c.cv.height)) + capH(r));
-  const W = labelW + colW.reduce((s, x) => s + x + gap, 0), H = headH + rowH.reduce((s, x) => s + x + gap, 0);
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = SHEET.font;
+  const textW = Math.max(...[spec.title, ...notes].map((t) => measure.measureText(t).width)) + 2 * gap;
+  const W = Math.ceil(Math.max(textW, labelW + colW.reduce((s, x) => s + x + gap, 0))), H = headH + rowH.reduce((s, x) => s + x + gap, 0);
   const cv = Object.assign(document.createElement('canvas'), { width: W, height: H });
   const ctx = cv.getContext('2d');
   ctx.fillStyle = SHEET.bg;
