@@ -2,9 +2,9 @@
 // frames in ({ final, scene, ov, blocked } as { w, h, data }, plus the page's lines), a list of
 // problems out (an empty list is a pass). Render checks fail on empty output.
 import { COLOURS, LINE_COLOURS, SPACE, C } from './variants.js';
+import { hexKey as hex } from './raster.js';
 
 const rgb = (d, i) => (d[4 * i] << 16) | (d[4 * i + 1] << 8) | d[4 * i + 2];
-const hex = (h) => parseInt(h.slice(1), 16);
 const SPACE_RGB = hex(SPACE);
 
 /** Pixels of an index map (ov's R channel) that are constellation lines. */

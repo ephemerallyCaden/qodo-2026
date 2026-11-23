@@ -48,25 +48,25 @@ export const option = (id) => OPTIONS.find((o) => o.id === id);
 /**
  * The missing-pair flag, "usually changes with X": a pair glyph whose far end is empty, a filled dot
  * linked to a hollow ring. It stands just right of the left-out file's planet, at mid height (the
- * beacon stands above the disc and the label sits below it). D = the dot and link, R = the ring.
+ * beacon stands above the disc and the label sits below it). # = the dot and link, R = the ring.
  */
 export const FLAG_SHAPE = [
-  '.......####.',
-  '.##...######',
-  '########..##',
-  '########..##',
-  '.##...######',
-  '.......####.',
+  '.......RRRR.',
+  '.##...RRRRRR',
+  '######RR..RR',
+  '######RR..RR',
+  '.##...RRRRRR',
+  '.......RRRR.',
 ];
-export const FLAG_COLOURS = { '#': C.teal, R: C.tealHi };
-// the ring is the empty socket: draw it in the brighter teal
-export const FLAG_ROWS = FLAG_SHAPE.map((row) => [...row].map((ch, i) => (ch === '#' && i >= 6 ? 'R' : ch)).join(''));
+/** The flag's colours: the dot and link in mid teal, the ring (the pair's missing half) in bright teal. */
+export const FLAG_INK = { '#': C.teal, R: C.tealHi };
 /** Gap (px) between the planet's disc and the flag. */
 export const FLAG_GAP = 2;
 
 /** The product's beacon marker (web/src/render/beacons.ts BEACON_SHAPE), 2 px above the disc. */
 export const BEACON_SHAPE = ['...RR...', '..RCCR..', '..RCCR..', '...RR...', '...MM...', '...MM...', '...MM...', '..MMMM..'];
 export const BEACON_GAP = 2;
+export const BEACON_INK = { R: C.beaconRim, C: C.beaconCore, M: C.beaconMast };
 
 /**
  * The GIF (6 s): nothing focused, then `src` is focused and its lines draw in; then one of its files,

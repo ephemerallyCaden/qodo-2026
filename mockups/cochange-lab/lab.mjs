@@ -18,8 +18,8 @@ const args = process.argv.slice(2);
 const names = args.length ? args : ALL;
 
 /** The stills' moment: loop time 4 s, everything drawn in. */
-export const STILL = { t: 4, since: 3 };
-export const FOCUS = { planet: { planet: 'src' }, file: { planet: 'src', file: 'src/core/fog.ts' } };
+const STILL = { t: 4, since: 3 };
+const FOCUS = { planet: { planet: 'src' }, file: { planet: 'src', file: 'src/core/fog.ts' } };
 
 let page;
 const png = async (file, dataUrl) => { await writeFile(path.join(OUT, file), pngFrom(dataUrl)); console.log(`  out/${file}`); };

@@ -10,8 +10,8 @@ export async function launch() {
   return chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 }
 
-/** The lab page in capture mode; resolves when window.lab is ready. */
-export async function openLab(browser) {
+/** The lab page, in capture mode unless `live` (the live page: controls and its own loop); resolves when window.lab is ready. */
+export async function openLab(browser, { live = false } = {}) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
@@ -24,7 +24,7 @@ export async function openLab(browser) {
   page.on('pageerror', (e) => errors.push(e));
   page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('GPU stall')) errors.push(new Error(m.text())); });
   page.errors = errors;
-  await page.goto(`${ORIGIN}/cochange-lab/index.html?capture`);
+  await page.goto(`${ORIGIN}/cochange-lab/index.html${live ? '' : '?capture'}`);
   // Startup compiles shaders in SwiftShader (minutes on a busy machine): allow 240 s, and surface the page's own error first.
   await page.waitForFunction(() => window.lab?.ready, null, { timeout: 240000 }).catch((e) => { throw errors[0] ?? e; });
   if (errors.length) throw errors[0];

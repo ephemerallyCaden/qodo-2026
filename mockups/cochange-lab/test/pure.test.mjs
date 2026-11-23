@@ -7,7 +7,7 @@ import {
   pairs, filePartners, filePartnerPlanets, planetPartners, missingPairs, history, system, step, STEPS, THRESHOLD, CAP, FLAG_MIN, PLANETS, FILES, planetOf,
 } from '../data.js';
 import { resample, stampFree, stamp, span, revealAt, drawLine, drawBeads, busyMask, dilate, blockBox } from '../raster.js';
-import { OPTIONS, COLOURS, LINE_COLOURS, STARS, TEAL, BEACON_COLOURS, FLAG_SHAPE, FLAG_ROWS, BEACON_SHAPE, TIMELINE, GIF, focusAt, SPACE } from '../variants.js';
+import { OPTIONS, COLOURS, LINE_COLOURS, STARS, TEAL, BEACON_COLOURS, FLAG_SHAPE, BEACON_SHAPE, TIMELINE, GIF, focusAt, SPACE } from '../variants.js';
 import { checkFrame, slivers } from '../checks.mjs';
 import { resolveFile } from '../routes.mjs';
 import { ACCENTS } from '../../asset-viewer/planet-ramps.js';
@@ -199,7 +199,7 @@ test('the flag is a whole shape with strokes at least 2 px (the beacon is the pr
       assert.ok(inBlock, `flag (${x}, ${y})`);
     }
   }
-  assert.equal(FLAG_ROWS.join('').replace(/[^R]/g, '').length > 0, true, 'the ring is drawn brighter');
+  assert.ok(FLAG_SHAPE.join('').includes('R') && FLAG_SHAPE.join('').includes('#'), 'a dot and a ring, in two teals');
 });
 
 test('the GIF: at most 6 s, nothing focused first, then a planet, then one of its files', () => {

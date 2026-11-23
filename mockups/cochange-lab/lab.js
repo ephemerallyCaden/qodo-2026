@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import {
   makePlanet, makeSky, makeStars, makeStar, setDepthLevel, depthLevelAt, poseWorld, applyDepth, setViewSize, setPixelSize,
-  retint, resolve, renderer, camera, controls, LOOP, demoItems, fogClouds, FINAL_CLOUD_FOG, weatherShown, BIOMES, WEATHER, RING_PRESETS, frameWidth,
+  retint, resolve, renderer, camera, controls, demoItems, fogClouds, FINAL_CLOUD_FOG, weatherShown, BIOMES, WEATHER, RING_PRESETS,
 } from '../asset-viewer/viewer.js';
 import { demoLayout, stateAt as fogStateAt, fibonacciCell, SURFACE_CELLS } from '../asset-viewer/fog-layout.js';
 import { makeDrone } from '../drone-lab/drone.js';
@@ -16,7 +16,7 @@ import { MICRO, rasterText } from '../day1-hype/font.js';
 import { PLANETS, STAR, system, planetPartners, filePartnerPlanets, planetOf } from './data.js';
 import { resample, span, revealAt, drawLine, drawBeads, busyMask, dilate, blockBox, drawShape } from './raster.js';
 import {
-  OPTIONS, option, COLOURS, C, SPACE, STARS, UI, FLAG_ROWS, FLAG_GAP, BEACON_SHAPE, BEACON_GAP, TIMELINE, GIF, focusAt,
+  OPTIONS, option, COLOURS, SPACE, STARS, UI, FLAG_SHAPE, FLAG_INK, FLAG_GAP, BEACON_SHAPE, BEACON_INK, BEACON_GAP, GIF, focusAt,
 } from './variants.js';
 
 const DATA = system();
@@ -107,7 +107,7 @@ function renderScene(t, w = W0, h = H0) {
 /** A world point -> { x, y } in px (top-down) of a w×h frame, and its camera distance. */
 function toScreen(v, w, h) {
   const s = v.clone().project(camera);
-  return { x: ((s.x + 1) / 2) * w, y: ((1 - s.y) / 2) * h, z: s.z, d: camera.position.distanceTo(v) };
+  return { x: ((s.x + 1) / 2) * w, y: ((1 - s.y) / 2) * h, d: camera.position.distanceTo(v) };
 }
 /** Each body's disc on screen: { x, y, r, d } (r from its radius at its distance). */
 function discOf(centre, radius, w, h) {
@@ -173,19 +173,17 @@ const flagText = (f) => [f.file, `usually changes with ${f.with}`];
  * backing (one font px of padding), as web/src/labels/overlay.ts draws it. Font px = fontPx(scale)
  * device px = fontPx(scale) / scale internal px.
  */
-function labelsFor(cell, discs, flags) {
+function labelsFor(cell, lines, discs, flags) {
   const u = fontPx(cell.scale) / cell.scale; // one font px in internal px
   const lh = (MICRO.height + 2) * u;
   const out = [];
-  const widthOf = (text) => rasterText(text, MICRO).w * u;
   const add = (text, x, y, align, colour) => {
-    const tw = widthOf(text);
+    const tw = textW(text, cell.scale);
     // centred under its disc, or from its left edge ('right': ending at x); kept inside the frame (as overlay.ts's clear())
     const x0 = Math.min(Math.max(align === 'centre' ? x - tw / 2 : align === 'right' ? x - tw : x, 2 * u), cell.w - tw - 2 * u);
     out.push({ text, x: x0, y, colour, box: { x: x0 - u, y: y - u, w: tw + 2 * u, h: (MICRO.height + 1) * u } });
   };
   const focus = cell.focus;
-  const lines = cell.lines;
   for (const { P } of bodies) {
     const d = discs.get(P.id);
     if (d.x < -d.r || d.x > cell.w + d.r || d.y < -d.r || d.y > cell.h + d.r) continue;
@@ -197,7 +195,7 @@ function labelsFor(cell, discs, flags) {
       add(shortName(focus.file), d.x, y, 'centre', UI.accent);
       y += lh;
     }
-    if (!cell.fileLabels || !focus?.file) continue;
+    if (!focus?.file) continue;
     for (const l of lines.filter((x) => x.to === P.id)) {
       for (const f of l.files) { add(`${l.same ? 'with ' : ''}${shortName(f.file)}`, d.x, y, 'centre', UI.dim); y += lh; }
     }
@@ -210,8 +208,9 @@ function labelsFor(cell, discs, flags) {
   return out;
 }
 
-const DEFAULTS = { option: 'A', focus: null, t: 4, since: 3, reduced: false, freeze: null, w: W0, h: H0, scale: 4, labels: true, flags: true, beacons: true, fileLabels: true };
+const DEFAULTS = { option: 'A', focus: null, t: 4, since: 3, reduced: false, freeze: null, w: W0, h: H0, scale: 4 };
 const FREE = [SPACE, ...STARS]; // empty space and the starfield: the only pixels a line may take
+const RGB = COLOURS.map((c) => c && [1, 3, 5].map((k) => parseInt(c.slice(k, k + 2), 16)).concat(255));
 
 /**
  * One frame of a cell: the scene, then the overlay. Returns { scene, final, ov, labels, discs, lines,
@@ -225,62 +224,55 @@ function frameOf(raw, sceneImg = null) {
   const t = cell.reduced && cell.freeze !== null ? cell.freeze : cell.t;
   const img = sceneImg ?? renderScene(t, w, h); // a given scene was rendered (and posed) at t
   const discs = new Map(bodies.map(({ P }) => [P.id, discOf(centreOf(P.id), P.size, w, h)]));
-  const starDisc = discOf(new THREE.Vector3(...STAR.pos), STAR.size * 1.35, w, h);
   const ov = new Uint8Array(w * h);
-  // markers: the beacon above its planet's disc, the flags right of theirs
+  // markers: the beacon above its planet's disc, the flags beside theirs
   const markers = [];
-  if (cell.beacons) for (const { P } of bodies.filter((b) => b.P.beacon)) {
+  for (const { P } of bodies.filter((b) => b.P.beacon)) {
     const d = discs.get(P.id);
-    markers.push({ rows: BEACON_SHAPE, x: Math.round(d.x - BEACON_SHAPE[0].length / 2), y: Math.round(d.y - d.r - BEACON_GAP - BEACON_SHAPE.length), colours: { R: C.beaconRim, C: C.beaconCore, M: C.beaconMast } });
+    markers.push({ rows: BEACON_SHAPE, x: Math.round(d.x - BEACON_SHAPE[0].length / 2), y: Math.round(d.y - d.r - BEACON_GAP - BEACON_SHAPE.length), colours: BEACON_INK });
   }
   // a flag stands beside its planet's disc at mid height, on the side with room for its text (fixed per
   // layout, so it doesn't jump when the text comes and goes); the text goes beyond the glyph
-  const fw = FLAG_ROWS[0].length, fh = FLAG_ROWS.length;
-  const flags = (cell.flags ? DATA.flags : []).map((f) => {
+  const fw = FLAG_SHAPE[0].length, fh = FLAG_SHAPE.length;
+  const flags = DATA.flags.map((f) => {
     const d = discs.get(planetOf(f.file));
     const right = d.x + d.r + FLAG_GAP + fw + 2 + Math.max(...flagText(f).map((l) => textW(l, cell.scale))) + 1 <= w;
     const box = { x: Math.round(right ? d.x + d.r + FLAG_GAP : d.x - d.r - FLAG_GAP - fw), y: Math.round(d.y - fh / 2), w: fw, h: fh };
-    markers.push({ rows: FLAG_ROWS, x: box.x, y: box.y, colours: { '#': C.teal, R: C.tealHi } });
+    markers.push({ rows: FLAG_SHAPE, x: box.x, y: box.y, colours: FLAG_INK });
     return { ...f, box, right };
   });
   const lines = linesFor(cell.focus);
-  const labels = cell.labels ? labelsFor({ ...cell, lines }, discs, flags) : [];
+  const labels = labelsFor(cell, lines, discs, flags);
   // the mask: anything that isn't empty space, grown 1 px, and every label and marker box with a 1 px gap
   const blocked = dilate(busyMask(img, w, h, FREE), w, h, 1);
   for (const l of labels) blockBox(blocked, w, h, l.box, 1);
   for (const m of markers) blockBox(blocked, w, h, { x: m.x, y: m.y, w: m.rows[0].length, h: m.rows.length }, 1);
   // lines: drawn weakest first so a stronger one wins where two meet; drawn in strongest first
-  const since = cell.since;
-  const ranked = lines.map((l, rank) => ({ ...l, rank }));
   let stamps = 0;
   const drawn = [];
-  for (const l of [...ranked].sort((x, y) => x.strength - y.strength || y.rank - x.rank)) {
+  for (const l of lines.map((x, rank) => ({ ...x, rank })).sort((x, y) => x.strength - y.strength || y.rank - x.rank)) {
     if (l.same) continue; // a partner on the focused file's own planet is named in its label stack, not drawn
     const pts = path3(l.a, l.b, opt).map((v) => toScreen(v, w, h));
     const samples = resample(pts, 1);
     const sp = span(samples, discs.get(l.from), discs.get(l.to));
-    const reveal = revealAt(since, l.rank, { reduced: cell.reduced });
+    const reveal = revealAt(cell.since, l.rank, { reduced: cell.reduced });
     const st = opt.steps[l.step];
     const n = drawLine(ov, blocked, w, h, samples, sp, st, reveal);
     stamps += n;
-    drawn.push({ from: l.from, to: l.to, rank: l.rank, step: l.step, strength: l.strength, same: !!l.same, reveal, stamps: n, samples, sp });
+    drawn.push({ from: l.from, to: l.to, rank: l.rank, step: l.step, strength: l.strength, reveal, stamps: n, samples, sp });
   }
-  if (opt.steps.some((s) => s.beads)) {
+  if (opt.beadPeriod) {
+    const u = t / opt.beadPeriod; // loop-locked: whole trips per loop (drawBeads wraps it)
     for (const l of drawn) {
-      const b = opt.steps[l.step].beads;
-      const u = ((t / opt.beadPeriod) % 1 + 1) % 1;
-      stamps += drawBeads(ov, blocked, w, h, l.samples, l.sp, { w: opt.steps[l.step].w, ...b, u: u + l.rank * 0.17 }, l.reveal);
+      const st = opt.steps[l.step];
+      stamps += drawBeads(ov, blocked, w, h, l.samples, l.sp, { w: st.w, ...st.beads, u: u + l.rank * 0.17 }, l.reveal);
     }
   }
   for (const m of markers) drawShape(ov, w, h, m.rows, m.x, m.y, m.colours);
   const final = new Uint8ClampedArray(img);
-  for (let i = 0; i < w * h; i++) {
-    if (!ov[i]) continue;
-    const c = COLOURS[ov[i]];
-    final[4 * i] = parseInt(c.slice(1, 3), 16); final[4 * i + 1] = parseInt(c.slice(3, 5), 16); final[4 * i + 2] = parseInt(c.slice(5, 7), 16); final[4 * i + 3] = 255;
-  }
+  for (let i = 0; i < w * h; i++) if (ov[i]) final.set(RGB[ov[i]], 4 * i);
   return {
-    cell, scene: img, final, ov, labels, discs: Object.fromEntries(discs), starDisc, flags,
+    cell, scene: img, final, ov, labels, discs: Object.fromEntries(discs), flags,
     lines: drawn.map(({ samples, ...l }) => l), stamps, blocked,
   };
 }
@@ -322,7 +314,7 @@ const rgbaOf = (cv) => new Uint8Array(cv.getContext('2d').getImageData(0, 0, cv.
 function frames(cell, modes = ['final']) {
   const fr = frameOf(cell);
   const { w, h } = fr.cell;
-  const out = { lines: fr.lines, flags: fr.flags.map(({ box, ...f }) => ({ ...f, box })), labels: fr.labels.map(({ text, box, colour }) => ({ text, box, colour })), discs: fr.discs, starDisc: fr.starDisc, stamps: fr.stamps };
+  const out = { lines: fr.lines, flags: fr.flags, labels: fr.labels.map(({ text, box, colour }) => ({ text, box, colour })), discs: fr.discs, stamps: fr.stamps };
   for (const m of modes) {
     if (m === 'final') out.final = raw(fr.final, w, h);
     if (m === 'scene') out.scene = raw(fr.scene, w, h);
@@ -334,7 +326,7 @@ function frames(cell, modes = ['final']) {
 }
 
 /** A 1280×720 still (PNG data URL) of a cell. */
-const still = (cell) => compose(frameOf({ scale: 4, ...cell })).toDataURL('image/png');
+const still = (cell) => compose(frameOf(cell)).toDataURL('image/png');
 
 /** GIF frame k (of GIF.fps per s) for each option: the scene rendered once, each option drawn on it. */
 function gifFrame(k, options = OPTIONS.map((o) => o.id), extra = {}) {
@@ -413,12 +405,6 @@ function sheet(spec) {
   return cv.toDataURL('image/png');
 }
 
-/** The data, for reports and tests. */
-const info = () => ({
-  planets: PLANETS.map((P) => ({ id: P.id, partners: planetPartners(DATA.pairs, P.id) })),
-  pairs: DATA.pairs, flags: DATA.flags, timeline: TIMELINE, options: OPTIONS,
-});
-
 // ------------------------------------------------------------------ live page
 function bindLive() {
   const $ = (id) => document.getElementById(id);
@@ -467,5 +453,5 @@ function bindLive() {
 
 setPixelSize(W0, H0, [sky]);
 controls.enabled = false;
-window.lab = { ready: true, frames, still, gifFrame, sheet, info, OPTIONS, GIF };
+window.lab = { ready: true, frames, still, gifFrame, sheet };
 if (!new URLSearchParams(location.search).has('capture')) bindLive();

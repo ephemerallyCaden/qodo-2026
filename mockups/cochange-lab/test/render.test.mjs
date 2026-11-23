@@ -99,22 +99,11 @@ test('labels: drawn in the UI colours only, on a space backing, and no line unde
 });
 
 test('the live page binds and draws without errors', { timeout: 300000 }, async () => {
-  const live = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  const { load } = await import('../routes.mjs');
-  await live.route('**/*', async (route) => {
-    const url = new URL(route.request().url());
-    if (url.origin !== 'http://cochange.local') return route.abort();
-    const { status, body, type } = await load(url.pathname);
-    if (status === 403) return route.abort();
-    await route.fulfill({ status, body, contentType: type });
-  });
-  const errors = [];
-  live.on('pageerror', (e) => errors.push(e));
-  await live.goto('http://cochange.local/cochange-lab/index.html');
+  const live = await openLab(browser, { live: true });
   await live.waitForFunction(() => document.getElementById('status')?.textContent.includes('lines'), null, { timeout: 240000 });
   await live.selectOption('#focus', 'src');
   await live.waitForFunction(() => /[1-9]\d* lines/.test(document.getElementById('status').textContent), null, { timeout: 60000 });
-  assert.deepEqual(errors, []);
+  assert.deepEqual(live.errors, []);
   const size = await live.evaluate(() => [document.getElementById('out').width, document.getElementById('out').height]);
   assert.ok(size[0] >= 320 && size[1] >= 180);
   await live.close();
