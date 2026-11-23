@@ -179,6 +179,26 @@ export interface Unreadable {
   bulkCommits: number;
 }
 
+/** #211 (R9): one co-change pair, `a` < `b` by codepoint: commits with both (`both`) over commits with either, ×1000, floored. */
+export interface CoChangePair { a: FileId; b: FileId; both: number; strengthMilli: number }
+
+/** #211: `fileId` usually changes with `with`, which changed in the last `settings.flagWindow` commits (latest at `at`) while `fileId` didn't. */
+export interface MissingPair { fileId: FileId; with: FileId; strengthMilli: number; at: Sha }
+
+/**
+ * #211 (R9): co-change from the window's commits, by file at HEAD (renames followed, as fog does). The
+ * settings are recorded beside the pairs (contract `COCHANGE`). `commits` were counted and
+ * `bulkCommits` left out for touching more than `settings.bulkFiles` files (Rule 1). Pairs are sorted by
+ * `a`, then `b`; missing pairs by `fileId`.
+ */
+export interface CoChange {
+  settings: { thresholdMilli: number; minBoth: number; cap: number; flagMilli: number; flagMinBoth: number; flagWindow: number; bulkFiles: number };
+  commits: number;
+  bulkCommits: number;
+  pairs: CoChangePair[];
+  missing: MissingPair[];
+}
+
 export interface SnapshotV02 {
   schemaVersion: '0.2';
   generator: { name: 'commet'; version: string };
@@ -194,4 +214,6 @@ export interface SnapshotV02 {
   people: { id: PersonId; displayName: string; isSelf: boolean }[];
   commits: Commit[];
   sessions: Session[];
+  /** #211: absent in a snapshot scanned before it. */
+  cochange?: CoChange;
 }

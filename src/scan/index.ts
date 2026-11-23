@@ -1,8 +1,10 @@
 import { matchCommits, buildSessions, type MatchCommit } from '../attrib/match.js';
 import { discoverClaude, mergeIntervals, parseClaude, redactPaths, searchOutside, type ClaudeIngest, type Interval } from '../attrib/parsers/claude.js';
 import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
+import { coChangeOf } from '../core/cochange.js';
 import type { LayoutV1 } from '../core/contract/layout.js';
 import { CommetError, EXIT } from '../core/errors.js';
+import { fogBase, unrowedChanges } from '../core/fog/index.js';
 import { fileId, lineHasher, sha256Hex } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
 import { hashLines } from '../core/lines.js';
@@ -277,11 +279,14 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
     sessions: buildSessions(ingest?.sessions.values() ?? [], raw.map((c) => c.sha), results,
       new Map(files.map((f) => [f.path, f.id])), ingest?.events ?? []),
   };
+  // #211: co-change by file at HEAD, renames followed through the same path history the fog uses.
+  const paths = pathHistory(history, 0, lineageExcluded);
+  snapshot.cochange = coChangeOf(fogBase(snapshot, { ...paths, unrowed: unrowedChanges(snapshot, history, 0, lineageExcluded) }));
   const unreadable = ingest?.unreadable.length ?? 0;
   const logs = found && { transcripts: found.transcripts.length - unreadable, tooLarge: found.stats.tooLarge,
     unavailable: found.stats.unavailable + unreadable, dropped: ingest?.dropped ?? 0, unattributed: found.stats.unattributed,
     incompletePatches: patches.incomplete.size };
-  const placed = layoutReport(snapshot, structureHistory(lineage, births, pathHistory(history, 0, lineageExcluded),
+  const placed = layoutReport(snapshot, structureHistory(lineage, births, paths,
     rootBirthInfo(lineage, sides.children)));
   return { snapshot, json: canonicalJson(snapshot), layout: placed.layout, layoutJson: canonicalJson(placed.layout), layoutNotes: placed.notes,
     commonDir: repo.commonDir, logs,

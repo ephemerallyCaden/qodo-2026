@@ -43,6 +43,82 @@
       "remote": true
     }
   ],
+  "cochange": {
+    "bulkCommits": 0,
+    "commits": 26,
+    "missing": [],
+    "pairs": [
+      {
+        "a": "f_1286dc312cbf",
+        "b": "f_3bb5e133ae02",
+        "both": 2,
+        "strengthMilli": 285
+      },
+      {
+        "a": "f_1286dc312cbf",
+        "b": "f_4576452d7c29",
+        "both": 2,
+        "strengthMilli": 333
+      },
+      {
+        "a": "f_362826af8b17",
+        "b": "f_3c90faed34ec",
+        "both": 2,
+        "strengthMilli": 250
+      },
+      {
+        "a": "f_362826af8b17",
+        "b": "f_8e9ac629a205",
+        "both": 2,
+        "strengthMilli": 400
+      },
+      {
+        "a": "f_362826af8b17",
+        "b": "f_a37820cd7408",
+        "both": 2,
+        "strengthMilli": 400
+      },
+      {
+        "a": "f_362826af8b17",
+        "b": "f_e201b29b169a",
+        "both": 2,
+        "strengthMilli": 222
+      },
+      {
+        "a": "f_3bb5e133ae02",
+        "b": "f_4576452d7c29",
+        "both": 2,
+        "strengthMilli": 222
+      },
+      {
+        "a": "f_3bb5e133ae02",
+        "b": "f_732b045d6c8d",
+        "both": 2,
+        "strengthMilli": 333
+      },
+      {
+        "a": "f_3bb5e133ae02",
+        "b": "f_e201b29b169a",
+        "both": 2,
+        "strengthMilli": 200
+      },
+      {
+        "a": "f_3c90faed34ec",
+        "b": "f_e201b29b169a",
+        "both": 2,
+        "strengthMilli": 222
+      }
+    ],
+    "settings": {
+      "bulkFiles": 200,
+      "cap": 5,
+      "flagMilli": 500,
+      "flagMinBoth": 3,
+      "flagWindow": 10,
+      "minBoth": 2,
+      "thresholdMilli": 150
+    }
+  },
   "commits": [
     {
       "attribution": {

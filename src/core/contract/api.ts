@@ -2,6 +2,7 @@
 // hook the view (#30) exposes to the render tests (#31). See docs/contracts/phase2.md.
 import type { DirId, FileId, Sha } from '../snapshot/types.js';
 import type { BeaconView } from './beacons.js';
+import type { CoChangeView } from './cochange.js';
 import type { DroneView } from './drones.js';
 import type { ChartUnknownHead, FogReason, FogView } from './fog.js';
 import type { LayoutV1 } from './layout.js';
@@ -11,7 +12,8 @@ import type { LayoutV1 } from './layout.js';
  * and `beacon` (#79, R10: POST a BeaconAction, JSON body). `beacons` is the beacon view (GET).
  * `events` is a text/event-stream that the view reads with fetch (not EventSource), so the token
  * travels in a header, never in a URL. `unseen` and `diff` (#75) take query parameters: see
- * UnseenQuery and DiffQuery. So does `droneDetail` (#148): see DroneDetailQuery.
+ * UnseenQuery and DiffQuery. So does `droneDetail` (#148): see DroneDetailQuery. `cochange` (#211, R9) is
+ * the co-change view (GET).
  */
 export const API = {
   snapshot: '/api/snapshot',
@@ -22,6 +24,7 @@ export const API = {
   chart: '/api/chart',
   beacon: '/api/beacon',
   beacons: '/api/beacons',
+  cochange: '/api/cochange',
   events: '/api/events',
   unseen: '/api/unseen',
   diff: '/api/diff',
@@ -137,6 +140,14 @@ export interface RenderInput {
   drones?: DroneView | null;
   /** The beacons to draw (#79), of the same scan as the layout. Default: none. */
   beacons?: BeaconView | null;
+  /** The co-change view (#211), of the same scan as the layout: its missing-pair flags, and the lines of `focus`. Default: none. */
+  cochange?: CoChangeView | null;
+  /**
+   * What is focused from frame 0 (#211): a planet, or a file on it. Its constellation lines draw in from
+   * frame 0 (at once under reduced motion). The camera stays where `camera` (or the start pose) puts it.
+   * Default: nothing, as before.
+   */
+  focus?: { dirId: DirId; fileId?: FileId } | null;
   reducedMotion?: boolean;
   /** Internal resolution height in pixels, 120..480. Default 180. */
   pixelHeight?: number;

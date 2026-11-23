@@ -253,6 +253,9 @@ function reviewedThrough(base: FogBase, chart: ChartState): { baseline: { sha: S
   return { baseline, reviewed };
 }
 
+/** Per file of `base.files`, the seq it is reviewed through by its charts or the baseline (-1: nothing yet), for #211's missing-pair flags. */
+export const reviewedSeqs = (base: FogBase, chart: ChartState): readonly number[] => reviewedThrough(base, chart).reviewed;
+
 /** The fog view for `chart` on a prepared base. */
 export function fogFrom(base: FogBase, chart: ChartState): FogView {
   const { baseline, reviewed } = reviewedThrough(base, chart);

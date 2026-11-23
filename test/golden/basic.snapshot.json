@@ -1,5 +1,20 @@
 {
   "branches": [],
+  "cochange": {
+    "bulkCommits": 0,
+    "commits": 10,
+    "missing": [],
+    "pairs": [],
+    "settings": {
+      "bulkFiles": 200,
+      "cap": 5,
+      "flagMilli": 500,
+      "flagMinBoth": 3,
+      "flagWindow": 10,
+      "minBoth": 2,
+      "thresholdMilli": 150
+    }
+  },
   "commits": [
     {
       "attribution": {

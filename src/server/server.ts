@@ -5,6 +5,7 @@ import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type Serv
 import { API, TOKEN_HEADER, type ChartResult, type DiffQuery, type DiffResult, type LiveEvent, type ResourceEvent, type UnseenQuery, type UnseenResult } from '../core/contract/api.js';
 import { beaconTextProblem } from '../core/beacons.js';
 import type { BeaconAction, BeaconResult, BeaconView } from '../core/contract/beacons.js';
+import type { CoChangeView } from '../core/contract/cochange.js';
 import type { DroneDetailQuery, DroneDetailResult, DroneView } from '../core/contract/drones.js';
 import type { ChartAction, FogView } from '../core/contract/fog.js';
 import { CommetError } from '../core/errors.js';
@@ -42,6 +43,8 @@ export interface ServerOptions {
    * 200, 409 (an `at` the snapshot doesn't know: refetch) or 400, as a chart write's does.
    */
   beacon?: (action: BeaconAction) => Promise<BeaconResult>;
+  /** #211 (R9): the co-change view, from the same pair as the fog. Without it, `GET /api/cochange` answers 501. */
+  cochange?: () => Promise<CoChangeView>;
   /** #75: a planet's or the star's fogged files. Without it, `GET /api/unseen` answers 501. */
   unseen?: (q: UnseenQuery) => Promise<UnseenResult>;
   /**
@@ -138,6 +141,12 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
       handle: async (_req, res) => o.beacons
         ? sendJson(res, 200, await o.beacons())
         : sendJson(res, 501, { error: 'beacon view not available' }),
+    }],
+    [API.cochange, {
+      method: 'GET',
+      handle: async (_req, res) => o.cochange
+        ? sendJson(res, 200, await o.cochange())
+        : sendJson(res, 501, { error: 'co-change view not available' }),
     }],
     [API.events, { method: 'GET', handle: async (req, res) => events(req, res) }],
     [API.unseen, { method: 'GET', handle: (req, res) => unseen(req, res) }],
