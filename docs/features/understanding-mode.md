@@ -44,4 +44,15 @@ Agent bridge (shared by U4–U7 and U9)
 Then U6 (incident drills) and U10 (directory view).
 
 ## Tasks
-(GitHub issues, filled in when they're created.)
+Headline (challenge-day work):
+- #201 Two-level fog + mastery % (U1–U3): blocks the quizzes
+- #202 Agent bridge + consent (U11): blocks the quizzes and summaries; needs the human's CONSTITUTION call
+- #203 Adaptive file quiz mission (U4)
+- #207 Teammate spaceship (U8)
+- #208 AI summary on demand (U9)
+- #204 Call-chain quiz (U5)
+- #206 Incident drills (U6, stretch)
+
+Side quests (small; ship off a challenge day and note them in a post):
+- #205 Daily mission (U7)
+- #209 Directory view (U10)
