@@ -209,6 +209,17 @@ export class View {
     this.labels.resize(c.width, c.height, c.style.width, c.style.height, this.pass.scale);
   }
 
+  /**
+   * Where the info lines in the top left end for this focus, in device px of the label canvas: the selected
+   * drone's panel docks under them there (#189).
+   */
+  infoEnd(focus: number | null): number {
+    const m = this.system?.model;
+    if (!m) return 0;
+    const px = this.labels.px;
+    return 2 * px + infoLines(m, focus, this.fogs.fog, this.beacons).length * lineHeight(px);
+  }
+
   /** Draws exactly this frame. */
   draw(frame: number, pose: OrbitPose, focus: number | null): RenderStats {
     const s = this.system;

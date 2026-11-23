@@ -119,7 +119,8 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     redraw();
   } });
   // #80: the agent drones, refetched with every layout load and snapshot event.
-  const drones = new Drones({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }) });
+  const drones = new Drones({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }),
+    others: () => [byId('panel')] });
 
   const fetchFog = (): Promise<Fetched> => client.fog().then((fog) => ({ fog }), (error: unknown) => ({ error }));
   const loadOnce = async () => {
@@ -214,6 +215,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       if (t) changed = rig.track(t) || changed;
     }
     if (!changed && !dirty && now === lastFrame) return;
+    drones.dock(now, rig.pose(), focus); // #189: before the labels, which move out from under the panel where it docks (#169)
     view.draw(now, rig.pose(), focus);
     lastFrame = now;
     dirty = false;

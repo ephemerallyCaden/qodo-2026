@@ -6,6 +6,7 @@ import type { DroneSession } from '../../../src/core/contract/drones.js';
 import { UI_COLOURS } from '../ui/colours.js';
 import { byId } from '../ui/dom.js';
 import { detailGroups, otherLine, timelineCells, timelineText, type DetailState } from './detail.js';
+import { DOCK_INSET, type Dock } from './dock.js';
 import { droneRows, utc } from './select.js';
 
 /**
@@ -81,6 +82,8 @@ export class DronePanel {
   private readonly root = byId<HTMLElement>('drone-panel');
   /** The session-detail section of the panel on show; replaced on every show (#148). */
   private section: HTMLElement | null = null;
+  /** The corner the panel is docked in (#189) and its top there, or null: just opened, at its home in style.css (the bottom left). */
+  private at: { corner: Dock; top: number } | null = null;
   /** Told when the user closes the panel (its button, or Escape inside it). */
   onClose: () => void = () => {};
 
@@ -115,9 +118,37 @@ export class DronePanel {
     this.section?.replaceChildren(...detailNodes(state));
   }
 
+  /** Where the panel is docked (#189): null until the first dock after it opens. */
+  get docked(): Dock | null { return this.at?.corner ?? null; }
+
+  /** The panel's size, CSS px. */
+  size(): { w: number; h: number } {
+    const r = this.root.getBoundingClientRect();
+    return { w: r.width, h: r.height };
+  }
+
+  /**
+   * Docks the panel in a corner of the window (#189; dock.ts), at once: never animated, under reduced motion
+   * or not. A bottom corner holds its bottom edge and a top one its top, so a list that loads grows it away
+   * from the edge. `topLeft`: the top-left corner's top, CSS px. Touches the page only when it moves.
+   */
+  dock(corner: Dock, topLeft: number): void {
+    const top = corner === 'top-left' ? topLeft : DOCK_INSET.top;
+    if (this.at?.corner === corner && this.at.top === top) return;
+    const left = corner.endsWith('left'), bottom = corner.startsWith('bottom');
+    const s = this.root.style;
+    s.left = left ? `${DOCK_INSET.side}px` : 'auto';
+    s.right = left ? 'auto' : `${DOCK_INSET.side}px`;
+    s.bottom = bottom ? `${DOCK_INSET.bottom}px` : 'auto';
+    s.top = bottom ? 'auto' : `${top}px`;
+    this.at = { corner, top };
+  }
+
   hide(): void {
     this.root.hidden = true;
     this.root.replaceChildren();
     this.section = null;
+    for (const k of ['left', 'right', 'top', 'bottom'] as const) this.root.style[k] = ''; // the next one opens at home again
+    this.at = null;
   }
 }

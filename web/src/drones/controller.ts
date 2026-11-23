@@ -5,9 +5,11 @@
 import type { DroneDetailResult, DroneSession, DroneView } from '../../../src/core/contract/drones.js';
 import type { OrbitPose } from '../camera/pose.js';
 import { ViewError, type DataClient } from '../data/client.js';
+import type { Rect } from '../labels/place.js';
 import { byId } from '../ui/dom.js';
 import type { View } from '../view.js';
 import { detailAnnouncement, detailState, INFERRED_NOTE, LOADING, type DetailState } from './detail.js';
+import { chooseDock, DOCK_INSET, droneTrack } from './dock.js';
 import { DronePanel } from './panel.js';
 import { droneStatus, entryOf, selectDrones } from './select.js';
 
@@ -20,9 +22,17 @@ export interface DronesHost {
   redraw(): void;
   /** Hands keyboard focus back to the 3D view. */
   release(): void;
+  /** The other panels laid over the view (the review panel), which the drone panel docks clear of when they're open (#189). */
+  others(): readonly HTMLElement[];
 }
 
 const short = (head: string) => head.slice(0, 7);
+/** An element's box in the window, CSS px; null when it's hidden or empty. */
+const boxOf = (e: HTMLElement): Rect | null => {
+  if (e.hidden) return null;
+  const r = e.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
+};
 const describe = (e: unknown): string => (e instanceof ViewError ? e.title : 'something went wrong');
 
 export class Drones {
@@ -162,6 +172,27 @@ export class Drones {
     this.showPanel(s);
     this.host.redraw();
     return true;
+  }
+
+  /**
+   * Docks the open panel in the corner of the window that keeps its drone in view over the drone's turn
+   * (#189; dock.ts), staying put while that corner still does. Call it with every drawn frame, before the
+   * view lays out its labels, so they move out from under the panel where it now is (#169).
+   */
+  dock(frame: number, pose: OrbitPose, focus: number | null): void {
+    if (!this.panelOpen()) return;
+    const view = this.host.view, model = view.model;
+    const s = this.shown.find((d) => d.key === view.selectedDrone);
+    if (!model || !s || s.home === null) return;
+    const canvas = view.labels.canvas, c = canvas.getBoundingClientRect();
+    if (c.width === 0 || c.height === 0 || canvas.height === 0) return;
+    const topLeft = Math.round(c.top + (view.infoEnd(focus) * c.height) / canvas.height + DOCK_INSET.side); // under the planet info lines
+    const input = {
+      track: droneTrack(model, s.home, s.seed, frame, pose, { x: c.left, y: c.top, w: c.width, h: c.height }),
+      panel: this.panel.size(), window: { w: innerWidth, h: innerHeight }, topLeft,
+      others: this.host.others().flatMap((e) => boxOf(e) ?? []),
+    };
+    this.panel.dock(chooseDock(input, this.panel.docked), topLeft);
   }
 
   /** The selected drone when its panel lists files: an agent session, not an inferred one. */

@@ -129,3 +129,29 @@ describe('the drone panel\'s session detail (#148)', () => {
     expect(section().text()).toMatch(/x\\u\{7\}\.ts/); // shown as an escape, so it can't pass for another name (780cbbf2)
   });
 });
+
+describe('where the drone panel docks (#189)', () => {
+  const anchors = () => ({ left: root.style['left'], right: root.style['right'], top: root.style['top'], bottom: root.style['bottom'] });
+
+  it('opens at its home in style.css, then docks at a corner by its inset edges, never animated', () => {
+    const p = open();
+    expect(p.docked).toBeNull();
+    expect(anchors()).toEqual({ left: undefined, right: undefined, top: undefined, bottom: undefined }); // style.css's bottom left
+    p.dock('bottom-right', 97);
+    expect(p.docked).toBe('bottom-right');
+    expect(anchors()).toEqual({ left: 'auto', right: '8px', top: 'auto', bottom: '40px' }); // it holds its bottom edge, so a list that loads grows it upward
+    p.dock('top-left', 97);
+    expect(anchors()).toEqual({ left: '8px', right: 'auto', top: '97px', bottom: 'auto' }); // under the planet info lines
+    p.dock('top-right', 97);
+    expect(anchors()).toEqual({ left: 'auto', right: '8px', top: '56px', bottom: 'auto' });
+    expect(Object.keys(root.style).some((k) => k.startsWith('transition'))).toBe(false);
+  });
+
+  it('opens at home again after it closes', () => {
+    const p = open();
+    p.dock('top-right', 0);
+    p.hide();
+    expect(p.docked).toBeNull();
+    expect(anchors()).toEqual({ left: '', right: '', top: '', bottom: '' });
+  });
+});
