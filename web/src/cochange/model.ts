@@ -83,6 +83,8 @@ export interface FocusLinks {
   named: CoFile[];
   /** Partners that are the focused planet's own test moons: no line (it would cross the disc), a tick on the moon. */
   tests: CoFile[];
+  /** These are the focused file's links; false: the planet's (no file, or one with no links of its own on that planet). */
+  byFile: boolean;
 }
 
 export interface Focus { planet: number; file: string | null }
@@ -97,7 +99,7 @@ export function focusFor(index: CoIndex | null, planet: number | null, file: str
   return file !== null && index?.files.get(file)?.spot?.body === -1 ? { planet: -1, file } : null;
 }
 
-const none = (): FocusLinks => ({ lines: [], named: [], tests: [] });
+const none = (): FocusLinks => ({ lines: [], named: [], tests: [], byFile: false });
 
 /**
  * A focused planet's links: per other body, its strongest file pair with this planet, at most
@@ -124,6 +126,7 @@ export function focusLinks(index: CoIndex | null, focus: Focus | null): FocusLin
       else link(g, strengthMilli);
     }
     out.lines = [...bodies.values()];
+    out.byFile = true;
   } else {
     const pairs: { g: CoFile; strengthMilli: number }[] = [];
     for (const f of index.files.values()) {
@@ -164,7 +167,8 @@ export function coChangeLines(index: CoIndex | null, model: SystemModel, focus: 
   const out: string[] = [];
   const links = focusLinks(index, focus);
   const parts = [
-    ...links.lines.map((l) => `${focus?.file ? l.files.map((f) => f.path).join(', ') : name(l.body)} (${STEP_WORD[l.step]})`),
+    // worded as what's drawn: a file's partner files, or the planet's partner bodies (PR #214 r2, Qodo 32f4578c)
+    ...links.lines.map((l) => `${links.byFile ? l.files.map((f) => f.path).join(', ') : name(l.body)} (${STEP_WORD[l.step]})`),
     ...links.named.map((f) => f.path),
     ...(links.tests.length ? ['its tests'] : []),
   ];

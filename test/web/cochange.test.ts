@@ -6,10 +6,10 @@
 // for partners off screen, flags with no focus, and nothing at all when there's nothing to draw.
 import { describe, expect, it } from 'vitest';
 import type { CoChangeView } from '../../src/core/contract/cochange.js';
-import { focusPose, startPose, type OrbitPose } from '../../web/src/camera/pose.js';
+import { focusPose, fromCameraPose, startPose, type OrbitPose } from '../../web/src/camera/pose.js';
 import { checkCoChange } from '../../web/src/cochange/check.js';
 import { coChangeIndex, coChangeLines, flagInFocus, flagText, focusFor, focusLinks, PLANET_LINES } from '../../web/src/cochange/model.js';
-import { BEAD, BEADS_PER_STEP, drawsAnything, FLAG_SHAPE, OVERLAY_COLOURS, planConstellation, rasterise } from '../../web/src/cochange/overlay.js';
+import { BEAD, BEADS_PER_STEP, bodyHidden, drawsAnything, FLAG_SHAPE, OVERLAY_COLOURS, planConstellation, rasterise } from '../../web/src/cochange/overlay.js';
 import { blockBox, clipSegment, dilate, drawBeads, drawRail, resample, revealAt, span, stamp } from '../../web/src/cochange/raster.js';
 import { LOOP_SECONDS } from '../../web/src/model/motion.js';
 import { planetCentre, systemModel } from '../../web/src/model/system.js';
@@ -104,8 +104,15 @@ describe('placing and linking', () => {
     expect(p.lines.length + p.arrows.length).toBeGreaterThan(0);
   });
 
+  it("words a file with no links of its own as the planet focus it draws, never as the file's (PR #214 r2, Qodo 32f4578c)", () => {
+    const planet = coChangeLines(index, model, { planet: 0, file: null })[0];
+    expect(focusLinks(index, { planet: 0, file: 'f_0000000000ee' }).byFile).toBe(false);
+    expect(coChangeLines(index, model, { planet: 0, file: 'f_0000000000ee' })[0]).toBe(planet);
+    expect(focusLinks(index, { planet: 0, file: 'f_00000000000a' }).byFile).toBe(true);
+  });
+
   it('draws nothing for no focus, or a file that is not on the focused planet (planet focus then)', () => {
-    expect(focusLinks(index, null)).toEqual({ lines: [], named: [], tests: [] });
+    expect(focusLinks(index, null)).toEqual({ lines: [], named: [], tests: [], byFile: false });
     expect(focusLinks(index, { planet: 2, file: 'f_00000000000a' }).lines.map((x) => x.body)).toEqual([0]);
   });
 
@@ -197,6 +204,16 @@ describe('the overlay plan', () => {
     ]);
     expect(p.flags.map((f) => f.body).sort()).toEqual([-1, 1, 2]);
     expect(p.flags.filter((f) => !f.show).every((f) => f.text.length === 0)).toBe(true);
+  });
+
+  it('hides the flag of a body hidden behind the star or a nearer planet (PR #214 r2, Qodo d9d6f199)', () => {
+    const c0 = planetCentre(model.planets[0]!, 0);
+    // the eye on the far side of the star from src, looking through the star at it
+    const behind = fromCameraPose({ position: [-1.6 * c0[0], -1.6 * c0[1] + 0.001, -1.6 * c0[2]], target: [0, 0, 0], fovDeg: 35 });
+    expect(bodyHidden(model, behind, 0, 0)).toBe(true);
+    expect(bodyHidden(model, startPose(model), 0, 0)).toBe(false);
+    expect(plan(null, behind).flags.map((f) => f.body)).not.toContain(0);
+    expect(plan(null).flags.map((f) => f.body)).toContain(0);
   });
 
   it('puts an arrow at the frame edge for a partner off screen', () => {

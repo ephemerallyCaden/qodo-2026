@@ -358,10 +358,10 @@ export class View {
       const mine: [string, string][] = file && file.spot?.body === f.planet ? [[shortName(file.path), accent], ...plan.named.map((g): [string, string] => [`with ${shortName(g.path)}`, dim])] : [];
       if (plan.tests) mine.push(['tests usually change with this', dim]);
       stack(under(f.planet), mine);
-      if (file) for (const l of plan.lines) if (!plan.arrows.some((a) => a.body === l.body)) stack(under(l.body), l.files.map((g) => [shortName(g.path), dim]));
+      if (plan.byFile) for (const l of plan.lines) if (!plan.arrows.some((a) => a.body === l.body)) stack(under(l.body), l.files.map((g) => [shortName(g.path), dim]));
     }
     plan.arrows.forEach((a, k) => {
-      const name = file ? `${shortName(a.files[0]!.path)}${a.files.length > 1 ? ` +${a.files.length - 1}` : ''}` : a.body < 0 ? 'the star' : s.model.planets[a.body]!.path;
+      const name = plan.byFile ? `${shortName(a.files[0]!.path)}${a.files.length > 1 ? ` +${a.files.length - 1}` : ''}` : a.body < 0 ? 'the star' : s.model.planets[a.body]!.path;
       const w = textWidth(name) * px;
       const [bx, by, bw, bh] = [a.box.x * scale, a.box.y * scale, a.box.w * scale, a.box.h * scale];
       const mid = by + bh / 2 - (lh - 2 * px) / 2;

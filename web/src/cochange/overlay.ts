@@ -7,7 +7,8 @@
 // flagged test moon. Lines and beads are the starfield's own colours, flags teal (Rule 5). Pure: geometry
 // from (model, focus, frame, pose), pixels from the rendered frame; no three.js, no DOM, no clock.
 import { palette } from '../../../src/core/palette.js';
-import { NEAR, basis, eyeOf, fovOf, project, projectedRadius, type OrbitPose } from '../camera/pose.js';
+import { NEAR, basis, eyeOf, fovOf, pick, project, projectedRadius, type OrbitPose } from '../camera/pose.js';
+import { starOccluders } from '../render/corona.js';
 import { LOOP_SECONDS, loopPhase } from '../model/motion.js';
 import { MOON_RADIUS, moonOffset, planetCentre, type SystemModel } from '../model/system.js';
 import { add, dot, sub, type Vec3 } from '../model/vec.js';
@@ -75,6 +76,8 @@ export interface Plan {
   /** File focus: partners named under the focused file; and whether its (or the planet's) test moons change with it. */
   named: CoFile[];
   tests: boolean;
+  /** The lines are the focused file's (named by file), not the planet's (named by planet). */
+  byFile: boolean;
 }
 
 export interface PlanInput {
@@ -105,6 +108,23 @@ function toPx(pose: OrbitPose, v: Vec3, W: number, H: number): (Pt & { depth: nu
 function discOf(pose: OrbitPose, centre: Vec3, radius: number, W: number, H: number): (Disc & { depth: number }) | null {
   const p = toPx(pose, centre, W, H);
   return p && { ...p, r: projectedRadius(radius, p.depth, fovOf(pose)) * (H / 2) };
+}
+
+/**
+ * Whether a body's centre is hidden behind the star (its disc or corona) or a nearer planet at this frame, as
+ * picking and labels judge it: a hidden body's flag isn't drawn, or it would sit on the body in front (PR #214
+ * r2, Qodo d9d6f199). Behind the eye counts as hidden.
+ */
+export function bodyHidden(model: SystemModel, pose: OrbitPose, frame: number, body: number): boolean {
+  const spheres = model.planets.map((p) => ({ centre: planetCentre(p, frame), radius: p.radius }));
+  if (body >= 0) {
+    const c = project(pose, spheres[body]!.centre);
+    return !c || pick(pose, c, spheres, starOccluders(model.star.radius, frame), 0) !== body;
+  }
+  const c = project(pose, [0, 0, 0]);
+  if (!c) return true;
+  const hit = pick(pose, c, spheres, [], 0);
+  return hit !== null && (project(pose, spheres[hit]!.centre)?.depth ?? Infinity) < c.depth;
 }
 
 const offFrame = (d: Disc, W: number, H: number) => d.x + d.r < 0 || d.x - d.r > W || d.y + d.r < 0 || d.y - d.r > H;
@@ -139,7 +159,7 @@ function arrowBox(at: Pt, edge: Edge, W: number, H: number): Box {
 /** Everything the overlay draws this frame, in internal px. */
 export function planConstellation(i: PlanInput): Plan {
   const { model, index, focus, frame, pose, W, H } = i;
-  const plan: Plan = { focus, lines: [], arrows: [], flags: [], ticks: [], named: [], tests: false };
+  const plan: Plan = { focus, lines: [], arrows: [], flags: [], ticks: [], named: [], tests: false, byFile: false };
   if (!index) return plan;
   const disc = (body: number) => discOf(pose, centreOf(model, body, frame), radiusOf(model, body), W, H);
   const moonAt = (f: CoFile): (Disc & { depth: number }) | null => {
@@ -159,6 +179,7 @@ export function planConstellation(i: PlanInput): Plan {
   const links = focusLinks(index, focus);
   plan.named = links.named;
   plan.tests = links.tests.length > 0;
+  plan.byFile = links.byFile;
   for (const f of links.tests) tick(f);
   const from = focus ? disc(focus.planet) : null;
   if (focus && from) {
@@ -196,7 +217,7 @@ export function planConstellation(i: PlanInput): Plan {
   const fw = FLAG_SHAPE[0].length, fh = FLAG_SHAPE.length;
   for (const [body, flags] of [...byBody].sort((a, b) => a[0] - b[0])) {
     const d = disc(body);
-    if (!d || offFrame(d, W, H)) continue;
+    if (!d || offFrame(d, W, H) || bodyHidden(model, pose, frame, body)) continue;
     const sorted = [...flags].sort(strongest);
     const text = sorted.filter((f) => shown.has(f)).flatMap(flagText);
     if (last && sorted.includes(last) && inFocus.length > shown.size) text.push(`+${inFocus.length - shown.size} more`);
