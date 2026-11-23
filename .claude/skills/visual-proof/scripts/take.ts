@@ -14,17 +14,22 @@ import type { LayoutV1 } from '../../../../src/core/contract/layout.js';
 import { FPS } from '../../../../web/src/model/motion.js';
 import { systemModel } from '../../../../web/src/model/system.js';
 import { Stop } from './rules.js';
-import { REGIONS, TICK_MS, type Boxes, type Scene, type SceneContext, type TakeLog } from './scene.js';
+import { diffByRegion, diffPixels } from './frames.js';
+import { readPng } from './png.js';
+import { DRONE_MARK, partsOf, REGIONS, TICK_MS, type Boxes, type Scene, type ScenePart, type SceneContext, type TakeLog } from './scene.js';
 
 /** dt is clamped like this in web/src/loop.ts (MAX_TICK_MS). */
 const MAX_TICK_MS = 100;
 
 declare global {
-  interface Window { __vpStep?: (ts: number) => number; __vpEvents?: string[]; __vpKept?: Uint8ClampedArray }
+  interface Window { __vpStep?: (ts: number) => number; __vpEvents?: string[]; __vpKept?: Uint8ClampedArray; __vpHideDrones?: boolean }
 }
 
-/** Installed before the view's own script: the stepped clock and the event-stream tee. */
-function instrument(): void {
+/**
+ * Installed before the view's own script: the stepped clock, the event-stream tee, and a seam that skips
+ * the draws of any WebGL program whose shaders hold `mark` while `__vpHideDrones` is set (measureDrones).
+ */
+function instrument(mark: string): void {
   const q = new Map<number, FrameRequestCallback>();
   let id = 0;
   window.requestAnimationFrame = (cb) => { const h = ++id; q.set(h, cb); return h; };
@@ -43,6 +48,21 @@ function instrument(): void {
     })();
     return new Response(theirs, { status: res.status, statusText: res.statusText, headers: res.headers });
   };
+  window.__vpHideDrones = false;
+  const gl = WebGL2RenderingContext.prototype as unknown as Record<string, (...a: unknown[]) => unknown>;
+  const source = new WeakMap<object, string>(), marked = new WeakSet<object>();
+  let program: object | null = null;
+  const around = (name: string, pass: (args: unknown[]) => boolean) => {
+    const real = gl[name];
+    if (!real) return;
+    gl[name] = function (this: unknown, ...args: unknown[]) { return pass(args) ? real.apply(this, args) : undefined; };
+  };
+  around('shaderSource', (a) => { source.set(a[0] as object, String(a[1])); return true; });
+  around('attachShader', (a) => { if ((source.get(a[1] as object) ?? '').includes(mark)) marked.add(a[0] as object); return true; });
+  around('useProgram', (a) => { program = (a[0] as object | null) ?? null; return true; });
+  for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+    around(name, () => !(window.__vpHideDrones && program !== null && marked.has(program)));
+  }
 }
 
 /** In the page: every open region's box, label pixels under each open panel (all, and new since keepLabels), the heading, the text. */
@@ -98,13 +118,18 @@ export interface TakeDeps {
   cli: (...args: string[]) => string;
   /** Filled by the server as requests fail: shown with a page that never came up, and kept in the log. */
   serverErrors?: string[];
+  /** The k of this part's first frame (frames run on across a scene's parts), and the part. */
+  firstK?: number;
+  part?: { index: number; name: string };
 }
 
-/** Runs `scene` in `page` (already instrumented with `instrumentPage`) at `url`; writes raw/<k>.png and returns the log. */
-export async function runTake(page: Page, url: string, deps: TakeDeps): Promise<TakeLog> {
+/** Runs `part` of `scene` in `page` (already instrumented with `instrumentPage`) at `url`; writes raw/<k>.png and returns the log. */
+export async function runTake(page: Page, url: string, deps: TakeDeps & { run?: ScenePart }): Promise<TakeLog> {
   const { scene, layout, out } = deps;
+  const part = deps.run ?? partsOf(scene)[0]!;
+  const firstK = deps.firstK ?? 0, partIndex = deps.part?.index ?? 0, partName = deps.part?.name ?? '';
   const vp = page.viewportSize() ?? { width: 1280, height: 720 };
-  const reduced = scene.reducedMotion ?? false;
+  const reduced = part.reducedMotion ?? scene.reducedMotion ?? false;
   mkdirSync(join(out, 'raw'), { recursive: true });
   const log: TakeLog = { scene: scene.name, width: vp.width, height: vp.height, reducedMotion: reduced, frames: [], stills: [], texts: [], served: [], events: '', notes: [], errors: [], ticks: [] };
   const seenText = new Map<string, number>();
@@ -149,6 +174,17 @@ export async function runTake(page: Page, url: string, deps: TakeDeps): Promise<
     await settle(60);
   };
 
+  // The drone seam (instrument): the same frame drawn again with or without the drones' draws
+  const shot = async () => readPng(await page.screenshot({ animations: 'disabled', caret: 'hide' }));
+  // a resize makes the view draw, and a step at the last tick's time adds no loop time
+  const redraw = async () => {
+    await page.evaluate(() => dispatchEvent(new Event('resize')));
+    for (let i = 0; i < 2; i++) await page.evaluate((t) => window.__vpStep!(t), ts - TICK_MS);
+    await settle(60);
+  };
+  const overlays = (v: string) => page.evaluate((v) => { for (const id of ['labels', 'hud', 'panel', 'drone-panel']) document.getElementById(id)?.style.setProperty('visibility', v, 'important'); }, v);
+  const hide = (on: boolean) => page.evaluate((on) => { window.__vpHideDrones = on; }, on);
+
   const model = systemModel(layout);
   let recorded = 0;
   const ctx: SceneContext = {
@@ -159,16 +195,16 @@ export async function runTake(page: Page, url: string, deps: TakeDeps): Promise<
       for (let i = 0; i < n; i++) {
         await tick();
         const s = await page.evaluate(sample, REGIONS);
-        const k = recorded++;
+        const k = firstK + recorded++;
         if (!seenText.has(s.text)) { seenText.set(s.text, k); log.texts.push([s.text, k]); }
         writeFileSync(join(out, 'raw', `${String(k).padStart(4, '0')}.png`), await page.screenshot({ animations: 'disabled', caret: 'hide' }));
-        log.frames.push({ k, ts: ts - TICK_MS, frame: ctx.frame, boxes: s.boxes, probes: s.probes, heading: s.heading });
+        log.frames.push({ k, part: partIndex, ts: ts - TICK_MS, frame: ctx.frame, boxes: s.boxes, probes: s.probes, heading: s.heading });
       }
     },
     async advance(n) { for (let i = 0; i < n; i++) await tick(); },
     still(name) {
       if (!recorded) ctx.fail(`still "${name}" before any recorded frame`);
-      log.stills.push({ name, k: recorded - 1 });
+      log.stills.push({ name: partName ? `${partName}: ${name}` : name, k: firstK + recorded - 1 });
     },
     settle,
     async waitFor(what, check, timeoutMs = 10_000) {
@@ -177,6 +213,38 @@ export async function runTake(page: Page, url: string, deps: TakeDeps): Promise<
         if (Date.now() - t0 > timeoutMs) ctx.fail(`${what}: not reached in ${timeoutMs / 1000} s`);
         await settle(100);
       }
+    },
+    async locateDrone() {
+      const seen = await shot();
+      await hide(true); await redraw();
+      const unseen = await shot();
+      await hide(false); await redraw();
+      let n = 0, sx = 0, sy = 0;
+      for (let p = 0; p < seen.width * seen.height; p++) {
+        const i = p * 4;
+        if (seen.rgba[i] === unseen.rgba[i] && seen.rgba[i + 1] === unseen.rgba[i + 1] && seen.rgba[i + 2] === unseen.rgba[i + 2]) continue;
+        n++; sx += p % seen.width; sy += Math.floor(p / seen.width);
+      }
+      return { visible: n, centre: n ? { x: Math.round(sx / n), y: Math.round(sy / n) } : null, box: diffPixels(unseen, seen).box };
+    },
+    async measureDrones() {
+      if (!recorded) ctx.fail('measureDrones before any recorded frame');
+      const seen = await shot();
+      await hide(true); await redraw();
+      const unseen = await shot();
+      await overlays('hidden');
+      const bareWithout = await shot();
+      await hide(false); await redraw();
+      const bare = await shot();
+      await overlays('');
+      const f = log.frames[recorded - 1]!;
+      const panel = f.boxes['#drone-panel'];
+      const drawn = diffByRegion(bareWithout, bare, panel ? [{ name: '#drone-panel', rects: [panel] }] : []);
+      const got = { drawn: drawn.px, visible: diffPixels(unseen, seen).px, underPanel: panel ? drawn.where[0]!.px : 0 };
+      f.probes['drone px drawn'] = got.drawn;
+      f.probes['drone px visible'] = got.visible;
+      if (panel) f.probes['drone px drawn under #drone-panel'] = got.underPanel;
+      return got;
     },
     async keepLabels() {
       await page.evaluate(() => { const c = document.getElementById('labels') as HTMLCanvasElement; window.__vpKept = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data; });
@@ -221,7 +289,7 @@ export async function runTake(page: Page, url: string, deps: TakeDeps): Promise<
   await settle(500);
   await tick(); // the first tick: dt 0, the frame clock at 0
   try {
-    await scene.run(ctx);
+    await part.run(ctx);
   } finally {
     log.errors.push(...(deps.serverErrors ?? []));
   }
@@ -234,7 +302,7 @@ export async function runTake(page: Page, url: string, deps: TakeDeps): Promise<
 }
 
 /** Adds the stepped clock and the event tee to every page of a context, before the view's script runs. */
-export const instrumentPage = async (page: Page): Promise<void> => { await page.addInitScript(instrument); };
+export const instrumentPage = async (page: Page): Promise<void> => { await page.addInitScript(instrument, DRONE_MARK); };
 
 export interface TakeConfig {
   /** The built tree (its dist/ serves this take). */
@@ -266,49 +334,72 @@ export async function takeMain(cfg: TakeConfig, scenes: Readonly<Record<string, 
   const scene = scenes[cfg.scene];
   if (!scene) throw new Stop('bad-input', `no scene ${cfg.scene}`);
   const state = join(cfg.clone, '.git', 'commet');
-  rmSync(state, { recursive: true, force: true });
-  cpSync(cfg.stateStart, state, { recursive: true });
+  const restore = () => {
+    rmSync(state, { recursive: true, force: true });
+    cpSync(cfg.stateStart, state, { recursive: true });
+  };
+  restore();
   const layout = JSON.parse(readFileSync(join(state, 'layout.json'), 'utf8')) as LayoutV1;
   const [srv, guard, chart, beacons, diff] = await Promise.all([
     fromBuild<ServerModule>(cfg.build, 'server/server.js'), fromBuild<GuardModule>(cfg.build, 'server/guard.js'),
     fromBuild<ChartModule>(cfg.build, 'state/chart.js'), fromBuild<BeaconsModule>(cfg.build, 'state/beacons.js'), fromBuild<DiffModule>(cfg.build, 'state/diff.js'),
   ]);
   const files = JSON.parse(readFileSync(cfg.filesJson, 'utf8')) as string[];
-  let scripted: ReturnType<NonNullable<Scene['drones']>> | undefined;
-  try {
-    scripted = scene.drones?.({ layout, files });
-  } catch (e) {
-    throw new Stop('scene-unreachable', `scene ${scene.name} drones: ${e instanceof Error ? e.message : String(e)}`);
-  }
   const repo = cfg.clone;
-  const token = guard.newToken();
-  const serverErrors: string[] = [];
-  const server = await srv.startServer({
-    stateDir: state, webRoot: join(cfg.build, 'dist', 'web'), port: 0, token, pollMs: 100,
-    fog: () => chart.readFog(repo), chart: (a) => chart.applyChart(repo, a),
-    // R12: drones only from the scene's script; without one, the real reader over a --no-ingest snapshot (none)
-    drones: scripted ? async () => scripted.view : () => chart.readDrones(repo),
-    droneDetail: scripted?.detail ? async (q) => scripted.detail!(q) : (q) => chart.readDroneDetail(repo, q),
-    beacons: () => beacons.readBeacons(repo), beacon: (a) => beacons.applyBeacon(repo, a),
-    unseen: (q) => diff.readUnseen(repo, q), diff: (q, s) => diff.readDiff(repo, q, s),
-    // A 500's route and message, never the request (open.ts's COMMET_DEBUG); into the take's errors
-    onError: (e, route) => { serverErrors.push(`server: ${route} failed: ${e instanceof Error ? e.message : String(e)}`); },
-  });
-  const browser = await chromium.launch({ ...renderLaunch, args: [...(renderLaunch.args ?? []), '--disable-smooth-scrolling'] });
   const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg.claudeDir };
   const cli = (...args: string[]) => execFileSync(process.execPath, [join(cfg.build, 'dist', 'cli.js'), ...args], { cwd: repo, env, encoding: 'utf8' });
+  const browser = await chromium.launch({ ...renderLaunch, args: [...(renderLaunch.args ?? []), '--disable-smooth-scrolling'] });
+  const tokens: string[] = [];
+  let log: TakeLog | null = null;
   try {
-    const context = await browser.newContext({ ...renderContext, reducedMotion: scene.reducedMotion ? 'reduce' : 'no-preference' });
-    const page = await context.newPage();
-    await instrumentPage(page);
-    const log = await runTake(page, server.url, { scene, layout, files, out: cfg.out, cli, serverErrors });
-    // R5: the token is in the URL's hash only; if it showed up in anything the page saw, count it and never write it
-    const text = JSON.stringify(log, null, 1);
-    const parts = text.split(token);
-    log.tokenHits = parts.length - 1;
-    writeFileSync(join(cfg.out, 'log.json'), log.tokenHits ? JSON.stringify({ ...JSON.parse(parts.join('<launch token>')) as TakeLog, tokenHits: log.tokenHits }, null, 1) : JSON.stringify(log, null, 1));
+    const parts = partsOf(scene);
+    for (const [index, part] of parts.entries()) {
+      if (index > 0) restore(); // every part starts from the scene's start state
+      let scripted: ReturnType<NonNullable<Scene['drones']>> | undefined;
+      try {
+        scripted = (part.drones ?? scene.drones)?.({ layout, files });
+      } catch (e) {
+        throw new Stop('scene-unreachable', `scene ${scene.name}${part.name ? ` ${part.name}` : ''} drones: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      const token = guard.newToken();
+      tokens.push(token);
+      const serverErrors: string[] = [];
+      const server = await srv.startServer({
+        stateDir: state, webRoot: join(cfg.build, 'dist', 'web'), port: 0, token, pollMs: 100,
+        fog: () => chart.readFog(repo), chart: (a) => chart.applyChart(repo, a),
+        // R12: drones only from the scene's script; without one, the real reader over a --no-ingest snapshot (none)
+        drones: scripted ? async () => scripted.view : () => chart.readDrones(repo),
+        droneDetail: scripted?.detail ? async (q) => scripted.detail!(q) : (q) => chart.readDroneDetail(repo, q),
+        beacons: () => beacons.readBeacons(repo), beacon: (a) => beacons.applyBeacon(repo, a),
+        unseen: (q) => diff.readUnseen(repo, q), diff: (q, s) => diff.readDiff(repo, q, s),
+        // A 500's route and message, never the request (open.ts's COMMET_DEBUG); into the take's errors
+        onError: (e, route) => { serverErrors.push(`server: ${route} failed: ${e instanceof Error ? e.message : String(e)}`); },
+      });
+      const viewport = part.viewport ?? scene.viewport;
+      const context = await browser.newContext({ ...renderContext, ...(viewport ? { viewport } : {}), reducedMotion: (part.reducedMotion ?? scene.reducedMotion) ? 'reduce' : 'no-preference' });
+      try {
+        const page = await context.newPage();
+        await instrumentPage(page);
+        const got = await runTake(page, server.url, { scene, run: part, layout, files, out: cfg.out, cli, serverErrors, firstK: log?.frames.length ?? 0, part: { index, name: part.name } });
+        log = log ? merge(log, got) : got;
+      } finally {
+        await context.close();
+        await server.close();
+      }
+    }
+    // R5: a token is in its URL's hash only; if one showed up in anything a page saw, count it and never write it
+    let text = JSON.stringify(log, null, 1), hits = 0;
+    for (const t of tokens) { const split = text.split(t); hits += split.length - 1; text = split.join('<launch token>'); }
+    writeFileSync(join(cfg.out, 'log.json'), JSON.stringify({ ...(JSON.parse(text) as TakeLog), tokenHits: hits }, null, 1));
   } finally {
     await browser.close();
-    await server.close();
   }
+}
+
+/** One take's log from its parts' logs, in order. */
+function merge(a: TakeLog, b: TakeLog): TakeLog {
+  const texts = [...a.texts];
+  for (const t of b.texts) if (!texts.some(([x]) => x === t[0])) texts.push(t);
+  return { ...a, frames: [...a.frames, ...b.frames], stills: [...a.stills, ...b.stills], texts, served: [...a.served, ...b.served],
+    events: a.events + b.events, notes: [...a.notes, ...b.notes], errors: [...a.errors, ...b.errors], ticks: [...a.ticks, ...b.ticks] };
 }

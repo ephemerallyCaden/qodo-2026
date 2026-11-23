@@ -1,7 +1,7 @@
 // visual-proof: pixel counts between two frames (takes and before/after), where the change lies, and
 // the images it writes (side by side, captioned, the change mask).
 import { describe, expect, it } from 'vitest';
-import { changeMask, diffByRegion, diffPixels, fitText, hexRgb, sideBySide, solid, withCaption, type Image } from '../../.claude/skills/visual-proof/scripts/frames.js';
+import { changeMask, diffByRegion, diffPixels, downscale, fitText, hexRgb, sideBySide, solid, withCaption, type Image } from '../../.claude/skills/visual-proof/scripts/frames.js';
 import { textWidth } from '../../web/src/labels/font.js';
 import { UI_COLOURS } from '../../web/src/ui/colours.js';
 
@@ -82,6 +82,15 @@ describe('the images', () => {
     const inkAt = (x: number) => [0, 1, 2, 3, 4, 5, 6, 7].some((y) => at(c, x, y).slice(0, 3).join() === INK.join());
     const right = 200 - 2 - textWidth('shot');
     expect([...Array(5).keys()].some((i) => inkAt(right - 1 - i))).toBe(false);
+  });
+  it('shrinks by a whole number, keeping the top-left pixel of each block', () => {
+    const img = solid(6, 4, SPACE);
+    for (let y = 0; y < 4; y += 2) for (let x = 0; x < 6; x += 2) paint(img, x, y, [x * 10, y * 10, 7, 255]);
+    const d = downscale(img, 2);
+    expect([d.width, d.height]).toEqual([3, 2]);
+    expect(at(d, 2, 1)).toEqual([40, 20, 7, 255]);
+    expect(downscale(img, 1)).toBe(img);
+    expect(() => downscale(img, 1.5)).toThrow(/whole/);
   });
   it('marks every changed pixel in the accent and dims the rest', () => {
     const m = changeMask(a, b);

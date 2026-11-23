@@ -20,7 +20,7 @@ function lowLeft(data: SceneData): DronePick {
   const model = systemModel(data.layout);
   const index = model.planets.findIndex((p) => p.path === PLANET);
   if (index < 0) throw new Error(`panel-labels: the layout has no planet ${PLANET}`);
-  const d = findDrone(model, bracketPose(model, index), 0, VIEW.width, VIEW.height, (p) => p.label.x > 60 && p.label.x < 250 && p.label.y > 500 && p.label.y < 660, [PLANET]);
+  const d = findDrone(model, bracketPose(model, index), 0, VIEW.width, VIEW.height, (p) => p.inFront && p.label !== null && p.label.x > 60 && p.label.x < 250 && p.label.y > 500 && p.label.y < 660, [PLANET]);
   if (!d) throw new Error(`panel-labels: no seed puts a drone low on the left of ${PLANET}`);
   return d;
 }
@@ -47,7 +47,7 @@ async function run(s: SceneContext): Promise<void> {
   s.still(`${PLANET} focused, a 48-character note on it`);
   // Shot 2: the drone
   const pick = lowLeft({ layout: s.layout, files: s.files });
-  s.note(`drone: home ${PLANET}, seed ${pick.seed}, clicked at ${Math.round(pick.click.x)},${Math.round(pick.click.y)}; its label centred at ${Math.round(pick.label.x)},${Math.round(pick.label.y)}`);
+  s.note(`drone: home ${PLANET}, seed ${pick.seed}, clicked at ${Math.round(pick.click.x)},${Math.round(pick.click.y)}; its label centred at ${Math.round(pick.label!.x)},${Math.round(pick.label!.y)}`);
   await s.keepLabels();
   await s.click(pick.click.x, pick.click.y);
   await s.waitFor('the click opened the drone panel with its files', open('#drone-panel:not([hidden]) li'));

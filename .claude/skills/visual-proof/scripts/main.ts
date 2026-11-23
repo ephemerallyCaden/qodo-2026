@@ -13,11 +13,11 @@ import { dirname, join, relative } from 'node:path';
 import { chromium } from '@playwright/test';
 import { SCENES } from '../scenes/index.js';
 import { compose, GITHUB_IMAGE_LIMIT } from './compose.js';
-import { addNodeModules, buildTree, bundleOf, changedFiles, exportTree, git, makeClone, resolveRev, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
+import { addNodeModules, buildTree, bundleOf, changedFiles, exportTree, git, makeClone, makeFixtureRepo, resolveRev, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
 import { privacyHits, servedTexts, takeTexts, type Scanned } from './privacy.js';
 import { RunRecord, redact, uniqueName, type Literal } from './record.js';
 import { compareTakes, dataPathsTouched, missingTools, noViewChange, privacyStop, Stop, takesStop } from './rules.js';
-import type { TakeLog } from './scene.js';
+import { partsOf, type Scene, type ScenePart, type TakeLog } from './scene.js';
 import { summaryText, type RunSummary } from './summary.js';
 import { takeMain, type TakeConfig } from './take.js';
 
@@ -84,7 +84,7 @@ async function run(a: RunArgs): Promise<number> {
     ...(trying ? ['A try: one build and one take, to check the scene; no before, no comparison, no GIF.'] : [`Base (before): \`${base.sha}\` ${base.subject}`]),
     `Head (after): ${head.worktree ? `the working tree on \`${head.sha}\` (changes sha256 ${head.diffHash})` : `\`${head.sha}\``} ${head.subject}`,
     `Scene: ${scene.name}: ${scene.summary}`,
-    `Checkout: $CHECKOUT, branch ${git(top, 'branch', '--show-current').trim() || '(detached)'}`,
+    `Checkout: $CHECKOUT, branch ${git(top, 'branch', '--show-current').trim() || '(detached)'}; the skill's tools at \`${git(top, 'rev-parse', '--short', 'HEAD').trim()}\`${git(top, 'status', '--porcelain', '--', '.claude/skills/visual-proof').trim() ? ' with uncommitted changes' : ''}`,
     `Scratch: $SCRATCH (builds, data clone, raw takes); images and summary: ${relative(main, out)}/`,
     'Paths: $MAIN is the main checkout, $CHECKOUT this checkout, $SCRATCH the run\'s temp dir.',
   ], literals);
@@ -132,12 +132,13 @@ async function run(a: RunArgs): Promise<number> {
     if (data.length) throw new Stop('data-change', `the diff touches what the snapshot and layout are made of (${data.join(', ')}): both builds would no longer see the same data. Ask whether to film it anyway with a scene whose data doesn't depend on it`);
 
     // 5. The data
-    const repoAt = resolveRev(top, scene.repoAt ?? base.sha);
     const cliTree = trees[sides[0]];
     const clone = join(scratch, 'repo'), claudeDir = join(scratch, 'claude-empty'), stateStart = join(scratch, 'state-start');
     mkdirSync(claudeDir);
     const cli = join(cliTree, 'dist', 'cli.js');
-    const dataCmds = [...makeClone(main, repoAt.sha, clone), ...scanClone(cli, clone, scene.roots ?? ['src'], claudeDir)];
+    const made = scene.fixture ? makeFixtureRepo(scene.fixture.files, scene.fixture.at, clone) : makeClone(main, resolveRev(top, scene.repoAt ?? base.sha).sha, clone);
+    const repoAt = resolveRev(clone, 'HEAD');
+    const dataCmds = [...made, ...scanClone(cli, clone, scene.roots ?? ['src'], claudeDir)];
     const state = join(clone, '.git', 'commet');
     const layout = JSON.parse(readFileSync(join(state, 'layout.json'), 'utf8')) as import('../../../../src/core/contract/layout.js').LayoutV1;
     const setupCmds: string[] = [];
@@ -158,9 +159,10 @@ async function run(a: RunArgs): Promise<number> {
     const files = git(clone, 'ls-files', '-z').split('\0').filter(Boolean);
     const filesJson = join(scratch, 'files.json');
     writeFileSync(filesJson, JSON.stringify(files));
-    const drones = sceneStep('drones', () => scene.drones?.({ layout, files }).view.sessions.length ?? 0);
+    const parts = sceneStep('parts', () => partsOf(scene));
+    const drones = sceneStep('drones', () => Math.max(0, ...parts.map((p) => (p.drones ?? scene.drones)?.({ layout, files }).view.sessions.length ?? 0)));
     record.step('The data (R12)', [...block([...dataCmds, ...setupCmds]),
-      `clone at \`${repoAt.sha}\` ${repoAt.subject}; ${layout.planets.length} planets; roots ${JSON.stringify(layout.source.roots)}; ${files.length} files`,
+      `${scene.fixture ? "the scene's own repo" : 'clone'} at \`${repoAt.sha}\` ${repoAt.subject}; ${layout.planets.length} planets; roots ${JSON.stringify(layout.source.roots)}; ${files.length} files`,
       `snapshot sessions: ${sessions} (--no-ingest, CLAUDE_CONFIG_DIR empty); scripted drones: ${drones}`,
       'state every take starts from:', ...block(stateDigest(stateStart))]);
     if (sessions) throw new Stop('data-change', `the scan read ${sessions} agent sessions; it must read none (--no-ingest)`);
@@ -233,7 +235,8 @@ async function run(a: RunArgs): Promise<number> {
 
     // 9. Before → after: shots, images, GIF
     const caption = (side: 'before' | 'after', rev: Rev) => `${side.toUpperCase()} ${rev.short} ${rev.subject}`.slice(0, 96);
-    const c = compose(id, { take: takes['before-1']!.dir, log: takes['before-1']!.log, caption: caption('before', base) }, { take: takes['after-1']!.dir, log: takes['after-1']!.log, caption: caption('after', head) }, scene.report, out);
+    const c = compose(id, { take: takes['before-1']!.dir, log: takes['before-1']!.log, caption: caption('before', base) }, { take: takes['after-1']!.dir, log: takes['after-1']!.log, caption: caption('after', head) },
+      scene.report, out, scene.gifScale ?? 1, (i) => parts[i]?.gif !== false);
     record.step('Before → after (R3, R4)', [
       ...c.shots.flatMap((s, i) => [`shot ${i + 1}, ${s.name} (frame ${s.k}): ${s.px} px changed${s.box ? `, box x ${s.box.x0}-${s.box.x1}, y ${s.box.y0}-${s.box.y1}` : ''}; ${s.where.map((w) => `${w.name} ${w.px}`).join(', ')}`,
         ...s.probes.map((p) => `  ${p.name}: ${p.before} before, ${p.after} after`)]),
@@ -245,7 +248,7 @@ async function run(a: RunArgs): Promise<number> {
     const sideOf = (rev: Rev, side: 'before' | 'after'): RunSummary['before'] => ({ sha: rev.sha, subject: rev.subject, bundle: bundles[side].files.find((f) => f.endsWith('.js')) ?? bundles[side].files[0]! });
     const summary = summaryText({
       scene: { name: scene.name, summary: scene.summary }, before: sideOf(base, 'before'), after: sideOf(head, 'after'),
-      data: { repoAt: repoAt.sha, sessions, drones, reducedMotion: scene.reducedMotion ?? false, viewport: `${takes['before-1']!.log.width}x${takes['before-1']!.log.height}` },
+      data: { ...viewAndMotion(scene, parts), source: scene.fixture ? `the scene's own ${files.length}-file repo (one commit, \`${repoAt.short}\`)` : `one clone of this repo at \`${repoAt.short}\``, sessions, drones },
       frames: takes['before-1']!.log.frames.length, determinism: { takes: 4, framesCompared: compared, differing: 0 },
       privacy: { texts, responses, files: stateFiles, hits: 0 }, shots: c.shots, images: c.images.filter((im) => !/-(before|after)\.png$/.test(im.file)), command,
     });
@@ -279,6 +282,14 @@ async function run(a: RunArgs): Promise<number> {
   }
 }
 
+/** The summary's viewport and motion words, per part when the parts differ. */
+function viewAndMotion(scene: Scene, parts: readonly ScenePart[]): { viewport: string; motion: string } {
+  const vp = (p: ScenePart) => { const v = p.viewport ?? scene.viewport ?? { width: 1280, height: 720 }; return `${v.width}x${v.height}`; };
+  const mo = (p: ScenePart) => ((p.reducedMotion ?? scene.reducedMotion) ? 'reduced motion (the view clock holds at 0)' : 'motion on');
+  const one = (f: (p: ScenePart) => string) => (new Set(parts.map(f)).size === 1 ? f(parts[0]!) : parts.map((p) => `${f(p)} in ${p.name}`).join(', '));
+  return { viewport: one(vp), motion: one(mo) };
+}
+
 /** A try's result: each still's frame, boxes and probes, and the take's notes, for whoever is writing the scene. */
 function tryResult(t: { dir: string; log: TakeLog }, id: string, out: string, main: string, record: RunRecord, scratch: string, keep: boolean, say: (l: string) => void): number {
   const lines: string[] = [];
@@ -302,7 +313,10 @@ function tryResult(t: { dir: string; log: TakeLog }, id: string, out: string, ma
 async function cliMain(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   if (cmd === 'scenes') {
-    for (const s of Object.values(SCENES)) process.stdout.write(`${s.name}: ${s.summary}${s.reducedMotion ? ' (reduced motion)' : ''}\n`);
+    for (const s of Object.values(SCENES)) {
+      const { viewport, motion } = viewAndMotion(s, partsOf(s));
+      process.stdout.write(`${s.name}: ${s.summary} [${viewport}; ${motion}${s.fixture ? "; the scene's own repo" : ''}]\n`);
+    }
     return 0;
   }
   if (cmd === 'take' && rest.length === 1) {

@@ -19,7 +19,8 @@ export interface RunSummary {
   scene: { name: string; summary: string };
   before: Side;
   after: Side;
-  data: { repoAt: string; sessions: number; drones: number; reducedMotion: boolean; viewport: string };
+  /** `source` says what was scanned, e.g. "one clone of this repo at `8cf028c`". */
+  data: { source: string; sessions: number; drones: number; viewport: string; motion: string };
   /** Frames in each take. */
   frames: number;
   determinism: { takes: number; framesCompared: number; differing: number };
@@ -58,13 +59,16 @@ export function summaryText(s: RunSummary): string {
       lines.push(`- ${shot.px} of ${shot.total} px changed (${share(shot.px, shot.total)}), box x ${b.x0}-${b.x1}, y ${b.y0}-${b.y1}`);
       lines.push(`- where: ${shot.where.map((w) => `${w.name} ${w.px}`).join(', ')}`);
     }
-    for (const p of shot.probes) lines.push(`- ${p.name}: ${p.before} before, ${p.after} after`);
+    // the drone measures read as one line: visible of drawn, before and after
+    const drawn = shot.probes.find((p) => p.name === 'drone px drawn'), visible = shot.probes.find((p) => p.name === 'drone px visible');
+    if (drawn && visible) lines.push(`- drone visible: ${visible.before} of ${drawn.before} px before, ${visible.after} of ${drawn.after} after`);
+    for (const p of shot.probes) if (!(drawn && visible && (p === drawn || p === visible))) lines.push(`- ${p.name}: ${p.before} before, ${p.after} after`);
     lines.push('');
   });
   lines.push(
-    `**Same data on both sides:** one clone of this repo at \`${short(s.data.repoAt)}\`, scanned once with \`--no-ingest\` (${plural(s.data.sessions, 'agent session')} read)` +
+    `**Same data on both sides:** ${s.data.source}, scanned once with \`--no-ingest\` (${plural(s.data.sessions, 'agent session')} read)` +
       `${s.data.drones ? `, ${plural(s.data.drones, 'scripted drone')} through the server's hooks` : ''}; viewport ${s.data.viewport}, ` +
-      `loop time stepped 50 ms a take frame${s.data.reducedMotion ? ', reduced motion (the view clock holds at 0)' : ''}.`,
+      `loop time stepped 50 ms a tick; ${s.data.motion}.`,
     `**Determinism:** each build captured twice (${s.determinism.takes} takes of ${s.frames} frames); ${s.determinism.differing} of ${s.determinism.framesCompared} frames differ between takes of the same build.`,
     `**Privacy:** ${s.privacy.texts} page texts, ${s.privacy.responses} API responses and ${s.privacy.files} state files scanned for absolute paths, tokens and agent-log fields: ${plural(s.privacy.hits, 'hit')}.`,
     `**Images** (attached by hand): ${s.images.map((im) => `${im.file} (${size(im.bytes)}, ${im.note})`).join('; ')}.`,

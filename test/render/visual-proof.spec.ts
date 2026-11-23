@@ -120,7 +120,7 @@ test.describe('visual-proof takes', () => {
   test('a scene scripts a drone through the server hook and selects it: its panel opens (R12)', async ({ browser }) => {
     const pickOf = (l: LayoutV1) => {
       const model = systemModel(l);
-      return findDrone(model, homePose(model), 0, 1280, 720, (d) => d.click.x > 100 && d.click.x < 1180 && d.click.y > 100 && d.click.y < 620)!;
+      return findDrone(model, homePose(model), 0, 1280, 720, (d) => d.inFront && d.click.x > 100 && d.click.x < 1180 && d.click.y > 100 && d.click.y < 620)!;
     };
     const f = await fixture({}, (l) => scriptedDrone(l.source.head, pickOf(l)).view);
     const scene: Scene = {
@@ -129,17 +129,27 @@ test.describe('visual-proof takes', () => {
         await s.dismissOffer();
         await s.waitFor('one drone', async () => (await s.page.$eval('#drones-hud', (e) => e.textContent ?? '')).includes('1 drone shown'));
         await s.record(1);
-        const d = pickOf(s.layout);
-        await s.click(d.click.x, d.click.y);
+        // clicked where the build draws it, from the page's own pixels
+        const at = await s.locateDrone();
+        located.push(at.visible);
+        await s.click(at.centre!.x, at.centre!.y);
         await s.waitFor('the drone panel', async () => (await s.page.$('#drone-panel:not([hidden])')) !== null);
         await s.record(2);
         s.still('selected');
+        measured.push(await s.measureDrones());
       },
     };
+    const located: number[] = [], measured: { drawn: number; visible: number; underPanel: number }[] = [];
     const { log } = await take(browser, f, scene, 'drone');
     expect(log.frames[0]!.boxes['#drone-panel']).toBeUndefined();
     expect(log.frames[2]!.boxes['#drone-panel']).toBeDefined();
     expect(typeof log.frames[2]!.probes['label px under #drone-panel']).toBe('number');
+    // the drone is drawn and seen (a frame without one would measure 0), and its measures land in the still's probes
+    expect(located[0]).toBeGreaterThan(100);
+    expect(measured[0]!.drawn).toBeGreaterThan(100);
+    expect(measured[0]!.visible).toBeLessThanOrEqual(measured[0]!.drawn);
+    expect(log.frames[2]!.probes['drone px drawn']).toBe(measured[0]!.drawn);
+    expect(log.frames[2]!.probes['drone px visible']).toBe(measured[0]!.visible);
     expect(log.served.find((r) => r.path === '/api/drones')?.body).toContain('"total":1');
   });
 });

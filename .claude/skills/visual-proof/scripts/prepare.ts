@@ -74,7 +74,9 @@ export function exportTree(cwd: string, rev: Rev, dest: string, tarPath: string)
 /** This checkout's node_modules into `dest`, which must have the same lockfile (else the build could differ). */
 export function addNodeModules(top: string, dest: string): string[] {
   const mine = readFileSync(join(top, 'package-lock.json')), theirs = readFileSync(join(dest, 'package-lock.json'));
-  if (!mine.equals(theirs)) throw new Stop('build-failed', `${relative(dirname(dest), dest)}'s package-lock.json differs from this checkout's: its dependencies would need their own npm ci`);
+  if (!mine.equals(theirs)) {
+    throw new Stop('build-failed', `the ${relative(dirname(dest), dest)} tree's package-lock.json differs from this checkout's, so this checkout's node_modules isn't its dependencies; it would need its own npm ci, which needs the network`);
+  }
   // APFS clones the tree in seconds (CLAUDE.md); elsewhere a plain copy
   const args = process.platform === 'darwin' ? ['-cR'] : ['-R'];
   execFileSync('cp', [...args, join(top, 'node_modules'), join(dest, 'node_modules')]);
@@ -119,6 +121,23 @@ export function makeClone(main: string, sha: string, dest: string): string[] {
   const common = realpathSync(join(dest, git(dest, 'rev-parse', '--git-common-dir').trim()));
   if (common !== realpathSync(join(dest, '.git'))) throw new Error(`the clone's git dir is ${common}, not its own .git`);
   return [`git clone --quiet --shared --no-checkout <main checkout> ${dest}`, `git -C ${dest} checkout --quiet --detach ${sha}`];
+}
+
+/**
+ * A scene's own repo: these files in one commit at `at`, by a fixed author, so the same files always give
+ * the same SHA. Its git dir is its own, like the clone's.
+ */
+export function makeFixtureRepo(files: Readonly<Record<string, string>>, at: string, dest: string): string[] {
+  mkdirSync(dest, { recursive: true });
+  git(dest, 'init', '-q', '-b', 'main');
+  for (const [k, v] of [['user.name', 'Mate'], ['user.email', 'mate@example.com'], ['commit.gpgsign', 'false']] as const) git(dest, 'config', k, v);
+  for (const path of Object.keys(files).sort(byCodepoint)) {
+    mkdirSync(dirname(join(dest, path)), { recursive: true });
+    writeFileSync(join(dest, path), files[path]!);
+  }
+  git(dest, 'add', '-A');
+  execFileSync('git', ['commit', '-q', '-m', at], { cwd: dest, env: { ...process.env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } });
+  return [`git init in ${dest}; ${Object.keys(files).length} files (${Object.keys(files).sort(byCodepoint).join(', ')}); one commit at ${at} by Mate <mate@example.com>`];
 }
 
 /** `commet scan --no-ingest` in the clone with the base build's CLI and an empty CLAUDE_CONFIG_DIR. */

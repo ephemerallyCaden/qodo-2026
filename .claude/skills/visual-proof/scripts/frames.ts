@@ -71,6 +71,16 @@ export function diffByRegion(a: Image, b: Image, regions: readonly Region[], res
   return { ...d, where: [...regions.map((r, i) => ({ name: r.name, px: counts[i]! })), { name: rest, px: counts[regions.length]! }] };
 }
 
+/** Every n-th pixel of every n-th row: a whole-number shrink that keeps pixel art's blocks (the view's upscale is a whole number too). */
+export function downscale(img: Image, n: number): Image {
+  if (!Number.isInteger(n) || n < 1) throw new Error(`downscale by a whole number, not ${n}`);
+  if (n === 1) return img;
+  const width = Math.floor(img.width / n), height = Math.floor(img.height / n);
+  const rgba = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) rgba.set(img.rgba.subarray(((y * n) * img.width + x * n) * 4, ((y * n) * img.width + x * n) * 4 + 4), (y * width + x) * 4);
+  return { width, height, rgba };
+}
+
 /** `a`, a `gap` of space, then `b`, top-aligned. */
 export function sideBySide(a: Image, b: Image, gap: number): Image {
   const out = solid(a.width + gap + b.width, Math.max(a.height, b.height), SPACE);

@@ -49,19 +49,21 @@ export interface DronePick {
   seed: number;
   /** Where to click it. */
   click: Point;
-  /** Where its label would go, centred under it (placeLabels), before any panel moved it. */
-  label: Point;
+  /** Where its label would go, centred under it (placeLabels), before any panel moved it; null when placeLabels gives it none. */
+  label: Point | null;
+  /** Nearer the eye than its planet's centre, so a click on it picks the drone. */
+  inFront: boolean;
 }
 
-/** The drone at `frame` for a session with this home and seed: where it is and where its label would go. */
+/** The drone at `frame` for a session with this home and seed: where it is, where its label would go, and whether it is in front of its planet. Null off screen. */
 export function droneAt(model: SystemModel, pose: OrbitPose, home: DirId, seed: number, frame: number, width: number, height: number): DronePick | null {
   const d = placeDrone(model, home, seed, frame);
   const p = model.planets.find((x) => x.dirId === home);
   if (!d || !p) return null;
   const at = onScreen(pose, d.centre, width, height), body = onScreen(pose, planetCentre(p, frame), width, height);
-  if (!at || !body || at.depth >= body.depth) return null; // behind its planet: not clickable
+  if (!at || at.x < 0 || at.y < 0 || at.x >= width || at.y >= height) return null;
   const [l] = placeLabels(pose, [{ centre: d.centre, radius: DRONE_PICK_RADIUS }], [], width, height, 2 * labelPx(height), 1);
-  return l ? { home, seed, click: { x: at.x, y: at.y }, label: { x: l.x, y: l.y } } : null;
+  return { home, seed, click: { x: at.x, y: at.y }, label: l ? { x: l.x, y: l.y } : null, inFront: !body || at.depth < body.depth };
 }
 
 /** The first (seed, planet) whose drone at `frame`, seen from `pose`, satisfies `want`: the search the #169 test does. `homes` limits the planets. */

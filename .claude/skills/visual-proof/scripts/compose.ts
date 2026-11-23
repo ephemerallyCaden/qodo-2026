@@ -4,12 +4,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { encodePng } from '../../../../test/render/png.js';
-import { changeMask, diffByRegion, sideBySide, withCaption, type Image, type Region } from './frames.js';
+import { changeMask, diffByRegion, downscale, sideBySide, withCaption, type Image, type Region } from './frames.js';
 import { decodeGif, GifWriter, PaletteBuilder, Quantiser } from './gif.js';
 import { readPng } from './png.js';
 import { Stop } from './rules.js';
 import type { Shot } from './summary.js';
-import { REGIONS, TICK_MS, type TakeLog } from './scene.js';
+import { REGIONS, type TakeLog } from './scene.js';
 
 /** GitHub's limit for an image attached to a PR or comment. */
 export const GITHUB_IMAGE_LIMIT = 10 * 1024 * 1024;
@@ -44,7 +44,16 @@ export function shotsOf(before: TakeLog, after: TakeLog, beforeDir: string, afte
 }
 
 /** Writes the stills, pairs, change masks and the GIF into `out`, named `<id>-…`. */
-export function compose(id: string, before: SideIn, after: SideIn, report: readonly string[] | undefined, out: string): Composed {
+/**
+ * The GIF's delay for each recorded frame: the loop time until the next one (a scene may step between
+ * them); the last one, and the last of each part (where the next part's clock starts again), held.
+ */
+export function delaysCs(ts: readonly number[], holdCs: number): number[] {
+  return ts.map((t, i) => (i + 1 < ts.length && ts[i + 1]! > t ? Math.max(2, Math.round((ts[i + 1]! - t) / 10)) : holdCs));
+}
+
+/** `inGif(part)`: whether that part's frames go into the GIF (a part at another viewport can't). */
+export function compose(id: string, before: SideIn, after: SideIn, report: readonly string[] | undefined, out: string, gifScale = 1, inGif: (part: number) => boolean = () => true): Composed {
   const shots = shotsOf(before.log, after.log, before.take, after.take, report);
   const images: Composed['images'] = [];
   const write = (file: string, img: Image, note: string) => {
@@ -62,13 +71,21 @@ export function compose(id: string, before: SideIn, after: SideIn, report: reado
 
   // The GIF's frames, in order: [take, k, caption, delay in centiseconds]
   const seq: [string, number, string, number][] = [];
-  const cs = TICK_MS / 10;
-  const takeFrames = (side: SideIn) => side.log.frames.forEach((f, i, all) => seq.push([side.take, f.k, side.caption, i === all.length - 1 ? HOLD_CS : cs]));
+  const gifFrame = (f: TakeLog['frames'][number]) => inGif(f.part ?? 0);
+  const takeFrames = (side: SideIn) => {
+    const frames = side.log.frames.filter(gifFrame);
+    const d = delaysCs(frames.map((f) => f.ts), HOLD_CS);
+    frames.forEach((f, i) => seq.push([side.take, f.k, side.caption, d[i]!]));
+  };
   takeFrames(before);
   takeFrames(after);
-  for (const s of shots) for (let n = 0; n < FLICKS; n++) for (const side of [before, after]) seq.push([side.take, s.k, side.caption, FLICK_CS]);
+  for (const s of shots) {
+    if (!gifFrame(before.log.frames[s.k]!)) continue;
+    for (let n = 0; n < FLICKS; n++) for (const side of [before, after]) seq.push([side.take, s.k, side.caption, FLICK_CS]);
+  }
+  if (!seq.length) throw new Error('no frame goes into the GIF');
   const still = (k: number) => shots.find((s) => s.k === k)?.name ?? '';
-  const frame = ([take, k, caption]: [string, number, string, number]) => withCaption(load(take, k), caption, CAPTION_SCALE, still(k));
+  const frame = ([take, k, caption]: [string, number, string, number]) => withCaption(downscale(load(take, k), gifScale), caption, gifScale > 1 ? 2 : CAPTION_SCALE, still(k));
   const pal = new PaletteBuilder();
   for (const f of seq) pal.add(frame(f));
   const palette = pal.palette();
@@ -76,7 +93,12 @@ export function compose(id: string, before: SideIn, after: SideIn, report: reado
   const first = frame(seq[0]!);
   const gif = new GifWriter(first.width, first.height, palette);
   let last: Uint8Array | null = null;
-  for (const f of seq) { last = q.map(frame(f)); gif.add(last, f[3]); }
+  for (const f of seq) {
+    const img = frame(f);
+    if (img.width !== first.width || img.height !== first.height) throw new Error(`GIF frames differ in size (${img.width}x${img.height}, not ${first.width}x${first.height}): mark the part at another viewport gif: false`);
+    last = q.map(img);
+    gif.add(last, f[3]);
+  }
   const bytes = gif.finish();
   // Read it back: it must decode, and its last frame must be the last frame meant
   const d = decodeGif(bytes);
@@ -87,6 +109,6 @@ export function compose(id: string, before: SideIn, after: SideIn, report: reado
   }
   const file = `${id}.gif`;
   writeFileSync(join(out, file), bytes);
-  images.unshift({ file, bytes: bytes.length, note: `before → after, ${seq.length} frames at 20 a second of loop time, then each still flicking` });
+  images.unshift({ file, bytes: bytes.length, note: `before → after${gifScale > 1 ? ` at 1/${gifScale} size` : ''}, ${seq.length} frames in loop time, then each still flicking` });
   return { shots, images, gif: { frames: d.frames.length, colours: palette.length / 3, bytes: bytes.length, decoded: d.frames.length } };
 }

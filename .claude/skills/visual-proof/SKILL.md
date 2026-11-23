@@ -71,14 +71,15 @@ ends (R8), so a run that dies still shows what it did. The steps, each a section
    checkout's `node_modules` (same lockfile only), `npm run build`, and a digest of `dist/web`.
 4. **View change?** The same `dist/web` on both sides → `no-view-change` (R11), before any capture.
    A diff touching the data paths → `data-change` (R12).
-5. **The data**: one clone of this repo at the scene's pinned commit (default: the base), scanned once
-   with `--no-ingest` and an empty `CLAUDE_CONFIG_DIR` (0 sessions, or `data-change`), then the scene's
-   setup (a beacon, a chart). Every take starts from a copy of that state. Drones come only from the
+5. **The data**: one clone of this repo at the scene's pinned commit (default: the base), or the
+   scene's own small repo (`fixture`: its files in one commit at a fixed date, the same SHA every run),
+   scanned once with `--no-ingest` and an empty `CLAUDE_CONFIG_DIR` (0 sessions, or `data-change`), then
+   the scene's setup (a beacon, a chart). Every take starts from a copy of that state. Drones come only from the
    scene's script, through the server's hooks: no agent log is read (R12).
 6. **Takes**: four, each in its own process and browser: before twice, after twice. Each build serves
    itself (its own server and `dist/web`, in-process, 127.0.0.1, a fresh token). The view's
-   `requestAnimationFrame` is stepped by hand, 50 ms of loop time a frame (R1). A scene that can't reach
-   its state stops with `scene-unreachable`.
+   `requestAnimationFrame` is stepped by hand, 50 ms of loop time a tick (R1), at the scene's viewport
+   (default 1280x720). A scene that can't reach its state stops with `scene-unreachable`.
 7. **Determinism**: both takes of each build, frame by frame: any pixel, still, probe or page text that
    differs → `takes-differ` (R2).
 8. **Privacy**: every frame's page text (text nodes, attributes, input values), every API response,
@@ -113,7 +114,8 @@ code, its message and detail lines, and ask the user what to do:
 - `data-change`: the diff touches the scanner, attribution, layout, snapshot or a contract (R12), or
   the scan read agent sessions. Both sides would not see the same data; ask before filming anyway.
 - `build-failed`: the base or head (or the data clone's scan) didn't build; the tail is in the record,
-  the full log in the scratch dir.
+  the full log in the scratch dir. Also when a side's `package-lock.json` differs from this checkout's:
+  this checkout's `node_modules` isn't its dependencies, and its own `npm ci` needs the network.
 - `scene-unreachable`: the scene couldn't get the view where it needed (a click opened nothing, a
   planet isn't in the layout). Check the scene with `vp.sh try` on each side.
 - `takes-differ`: a take isn't reproducible: the frames named differ. Don't retry until it passes;
@@ -125,6 +127,14 @@ code, its message and detail lines, and ask the user what to do:
 
 Exit 1 is a bug in the skill: report the record's `Internal error` step.
 
+## Where things go
+
+Only scratch goes in `/tmp` (`/tmp/visual-proof-<id>`: the builds, the data clone, the raw takes), and a
+restart can wipe it. What the run makes is kept in the main checkout's gitignored
+`.archive/docs/hackathon/evidence/`: the record `visual-proof-<id>.md`, and beside it the folder
+`visual-proof-<id>/` with `summary.md`, the GIF, and per shot the pair, the before and after frames and
+the change mask. The record's start lines say where both are.
+
 ## Stopping (early or not)
 
 The run cleans up after itself: on `DONE` it removes the scratch dir (unless `--keep`), and on
@@ -135,12 +145,25 @@ worktree or this repo's `.git/commet`; `git status` is as it was.
 ## Adding a scene
 
 A scene is one TypeScript module in `scenes/`, listed in `scenes/index.ts`; `scripts/scene.ts` says
-what it may do. It declares its data (`repoAt`, `roots`, `setup` CLI steps, scripted `drones`), whether
-it runs under reduced motion, and a `run(s)` that drives the view with real input and records:
+what it may do. It declares its data (`repoAt`, or its own `fixture` repo; `roots`; `setup` CLI steps;
+scripted `drones`), its `viewport`, whether it runs under reduced motion, `gifScale` (a whole-number
+shrink for a big viewport's GIF), and a `run(s)` that drives the view with real input and records.
+A scene that needs shots in different pages (another viewport, motion on or off, other drones) lists
+`parts` instead of `run`: each part is a fresh page and server in the same take, from the same start
+state; frames and stills run on across parts, and `gif: false` keeps a part (at another viewport) out
+of the GIF. In a `run`:
 - `s.record(n)` steps the clock n frames and screenshots each; `s.advance(n)` steps without recording;
   `s.still(name)` marks the last frame as a shot (a pair and a summary line).
 - `s.keepLabels()` keeps the label canvas: the `label px drawn under #<panel> since the keep` probes then
   count what changed under each open panel (the #169 tests' method). `report` picks the probes shown.
+- `s.measureDrones()`, after a still, measures the drones from the page's own pixels (the #189
+  debugger's method: a seam skips the drone shader's draws): `drone px drawn`, `drone px visible`, and
+  `drone px drawn under #drone-panel`. The same frame is drawn again, so the take goes on unchanged.
+  The summary reads them as "drone visible: 0 of 2320 px before, N of M after".
+- `s.locateDrone()` finds where this build draws the drones now, by the same seam: click its `centre` to
+  select a scene's one drone in either build, wherever that build puts it (none visible: `s.fail`).
+- Recording every other tick (`s.advance(1); s.record(1)`) halves the frames; the GIF still plays in
+  loop time (each frame is shown until the next one's time).
 - `s.focusPlanet(path)`, `s.click(x, y)`, `s.press(key)`, `s.dismissOffer()`, `s.cli(…)` (the build's
   CLI in the clone, mid-take; then `s.waitFor` its effect), `s.waitFor(what, check)`, `s.fail(why)`.
 - Where things are on screen comes from this checkout's own camera and drone code: `scenes/helpers.ts`
@@ -150,4 +173,7 @@ it runs under reduced motion, and a `run(s)` that drives the view with real inpu
 - A scene must be a function of the layout and the frame clock: no wall clock, no randomness. Then run
   `vp.sh try --head <ref> --scene <name>`: it prints each still's boxes and probes and saves its frame.
 
-`panel-labels` (#169) is the worked example: reduced motion, a note and a scripted drone, two shots.
+Worked examples: `panel-labels` (#169: this repo's system, reduced motion, a note and a scripted drone,
+two shots); `drone-panel` (#189: its own four-file repo and three parts: seed 28 held still at the
+bottom left of its planet at 1280x720 and 1920x1080, then seed 78 orbiting into its open panel for 12 s
+at 1920x1080 with motion, the GIF at half size).

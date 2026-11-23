@@ -8,7 +8,7 @@ const run: RunSummary = {
   scene: { name: 'panel-labels', summary: "a selected drone's label and a focused planet's note, each with its panel open" },
   before: { sha: '8cf028c0d5b5e2c5f0f7c4b8e7d1a2b3c4d5e6f7', subject: 'test(view): the drone panel hands focus back', bundle: 'assets/index-AAAA1111.js' },
   after: { sha: '4f3fe571e9a72d0f47c75045e690d1576b6d948a', subject: 'fix(view): note and drone labels move out from under the open panels (#169)', bundle: 'assets/index-BBBB2222.js' },
-  data: { repoAt: '8cf028c0d5b5e2c5f0f7c4b8e7d1a2b3c4d5e6f7', sessions: 0, drones: 1, reducedMotion: true, viewport: '1280x720' },
+  data: { source: 'one clone of this repo at `8cf028c`', sessions: 0, drones: 1, viewport: '1280x720', motion: 'reduced motion (the view clock holds at 0)' },
   frames: 48,
   determinism: { takes: 4, framesCompared: 96, differing: 0 },
   privacy: { texts: 37, responses: 22, files: 4, hits: 0 },
@@ -39,6 +39,7 @@ describe('summaryText', () => {
     expect(text).toContain('label px drawn under #panel: 798 before, 0 after');
   });
   it('says how the data, determinism and privacy were checked', () => {
+    expect(text).toContain('one clone of this repo at `8cf028c`, scanned once with `--no-ingest`');
     expect(text).toContain('0 of 96 frames differ');
     expect(text).toContain('`--no-ingest`');
     expect(text).toContain('1 scripted drone');
@@ -49,6 +50,11 @@ describe('summaryText', () => {
   it('holds no absolute path or token, and is the same text every time', () => {
     expect(privacyHits([{ where: 'summary', text }], { literals: [] })).toEqual([]);
     expect(summaryText(structuredClone(run))).toBe(text);
+  });
+  it('reads the drone measures as one line: visible of drawn, before and after', () => {
+    const t = summaryText({ ...run, shots: [{ ...run.shots[0]!, probes: [{ name: 'drone px drawn', before: 2320, after: 2320 }, { name: 'drone px visible', before: 0, after: 2101 }, { name: 'drone px drawn under #drone-panel', before: 2320, after: 0 }] }] });
+    expect(t).toContain('- drone visible: 0 of 2320 px before, 2101 of 2320 after\n- drone px drawn under #drone-panel: 2320 before, 0 after');
+    expect(t).not.toContain('drone px visible:');
   });
   it('says when nothing changed in a shot', () => {
     const same = summaryText({ ...run, shots: [{ ...run.shots[0]!, px: 0, box: null, where: [] }] });

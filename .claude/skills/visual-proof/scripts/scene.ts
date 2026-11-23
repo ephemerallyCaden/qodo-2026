@@ -8,6 +8,7 @@ import type { Page } from '@playwright/test';
 import type { DroneDetailQuery, DroneDetailResult, DroneView } from '../../../../src/core/contract/drones.js';
 import type { LayoutV1 } from '../../../../src/core/contract/layout.js';
 import type { SystemModel } from '../../../../web/src/model/system.js';
+import type { Box } from './frames.js';
 
 /** What every take of a run sees: the clone's layout and its files at the pinned commit. */
 export interface SceneData { layout: LayoutV1; files: readonly string[] }
@@ -24,6 +25,15 @@ export interface Scene {
   summary: string;
   /** The commit of this repo the data clone is checked out at. Default: the base commit. */
   repoAt?: string;
+  /**
+   * Instead of a clone of this repo, the scene's own repo: these files in one commit at `at` (author and
+   * committer fixed, so its SHA is the same every run). For a scene that needs a small, exact layout.
+   */
+  fixture?: { files: Readonly<Record<string, string>>; at: string };
+  /** CSS px (= frame px). Default: the render tests' 1280x720. */
+  viewport?: { width: number; height: number };
+  /** The GIF at 1/n size (nearest, a whole n), for a large viewport with motion; stills stay full size. Default 1. */
+  gifScale?: number;
   /** `commet scan --root` values for the clone. Default: ['src']. */
   roots?: readonly string[];
   /** Reduced motion: the frame clock holds at 0 and focus cuts instead of gliding (the view's own setting). */
@@ -37,7 +47,32 @@ export interface Scene {
   drones?(data: SceneData): { view: DroneView; detail?: (q: DroneDetailQuery) => DroneDetailResult };
   /** The probes the summary reports at each still (default: every probe a still has). */
   report?: readonly string[];
+  /** Drives the view. A scene has `run` or `parts`, not both. */
+  run?(s: SceneContext): Promise<void>;
+  /**
+   * Shots that need their own page: each part is a fresh page (and server) in the same take, from the
+   * same start state, with its own drones, viewport and motion where it sets them. Frames and stills run on
+   * across parts; each still is named `<part>: <still>`.
+   */
+  parts?: readonly ScenePart[];
+}
+
+export interface ScenePart {
+  name: string;
+  viewport?: { width: number; height: number };
+  reducedMotion?: boolean;
+  drones?: Scene['drones'];
+  /** false: its frames stay out of the GIF (e.g. another viewport than the GIF's). Its stills still get pairs. */
+  gif?: boolean;
   run(s: SceneContext): Promise<void>;
+}
+
+/** A scene's parts: its own `parts`, or the scene itself as one. */
+export function partsOf(scene: Scene): ScenePart[] {
+  if (scene.parts && scene.run) throw new Error(`scene ${scene.name} has both run and parts`);
+  if (scene.parts?.length) return [...scene.parts];
+  if (!scene.run) throw new Error(`scene ${scene.name} has neither run nor parts`);
+  return [{ name: '', ...(scene.viewport ? { viewport: scene.viewport } : {}), ...(scene.reducedMotion !== undefined ? { reducedMotion: scene.reducedMotion } : {}), ...(scene.drones ? { drones: scene.drones } : {}), run: scene.run }];
 }
 
 /** One recorded frame's DOM boxes, in CSS px (= frame px). Only open (non-hidden) elements are listed. */
@@ -68,6 +103,20 @@ export interface SceneContext {
   waitFor(what: string, check: () => Promise<boolean>, timeoutMs?: number): Promise<void>;
   /** Keeps the label canvas as it is now: the `new` probes count label pixels that differ from it. */
   keepLabels(): Promise<void>;
+  /**
+   * Measures the drones on the last recorded frame from the page's own pixels (the #189 debugger's method):
+   * a seam skips the drone shader's draws, so `drone px visible` is what changes in the page as the user sees
+   * it when the drones are drawn, `drone px drawn` the same on the bare canvas (overlays hidden), and
+   * `drone px drawn under #drone-panel` the drawn ones inside the open drone panel's box. The frame is drawn
+   * again at the same time, so the take goes on as before. Adds the three to that frame's probes.
+   */
+  measureDrones(): Promise<{ drawn: number; visible: number; underPanel: number }>;
+  /**
+   * Where the drones are drawn now, from the page's own pixels (the same seam): the centre of the drone
+   * pixels the user can see, and their count. Click there to select a scene's one drone in whatever build
+   * is running, wherever that build draws it; null when none is visible.
+   */
+  locateDrone(): Promise<{ visible: number; centre: { x: number; y: number } | null; box: Box | null }>;
   /** The build's own CLI in the data clone, mid-take (a state change the view hears about): wait for its effect after. */
   cli(...args: string[]): string;
   /** A line for the take log and the record (where a click landed, which seed). */
@@ -84,12 +133,16 @@ export interface SceneContext {
   press(key: string): Promise<void>;
 }
 
+/** The drone shader's own uniform: the seam knows a drone program by it (web/src/render/drone-shader.ts). */
+export const DRONE_MARK = 'uHeadB';
+
 /** Loop time per tick: 20 frames a second. */
 export const TICK_MS = 50;
 /** The DOM parts a frame's pixels are attributed to, first match first (the rest is the 3D view and its labels). */
 export const REGIONS = ['drone-panel', 'panel', 'hud', 'error'] as const;
 
-export interface FrameLog { k: number; ts: number; frame: number; boxes: Boxes; probes: Record<string, number>; heading: string | null }
+/** `part`: which of the scene's parts recorded it (0 for a scene without parts). */
+export interface FrameLog { k: number; part?: number; ts: number; frame: number; boxes: Boxes; probes: Record<string, number>; heading: string | null }
 export interface TakeLog {
   scene: string;
   width: number;
