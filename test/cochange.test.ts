@@ -125,6 +125,35 @@ describe('coChange: missing-pair flags (recent changes only)', () => {
   });
 });
 
+describe('coChange: the counting itself', () => {
+  /** The plain definition, for comparison: every pair of every non-bulk commit counted in one map. */
+  function reference(n: number, commits: TouchSet[]) {
+    const seen = new Array<number>(n).fill(0), both = new Map<string, number>();
+    for (const c of commits) {
+      if (c.files.length > COCHANGE.bulkFiles) continue;
+      for (const i of c.files) seen[i]!++;
+      for (const i of c.files) for (const j of c.files) if (i < j) both.set(`${i},${j}`, (both.get(`${i},${j}`) ?? 0) + 1);
+    }
+    return [...both].filter(([, k]) => k >= COCHANGE.minBoth).map(([key, k]) => {
+      const [i, j] = key.split(',').map(Number) as [number, number];
+      return { i, j, both: k, strengthMilli: Math.floor((k * 1000) / (seen[i]! + seen[j]! - k)) };
+    }).filter((p) => p.strengthMilli >= COCHANGE.thresholdMilli);
+  }
+
+  it('finds exactly the pairs of the plain definition, on seeded random histories (PR #214 r1, Qodo 8b2e5a20)', () => {
+    let seed = 211;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    for (let round = 0; round < 20; round++) {
+      const n = 4 + Math.floor(rnd() * 30);
+      const lists = Array.from({ length: 5 + Math.floor(rnd() * 60) }, () => [...new Set(Array.from({ length: 1 + Math.floor(rnd() * 6) }, () => Math.floor(rnd() * n)))]);
+      const r = coChange(ids(n), history(lists), { settings: { ...COCHANGE, cap: n } }); // no cap: every pair above the floors
+      const want = reference(n, history(lists)).map((p) => ({ a: ids(n)[p.i], b: ids(n)[p.j], both: p.both, strengthMilli: p.strengthMilli }))
+        .sort((x, y) => (x.a! < y.a! ? -1 : x.a! > y.a! ? 1 : x.b! < y.b! ? -1 : 1));
+      expect(r.pairs, `round ${round}`).toEqual(want);
+    }
+  });
+});
+
 describe('coChangeOf: from the fog base', () => {
   it('follows a rename to the file at HEAD and counts only content changes', () => {
     const m = new Model();
@@ -182,7 +211,13 @@ describe('coChangeView: what the server serves', () => {
     const cc = snapshot.cochange!;
     for (const bad of [null, 'x', { ...cc, pairs: 'no' }, { ...cc, commits: -1 },
       { ...cc, pairs: [{ ...cc.pairs[0]!, a: 'f_ffffffffffff' }] }, { ...cc, pairs: [{ ...cc.pairs[0]!, strengthMilli: 1001 }] },
-      { ...cc, pairs: [cc.pairs[0], cc.pairs[0]] }, { ...cc, missing: [{ ...cc.missing[0]!, at: 'e'.repeat(40) }] }]) {
+      { ...cc, pairs: [cc.pairs[0], cc.pairs[0]] }, { ...cc, missing: [{ ...cc.missing[0]!, at: 'e'.repeat(40) }] },
+      // PR #214 r1 (Qodo 344af9c7): settings and counts that contradict the record are damage too
+      { ...cc, settings: undefined }, { ...cc, settings: { ...cc.settings, cap: 'x' } },
+      { ...cc, pairs: [{ ...cc.pairs[0]!, both: cc.commits + 1 }] }, { ...cc, pairs: [{ ...cc.pairs[0]!, both: 1 }] },
+      { ...cc, pairs: [{ ...cc.pairs[0]!, strengthMilli: cc.settings.thresholdMilli - 1 }] },
+      { ...cc, missing: [{ ...cc.missing[0]!, strengthMilli: cc.settings.flagMilli - 1 }] },
+      { ...cc, missing: [{ ...cc.missing[0]!, strengthMilli: 999 }] }, { ...cc, pairs: [] }]) {
       expect(coChangeProblem(bad, base()), JSON.stringify(bad)).toMatch(/^(co-change|missing-pair)/);
     }
   });

@@ -36,28 +36,36 @@ export function coChange(files: readonly FileId[], commits: readonly TouchSet[],
   const seen = new Array<number>(n).fill(0);
   const last = new Array<number>(n).fill(-1);
   const lastSha = new Array<Sha | null>(n).fill(null);
-  const both = new Map<number, number>();
-  let counted = 0, bulk = 0;
+  /** Per file, the counted commits it is in (indices into `counted`). */
+  const inCommits: number[][] = files.map(() => []);
+  const counted: (readonly number[])[] = [];
+  let bulk = 0;
   for (const c of commits) {
     for (const i of c.files) if (c.seq > last[i]!) { last[i] = c.seq; lastSha[i] = c.sha; }
     if (c.files.length === 0) continue;
     if (c.files.length > settings.bulkFiles) { bulk++; continue; }
-    counted++;
-    for (let x = 0; x < c.files.length; x++) {
-      const i = c.files[x]!;
-      seen[i]!++;
-      for (let y = x + 1; y < c.files.length; y++) {
-        const k = i * n + c.files[y]!;
-        both.set(k, (both.get(k) ?? 0) + 1);
-      }
-    }
+    for (const i of c.files) { seen[i]!++; inCommits[i]!.push(counted.length); }
+    counted.push(c.files);
   }
+  // Shared commits one file at a time, in a dense counter reused for every file (PR #214 r1, Qodo
+  // 8b2e5a20): the work is still each commit's pairs, but memory stays one counter and the pairs that
+  // pass, never a map of every pair seen. A file in fewer than `minBoth` commits can't pass.
+  const shared = new Int32Array(n);
+  const hit: number[] = [];
   const candidates: Candidate[] = [];
-  for (const [k, shared] of both) {
-    if (shared < settings.minBoth) continue;
-    const i = Math.floor(k / n), j = k % n;
-    const strengthMilli = Math.floor((shared * 1000) / (seen[i]! + seen[j]! - shared));
-    if (strengthMilli >= settings.thresholdMilli) candidates.push({ i, j, both: shared, strengthMilli });
+  for (let i = 0; i < n; i++) {
+    if (seen[i]! < settings.minBoth) continue;
+    for (const k of inCommits[i]!) {
+      for (const j of counted[k]!) if (j > i && shared[j]!++ === 0) hit.push(j);
+    }
+    for (const j of hit) {
+      const both = shared[j]!;
+      shared[j] = 0;
+      if (both < settings.minBoth) continue;
+      const strengthMilli = Math.floor((both * 1000) / (seen[i]! + seen[j]! - both));
+      if (strengthMilli >= settings.thresholdMilli) candidates.push({ i, j, both, strengthMilli });
+    }
+    hit.length = 0;
   }
   candidates.sort(stronger);
   // Each file's strongest `cap` pairs, in the one global order: a pair stays when either file has room.
@@ -81,7 +89,7 @@ export function coChange(files: readonly FileId[], commits: readonly TouchSet[],
     .map((p) => ({ a: files[p.i]!, b: files[p.j]!, both: p.both, strengthMilli: p.strengthMilli }));
   const missing: MissingPair[] = [...flags].sort((x, y) => x[0] - y[0])
     .map(([i, f]) => ({ fileId: files[i]!, with: files[f.with]!, strengthMilli: f.strengthMilli, at: lastSha[f.with]! }));
-  return { settings: { ...settings }, commits: counted, bulkCommits: bulk, pairs, missing };
+  return { settings: { ...settings }, commits: counted.length, bulkCommits: bulk, pairs, missing };
 }
 
 /**
@@ -105,23 +113,35 @@ export function coChangeOf(base: FogBase): CoChange {
 
 const isCount = (v: unknown, max = Number.MAX_SAFE_INTEGER): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && v <= max;
 
+const SETTINGS = Object.keys(COCHANGE) as (keyof Settings)[];
+
 /**
- * Why a stored record (snapshot.json, read back from disk) can't be served, or null: every id a file at
- * HEAD, pairs ordered and unique, strengths and counts whole numbers in range, every flag at a commit of
- * the window. Never quotes the record.
+ * Why a stored record (snapshot.json, read back from disk) can't be served, or null: its settings whole
+ * numbers; every id a file at HEAD; pairs ordered and unique, with strengths and counts in range and
+ * true to the settings (no more shared commits than counted commits, at least `minBoth`, at least
+ * `thresholdMilli`); every flag on a stored pair, at its strength and at least `flagMilli`, at a commit
+ * of the window (PR #214 r1, Qodo 344af9c7). Never quotes the record.
  */
 export function coChangeProblem(cc: unknown, base: FogBase): string | null {
   if (typeof cc !== 'object' || cc === null) return 'co-change record is not an object';
   const r = cc as Partial<CoChange>;
   if (!Array.isArray(r.pairs) || !Array.isArray(r.missing) || !isCount(r.commits) || !isCount(r.bulkCommits)) return 'co-change record has the wrong shape';
+  const set = r.settings as Record<string, unknown> | undefined;
+  if (typeof set !== 'object' || set === null || !SETTINGS.every((k) => isCount(set[k]))) return 'co-change settings are damaged';
+  const settings = set as unknown as Settings;
   const ids = new Set<string>(base.files.map((f) => f.id));
+  const strength = new Map<string, number>();
   for (const [k, p] of r.pairs.entries()) {
-    if (typeof p !== 'object' || p === null || !ids.has(p.a) || !ids.has(p.b) || byCodepoint(p.a, p.b) >= 0 || !isCount(p.both) || !isCount(p.strengthMilli, 1000)) return 'co-change pair is damaged';
+    if (typeof p !== 'object' || p === null || !ids.has(p.a) || !ids.has(p.b) || byCodepoint(p.a, p.b) >= 0 || !isCount(p.both, r.commits)
+      || p.both < settings.minBoth || !isCount(p.strengthMilli, 1000) || p.strengthMilli < settings.thresholdMilli) return 'co-change pair is damaged';
     const prev = r.pairs[k - 1];
     if (prev && (byCodepoint(prev.a, p.a) || byCodepoint(prev.b, p.b)) >= 0) return 'co-change pairs are not sorted and unique';
+    strength.set(`${p.a}\0${p.b}`, p.strengthMilli);
   }
   for (const [k, m] of r.missing.entries()) {
-    if (typeof m !== 'object' || m === null || !ids.has(m.fileId) || !ids.has(m.with) || m.fileId === m.with || !isCount(m.strengthMilli, 1000) || !base.seqOf.has(m.at)) return 'missing-pair flag is damaged';
+    if (typeof m !== 'object' || m === null || !ids.has(m.fileId) || !ids.has(m.with) || m.fileId === m.with || !base.seqOf.has(m.at)) return 'missing-pair flag is damaged';
+    const pair = byCodepoint(m.fileId, m.with) < 0 ? `${m.fileId}\0${m.with}` : `${m.with}\0${m.fileId}`;
+    if (m.strengthMilli < settings.flagMilli || strength.get(pair) !== m.strengthMilli) return 'missing-pair flag is damaged';
     const prev = r.missing[k - 1];
     if (prev && byCodepoint(prev.fileId, m.fileId) >= 0) return 'missing-pair flags are not sorted and unique';
   }
@@ -130,8 +150,10 @@ export function coChangeProblem(cc: unknown, base: FogBase): string | null {
 
 /**
  * GET /api/cochange: the snapshot's pairs and the missing-pair flags still standing. A flag is taken out
- * (and counted in `dismissed`) once its file is charted at or after the change that raised it, by a chart
- * of the file or a baseline, as fog counts a review (#211: charting the partner dismisses it). Paths and
+ * (and counted in `dismissed`) once its flagged file, the partner the change left out (`fileId`, never
+ * `with`), is charted at or after the change that raised it, by a chart of that file or a baseline, as fog
+ * counts a review (#211: "charting the partner dismisses it", the partner being the file marked "usually
+ * changes with X"; reviewing X, the file that did change, says nothing about the one it left out). Paths and
  * homes come from the fog's base, so the view names and places files as the fog counts them. The
  * stored record must have passed coChangeProblem.
  */

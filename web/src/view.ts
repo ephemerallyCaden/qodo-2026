@@ -14,7 +14,7 @@ import { systemModel, type SystemModel } from './model/system.js';
 import { LabelLayer, labelBox, lineHeight, type Label } from './labels/overlay.js';
 import { textWidth } from './labels/font.js';
 import { clearOf, placeLabels, type Placed, type Rect } from './labels/place.js';
-import { coChangeIndex, coChangeLines, shortName, type CoIndex, type Focus } from './cochange/model.js';
+import { coChangeIndex, coChangeLines, focusFor, shortName, type CoIndex, type Focus } from './cochange/model.js';
 import { OVERLAY_COLOURS, planConstellation, rasterise, type Plan } from './cochange/overlay.js';
 import { FPS } from './model/motion.js';
 import { BEACON_MARK } from './render/beacons.js';
@@ -250,7 +250,7 @@ export class View {
   }
 
   private focusOf(focus: number | null): Focus | null {
-    return focus === null ? null : { planet: focus, file: this.focusFile };
+    return focusFor(this.coIndex, focus, this.focusFile);
   }
 
   /** Fits the view to the space available (CSS px) at the device pixel ratio. */

@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { CoChangeView } from '../../src/core/contract/cochange.js';
 import { focusPose, startPose, type OrbitPose } from '../../web/src/camera/pose.js';
 import { checkCoChange } from '../../web/src/cochange/check.js';
-import { coChangeIndex, coChangeLines, flagInFocus, flagText, focusLinks, PLANET_LINES } from '../../web/src/cochange/model.js';
+import { coChangeIndex, coChangeLines, flagInFocus, flagText, focusFor, focusLinks, PLANET_LINES } from '../../web/src/cochange/model.js';
 import { BEAD, BEADS_PER_STEP, drawsAnything, FLAG_SHAPE, OVERLAY_COLOURS, planConstellation, rasterise } from '../../web/src/cochange/overlay.js';
 import { blockBox, clipSegment, dilate, drawBeads, drawRail, resample, revealAt, span, stamp } from '../../web/src/cochange/raster.js';
 import { LOOP_SECONDS } from '../../web/src/model/motion.js';
@@ -91,6 +91,17 @@ describe('placing and linking', () => {
     ]);
     expect(l.named.map((f) => f.path)).toEqual(['src/core/territory.ts']);
     expect(l.tests.map((f) => f.path)).toEqual(['test/fog.test.ts']);
+  });
+
+  it("focuses the review panel's open file in free flight too, where the panel lists the star's files (PR #214 r1, Qodo dc730060)", () => {
+    expect(focusFor(index, null, 'f_000000000001')).toEqual({ planet: -1, file: 'f_000000000001' });
+    expect(focusFor(index, null, 'f_00000000000a')).toBeNull(); // a planet's file with no planet focused: nothing
+    expect(focusFor(index, null, null)).toBeNull();
+    expect(focusFor(index, 2, 'f_00000000000e')).toEqual({ planet: 2, file: 'f_00000000000e' });
+    const l = focusLinks(index, focusFor(index, null, 'f_000000000001'));
+    expect(l.lines.map((x) => [x.body, x.strengthMilli])).toEqual([[0, 200]]); // README → src/core/fog.ts
+    const p = planConstellation({ model, index, focus: focusFor(index, null, 'f_000000000001'), frame: 0, pose: startPose(model), W: 320, H: 180, textW: (t) => t.length * 2 });
+    expect(p.lines.length + p.arrows.length).toBeGreaterThan(0);
   });
 
   it('draws nothing for no focus, or a file that is not on the focused planet (planet focus then)', () => {

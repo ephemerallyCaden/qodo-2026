@@ -87,6 +87,16 @@ export interface FocusLinks {
 
 export interface Focus { planet: number; file: string | null }
 
+/**
+ * What the constellation is drawn for: the focused planet (and the review panel's open file on it), or
+ * in free flight, where the panel lists the star's files, the open file when it is one of the star's
+ * (planet -1; PR #214 r1, Qodo dc730060). Nothing otherwise.
+ */
+export function focusFor(index: CoIndex | null, planet: number | null, file: string | null): Focus | null {
+  if (planet !== null) return { planet, file };
+  return file !== null && index?.files.get(file)?.spot?.body === -1 ? { planet: -1, file } : null;
+}
+
 const none = (): FocusLinks => ({ lines: [], named: [], tests: [] });
 
 /**
