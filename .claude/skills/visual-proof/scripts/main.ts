@@ -12,11 +12,12 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { chromium } from '@playwright/test';
 import { SCENES } from '../scenes/index.js';
+import { checkTakes, settleScratch, type TakeFailed } from './checks.js';
 import { compose, GITHUB_IMAGE_LIMIT } from './compose.js';
 import { addNodeModules, buildTree, bundleOf, changedFiles, contained, exportTree, git, makeClone, makeFixtureRepo, makeScratch, resolveRev, revisionEnv, SANDBOX_EXEC, sandboxProfile, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
-import { privacyHits, runTexts, screen, servedTexts, takeTexts, type Scanned } from './privacy.js';
+import { privacyHits, runTexts, screen, servedTexts, type Scanned } from './privacy.js';
 import { RunRecord, redact, uniqueName, type Literal } from './record.js';
-import { compareTakes, DATA_PATHS, dataPathsTouched, keepsScratch, missingTools, noViewChange, privacyStop, Stop, takeFailure, takesStop } from './rules.js';
+import { DATA_PATHS, dataPathsTouched, missingTools, noViewChange, privacyStop, Stop, takeFailure } from './rules.js';
 import { partsOf, type Scene, type ScenePart, type TakeLog } from './scene.js';
 import { summaryText, type RunSummary } from './summary.js';
 import { takeMain, type TakeConfig } from './take.js';
@@ -186,10 +187,11 @@ async function run(a: RunArgs): Promise<number> {
       'state every take starts from:', ...block(stateDigest(stateStart))]);
     if (sessions) throw new Stop('data-change', `the scan read ${sessions} agent sessions; it must read none (--no-ingest)`);
 
-    // 6. Takes: two per build, each in its own process and browser
+    // 6. Takes: two per build, each in its own process and browser. A take that fails stops the takes; the stop waits for step 7
     const takes: Record<string, { dir: string; log: TakeLog; ms: number }> = {};
+    let failed: TakeFailed | undefined;
     const self = process.argv[1]!;
-    for (const side of sides) {
+    takes: for (const side of sides) {
       for (const n of trying ? [1] : [1, 2]) {
         const name = `${side}-${n}`, dir = join(scratch, 'takes', name);
         mkdirSync(dir, { recursive: true });
@@ -199,44 +201,30 @@ async function run(a: RunArgs): Promise<number> {
         const c = contained(process.execPath, [self, 'take', join(dir, 'take.json')], profile);
         const r = spawnSync(c.cmd, c.args, { encoding: 'utf8', maxBuffer: 1 << 26, env: revisionEnv(process.env, { CLAUDE_CONFIG_DIR: claudeDir }) });
         const ms = Date.now() - t0;
-        writeFileSync(join(dir, 'take.out'), `${r.stdout}${r.stderr}`);
-        if (r.status !== 0) {
-          // its output goes into the record only if the privacy scan passes it (PR #199 10bde0e3)
-          const tail = `${r.stdout}${r.stderr}`.trimEnd().split('\n').slice(-12);
-          record.step(`Take ${name}`, [`sandbox-exec node <tools>/main.js take $SCRATCH/takes/${name}/take.json: exit ${r.status} after ${secs(ms)}`,
-            ...block(screened(tail, `take ${name}`))]);
-          throw takeFailure(name, r.status, r.stdout ?? '');
+        let log: TakeLog | null = null;
+        if (r.status === 0) {
+          try { log = JSON.parse(readFileSync(join(dir, 'log.json'), 'utf8')) as TakeLog; } catch { log = null; }
         }
-        const log = JSON.parse(readFileSync(join(dir, 'log.json'), 'utf8')) as TakeLog;
+        if (!log) {
+          // its output goes into the record only if the privacy scan passes it (PR #199 10bde0e3); its dir goes in step 7
+          const tail = `${r.stdout}${r.stderr}`.trimEnd().split('\n').slice(-12);
+          record.step(`Take ${name}`, [`sandbox-exec node <tools>/main.js take $SCRATCH/takes/${name}/take.json: exit ${r.status} after ${secs(ms)}${r.status === 0 ? ', no readable log' : ''}`,
+            ...block(screened(tail, `take ${name}`))]);
+          failed = { name, dir, error: r.status === 0 ? new Error(`take ${name} wrote no readable log`) : takeFailure(name, r.status, r.stdout ?? '') };
+          break takes;
+        }
         takes[name] = { dir, log, ms };
-        // notes and page errors wait for the privacy scan (step 8) before they are written
-        record.step(`Take ${name}`, [`sandbox-exec node <tools>/main.js take $SCRATCH/takes/${name}/take.json: ${log.frames.length} frames in ${secs(ms)}; stills ${log.stills.map((s) => `${s.name} @ ${s.k}`).join(', ')}`,
+        // notes and page errors wait for the privacy scan (step 7) before they are written
+        record.step(`Take ${name}`, [`sandbox-exec node <tools>/main.js take $SCRATCH/takes/${name}/take.json: ${log.frames.length} frames in ${secs(ms)}; stills ${log.stills.map((x) => `${x.name} @ ${x.k}`).join(', ')}`,
           `${log.notes.length} scene notes and ${log.errors.length} page errors, written after the privacy scan`,
           ...(log.ticks.length ? [`ticks other than one callback: ${log.ticks.slice(0, 5).join('; ')}`] : [])]);
       }
     }
 
-    // 7. Determinism (R2)
-    let compared = 0;
-    const det: string[] = [];
-    for (const side of trying ? [] : SIDES) {
-      const c = await compareTakes(takes[`${side}-1`]!.dir, takes[`${side}-2`]!.dir);
-      compared += c.frames;
-      det.push(`${side}: ${c.differing.length} of ${c.frames} frames differ (${c.differing.reduce((n, d) => n + d.px, 0)} px); logs ${c.logDiffers.length ? `differ in ${c.logDiffers.join(', ')}` : 'match'}`);
-      const stop = takesStop(side, c);
-      if (stop) { record.step('Determinism (R2)', [...det, ...stop.detail]); throw stop; }
-    }
-    if (!trying) record.step('Determinism (R2)', det);
-
-    // 8. Privacy (R5): every take's page texts, responses, events and notes; the state files
-    const items: Scanned[] = [...runTexts({ base, head, scene }), { where: 'the stills', text: Object.values(takes).flatMap((t) => t.log.stills.map((x) => x.name)).join('\n') }];
-    let texts = 0, responses = 0, tokenHits = 0;
-    for (const [name, t] of Object.entries(takes)) {
-      items.push(...takeTexts(name, t.log));
-      texts += t.log.texts.length;
-      responses += t.log.served.length;
-      tokenHits += t.log.tokenHits ?? 0;
-    }
+    // 7. Privacy (R5), then determinism (R2): every take that finished is scanned before any is compared, and a
+    // failed take left no log to scan, so its dir goes (PR #199 be6e0044). Also the run's own words and the state files.
+    const done = Object.entries(takes).map(([name, t]) => ({ name, dir: t.dir, log: t.log }));
+    const items: Scanned[] = [...runTexts({ base, head, scene }), { where: 'the stills', text: done.flatMap((t) => t.log.stills.map((x) => x.name)).join('\n') }];
     let stateFiles = 0;
     for (const dir of [stateStart, state]) {
       for (const f of STATE_FILES) {
@@ -246,13 +234,24 @@ async function run(a: RunArgs): Promise<number> {
         stateFiles++;
       }
     }
-    const hits = privacyHits(items, { literals: [...literals.map((l) => ({ name: `this machine's path (${l.name})`, value: l.value })), { name: 'the data clone path', value: clone }] });
-    if (tokenHits) hits.push({ rule: 'the launch token', where: 'a take log', excerpt: `(${tokenHits} times, replaced before writing)` });
-    record.step('Privacy (R5)', [`scanned ${texts} page texts, ${responses} API responses, ${Object.keys(takes).length} event streams and ${stateFiles} state files: ${hits.length} hits`,
-      ...hits.map((h) => `- ${h.rule} in ${h.where}: ${h.excerpt}`)]);
-    const leak = privacyStop(hits);
-    if (leak) throw leak;
-    const said = Object.entries(takes).flatMap(([name, t]) => [...t.log.notes.map((x) => `${name} note: ${x}`), ...t.log.errors.map((x) => `${name} page error: ${x}`)]);
+    const checked = await checkTakes({
+      done, ...(failed ? { failed } : {}), items,
+      pairs: trying || failed ? [] : SIDES.map((side) => [side, `${side}-1`, `${side}-2`] as const),
+      ctx: { literals: [...literals.map((l) => ({ name: `this machine's path (${l.name})`, value: l.value })), { name: 'the data clone path', value: clone }] },
+      tokenHits: done.reduce((n, t) => n + (t.log.tokenHits ?? 0), 0),
+    });
+    const texts = done.reduce((n, t) => n + t.log.texts.length, 0), responses = done.reduce((n, t) => n + t.log.served.length, 0);
+    record.step('Privacy (R5)', [`scanned ${texts} page texts, ${responses} API responses, ${done.length} event streams and ${stateFiles} state files of ${done.length} finished take(s): ${checked.hits.length} hits`,
+      ...checked.hits.map((h) => `- ${h.rule} in ${h.where}: ${h.excerpt}`),
+      ...(checked.removed.length ? [`removed, with nothing to scan: the dir of take ${checked.removed.join(', ')}, which failed`] : [])]);
+    if (checked.stop && !(checked.stop instanceof Stop && checked.stop.code === 'takes-differ')) throw checked.stop;
+    const compared = checked.compared.reduce((n, x) => n + x.c.frames, 0);
+    if (!trying) {
+      record.step('Determinism (R2)', [...checked.compared.map(({ side, c }) => `${side}: ${c.differing.length} of ${c.frames} frames differ (${c.differing.reduce((n, d) => n + d.px, 0)} px); logs ${c.logDiffers.length ? `differ in ${c.logDiffers.join(', ')}` : 'match'}`),
+        ...(checked.stop instanceof Stop ? checked.stop.detail : [])]);
+    }
+    if (checked.stop) throw checked.stop;
+    const said = done.flatMap((t) => [...t.log.notes.map((x) => `${t.name} note: ${x}`), ...t.log.errors.map((x) => `${t.name} page error: ${x}`)]);
     record.step('Scene notes and page errors (scanned)', said.length ? block(said) : ['none']);
 
     mkdirSync(out);
@@ -296,8 +295,7 @@ async function run(a: RunArgs): Promise<number> {
       // A privacy stop's words are masked hits already; any other stop's may carry a build's or a scene's output
       const words = e.code === 'privacy' ? [e.message, ...e.detail] : screened([e.message, ...e.detail], `the ${e.code} stop`);
       const [message, ...detail] = words.length === 1 + e.detail.length ? words : [words[0]!];
-      const keepScratch = keepsScratch(e.code, a.keep);
-      if (!keepScratch) rmSync(scratch, { recursive: true, force: true });
+      const keepScratch = settleScratch(e, a.keep, scratch);
       record.step(`STOP: ${e.code}`, [message!, ...detail.map((d) => `- ${d}`), '',
         keepScratch ? 'The scratch dir is kept for a look: $SCRATCH (remove it with `rm -rf` when done).'
           : e.code === 'privacy' ? 'The scratch dir, with the raw takes that held it, was removed.' : 'Nothing was captured; the scratch dir (two builds) was removed.']);

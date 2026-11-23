@@ -91,14 +91,16 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
    `requestAnimationFrame` is stepped by hand, 50 ms of loop time a tick (R1), at the scene's viewport
    (default 1280x720). A scene that can't reach its state stops with `scene-unreachable`. The page may
    load nothing but that server: any other request is refused and stops the run (`privacy`).
-7. **Determinism**: both takes of each build, frame by frame: any pixel, still, probe or page text that
+7. **Privacy**, of every take that finished, before any is compared, so no stop leaves an unscanned
+   take behind (a take that failed wrote no log to scan, so its dir is removed): every frame's page text
+   (text nodes, attributes, input values), every API response, the event stream, the state files, the
+   page errors, the scene's notes and still names, and both commit subjects (those before the record is
+   even created), for absolute paths, `~/`, `file:` URLs, the launch URL or token, token-like strings and
+   secret prefixes, agent-log fields, and this machine's own paths. Any hit → `privacy`, whatever else
+   stopped the run, before any image is written and before the notes and page errors go into the
+   record (R5).
+8. **Determinism**: both takes of each build, frame by frame: any pixel, still, probe or page text that
    differs → `takes-differ` (R2).
-8. **Privacy**: every frame's page text (text nodes, attributes, input values), every API response,
-   the event stream, the state files, the page errors, the scene's notes and still names, and both
-   commit subjects (those before the record is even created), for absolute paths, `~/`, `file:` URLs,
-   the launch URL or token, token-like strings and secret prefixes, agent-log fields, and this machine's
-   own paths. Any hit → `privacy`, before any image is written and before the notes and page errors go
-   into the record (R5).
 9. **Before → after**: per still, the changed pixels, their box and which part of the view (each open
    panel, the HUD, the 3D view and labels), and the scene's probes before and after; the images (R3).
 10. **Summary**: `summary.md`, privacy-checked, for the PR description (R4).
