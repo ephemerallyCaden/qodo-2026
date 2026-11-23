@@ -19,7 +19,7 @@ import { systemModel } from '../../web/src/model/system.js';
 import { findDrone, homePose, scriptedDrone } from '../../.claude/skills/visual-proof/scenes/helpers.js';
 import { readPng } from '../../.claude/skills/visual-proof/scripts/png.js';
 import { privacyHits, takeTexts } from '../../.claude/skills/visual-proof/scripts/privacy.js';
-import { compareTakes, privacyStop, takesStop } from '../../.claude/skills/visual-proof/scripts/rules.js';
+import { compareTakes, privacyStop, Stop, takesStop } from '../../.claude/skills/visual-proof/scripts/rules.js';
 import type { Scene } from '../../.claude/skills/visual-proof/scripts/scene.js';
 import { instrumentPage, runTake } from '../../.claude/skills/visual-proof/scripts/take.js';
 import { context } from '../../playwright.config.js';
@@ -115,6 +115,23 @@ test.describe('visual-proof takes', () => {
     // and the same scene without it is clean
     const clean = await take(browser, await fixture(), still, 'clean');
     expect(privacyHits(takeTexts('clean', clean.log), { literals: [] })).toEqual([]);
+  });
+
+  test('a page that reaches past the local server is blocked and stops the run (PR #199 c1aad869)', async ({ browser }) => {
+    const f = await fixture();
+    // A navigation away (the view's CSP already refuses a fetch to another origin, but not this); TEST-NET-1 is never routed
+    const reach: Scene = { name: 'spec-reach', summary: 'reaches out', async run(s) {
+      await s.dismissOffer();
+      await s.page.evaluate(() => { location.href = 'http://192.0.2.1:9/leak'; });
+      await s.settle();
+      await s.record(1);
+      s.still('end');
+    } };
+    const got = await take(browser, f, reach, 'reach').then(() => null, (e: unknown) => e);
+    expect(got).toBeInstanceOf(Stop);
+    expect((got as Stop).code).toBe('privacy');
+    expect((got as Stop).message).toContain('http://192.0.2.1:9');
+    expect((got as Stop).message).not.toContain('/leak');
   });
 
   test('a scene scripts a drone through the server hook and selects it: its panel opens (R12)', async ({ browser }) => {

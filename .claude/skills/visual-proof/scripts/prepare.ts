@@ -5,8 +5,9 @@
 // CLAUDE_CONFIG_DIR (R12): never this repo's own .git/commet.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
+import { deniedReads, type Denied } from '../../../../factory/sandbox.js';
 import { Stop, type Bundle } from './rules.js';
 
 const byCodepoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -36,7 +37,15 @@ export function worktreeRev(cwd: string): Rev {
   const diff = git(cwd, 'diff', '--binary', 'HEAD');
   const untracked = git(cwd, 'ls-files', '-z', '-o', '--exclude-standard').split('\0').filter(Boolean).sort(byCodepoint);
   const h = createHash('sha256').update(diff);
-  for (const f of untracked) h.update(`\0${f}\0`).update(readFileSync(join(cwd, f)));
+  // A nested repo is listed as `dir/`, and a symlink may dangle: hash what each entry is, never read through it (PR #199 aaa13fc5)
+  for (const f of untracked) {
+    h.update(`\0${f}\0`);
+    const st = lstatSync(join(cwd, f), { throwIfNoEntry: false });
+    if (!st) h.update('missing');
+    else if (st.isSymbolicLink()) h.update(`symlink\0${readlinkSync(join(cwd, f))}`);
+    else if (st.isFile()) h.update(readFileSync(join(cwd, f)));
+    else h.update(st.isDirectory() ? 'dir' : 'other');
+  }
   const diffHash = h.digest('hex');
   const n = status.split('\0').filter(Boolean).length;
   return { sha: head.sha, short: `wt${diffHash.slice(0, 5)}`, subject: `uncommitted changes on ${head.short} (${n} file${n === 1 ? '' : 's'})`, worktree: true, diffHash };
@@ -84,9 +93,10 @@ export function addNodeModules(top: string, dest: string): string[] {
 }
 
 /** `npm run build` in `dest`, its output in `log`. Throws a build-failed Stop with the output's tail. */
-export function buildTree(dest: string, log: string, side: string): { ms: number } {
+export function buildTree(dest: string, log: string, side: string, profile: string): { ms: number } {
   const t0 = Date.now();
-  const r = spawnSync('npm', ['run', 'build'], { cwd: dest, encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, NO_COLOR: '1' } });
+  const c = contained('npm', ['run', 'build'], profile);
+  const r = spawnSync(c.cmd, c.args, { cwd: dest, encoding: 'utf8', maxBuffer: 1 << 26, env: revisionEnv(process.env, { NO_COLOR: '1' }) });
   writeFileSync(log, `${r.stdout ?? ''}${r.stderr ?? ''}`);
   if (r.status !== 0) {
     const tail = `${r.stdout ?? ''}${r.stderr ?? ''}`.trimEnd().split('\n').slice(-15);
@@ -141,11 +151,12 @@ export function makeFixtureRepo(files: Readonly<Record<string, string>>, at: str
 }
 
 /** `commet scan --no-ingest` in the clone with the base build's CLI and an empty CLAUDE_CONFIG_DIR. */
-export function scanClone(cli: string, clone: string, roots: readonly string[], claudeDir: string): string[] {
+export function scanClone(cli: string, clone: string, roots: readonly string[], claudeDir: string, profile: string): string[] {
   const args = [cli, 'scan', '--no-ingest', ...(roots.length ? roots.flatMap((r) => ['--root', r]) : ['--no-root'])];
-  const r = spawnSync(process.execPath, args, { cwd: clone, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: claudeDir } });
+  const c = contained(process.execPath, args, profile);
+  const r = spawnSync(c.cmd, c.args, { cwd: clone, encoding: 'utf8', env: revisionEnv(process.env, { CLAUDE_CONFIG_DIR: claudeDir }) });
   if (r.status !== 0) throw new Stop('build-failed', `commet scan in the data clone failed (exit ${r.status ?? r.signal})`, `${r.stdout}${r.stderr}`.trimEnd().split('\n').slice(-10));
-  return [`CLAUDE_CONFIG_DIR=${claudeDir} node ${args.join(' ')}`, ...`${r.stdout}`.trimEnd().split('\n').map((l) => `  ${l}`)];
+  return [`CLAUDE_CONFIG_DIR=${claudeDir} sandbox-exec node ${args.join(' ')}`, ...`${r.stdout}`.trimEnd().split('\n').map((l) => `  ${l}`)];
 }
 
 /** The snapshot's session count: 0 after --no-ingest, else agent logs were read (R12). */
@@ -159,3 +170,46 @@ export function stateDigest(state: string): string[] {
   return readdirSync(state).filter((f) => lstatSync(join(state, f)).isFile()).sort(byCodepoint)
     .map((f) => `${createHash('sha256').update(readFileSync(join(state, f))).digest('hex').slice(0, 16)}  ${f}`);
 }
+
+/** The run's scratch dir, readable by this user only (0700): its raw takes hold page text and API bodies (PR #199 868113ad). */
+export function makeScratch(dir: string): void {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+}
+
+/** The environment a revision's code gets: these names only, so no token or key reaches a build, a scan or a take (PR #199 6683b8a2). */
+const ENV_ALLOW = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'USER', 'LOGNAME', 'SHELL', 'TERM', 'NO_COLOR', 'PLAYWRIGHT_BROWSERS_PATH'];
+
+export function revisionEnv(env: NodeJS.ProcessEnv, extra: Readonly<Record<string, string>> = {}): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const k of ENV_ALLOW) if (env[k] !== undefined) out[k] = env[k];
+  return { ...out, ...extra };
+}
+
+/** sandbox-exec, which contains every process that runs a revision's code (macOS; elsewhere the run stops: tool-missing). */
+export const SANDBOX_EXEC = '/usr/bin/sandbox-exec';
+
+const real = (p: string) => { try { return realpathSync(p); } catch { return p; } };
+const sbString = (s: string) => `"${s.replace(/[\\"]/g, '\\$&')}"`;
+const sbFilter = (d: Denied) => (d.kind === 'dir' ? `(subpath ${sbString(real(d.path))})` : d.kind === 'file' ? `(literal ${sbString(real(d.path))})`
+  : `(regex #"^${(real(dirname(d.path)) + d.path.slice(dirname(d.path).length)).replace(/[.*+?^${}()|[\]\\"]/g, '\\$&')}")`);
+
+/**
+ * The Seatbelt profile for a revision's code (PR #199 6683b8a2): the credential stores the factory's runner
+ * denies (factory/sandbox.ts deniedReads) can't be read, nothing outside `writable` (and /dev) written,
+ * and nothing reached but localhost. A build, the data scan, the scene's CLI steps and each take run under it.
+ */
+export function sandboxProfile(o: { home: string; env: NodeJS.ProcessEnv; writable: readonly string[] }): string {
+  const writable = [...o.writable, '/dev'].map((w) => `(subpath ${sbString(real(w))})`).join(' ');
+  return [
+    '(version 1)',
+    '(allow default)',
+    `(deny file-read* ${deniedReads({ home: o.home, env: o.env, stateDir: join(o.home, '.visual-proof-none') }).map(sbFilter).join(' ')})`,
+    `(deny file-write* (require-not (require-any ${writable})))`,
+    '(deny network-outbound (require-not (remote ip "localhost:*")))',
+    '',
+  ].join('\n');
+}
+
+/** `cmd args`, run under `profile`. */
+export const contained = (cmd: string, args: readonly string[], profile: string): { cmd: string; args: string[] } => ({ cmd: SANDBOX_EXEC, args: ['-p', profile, cmd, ...args] });

@@ -280,19 +280,35 @@ export async function runTake(page: Page, url: string, deps: TakeDeps & { run?: 
     async press(key) { await page.keyboard.press(key); await settle(); },
   };
 
+  // Nothing past the server this take films: any other request is refused, and stops the run (PR #199 c1aad869)
+  const origin = new URL(url).origin, blocked = new Set<string>();
+  await page.route('**/*', (route) => {
+    const u = new URL(route.request().url());
+    if (u.origin === origin) return route.continue();
+    blocked.add(u.origin);
+    return route.abort('blockedbyclient');
+  });
+  const reached = () => {
+    if (blocked.size) throw new Stop('privacy', `the view tried to reach ${[...blocked].sort().join(', ')}, past the local server; refused, and nothing was composed or kept from this run`);
+  };
   await page.goto(url);
   const up = await page.waitForFunction(() => {
     const p = document.getElementById('panel');
     return Boolean(p && !p.hidden && p.querySelector('button')) && document.fonts.status === 'loaded';
   }, null, { timeout: 30_000, polling: 100 }).then(() => true, () => false);
+  reached();
   if (!up) ctx.fail(`the view never showed its review panel (errors: ${[...(deps.serverErrors ?? []), ...log.errors].join('; ') || 'none'})`);
   await settle(500);
   await tick(); // the first tick: dt 0, the frame clock at 0
   try {
     await part.run(ctx);
+  } catch (e) {
+    reached(); // a refused request explains whatever the scene hit after it (the page left on an error page)
+    throw e;
   } finally {
     log.errors.push(...(deps.serverErrors ?? []));
   }
+  reached();
   if (!log.stills.length) ctx.fail('it marked no still');
   await settle();
   await Promise.all(bodies);

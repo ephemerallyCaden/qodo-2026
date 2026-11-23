@@ -8,10 +8,15 @@ export interface Hit { rule: string; where: string; excerpt: string }
 /** This run's own private strings (the launch token, HOME, the scratch dir, the main checkout), found as they are. */
 export interface PrivacyContext { literals: readonly { name: string; value: string }[] }
 
+/** The first folders of absolute paths on macOS, Linux and their containers. */
+const ROOTS = ['Users', 'home', 'private', 'tmp', 'var', 'Volumes', 'root', 'opt', 'etc', 'mnt', 'srv', 'usr', 'bin', 'sbin', 'lib', 'lib64',
+  'nix', 'snap', 'run', 'media', 'boot', 'proc', 'sys', 'Library', 'System', 'Applications', 'workspace', 'workspaces', 'data', 'app', 'cores'];
+
 /** Characters that can't start an absolute path, so `src/tmp/x` is relative and `(/tmp/x` isn't. */
 const PATH_START = String.raw`(?:^|(?<=[\s"'(=:,;<>\[{]))`;
 const PATTERNS: readonly { rule: string; re: RegExp }[] = [
-  { rule: 'absolute path', re: new RegExp(String.raw`${PATH_START}/(?:Users|home|private|tmp|var|Volumes|root|opt|etc|mnt|srv)(?:/[^\s"'<>]*)?`, 'g') },
+  // Every common system root (PR #199 e0914aea). A generic `/word/` rule would stop on every route (`/api/drones`) and every slash in prose.
+  { rule: 'absolute path', re: new RegExp(String.raw`${PATH_START}/(?:${ROOTS.join('|')})(?:/[^\s"'<>]*)?(?![A-Za-z0-9_.-])`, 'g') },
   { rule: 'absolute path', re: new RegExp(String.raw`${PATH_START}~/[^\s"'<>]*`, 'g') },
   { rule: 'absolute path', re: /\bfile:\/\/[^\s"'<>]*/g },
   { rule: 'absolute path', re: /\b[A-Za-z]:\\[^\s"'<>]*/g },
@@ -64,11 +69,22 @@ export function servedTexts(r: { path: string; body: string }): Scanned[] {
 }
 
 /** What one take saw, to scan: every distinct page text, every API response, the event stream and the scene's notes. */
-export function takeTexts(name: string, log: { texts: readonly [string, number][]; served: readonly { path: string; body: string }[]; events: string; notes: readonly string[] }): Scanned[] {
+export function takeTexts(name: string, log: { texts: readonly [string, number][]; served: readonly { path: string; body: string }[]; events: string; notes: readonly string[]; errors: readonly string[] }): Scanned[] {
   return [
+    // page, console and server errors go into the record too (PR #199 10bde0e3)
+    { where: `take ${name} page errors`, text: log.errors.join('\n') },
     ...log.texts.map(([text, k]) => ({ where: `take ${name} page text from frame ${k}`, text })),
     ...log.served.flatMap((s) => servedTexts(s)),
     { where: `take ${name} event stream`, text: log.events },
     { where: `take ${name} notes`, text: log.notes.join('\n') },
+  ];
+}
+
+/** What the run itself writes into captions, the record and the summary: both commit subjects and the scene's own words (PR #199 5b136d3c). */
+export function runTexts(r: { base: { subject: string }; head: { subject: string }; scene: { name: string; summary: string } }): Scanned[] {
+  return [
+    { where: 'the base commit subject', text: r.base.subject },
+    { where: 'the head commit subject', text: r.head.subject },
+    { where: 'the scene', text: `${r.scene.name}\n${r.scene.summary}` },
   ];
 }

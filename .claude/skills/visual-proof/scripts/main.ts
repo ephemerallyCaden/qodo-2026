@@ -13,10 +13,10 @@ import { dirname, join, relative } from 'node:path';
 import { chromium } from '@playwright/test';
 import { SCENES } from '../scenes/index.js';
 import { compose, GITHUB_IMAGE_LIMIT } from './compose.js';
-import { addNodeModules, buildTree, bundleOf, changedFiles, exportTree, git, makeClone, makeFixtureRepo, resolveRev, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
-import { privacyHits, servedTexts, takeTexts, type Scanned } from './privacy.js';
+import { addNodeModules, buildTree, bundleOf, changedFiles, contained, exportTree, git, makeClone, makeFixtureRepo, makeScratch, resolveRev, revisionEnv, SANDBOX_EXEC, sandboxProfile, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
+import { privacyHits, runTexts, servedTexts, takeTexts, type Scanned } from './privacy.js';
 import { RunRecord, redact, uniqueName, type Literal } from './record.js';
-import { compareTakes, dataPathsTouched, missingTools, noViewChange, privacyStop, Stop, takesStop } from './rules.js';
+import { compareTakes, dataPathsTouched, keepsScratch, missingTools, noViewChange, privacyStop, Stop, takeFailure, takesStop } from './rules.js';
 import { partsOf, type Scene, type ScenePart, type TakeLog } from './scene.js';
 import { summaryText, type RunSummary } from './summary.js';
 import { takeMain, type TakeConfig } from './take.js';
@@ -72,12 +72,20 @@ async function run(a: RunArgs): Promise<number> {
   const tmp = realpathSync('/tmp');
   while (existsSync(join(tmp, id))) id = uniqueName(evidence, `${id}-r`, ['.md', '']);
   const scratch = join(tmp, id);
-  mkdirSync(scratch, { recursive: true });
+  makeScratch(scratch);
   const out = join(evidence, id);
   const literals: Literal[] = [
     { name: '$SCRATCH', value: scratch }, { name: '$SCRATCH', value: join('/tmp', id) },
     { name: '$MAIN', value: main }, { name: '$CHECKOUT', value: top }, { name: '~', value: homedir() }, { name: '$TMPDIR', value: realpathSync(tmpdir()) },
   ];
+  // The commit subjects and the scene's words go into the record, captions and summary: scanned before any is written (PR #199 5b136d3c)
+  const early = privacyHits(runTexts({ base, head, scene }), { literals });
+  if (early.length) {
+    rmSync(scratch, { recursive: true, force: true });
+    process.stdout.write(`STOP privacy: ${early.length} hit${early.length === 1 ? '' : 's'} in what the run would write; nothing was written\n`);
+    for (const h of early) process.stdout.write(`  ${h.rule} in ${h.where}: ${h.excerpt}\n`);
+    return 3;
+  }
   const command = `.claude/skills/visual-proof/scripts/vp.sh ${a.mode}${trying ? '' : ` --base ${a.base}`} ${a.worktree ? '--worktree' : `--head ${a.head}`} --scene ${scene.name}`;
   const record = RunRecord.create(join(evidence, `${id}.md`), trying ? `visual-proof try: ${head.short}, scene ${scene.name}` : `visual-proof: ${base.short} → ${head.short}, scene ${scene.name}`, [
     `Command: \`${command}\``,
@@ -101,9 +109,14 @@ async function run(a: RunArgs): Promise<number> {
       git: has('git', ['--version']), tar: has('tar', ['--version']),
       node_modules: existsSync(join(top, 'node_modules', '@playwright', 'test')) && existsSync(join(top, 'node_modules', '.bin', 'tsc')),
       chromium: existsSync(chromium.executablePath()),
+      sandbox: process.platform === 'darwin' && existsSync(SANDBOX_EXEC),
     };
+    // Every process that runs a revision's code is contained (PR #199 6683b8a2): no credential store read,
+    // no write outside the scratch and temp dirs, no network but localhost, and no token in its environment
+    const profile = sandboxProfile({ home: homedir(), env: process.env, writable: [scratch, '/private/tmp', '/private/var/folders', tmpdir(), join(homedir(), '.npm')] });
     record.step('Tools', [`node ${process.versions.node}; ${Object.entries(found).map(([k, v]) => `${k} ${v ? 'found' : 'MISSING'}`).join(', ')}`,
-      'No image tool is needed: PNG, GIF and the captions are the skill\'s own TypeScript.']);
+      'No image tool is needed: PNG, GIF and the captions are the skill\'s own TypeScript.',
+      "Each build, the data scan, the scene's CLI steps and every take run under sandbox-exec: no credential store, no write outside $SCRATCH and the temp dirs, localhost only, an allowlisted environment."]);
     const missing = missingTools(found);
     if (missing) throw missing;
 
@@ -120,7 +133,7 @@ async function run(a: RunArgs): Promise<number> {
     for (const side of sides) {
       const rev = side === 'before' ? base : head;
       const cmds = [...exportTree(top, rev, trees[side], join(scratch, `${side}.tar`)), ...addNodeModules(top, trees[side])];
-      const { ms } = buildTree(trees[side], join(scratch, `build-${side}.log`), side);
+      const { ms } = buildTree(trees[side], join(scratch, `build-${side}.log`), side, profile);
       bundles[side] = bundleOf(trees[side]);
       record.step(`Build ${side} (${rev.short})`, [...block([...cmds, `npm run build   # in ${trees[side]}, ${secs(ms)}, output in $SCRATCH/build-${side}.log`]),
         `dist/web: ${bundles[side].files.join(', ')}; sha256 ${bundles[side].digest}`]);
@@ -140,7 +153,7 @@ async function run(a: RunArgs): Promise<number> {
     const cli = join(cliTree, 'dist', 'cli.js');
     const made = scene.fixture ? makeFixtureRepo(scene.fixture.files, scene.fixture.at, clone) : makeClone(main, resolveRev(top, scene.repoAt ?? base.sha).sha, clone);
     const repoAt = resolveRev(clone, 'HEAD');
-    const dataCmds = [...made, ...scanClone(cli, clone, scene.roots ?? ['src'], claudeDir)];
+    const dataCmds = [...made, ...scanClone(cli, clone, scene.roots ?? ['src'], claudeDir, profile)];
     const state = join(clone, '.git', 'commet');
     const layout = JSON.parse(readFileSync(join(state, 'layout.json'), 'utf8')) as import('../../../../src/core/contract/layout.js').LayoutV1;
     const setupCmds: string[] = [];
@@ -151,7 +164,8 @@ async function run(a: RunArgs): Promise<number> {
       layout,
       cli: (...args) => {
         setupCmds.push(`node ${cli} ${args.join(' ')}`);
-        const r = spawnSync(process.execPath, [cli, ...args], { cwd: clone, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: claudeDir } });
+        const c = contained(process.execPath, [cli, ...args], profile);
+        const r = spawnSync(c.cmd, c.args, { cwd: clone, encoding: 'utf8', env: revisionEnv(process.env, { CLAUDE_CONFIG_DIR: claudeDir }) });
         if (r.status !== 0) throw new Stop('scene-unreachable', `scene setup: commet ${args[0]} exited ${r.status}`, `${r.stdout}${r.stderr}`.trimEnd().split('\n').slice(-5));
         return r.stdout;
       },
@@ -179,18 +193,23 @@ async function run(a: RunArgs): Promise<number> {
         const cfg: TakeConfig = { build: trees[side], clone, stateStart, filesJson, scene: scene.name, out: dir, claudeDir };
         writeFileSync(join(dir, 'take.json'), JSON.stringify(cfg, null, 1));
         const t0 = Date.now();
-        const r = spawnSync(process.execPath, [self, 'take', join(dir, 'take.json')], { encoding: 'utf8', maxBuffer: 1 << 26 });
+        const c = contained(process.execPath, [self, 'take', join(dir, 'take.json')], profile);
+        const r = spawnSync(c.cmd, c.args, { encoding: 'utf8', maxBuffer: 1 << 26, env: revisionEnv(process.env, { CLAUDE_CONFIG_DIR: claudeDir }) });
         const ms = Date.now() - t0;
         writeFileSync(join(dir, 'take.out'), `${r.stdout}${r.stderr}`);
         if (r.status !== 0) {
-          const stop = /^STOP ([a-z-]+): (.*)$/m.exec(r.stdout ?? '');
-          record.step(`Take ${name}`, [`node <tools>/main.js take $SCRATCH/takes/${name}/take.json: exit ${r.status} after ${secs(ms)}`, ...block(`${r.stdout}${r.stderr}`.trimEnd().split('\n').slice(-12))]);
-          throw new Stop((stop?.[1] as Stop['code'] | undefined) ?? 'scene-unreachable', stop?.[2] ?? `take ${name} failed (exit ${r.status})`);
+          // its output goes into the record only if the privacy scan passes it (PR #199 10bde0e3)
+          const tail = `${r.stdout}${r.stderr}`.trimEnd().split('\n').slice(-12);
+          const inTail = privacyHits([{ where: `take ${name}'s output`, text: tail.join('\n') }], { literals });
+          record.step(`Take ${name}`, [`sandbox-exec node <tools>/main.js take $SCRATCH/takes/${name}/take.json: exit ${r.status} after ${secs(ms)}`,
+            ...(inTail.length ? [`its output is withheld: ${inTail.map((h) => h.rule).join(', ')} in it`] : block(tail))]);
+          throw takeFailure(name, r.status, r.stdout ?? '');
         }
         const log = JSON.parse(readFileSync(join(dir, 'log.json'), 'utf8')) as TakeLog;
         takes[name] = { dir, log, ms };
-        record.step(`Take ${name}`, [`node <tools>/main.js take $SCRATCH/takes/${name}/take.json: ${log.frames.length} frames in ${secs(ms)}; stills ${log.stills.map((s) => `${s.name} @ ${s.k}`).join(', ')}`,
-          ...log.notes.map((x) => `note: ${x}`), ...(log.errors.length ? [`the page logged ${log.errors.length} error(s):`, ...block(log.errors.slice(0, 8))] : ['the page logged no errors']),
+        // notes and page errors wait for the privacy scan (step 8) before they are written
+        record.step(`Take ${name}`, [`sandbox-exec node <tools>/main.js take $SCRATCH/takes/${name}/take.json: ${log.frames.length} frames in ${secs(ms)}; stills ${log.stills.map((s) => `${s.name} @ ${s.k}`).join(', ')}`,
+          `${log.notes.length} scene notes and ${log.errors.length} page errors, written after the privacy scan`,
           ...(log.ticks.length ? [`ticks other than one callback: ${log.ticks.slice(0, 5).join('; ')}`] : [])]);
       }
     }
@@ -208,7 +227,7 @@ async function run(a: RunArgs): Promise<number> {
     if (!trying) record.step('Determinism (R2)', det);
 
     // 8. Privacy (R5): every take's page texts, responses, events and notes; the state files
-    const items: Scanned[] = [];
+    const items: Scanned[] = [...runTexts({ base, head, scene }), { where: 'the stills', text: Object.values(takes).flatMap((t) => t.log.stills.map((x) => x.name)).join('\n') }];
     let texts = 0, responses = 0, tokenHits = 0;
     for (const [name, t] of Object.entries(takes)) {
       items.push(...takeTexts(name, t.log));
@@ -231,6 +250,8 @@ async function run(a: RunArgs): Promise<number> {
       ...hits.map((h) => `- ${h.rule} in ${h.where}: ${h.excerpt}`)]);
     const leak = privacyStop(hits);
     if (leak) throw leak;
+    const said = Object.entries(takes).flatMap(([name, t]) => [...t.log.notes.map((x) => `${name} note: ${x}`), ...t.log.errors.map((x) => `${name} page error: ${x}`)]);
+    record.step('Scene notes and page errors (scanned)', said.length ? block(said) : ['none']);
 
     mkdirSync(out);
     if (trying) return tryResult(takes['after-1']!, id, out, main, record, scratch, a.keep, say, where);
@@ -270,10 +291,11 @@ async function run(a: RunArgs): Promise<number> {
   } catch (e) {
     const at = record.stepCount;
     if (e instanceof Stop) {
-      const keepScratch = a.keep || e.code !== 'no-view-change';
+      const keepScratch = keepsScratch(e.code, a.keep);
       if (!keepScratch) rmSync(scratch, { recursive: true, force: true });
       record.step(`STOP: ${e.code}`, [e.message, ...e.detail.map((d) => `- ${d}`), '',
-        keepScratch ? 'The scratch dir is kept for a look: $SCRATCH (remove it with `rm -rf` when done).' : 'Nothing was captured; the scratch dir (two builds) was removed.']);
+        keepScratch ? 'The scratch dir is kept for a look: $SCRATCH (remove it with `rm -rf` when done).'
+          : e.code === 'privacy' ? 'The scratch dir, with the raw takes that held it, was removed.' : 'Nothing was captured; the scratch dir (two builds) was removed.']);
       record.finish(`stopped (${e.code}) after step ${at}: ${e.message}`);
       where(`record: ${record.path}`);
       say(`STOP ${e.code}: ${e.message}`);

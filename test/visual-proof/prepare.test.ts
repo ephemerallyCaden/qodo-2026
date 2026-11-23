@@ -1,11 +1,11 @@
 // visual-proof: the builds and the data. A tree whose lockfile isn't this checkout's can't borrow its
 // node_modules: the run stops and asks (npm ci needs the network). A scene's own repo is the same commit
 // every run, so both builds, and every run, see the same data (R12).
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addNodeModules, makeFixtureRepo } from '../../.claude/skills/visual-proof/scripts/prepare.js';
+import { addNodeModules, contained, makeFixtureRepo, makeScratch, revisionEnv, sandboxProfile, worktreeRev } from '../../.claude/skills/visual-proof/scripts/prepare.js';
 import { Stop } from '../../.claude/skills/visual-proof/scripts/rules.js';
 import { tempDir } from '../fixtures/tmp.js';
 
@@ -52,5 +52,54 @@ describe('makeFixtureRepo', () => {
     expect(sha(join(root, 'a'))).toBe(sha(join(root, 'b')));
     expect(execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: join(root, 'a'), encoding: 'utf8' }).trim()).toBe('.git');
     expect(execFileSync('git', ['ls-files'], { cwd: join(root, 'a'), encoding: 'utf8' }).trim().split('\n')).toEqual(['README.md', 'aa/one.ts', 'bb/three.ts']);
+  });
+});
+
+describe('worktreeRev', () => {
+  it('names a working tree that holds an untracked nested repo and a dangling symlink, instead of crashing (PR #199 aaa13fc5)', () => {
+    const root = tempDir('commet-vp-prep-');
+    makeFixtureRepo({ 'a.ts': 'a\n' }, '2026-10-10T09:00:00Z', root);
+    writeFileSync(join(root, 'a.ts'), 'changed\n');
+    makeFixtureRepo({ 'x.ts': 'x\n' }, '2026-10-10T09:00:00Z', join(root, 'nested'));
+    symlinkSync(join(root, 'no-such-target'), join(root, 'dangling'));
+    const r = worktreeRev(root);
+    expect(r.worktree).toBe(true);
+    expect(r.diffHash).toMatch(/^[0-9a-f]{64}$/);
+    // the same tree, the same name
+    expect(worktreeRev(root).diffHash).toBe(r.diffHash);
+  });
+});
+
+describe('the revisions run contained (PR #199 6683b8a2)', () => {
+  it('keeps only an allowlist of the environment: no tokens or keys reach a build, a scan or a take', () => {
+    const env = revisionEnv({ PATH: '/bin', HOME: '/h', TMPDIR: '/t', LANG: 'C', GH_TOKEN: 'x', GITHUB_TOKEN: 'x', AWS_SECRET_ACCESS_KEY: 'x', ANTHROPIC_API_KEY: 'x', NPM_TOKEN: 'x', SSH_AUTH_SOCK: '/s' }, { CLAUDE_CONFIG_DIR: '/c' });
+    expect(env).toEqual({ PATH: '/bin', HOME: '/h', TMPDIR: '/t', LANG: 'C', CLAUDE_CONFIG_DIR: '/c' });
+  });
+
+  it.skipIf(process.platform !== 'darwin')('under sandbox-exec: no read of a credential store, no write outside the scratch and temp dirs, no network beyond localhost', () => {
+    const home = tempDir('commet-vp-home-'), scratch = tempDir('commet-vp-scr-');
+    mkdirSync(join(home, '.ssh'));
+    writeFileSync(join(home, '.ssh', 'id'), 'secret\n');
+    writeFileSync(join(home, 'notes.txt'), 'fine\n');
+    const profile = sandboxProfile({ home, env: {}, writable: [scratch] });
+    const run = (js: string) => { const c = contained(process.execPath, ['-e', js], profile); return spawnSync(c.cmd, c.args, { encoding: 'utf8' }); };
+    const read = (f: string) => run(`try { require('fs').readFileSync(${JSON.stringify(f)}); console.log('read') } catch (e) { console.log(e.code) }`).stdout.trim();
+    expect(read(join(home, '.ssh', 'id'))).toBe('EPERM');
+    expect(read(join(home, 'notes.txt'))).toBe('read');
+    const write = (f: string) => run(`try { require('fs').writeFileSync(${JSON.stringify(f)}, 'x'); console.log('wrote') } catch (e) { console.log(e.code) }`).stdout.trim();
+    expect(write(join(home, 'planted.txt'))).toBe('EPERM');
+    expect(write(join(scratch, 'ok.txt'))).toBe('wrote');
+    // TEST-NET-1 (192.0.2.0/24) is never routed: refused at once inside, where outside it would hang
+    const connect = (host: string) => run(`const s = require('net').connect({ host: ${JSON.stringify(host)}, port: 9 }); s.on('error', (e) => { console.log(e.code); process.exit(0) }); s.on('connect', () => { console.log('connected'); process.exit(0) }); setTimeout(() => { console.log('timeout'); process.exit(0) }, 3000)`).stdout.trim();
+    expect(connect('192.0.2.1')).toBe('EPERM');
+    expect(connect('127.0.0.1')).toMatch(/^(ECONNREFUSED|connected)$/);
+  });
+});
+
+describe('makeScratch', () => {
+  it('makes the scratch dir private to this user (0700): raw takes hold page text and API bodies (PR #199 868113ad)', () => {
+    const dir = join(tempDir('commet-vp-prep-'), 'visual-proof-x');
+    makeScratch(dir);
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
   });
 });

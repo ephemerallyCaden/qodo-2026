@@ -1,7 +1,7 @@
 ---
 name: visual-proof
 description: Shows a view change before and after. Builds the base and the head (a commit or the uncommitted working tree), films the same scene in the live view from the same data, viewport and loop time, takes each capture twice and requires the takes to match pixel for pixel, scans every frame's page text and every served response for private data, then writes a before → after GIF, side-by-side stills and a text summary Qodo can read (changed pixels, where, the scene's own measures). Use after a commit that changes what the view draws (web/, or what the bundle imports), before its PR, or when a review asks what a view change looks like.
-compatibility: Claude Code in a Commet checkout or worktree (git, tar, Node 20.19+, npm, node_modules from npm ci, Playwright's Chromium). Local only, no network; no image tool needed.
+compatibility: Claude Code in a Commet checkout or worktree on macOS (git, tar, Node 20.19+, npm, node_modules from npm ci, Playwright's Chromium, /usr/bin/sandbox-exec). Local only, no network; no image tool needed.
 metadata:
   project: commet
   version: "1"
@@ -50,7 +50,8 @@ takes); `--out <dir>` writes the record elsewhere. Exit codes: 0 done, 3 `STOP <
 
 ### 1. Check the inputs
 ```sh
-git rev-parse --verify '<base>^{commit}'; git rev-parse --verify '<head>^{commit}'   # both exist here
+git rev-parse --verify '<base>^{commit}'   # the base exists here
+git rev-parse --verify '<head>^{commit}'   # the head exists (with --worktree: `git status --short` lists the changes instead)
 git diff --stat <base> <head> -- web/ src/core/               # the view's own code changed?
 .claude/skills/visual-proof/scripts/vp.sh scenes
 ```
@@ -69,11 +70,15 @@ It prints the record's absolute path first; **open every path it prints as it is
 on the terminal only; the record and summary write `$MAIN`). The record exists from that moment with
 `Status: running`, and every step is appended as it ends (R8), so a run that dies still shows what it did. The steps, each a section of the record:
 
-1. **Tools**: Node, git, tar, node_modules, Playwright's Chromium (R7: missing → `tool-missing`).
+1. **Tools**: Node, git, tar, node_modules, Playwright's Chromium, sandbox-exec (R7: missing →
+   `tool-missing`). Each build, the data scan, the scene's CLI steps and every take run the revisions'
+   own code, so all of them run under sandbox-exec: no credential store read, nothing written outside the
+   scratch and temp dirs, nothing reached but localhost, and an allowlisted environment (no tokens).
 2. **The change**: the paths base → head; any under `src/scan/`, `src/attrib/`, `src/core/layout/`,
-   `src/core/snapshot/` or `src/core/contract/` are what the data is made of (R12).
-3. **Builds**: `git archive` of each commit (or a copy of the working tree) into the scratch dir, this
-   checkout's `node_modules` (same lockfile only), `npm run build`, and a digest of `dist/web`.
+   `src/core/snapshot/`, `src/core/contract/`, or what serves the data to each side (`src/state/`,
+   `src/core/fog/`, `src/server/`), changes the data itself (R12).
+3. **Builds**: `git archive` of each commit (or a copy of the working tree) into the scratch dir (0700),
+   this checkout's `node_modules` (same lockfile only), `npm run build`, and a digest of `dist/web`.
 4. **View change?** The same `dist/web` on both sides → `no-view-change` (R11), before any capture.
    A diff touching the data paths → `data-change` (R12).
 5. **The data**: one clone of this repo at the scene's pinned commit (default: the base), or the
@@ -84,13 +89,16 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
 6. **Takes**: four, each in its own process and browser: before twice, after twice. Each build serves
    itself (its own server and `dist/web`, in-process, 127.0.0.1, a fresh token). The view's
    `requestAnimationFrame` is stepped by hand, 50 ms of loop time a tick (R1), at the scene's viewport
-   (default 1280x720). A scene that can't reach its state stops with `scene-unreachable`.
+   (default 1280x720). A scene that can't reach its state stops with `scene-unreachable`. The page may
+   load nothing but that server: any other request is refused and stops the run (`privacy`).
 7. **Determinism**: both takes of each build, frame by frame: any pixel, still, probe or page text that
    differs → `takes-differ` (R2).
 8. **Privacy**: every frame's page text (text nodes, attributes, input values), every API response,
-   the event stream and the state files, for absolute paths, `~/`, `file:` URLs, the launch URL or token,
-   token-like strings and secret prefixes, agent-log fields, and this machine's own paths. Any hit →
-   `privacy`, before any image is written (R5).
+   the event stream, the state files, the page errors, the scene's notes and still names, and both
+   commit subjects (those before the record is even created), for absolute paths, `~/`, `file:` URLs,
+   the launch URL or token, token-like strings and secret prefixes, agent-log fields, and this machine's
+   own paths. Any hit → `privacy`, before any image is written and before the notes and page errors go
+   into the record (R5).
 9. **Before → after**: per still, the changed pixels, their box and which part of the view (each open
    panel, the HUD, the 3D view and labels), and the scene's probes before and after; the images (R3).
 10. **Summary**: `summary.md`, privacy-checked, for the PR description (R4).
@@ -120,8 +128,8 @@ Anything else is a `STOP` and is reported as it is.
 On exit 3, the run has written the stop into its record (`Status: stopped (<code>) …`). Report the
 code, its message and detail lines, and ask the user what to do:
 - `no-view-change`: base and head build the same view (R11). Nothing to film; say so in the PR instead.
-- `data-change`: the diff touches the scanner, attribution, layout, snapshot or a contract (R12), or
-  the scan read agent sessions. Both sides would not see the same data; ask before filming anyway.
+- `data-change`: the diff touches the scanner, attribution, layout, snapshot, a contract, the state
+  readers, the fog model or the server (R12), or the scan read agent sessions. Both sides would not see the same data; ask before filming anyway.
 - `build-failed`: the base or head (or the data clone's scan) didn't build; the tail is in the record,
   the full log in the scratch dir. Also when a side's `package-lock.json` differs from this checkout's:
   this checkout's `node_modules` isn't its dependencies, and its own `npm ci` needs the network.
@@ -129,12 +137,14 @@ code, its message and detail lines, and ask the user what to do:
   planet isn't in the layout). Check the scene with `vp.sh try` on each side.
 - `takes-differ`: a take isn't reproducible: the frames named differ. Don't retry until it passes;
   find what in the view or the scene depends on wall time, and report it.
-- `privacy`: what was found and where (masked). Nothing was composed. Even if it looks like repo
-  content (a path in a diff), report it and let the user decide.
+- `privacy`: what was found and where (masked). Nothing was composed, and the scratch dir with the raw
+  takes is removed (even with `--keep`). Even if it looks like repo content (a path in a diff), report
+  it and let the user decide. A view that reached past its local server is a `privacy` stop too.
 - `tool-missing`: what to install, in the message.
 - `bad-input`: a ref that isn't a commit, an unknown scene, no folder for the record (`--out`).
 
-Exit 1 is a bug in the skill: report the record's `Internal error` step.
+Exit 1 is a bug in the skill (or a take that crashed without a STOP: Playwright, or the build's server):
+report the record's `Internal error` step and the take's output above it.
 
 ## Where things go
 
@@ -142,12 +152,13 @@ Only scratch goes in `/tmp` (`/tmp/visual-proof-<id>`: the builds, the data clon
 restart can wipe it. What the run makes is kept in the main checkout's gitignored
 `.archive/docs/hackathon/evidence/`: the record `visual-proof-<id>.md`, and beside it the folder
 `visual-proof-<id>/` with `summary.md`, the GIF, the contact sheet (`-sheet.png`: every shot's pair,
-each labelled with its numbers), and per shot the pair, the before and after frames and the change mask. The record's start lines say where both are.
+each labelled with its numbers), and per shot the pair, the before and after frames and the change
+mask. The record's start lines say where both are.
 
 ## Stopping (early or not)
 
 The run cleans up after itself: on `DONE` it removes the scratch dir (unless `--keep`), and on
-`no-view-change` too. On any other stop it keeps it for a look; once you've reported, remove it:
+`no-view-change` too; on `privacy` always. On any other stop it keeps it for a look; once you've reported, remove it:
 `rm -rf /tmp/visual-proof-<id>` (the id is the record's name). The run never touches a branch, the
 worktree or this repo's `.git/commet`; `git status` is as it was.
 

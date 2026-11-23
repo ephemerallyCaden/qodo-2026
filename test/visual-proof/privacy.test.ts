@@ -2,7 +2,7 @@
 // for what AGENTS.md Rule 2 keeps out of any output. A hit names its rule and where it was, never the
 // text it matched in full.
 import { describe, expect, it } from 'vitest';
-import { privacyHits, servedTexts, type Scanned } from '../../.claude/skills/visual-proof/scripts/privacy.js';
+import { privacyHits, runTexts, servedTexts, takeTexts, type Scanned } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 
 const TOKEN = 'Qx3vL0t9-mN_2bYk7RfA1sWc8dHe5jUp4gZiTo6aVyE';
 const ctx = { literals: [{ name: 'the launch token', value: TOKEN }, { name: 'HOME', value: '/Users/somebody' }] };
@@ -24,6 +24,14 @@ describe('privacyHits', () => {
       'C:\\Users\\carol\\x', 'see file:///etc/hosts', 'cfg in ~/.claude/settings.json', '(/var/log/x)', '\\\\server\\share\\x']) {
       expect(rules(t), t).toContain('absolute path');
     }
+  });
+
+  it('stops on an absolute path under any system root, not only home and temp ones (PR #199 e0914aea)', () => {
+    for (const t of ['at /usr/local/secret', '(/opt/x)', '"/Library/Keychains/x"', 'in /nix/store/abc', 'cwd /workspace/app', 'see /srv/data', '/bin/sh -c', 'at /run/user/501']) {
+      expect(rules(t), t).toContain('absolute path');
+    }
+    // route paths and relative paths stay clear
+    expect(rules('GET /api/drones', 'src/usr/x.ts', 'web/src/lib/a.ts', 'the /help line')).toEqual([]);
   });
 
   it('stops on token-like strings and known secret shapes', () => {
@@ -65,5 +73,18 @@ describe('servedTexts', () => {
   it('scans a body that is not JSON as it is', () => {
     expect(privacyHits(servedTexts({ path: '/api/events', body: 'data: {"type":"state"}\n\n' }), ctx)).toEqual([]);
     expect(privacyHits(servedTexts({ path: '/api/events', body: 'data: /home/eve\n' }), ctx).map((h) => h.rule)).toEqual(['absolute path']);
+  });
+});
+
+describe('takeTexts and runTexts', () => {
+  const log = { texts: [] as [string, number][], served: [], events: '', notes: [], errors: [] as string[] };
+  it("scans a take's page and console errors too, which go into the record (PR #199 10bde0e3)", () => {
+    const hits = privacyHits(takeTexts('before-1', { ...log, errors: ['pageerror: cannot read /Users/somebody/secret.txt'] }), ctx);
+    expect(hits.map((h) => `${h.rule} @ ${h.where}`)).toContain('absolute path @ take before-1 page errors');
+  });
+  it('scans the commit subjects and scene text that go into captions, the record and the summary (PR #199 5b136d3c)', () => {
+    const texts = runTexts({ base: { subject: 'fix: read /home/eve/keys first' }, head: { subject: `wip ${'aB3'.repeat(11)}` }, scene: { name: 's', summary: 'ok' } });
+    expect(privacyHits(texts, ctx).map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual(['absolute path @ the base commit subject', 'token-like string @ the head commit subject']);
+    expect(privacyHits(runTexts({ base: { subject: 'fix(view): labels' }, head: { subject: 'test: x' }, scene: { name: 's', summary: 'ok' } }), ctx)).toEqual([]);
   });
 });

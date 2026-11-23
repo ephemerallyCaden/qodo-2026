@@ -2,7 +2,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { compareTakes, dataPathsTouched, missingTools, noViewChange, privacyStop, Stop, takesStop } from '../../.claude/skills/visual-proof/scripts/rules.js';
+import { compareTakes, dataPathsTouched, keepsScratch, missingTools, noViewChange, privacyStop, Stop, takeFailure, takesStop } from '../../.claude/skills/visual-proof/scripts/rules.js';
 import { solid } from '../../.claude/skills/visual-proof/scripts/frames.js';
 import { encodePng } from '../render/png.js';
 import { tempDir } from '../fixtures/tmp.js';
@@ -23,10 +23,13 @@ describe('R11: no view change, no capture', () => {
 describe('R12: a change to what the data is made of stops and asks', () => {
   it('names the scanner, attribution, layout, snapshot and contract paths a diff touches, and nothing else', () => {
     expect(dataPathsTouched([
-      'web/src/view.ts', 'src/server/server.ts', 'docs/contracts/phase2.md', 'test/render/review.spec.ts',
+      'web/src/view.ts', 'docs/contracts/phase2.md', 'test/render/review.spec.ts',
       'src/scan/git.ts', 'src/attrib/parsers/claude.ts', 'src/core/layout/index.ts', 'src/core/contract/api.ts', 'src/core/snapshot/types.ts',
     ])).toEqual(['src/scan/git.ts', 'src/attrib/parsers/claude.ts', 'src/core/layout/index.ts', 'src/core/contract/api.ts', 'src/core/snapshot/types.ts']);
     expect(dataPathsTouched(['web/src/drones/panel.ts', 'src/core/scan-ish.ts', 'src/scanner.ts'])).toEqual([]);
+  });
+  it('also names what serves the data to each side: the state readers, the fog model and the server (PR #199 56b86205)', () => {
+    expect(dataPathsTouched(['src/state/chart.ts', 'src/core/fog/index.ts', 'src/server/server.ts', 'web/src/live.ts'])).toEqual(['src/state/chart.ts', 'src/core/fog/index.ts', 'src/server/server.ts']);
   });
 });
 
@@ -81,5 +84,25 @@ describe('R5 and R7: a privacy hit, or a missing tool, stops', () => {
     const stop = missingTools({ git: true, chromium: false });
     expect(stop?.code).toBe('tool-missing');
     expect(stop?.message).toContain('chromium');
+  });
+});
+
+describe('after a stop', () => {
+  it('a privacy stop removes the scratch dir, --keep or not; nothing to film removes it unless kept; others keep it to look at (PR #199 868113ad)', () => {
+    expect(keepsScratch('privacy', false)).toBe(false);
+    expect(keepsScratch('privacy', true)).toBe(false);
+    expect(keepsScratch('no-view-change', false)).toBe(false);
+    expect(keepsScratch('no-view-change', true)).toBe(true);
+    expect(keepsScratch('takes-differ', false)).toBe(true);
+    expect(keepsScratch('scene-unreachable', false)).toBe(true);
+  });
+  it("a take that exits with a STOP line stops with that code; one that crashes without one is an internal error, not the scene's (PR #199 c0e3cb31)", () => {
+    const stop = takeFailure('after-2', 3, 'STOP scene-unreachable: scene x: the click opened nothing\n');
+    expect(stop).toBeInstanceOf(Stop);
+    expect((stop as Stop).code).toBe('scene-unreachable');
+    expect((stop as Stop).message).toBe('scene x: the click opened nothing');
+    const crash = takeFailure('after-2', 1, 'TypeError: x is not a function\n');
+    expect(crash).not.toBeInstanceOf(Stop);
+    expect(crash.message).toBe('take after-2 crashed (exit 1) without a STOP: see its output in the record');
   });
 });

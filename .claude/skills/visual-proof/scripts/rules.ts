@@ -18,10 +18,11 @@ export class Stop extends Error {
 }
 
 /**
- * R12: what the snapshot and layout are made of. A diff here means the two builds would see different
- * data, so the same-data guarantee no longer holds: stop and ask.
+ * R12: what the snapshot and layout are made of, and what serves them to each side (each build runs
+ * its own state readers, fog model and server: PR #199 56b86205). A diff here means the two builds
+ * would see different data, so the same-data guarantee no longer holds: stop and ask.
  */
-export const DATA_PATHS = ['src/scan/', 'src/attrib/', 'src/core/layout/', 'src/core/snapshot/', 'src/core/contract/'] as const;
+export const DATA_PATHS = ['src/scan/', 'src/attrib/', 'src/core/layout/', 'src/core/snapshot/', 'src/core/contract/', 'src/state/', 'src/core/fog/', 'src/server/'] as const;
 
 export const dataPathsTouched = (paths: readonly string[]): string[] => paths.filter((p) => DATA_PATHS.some((d) => p.startsWith(d)));
 
@@ -100,4 +101,22 @@ const HOW_TO_GET: Record<string, string> = {
   node_modules: 'node_modules: run `npm ci` in this checkout (the tools load @playwright/test and typescript from it)',
   chromium: "chromium: run `npx playwright install chromium` (the render tests' browser)",
   tar: 'tar: the system tar, to unpack `git archive`',
+  sandbox: "sandbox: macOS's /usr/bin/sandbox-exec, which contains the revisions' code (no credentials, no network); the skill runs on macOS only",
 };
+
+/**
+ * Whether a stopped run keeps its scratch dir: a privacy stop never does (its raw takes hold what was
+ * found: PR #199 868113ad), a run with nothing to film only with --keep, any other stop for a look.
+ */
+export function keepsScratch(code: StopCode, keep: boolean): boolean {
+  if (code === 'privacy') return false;
+  if (code === 'no-view-change') return keep;
+  return true;
+}
+
+/** A take process that failed: its own STOP, or, with none, a crash in the skill, Playwright or the build (exit 1, not the scene's: PR #199 c0e3cb31). */
+export function takeFailure(name: string, status: number | null, stdout: string): Stop | Error {
+  const m = /^STOP ([a-z-]+): (.*)$/m.exec(stdout);
+  if (m) return new Stop(m[1] as StopCode, m[2]!);
+  return new Error(`take ${name} crashed (exit ${status ?? 'by signal'}) without a STOP: see its output in the record`);
+}
