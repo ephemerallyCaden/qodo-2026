@@ -71,9 +71,10 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
 `Status: running`, and every step is appended as it ends (R8), so a run that dies still shows what it did. The steps, each a section of the record:
 
 1. **Tools**: Node, git, tar, node_modules, Playwright's Chromium, sandbox-exec (R7: missing →
-   `tool-missing`). Each build, the data scan, the scene's CLI steps and every take run the revisions'
-   own code, so all of them run under sandbox-exec: no credential store read, nothing written outside the
-   scratch and temp dirs, nothing reached but localhost, and an allowlisted environment (no tokens).
+   `tool-missing`; so is a shell that is sandboxed itself, where sandbox-exec can't nest). Each build,
+   the data scan, the scene's CLI steps and every take run the revisions' own code, so all of them run
+   under sandbox-exec: no credential store read, nothing written outside the scratch and temp dirs,
+   nothing reached but localhost, and an allowlisted environment (no tokens).
 2. **The change**: the paths base → head; any under `src/scan/`, `src/attrib/`, `src/core/layout/`,
    `src/core/snapshot/`, `src/core/contract/`, or what serves the data to each side (`src/state/`,
    `src/core/fog/`, `src/server/`), changes the data itself (R12).
@@ -142,7 +143,8 @@ code, its message and detail lines, and ask the user what to do:
 - `privacy`: what was found and where (masked). Nothing was composed, and the scratch dir with the raw
   takes is removed (even with `--keep`). Even if it looks like repo content (a path in a diff), report
   it and let the user decide. A view that reached past its local server is a `privacy` stop too.
-- `tool-missing`: what to install, in the message.
+- `tool-missing`: what to install, in the message. `sandbox-exec can't nest: already sandboxed` means
+  run it from a shell that isn't sandboxed (not the agent runner's checks or a sandboxed Bash tool).
 - `bad-input`: a ref that isn't a commit, an unknown scene, no folder for the record (`--out`).
 
 Exit 1 is a bug in the skill (or a take that crashed without a STOP: Playwright, or the build's server):

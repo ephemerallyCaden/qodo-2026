@@ -14,7 +14,7 @@ import { chromium } from '@playwright/test';
 import { SCENES } from '../scenes/index.js';
 import { checkTakes, settleScratch, type TakeFailed } from './checks.js';
 import { compose, GITHUB_IMAGE_LIMIT } from './compose.js';
-import { addNodeModules, buildTree, bundleOf, changedFiles, contained, exportTree, git, makeClone, makeFixtureRepo, makeScratch, resolveRev, revisionEnv, SANDBOX_EXEC, sandboxProfile, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
+import { addNodeModules, buildTree, bundleOf, changedFiles, contained, exportTree, git, makeClone, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, resolveRev, revisionEnv, SANDBOX_EXEC, sandboxProfile, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
 import { privacyHits, runTexts, screen, servedTexts, type Scanned } from './privacy.js';
 import { RunRecord, redact, uniqueName, type Literal } from './record.js';
 import { DATA_PATHS, dataPathsTouched, missingTools, noViewChange, privacyStop, Stop, takeFailure } from './rules.js';
@@ -123,6 +123,8 @@ async function run(a: RunArgs): Promise<number> {
       "Each build, the data scan, the scene's CLI steps and every take run under sandbox-exec: no credential store, no write outside $SCRATCH and the temp dirs, localhost only, an allowlisted environment."]);
     const missing = missingTools(found);
     if (missing) throw missing;
+    // Already sandboxed, no build could start: say so, rather than a build-failed with exit 71
+    if (probeSandbox() === 'nested') throw new Stop('tool-missing', NESTED_SANDBOX, ['sandbox: run the skill from a shell that is not itself sandboxed (not the agent runner\'s checks or a sandboxed Bash tool)']);
 
     // 2. The change
     const sides = trying ? (['after'] as const) : SIDES;

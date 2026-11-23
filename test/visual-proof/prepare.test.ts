@@ -5,7 +5,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addNodeModules, contained, makeFixtureRepo, makeScratch, revisionEnv, sandboxProfile, worktreeRev } from '../../.claude/skills/visual-proof/scripts/prepare.js';
+import { addNodeModules, contained, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, revisionEnv, SANDBOX_EXEC, sandboxProfile, sandboxState, worktreeRev } from '../../.claude/skills/visual-proof/scripts/prepare.js';
 import { Stop } from '../../.claude/skills/visual-proof/scripts/rules.js';
 import { tempDir } from '../fixtures/tmp.js';
 
@@ -76,7 +76,9 @@ describe('the revisions run contained (PR #199 6683b8a2)', () => {
     expect(env).toEqual({ PATH: '/bin', HOME: '/h', TMPDIR: '/t', LANG: 'C', CLAUDE_CONFIG_DIR: '/c' });
   });
 
-  it.skipIf(process.platform !== 'darwin')('under sandbox-exec: no read of a credential store, no write outside the scratch and temp dirs, no network beyond localhost', () => {
+  it.skipIf(process.platform !== 'darwin')('under sandbox-exec: no read of a credential store, no write outside the scratch and temp dirs, no network beyond localhost', (ctx) => {
+    // Under the agent runner's checks (themselves under sandbox-exec) no sandbox can start: skipped with the reason, never passed
+    ctx.skip(probeSandbox() === 'nested', NESTED_SANDBOX);
     const home = tempDir('commet-vp-home-'), scratch = tempDir('commet-vp-scr-');
     mkdirSync(join(home, '.ssh'));
     writeFileSync(join(home, '.ssh', 'id'), 'secret\n');
@@ -93,6 +95,25 @@ describe('the revisions run contained (PR #199 6683b8a2)', () => {
     const connect = (host: string) => run(`const s = require('net').connect({ host: ${JSON.stringify(host)}, port: 9 }); s.on('error', (e) => { console.log(e.code); process.exit(0) }); s.on('connect', () => { console.log('connected'); process.exit(0) }); setTimeout(() => { console.log('timeout'); process.exit(0) }, 3000)`).stdout.trim();
     expect(connect('192.0.2.1')).toBe('EPERM');
     expect(connect('127.0.0.1')).toMatch(/^(ECONNREFUSED|connected)$/);
+  });
+});
+
+describe('sandboxState', () => {
+  it('is nested only on the refusal a sandboxed process gets, and unavailable on any other failure', () => {
+    expect(sandboxState({ status: 0, stderr: '' })).toBe('ok');
+    expect(sandboxState({ status: 71, stderr: 'sandbox-exec: sandbox_apply: Operation not permitted\n' })).toBe('nested');
+    expect(sandboxState({ status: 65, stderr: 'sandbox-exec: syntax error\n' })).toBe('unavailable');
+    expect(sandboxState({ status: null, stderr: null })).toBe('unavailable');
+  });
+  it.skipIf(process.platform !== 'darwin')('reads a real sandbox-exec inside another as nested', () => {
+    // One level below wherever this runs: the inner one can't start (if this process is sandboxed already, neither can the outer).
+    // The outer denies one thing: a profile that denies nothing lets a sandbox start inside it.
+    const outer = '(version 1)(allow default)(deny file-read* (literal "/commet-no-such-file"))';
+    const r = spawnSync(SANDBOX_EXEC, ['-p', outer, SANDBOX_EXEC, '-p', '(version 1)(allow default)', '/usr/bin/true'], { encoding: 'utf8' });
+    expect(sandboxState(r)).toBe('nested');
+  });
+  it.skipIf(process.platform === 'darwin')('is unavailable where there is no sandbox-exec', () => {
+    expect(probeSandbox()).toBe('unavailable');
   });
 });
 

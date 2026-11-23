@@ -213,3 +213,17 @@ export function sandboxProfile(o: { home: string; env: NodeJS.ProcessEnv; writab
 
 /** `cmd args`, run under `profile`. */
 export const contained = (cmd: string, args: readonly string[], profile: string): { cmd: string; args: string[] } => ({ cmd: SANDBOX_EXEC, args: ['-p', profile, cmd, ...args] });
+
+/** Seatbelt can't nest: inside another sandbox (the agent runner's checks, Claude Code's sandboxed Bash) sandbox_apply is refused and nothing runs. */
+export const NESTED_SANDBOX = "sandbox-exec can't nest: already sandboxed";
+
+/** Whether a sandbox can start here: `nested` only on the refusal a sandboxed process gets, anything else that fails is `unavailable`. */
+export function sandboxState(r: { status: number | null; stderr?: string | null }): 'ok' | 'nested' | 'unavailable' {
+  if (r.status === 0) return 'ok';
+  return /sandbox_apply: Operation not permitted/.test(r.stderr ?? '') ? 'nested' : 'unavailable';
+}
+
+/** Starts the smallest sandbox (it allows everything) and says whether it could. */
+export function probeSandbox(): 'ok' | 'nested' | 'unavailable' {
+  return sandboxState(spawnSync(SANDBOX_EXEC, ['-p', '(version 1)(allow default)', '/usr/bin/true'], { encoding: 'utf8' }));
+}
