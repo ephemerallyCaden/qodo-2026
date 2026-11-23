@@ -1,5 +1,6 @@
-// #189: a selected drone stays visible beside its own open panel (AC 1, 2). The panel (#drone-panel) is DOM laid
-// over the view canvas, so a drone drawn where it sits can't be seen. These tests drive the built view (dist/web)
+// #189: a selected drone stays visible beside its own open panel (AC 1, 2): at least half of it, when it's clicked and
+// for a whole turn round its home as it orbits, and the panel holds still meanwhile. The panel (#drone-panel) is DOM
+// laid over the view canvas, so a drone drawn where it sits can't be seen. These tests drive the built view (dist/web)
 // against a real `startServer` on a temp repo, as review.spec.ts does, with requestAnimationFrame stepped by hand
 // so the frame number is exact. They measure the drone from the page's own pixels, never from where it should be:
 // a test-only WebGL seam skips the drone shader's draws, and the drone's visible pixels are those of the page as the
@@ -16,8 +17,8 @@ import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { fileIdOf } from '../../src/core/fog/index.js';
 import type { DirId } from '../../src/core/snapshot/types.js';
 import { project, startPose } from '../../web/src/camera/pose.js';
-import { placeDrone } from '../../web/src/drones/place.js';
-import { FPS } from '../../web/src/model/motion.js';
+import { DRONE_TURNS, placeDrone } from '../../web/src/drones/place.js';
+import { FPS, LOOP_FRAMES } from '../../web/src/model/motion.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { DRONE_FRAG } from '../../web/src/render/drone-shader.js';
 import { newToken } from '../../src/server/guard.js';
@@ -207,6 +208,8 @@ async function select(page: Page, f: Fixture, s: DroneSession, frame: number, W:
 }
 
 const VIEWPORTS = [[1280, 720], [1920, 1080]] as const;
+/** One turn of a drone round its home, in frames (24 s). */
+const TURN = LOOP_FRAMES / DRONE_TURNS;
 /** A drone has at least this many internal pixels drawn (×scale² device px at dpr 1), so an empty frame can't pass. */
 const MIN_DRONE_PX = 4;
 
@@ -217,9 +220,9 @@ test.describe('#189 the selected drone beside its open panel', () => {
 
   // Planet bb sits low on the left of the start pose (x 72, y 472 of 1280x720). Seed 28's drone is drawn left of bb,
   // low in the frame, in front of it at frame 0: x 16-71, y 508-559 at 1280x720 and x 24-107, y 762-839 at 1920x1080,
-  // where the panel opens (x 8-297, y 299-680 and y 659-1040). Reduced motion holds frame 0 and cuts any glide.
+  // where the panel opened before #189 (x 8-297, y 299-680 and y 659-1040). Reduced motion holds frame 0 and cuts any glide.
   for (const [W, H] of VIEWPORTS) {
-    test(`a drone selected at the bottom left of its planet is not hidden under its own panel at ${W}x${H} (AC 1, 2)`, async ({ page }) => {
+    test(`a drone selected at the bottom left of its planet stays at least half visible beside its own panel at ${W}x${H} (AC 1, 2)`, async ({ page }) => {
       const f = await fixture();
       const bb = systemModel(f.layout).planets.find((p) => p.path === 'bb')!;
       const s = oneDrone(f, bb.dirId, 28);
@@ -230,14 +233,16 @@ test.describe('#189 the selected drone beside its open panel', () => {
       const minPx = MIN_DRONE_PX * (H / INTERNAL_H) ** 2;
       expect(got.colours, 'the bare frame rendered').toBeGreaterThanOrEqual(BLANK.minColours);
       expect(got.drawn, `the selected drone is drawn (${JSON.stringify(got)})`).toBeGreaterThanOrEqual(minPx);
-      expect(got.visible, `pixels of the selected drone the user can see with its panel open (${JSON.stringify(got)})`).toBeGreaterThan(0);
+      expect(got.visible, `pixels of the selected drone the user can see with its panel open: at least half (${JSON.stringify(got)})`).toBeGreaterThanOrEqual(got.drawn / 2);
     });
   }
 
   // Seed 78's drone at 1920x1080 is clear of the panel when it's clicked (x 180-251, y 576-647 at frame 0, above the
-  // panel's top at 659), then orbits down into it: fully under it from frame 93 (3.1 s) to 327 (10.9 s). Every second
-  // for its first 11 s, while it is drawn on screen, some of it must be visible.
-  test('a selected drone that orbits into its open panel is never fully hidden under it at 1920x1080 (AC 1)', async ({ page }) => {
+  // panel's top at 659 before #189), then orbits down to where that panel was: fully under it from frame 93 (3.1 s) to
+  // 327 (10.9 s). Every second for one whole turn round bb (24 s), while it is drawn on screen, at least half of it must
+  // be visible, and the panel must hold still: the camera doesn't move, so nothing should move it while the user reads.
+  test('a selected drone that orbits towards its open panel stays at least half visible for a whole turn, the panel holding still, at 1920x1080 (AC 1)', async ({ page }) => {
+    test.setTimeout(300_000); // 25 samples of four 1080p screenshots each on SwiftShader
     const [W, H] = [1920, 1080];
     const f = await fixture();
     const bb = systemModel(f.layout).planets.find((p) => p.path === 'bb')!;
@@ -251,13 +256,14 @@ test.describe('#189 the selected drone beside its open panel', () => {
     expect(first.drawn, `the selected drone is drawn when clicked (${JSON.stringify(first)})`).toBeGreaterThanOrEqual(minPx);
     expect(first.visible, `the drone is clear of the panel when clicked (${JSON.stringify(first)})`).toBeGreaterThan(first.drawn / 2);
     const samples = [first];
-    for (let fr = 30; fr <= 330; fr += 30) {
+    for (let fr = 30; fr <= TURN; fr += 30) {
       await live.advance(fr);
       samples.push(await live.drone());
     }
     const onScreen = samples.filter((x) => x.drawn >= minPx);
     expect(onScreen.length, 'the drone is drawn in most samples, so the check is not empty').toBeGreaterThanOrEqual(samples.length / 2);
-    const hidden = onScreen.filter((x) => x.visible === 0).map((x) => `frame ${x.frame} (${(x.frame / FPS).toFixed(1)} s): ${x.drawn} px drawn at ${JSON.stringify(x.drawnBox)}, panel ${JSON.stringify(x.panel)}`);
-    expect(hidden, 'samples where the selected drone is drawn but none of it is visible').toEqual([]);
+    const hidden = onScreen.filter((x) => x.visible < x.drawn / 2).map((x) => `frame ${x.frame} (${(x.frame / FPS).toFixed(1)} s): ${x.visible} of ${x.drawn} px visible at ${JSON.stringify(x.drawnBox)}, panel ${JSON.stringify(x.panel)}`);
+    expect(hidden, 'samples where the selected drone is drawn but less than half of it is visible').toEqual([]);
+    expect([...new Set(samples.map((x) => JSON.stringify(x.panel)))], 'where the panel is, sample by sample: one place').toHaveLength(1);
   });
 });
