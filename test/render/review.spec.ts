@@ -544,49 +544,94 @@ test.describe('#169 labels clear of the open panels', () => {
     expect(got.clear, 'note pixels clear of it').toBeGreaterThanOrEqual(inkOf(note));
   });
 
-  /** The first drone seed, on any planet, whose drone at frame 0 sits low in the frame's left (where the drone panel opens) in front of its home. */
-  function lowLeftDrone(model: SystemModel, pose: OrbitPose) {
-    for (let seed = 0; seed < 5000; seed++) {
-      for (const p of model.planets) {
-        const d = placeDrone(model, p.dirId, seed, 0)!;
-        const at = project(pose, d.centre), home = project(pose, planetCentre(p, 0));
-        if (!at || !home || at.depth >= home.depth) continue;
-        const [l] = placeLabels(pose, [{ centre: d.centre, radius: DRONE_PICK_RADIUS }], [], 1280, 720, 2 * PX, 1);
-        if (l && l.x > 90 && l.x < 200 && l.y > 560 && l.y < 620) return { home: p.dirId, seed, click: { x: ((at.x + 1) / 2) * 1280, y: ((1 - at.y) / 2) * 720 }, label: l };
+  /**
+   * The label pixels (glyphs and backing) under `sel` (an open panel) since keepLabels: drawn then and gone now
+   * (`gone`), drawn now and not then (`drawn`), and drawn in both (`kept`: a planet's label, which #169 leaves where it
+   * is), with the pixels changed clear of it and its box in canvas px.
+   */
+  const labelMoves = (page: Page, sel: string) => page.$eval('#labels', (c, sel) => {
+    const canvas = c as HTMLCanvasElement;
+    const now = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    const was = (window as unknown as { __kept: Uint8ClampedArray }).__kept;
+    const cr = canvas.getBoundingClientRect(), pr = document.querySelector(sel)!.getBoundingClientRect();
+    const k = canvas.width / cr.width;
+    const panel = { x0: (pr.left - cr.left) * k, y0: (pr.top - cr.top) * k, x1: (pr.right - cr.left) * k, y1: (pr.bottom - cr.top) * k };
+    const under = { gone: 0, drawn: 0, kept: 0 };
+    let changedClear = 0;
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const i = (y * canvas.width + x) * 4;
+        const same = now[i] === was[i] && now[i + 1] === was[i + 1] && now[i + 2] === was[i + 2] && now[i + 3] === was[i + 3];
+        if (!(x >= panel.x0 && x < panel.x1 && y >= panel.y0 && y < panel.y1)) { if (!same) changedClear++; continue; }
+        if (now[i + 3]! > 0) { if (same) under.kept++; else under.drawn++; } else if (was[i + 3]! > 0) under.gone++;
       }
     }
-    throw new Error('no seed puts a drone low on the left');
+    return { under, changedClear, panel };
+  }, sel);
+
+  /**
+   * #189 docks the drone panel clear of the drone it describes, so it opens away from that drone and its label, and
+   * the label check needs a second drone. The selected one: the first seed whose drone at frame 0 sits in front of its
+   * home inside the panel's home box in the bottom left, so the panel docks across the window. The other, a generic
+   * drone that names its tool beside it: the first seed, on another planet, whose label at frame 0 lies where the panel
+   * then docks (its home box mirrored, the panel as drone-panel.spec.ts measured it).
+   */
+  function twoDrones(model: SystemModel, pose: OrbitPose, W: number, H: number, px: number) {
+    const panel = { w: 289, h: 381 };
+    const home0 = { x: 8, y: H - 40 - panel.h }, across = { x: W - 8 - panel.w, y: H - 40 - panel.h };
+    const inside = (b: { x: number; y: number }, x0: number, y0: number, x1: number, y1: number) => b.x >= x0 && b.x < x1 && b.y >= y0 && b.y < y1;
+    const front = (home: string, seed: number) => {
+      const d = placeDrone(model, home, seed, 0)!, p = model.planets.find((x) => x.dirId === home)!;
+      const at = project(pose, d.centre), h = project(pose, planetCentre(p, 0));
+      return at && h && at.depth < h.depth ? { centre: d.centre, x: ((at.x + 1) / 2) * W, y: ((1 - at.y) / 2) * H } : null;
+    };
+    const w = textWidth('codex') * px;
+    let selected: { home: string; seed: number; click: { x: number; y: number } } | null = null, labelled: { home: string; seed: number } | null = null;
+    for (let seed = 0; seed < 5000 && !(selected && labelled); seed++) {
+      for (const p of model.planets) {
+        const at = front(p.dirId, seed);
+        if (!at) continue;
+        if (!selected && inside(at, home0.x, home0.y, home0.x + panel.w, home0.y + panel.h)) selected = { home: p.dirId, seed, click: { x: at.x, y: at.y } };
+        if (labelled || (selected && selected.home === p.dirId)) continue;
+        const [l] = placeLabels(pose, [{ centre: at.centre, radius: DRONE_PICK_RADIUS }], [], W, H, 2 * px, 1);
+        if (l && inside({ x: l.x - w / 2, y: l.y }, across.x, across.y, across.x + panel.w - w, across.y + panel.h - lineHeight(px))) labelled = { home: p.dirId, seed };
+      }
+    }
+    if (!selected || !labelled) throw new Error('no two drones for the scene');
+    return { selected, labelled };
   }
 
-  test("a selected drone's label low in the frame sits clear of its open panel, none of it under (#169 comment)", async ({ page }) => {
-    const f = await fixture({ drones: true });
-    const layout = JSON.parse(readFileSync(join(f.dir, '.git', 'commet', 'layout.json'), 'utf8')) as LayoutV1;
-    const model = systemModel(layout);
-    const drone = lowLeftDrone(model, startPose(model));
-    const s = session(1, drone.home as DirId, { seed: drone.seed });
-    f.hooks.drones = async () => droneView(layout.source.head, [s]);
-    // Its files, so the panel is as tall as a real one: one file edited 3 times, in the last slice.
-    f.hooks.droneDetail = async (q) => ({ ok: true, schemaVersion: 'drone-detail.1', head: q.at, key: q.key, startedAt: s.startedAt, endedAt: s.endedAt,
-      files: [{ fileId: fileIdOf('bb/three.ts'), path: 'bb/three.ts', edits: 3 }], otherFiles: 0, otherEdits: 0,
-      buckets: Array.from({ length: DETAIL_BUCKETS }, (_, i) => (i === DETAIL_BUCKETS - 1 ? 3 : 0)), spanMs: 3_600_000, needsRescan: false });
-    await page.emulateMedia({ reducedMotion: 'reduce' }); // frame 0, held: the drone stays where it was placed
-    await page.goto(f.server.url);
-    await page.waitForSelector('#panel:not([hidden]) li button');
-    await page.click('#panel button[data-key="dismiss"]');
-    await expect.poll(() => page.$eval('#drones-hud', (e) => e.textContent ?? ''), { timeout: 10_000 }).toContain('1 drone shown');
-    await settled(page);
-    await keepLabels(page);
-    await page.mouse.click(drone.click.x, drone.click.y);
-    await page.waitForSelector('#drone-panel:not([hidden]) li'); // open, with its file list
-    const drawn = async () => { const c = await changedLabels(page, '#drone-panel'); return c.under + c.clear; };
-    await expect.poll(drawn, { timeout: 5_000 }).toBeGreaterThanOrEqual(inkOf('claude-code')); // drawn, wherever it is
-    await settled(page); // the panel's list asked for its files: it may grow once more
-    const got = await changedLabels(page, '#drone-panel');
-    // Under its drone, where it was drawn before #169, the label would sit inside the open panel.
-    const w = textWidth('claude-code') * PX;
-    const was = { x: drone.label.x - w / 2 - PX, y: drone.label.y - PX, w: w + 2 * PX, h: lineHeight(PX) }; // centred, with its backing
-    expect(was.x < got.panel.x1 && was.x + was.w > got.panel.x0 && was.y < got.panel.y1 && was.y + was.h > got.panel.y0, `label box ${JSON.stringify(was)} vs panel ${JSON.stringify(got.panel)}`).toBe(true);
-    expect(got.under, 'selected drone label pixels under the open drone panel').toBe(0);
-    expect(got.clear, 'label pixels clear of it').toBeGreaterThanOrEqual(inkOf('claude-code'));
-  });
+  for (const [W, H] of [[1280, 720], [1920, 1080]] as const) {
+    test(`drone labels sit clear of the drone panel where it docks, none of them under, at ${W}x${H} (#169 comment, #189 AC 3)`, async ({ page }) => {
+      const px = fontScale(H / 180), ink = (text: string) => rasterText(text).bits.reduce((n, b) => n + b, 0) * px * px;
+      const f = await fixture({ drones: true });
+      const layout = JSON.parse(readFileSync(join(f.dir, '.git', 'commet', 'layout.json'), 'utf8')) as LayoutV1;
+      const model = systemModel(layout);
+      const { selected, labelled } = twoDrones(model, startPose(model), W, H, px);
+      const s = session(1, selected.home as DirId, { seed: selected.seed });
+      const other = session(2, labelled.home as DirId, { seed: labelled.seed, tool: 'codex' });
+      f.hooks.drones = async () => droneView(layout.source.head, [s, other]);
+      // Its files, so the panel is as tall as a real one: one file edited 3 times, in the last slice.
+      f.hooks.droneDetail = async (q) => ({ ok: true, schemaVersion: 'drone-detail.1', head: q.at, key: q.key, startedAt: s.startedAt, endedAt: s.endedAt,
+        files: [{ fileId: fileIdOf('bb/three.ts'), path: 'bb/three.ts', edits: 3 }], otherFiles: 0, otherEdits: 0,
+        buckets: Array.from({ length: DETAIL_BUCKETS }, (_, i) => (i === DETAIL_BUCKETS - 1 ? 3 : 0)), spanMs: 3_600_000, needsRescan: false });
+      await page.setViewportSize({ width: W, height: H });
+      await page.emulateMedia({ reducedMotion: 'reduce' }); // frame 0, held: the drones stay where they were placed
+      await page.goto(f.server.url);
+      await page.waitForSelector('#panel:not([hidden]) li button');
+      await page.click('#panel button[data-key="dismiss"]');
+      await expect.poll(() => page.$eval('#drones-hud', (e) => e.textContent ?? ''), { timeout: 10_000 }).toContain('2 drones shown');
+      await settled(page);
+      await keepLabels(page); // the generic drone's label is drawn, where the panel will dock
+      await page.mouse.click(selected.click.x, selected.click.y);
+      await page.waitForSelector('#drone-panel:not([hidden]) li'); // open, with its file list
+      await expect.poll(async () => (await labelMoves(page, '#drone-panel')).changedClear, { timeout: 5_000 }).toBeGreaterThanOrEqual(ink('claude-code'));
+      await settled(page); // the panel's list asked for its files: it may grow once more
+      const got = await labelMoves(page, '#drone-panel');
+      expect(got.panel.x0, `the panel docked across the window, clear of its drone (${JSON.stringify(got.panel)})`).toBeGreaterThan(W / 2);
+      expect(got.under.gone, `the generic drone's label was where the panel docked, and went (${JSON.stringify(got.under)})`).toBeGreaterThanOrEqual(ink('codex'));
+      expect(got.under.drawn, `drone label pixels drawn under the open drone panel (${JSON.stringify(got.under)})`).toBe(0);
+      expect(got.changedClear, 'label pixels drawn clear of it since: the selected drone\'s and the one that moved').toBeGreaterThanOrEqual(ink('claude-code') + ink('codex'));
+    });
+  }
 });
