@@ -1,0 +1,69 @@
+// visual-proof (R5): every frame's page text and every served response, layout and beacon is scanned
+// for what AGENTS.md Rule 2 keeps out of any output. A hit names its rule and where it was, never the
+// text it matched in full.
+import { describe, expect, it } from 'vitest';
+import { privacyHits, servedTexts, type Scanned } from '../../.claude/skills/visual-proof/scripts/privacy.js';
+
+const TOKEN = 'Qx3vL0t9-mN_2bYk7RfA1sWc8dHe5jUp4gZiTo6aVyE';
+const ctx = { literals: [{ name: 'the launch token', value: TOKEN }, { name: 'HOME', value: '/Users/somebody' }] };
+const scan = (...texts: string[]) => privacyHits(texts.map((text, i): Scanned => ({ where: `item ${i}`, text })), ctx);
+const rules = (...texts: string[]) => scan(...texts).map((h) => h.rule);
+
+describe('privacyHits', () => {
+  it("passes a real scene's text: planet paths, file ids, SHAs, session keys, counts", () => {
+    expect(scan(
+      'web/src/view.ts, 3 unseen. src/core/tmp/x.ts and test/var/y.ts are relative.',
+      '{"fileId":"f_3a9c0d1e2b4f","head":"4f3fe571e9a72d0f47c75045e690d1576b6d948a","key":"s_000000000001"}',
+      'claude-code · main · 1 hour · 2026-11-10 09:01 to 10:01 UTC',
+      'repo 9b2c4e1f0a3d5b6c7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d', // a 64-hex id: no capitals
+    )).toEqual([]);
+  });
+
+  it('stops on an absolute path in any form', () => {
+    for (const t of ['note: /Users/alice/notes.txt', 'at /home/bob/x', '"/private/var/folders/x"', 'in /tmp/visual-proof-x/repo',
+      'C:\\Users\\carol\\x', 'see file:///etc/hosts', 'cfg in ~/.claude/settings.json', '(/var/log/x)', '\\\\server\\share\\x']) {
+      expect(rules(t), t).toContain('absolute path');
+    }
+  });
+
+  it('stops on token-like strings and known secret shapes', () => {
+    expect(rules(`k=${'aB3'.repeat(11)}`)).toContain('token-like string');
+    // Fake shapes, built at run time so no secret scanner mistakes this file for a leak
+    const fake = (prefix: string, body: string) => `${prefix}${body}`;
+    expect(rules(fake('sk-an', `t-api03-${'x'.repeat(22)}`))).toContain('secret prefix');
+    expect(rules(fake('gh', `p_${'a1'.repeat(18)}`))).toContain('secret prefix');
+    expect(rules(fake('AK', `IA${'Q'.repeat(16)}`))).toContain('secret prefix');
+    expect(rules('http://127.0.0.1:4100/#t=abcdefgh123')).toContain('launch URL');
+  });
+
+  it("stops on this run's own literals (the launch token, HOME) and never repeats them", () => {
+    const hits = scan(`x ${TOKEN} y`, 'path /Users/somebody/z');
+    expect(hits.map((h) => h.rule)).toEqual(expect.arrayContaining(['the launch token', 'HOME']));
+    for (const h of hits) {
+      expect(h.excerpt).not.toContain(TOKEN);
+      expect(h.excerpt).not.toContain('somebody');
+    }
+    expect(hits[0]!.where).toBe('item 0');
+  });
+
+  it('masks what a pattern matched: its first characters and its length', () => {
+    const [h] = scan('a note /Users/alice/secret-plan.txt here');
+    expect(h!.excerpt).toMatch(/^\/Users… \(\d+ chars\)$/);
+  });
+});
+
+describe('servedTexts', () => {
+  it("scans a JSON body's decoded strings and its keys: a log field name as a key stops, the same word in a string doesn't", () => {
+    const body = JSON.stringify({ files: [{ path: 'src/attrib/originalFile-guard.ts', note: 'C:\\Users\\dave\\x' }], originalFile: 'x' });
+    const hits = privacyHits(servedTexts({ path: '/api/diff?fileId=f_1', body }), ctx);
+    expect(hits.map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual([
+      'absolute path @ GET /api/diff?fileId=f_1',
+      'agent-log field @ GET /api/diff?fileId=f_1',
+    ]);
+  });
+
+  it('scans a body that is not JSON as it is', () => {
+    expect(privacyHits(servedTexts({ path: '/api/events', body: 'data: {"type":"state"}\n\n' }), ctx)).toEqual([]);
+    expect(privacyHits(servedTexts({ path: '/api/events', body: 'data: /home/eve\n' }), ctx).map((h) => h.rule)).toEqual(['absolute path']);
+  });
+});
