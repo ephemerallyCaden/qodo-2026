@@ -134,17 +134,34 @@ export function treeFog(root: TreeDir, fog: FogView | null): TreeFog {
 /** A folder's mastery today: the charted share of its files, rounded down, so 100% only when every one is clear. */
 export const chartedPercent = (t: DirFog): number => (t.total === 0 ? 0 : Math.floor((100 * t.clear) / t.total));
 
-/** One visible row: its node, its depth (1 at the top), its place among its siblings, and its parent's row (-1 at the top). */
-export interface Row { node: TreeNode; level: number; setsize: number; posinset: number; parent: number }
+/**
+ * How many of a folder's children show at first, and how many more each of its "more" rows adds: a big
+ * folder (a flat repo's root of 100,000 files) never builds a row for every file at once (Qodo fb9c0d80).
+ */
+export const TREE_PAGE = 200;
 
-/** The rows shown: the top level, and the children of each expanded folder (by path) whose parents are all expanded. */
-export function visibleRows(root: TreeDir, expanded: ReadonlySet<string>): Row[] {
+/** The row after a folder's shown children that stands for the rest: `hidden` of them, `next` shown when it opens. Its path, the folder's with a slash, is never a file's. */
+export interface TreeMore { kind: 'more'; path: string; name: string; dir: TreeDir; hidden: number; next: number }
+
+/** One visible row: its node, its depth (1 at the top), its place among its siblings, and its parent's row (-1 at the top). */
+export interface Row { node: TreeNode | TreeMore; level: number; setsize: number; posinset: number; parent: number }
+
+/**
+ * The rows shown: the top level, and the children of each expanded folder (by path) whose parents are all
+ * expanded, each folder's first `shown` (by path, else TREE_PAGE) and then a row for the rest (Rule 1:
+ * nothing left out unsaid).
+ */
+export function visibleRows(root: TreeDir, expanded: ReadonlySet<string>, shown: ReadonlyMap<string, number> = new Map()): Row[] {
   const rows: Row[] = [];
   const walk = (d: TreeDir, level: number, parent: number) => {
-    d.children.forEach((node, k) => {
-      rows.push({ node, level, setsize: d.children.length, posinset: k + 1, parent });
+    const setsize = d.children.length, upTo = Math.min(setsize, shown.get(d.path) ?? TREE_PAGE);
+    for (let k = 0; k < upTo; k++) {
+      const node = d.children[k]!;
+      rows.push({ node, level, setsize, posinset: k + 1, parent });
       if (node.kind === 'dir' && expanded.has(node.path)) walk(node, level + 1, rows.length - 1);
-    });
+    }
+    const hidden = setsize - upTo;
+    if (hidden > 0) rows.push({ node: { kind: 'more', path: `${d.path}/`, name: `${hidden} more`, dir: d, hidden, next: Math.min(hidden, TREE_PAGE) }, level, setsize, posinset: upTo + 1, parent });
   };
   walk(root, 1, -1);
   return rows;
@@ -152,8 +169,11 @@ export function visibleRows(root: TreeDir, expanded: ReadonlySet<string>): Row[]
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
-/** What a row shows after its name: a file's fog, a folder's charted share. */
-export const rowTag = (n: TreeNode, fog: TreeFog): string => (n.kind === 'file' ? (fog.fogged(n) ? 'fogged' : 'clear') : `${chartedPercent(fog.dir(n))}%`);
+/** What a row shows after its name: a file's fog, a folder's charted share, or how many more a "more" row shows. */
+export function rowTag(n: TreeNode | TreeMore, fog: TreeFog): string {
+  if (n.kind === 'more') return `show ${n.next}`;
+  return n.kind === 'file' ? (fog.fogged(n) ? 'fogged' : 'clear') : `${chartedPercent(fog.dir(n))}%`;
+}
 
 /** A row's fog in words, e.g. "fogged", or "50% charted, 1 of 2 files clear". */
 export function fogWords(n: TreeNode, fog: TreeFog): string {
@@ -162,8 +182,11 @@ export function fogWords(n: TreeNode, fog: TreeFog): string {
   return `${chartedPercent(t)}% charted, ${t.clear} of ${plural(t.total, 'file')} clear`;
 }
 
-/** A row's accessible name: its name, whether it's a file or folder, and its fog. */
-export const rowLabel = (n: TreeNode, fog: TreeFog): string => `${n.name}, ${n.kind === 'dir' ? 'folder' : 'file'}, ${fogWords(n, fog)}`;
+/** A row's accessible name: its name, whether it's a file or folder, and its fog; or what a "more" row holds back and shows. */
+export function rowLabel(n: TreeNode | TreeMore, fog: TreeFog): string {
+  if (n.kind === 'more') return `${n.hidden} more not shown, open to show ${n.next}`;
+  return `${n.name}, ${n.kind === 'dir' ? 'folder' : 'file'}, ${fogWords(n, fog)}`;
+}
 
 /** Where a place is, in words, naming its planet by its path in the layout. */
 export function placeText(place: Place, layout: LayoutV1): string {

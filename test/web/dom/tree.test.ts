@@ -8,13 +8,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FogView } from '../../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
+import type { FileId } from '../../../src/core/snapshot/types.js';
 import { basis, startPoseAt, type OrbitPose } from '../../../web/src/camera/pose.js';
 import { GLIDE_MS } from '../../../web/src/camera/rig.js';
 import type { DataClient } from '../../../web/src/data/client.js';
 import { runLive } from '../../../web/src/live.js';
 import { FPS } from '../../../web/src/model/motion.js';
 import { planetCentre, surfaceDirection, systemModel, type SystemModel } from '../../../web/src/model/system.js';
-import type { Place, TreeSource } from '../../../web/src/tree/model.js';
+import { TREE_PAGE, type Place, type TreeSource } from '../../../web/src/tree/model.js';
 import { TreePanel } from '../../../web/src/tree/panel.js';
 import type { Hud } from '../../../web/src/ui/hud.js';
 import type { View } from '../../../web/src/view.js';
@@ -171,6 +172,33 @@ describe('the directory view\'s toggle and tree (#209 AC 1)', () => {
     expect(t.said).toEqual([note()]);
   });
 
+  it('a folder of many files shows a page of rows at a time and says how many are left, so it never builds them all (Qodo fb9c0d80)', async () => {
+    // past V8's argument limit (about 120,000 in Node 22): one row element for each of them, passed in one call, threw
+    const n = 130_000;
+    const files = Array.from({ length: n }, (_, i) => ({ id: `f_ff${i.toString(16).padStart(10, '0')}` as FileId, path: `f${String(i).padStart(6, '0')}.ts` }));
+    const t = panel(async () => ({ head: miniTree.head, dirs: [], files }));
+    toggle().fire('click');
+    await flush();
+    expect(rows()).toHaveLength(TREE_PAGE + 1);
+    expect(nameOf(rows()[0]!)).toBe('f000000.ts');
+    expect(rows()[TREE_PAGE - 1]!.attrs).toMatchObject({ 'aria-setsize': String(n), 'aria-posinset': String(TREE_PAGE) });
+    const more = rows().at(-1)!;
+    expect(more.className).toBe('row more');
+    expect([nameOf(more), tagOf(more)]).toEqual([`${n - TREE_PAGE} more`, `show ${TREE_PAGE}`]);
+    expect(more.attrs).toMatchObject({ 'aria-label': `${n - TREE_PAGE} more not shown, open to show ${TREE_PAGE}`, 'aria-level': '1', 'aria-setsize': String(n), 'aria-posinset': String(TREE_PAGE + 1) });
+    expect(note()).toBe(`uncharted: ${n} of ${n} files`); // the fog still counts every file
+    press('End');
+    expect(page.activeElement).toBe(more);
+    press('Enter'); // the next page, and the keyboard on its first row
+    expect(rows()).toHaveLength(2 * TREE_PAGE + 1);
+    expect(page.activeElement).toBe(row(`f${String(TREE_PAGE).padStart(6, '0')}.ts`));
+    expect(t.opened).toEqual([]); // nothing to focus on the map
+    rows().at(-1)!.fire('click');
+    expect(rows()).toHaveLength(3 * TREE_PAGE + 1);
+    t.p.setFog(miniFog); // the pages shown survive new fog and reloads
+    expect(rows()).toHaveLength(3 * TREE_PAGE + 1);
+  });
+
   it('text goes in only as text: a path that looks like markup is a name', async () => {
     panel(async () => ({ ...miniTree, files: [{ id: 'f_0000000000ee', path: '<img src=x onerror=alert(1)>.ts' }] }));
     toggle().fire('click');
@@ -264,6 +292,47 @@ describe('keyboard and screen readers (#209 AC 4)', () => {
     expect(treeEl().hidden).toBe(true);
     expect(toggle().attrs['aria-expanded']).toBe('false');
     expect(t.released()).toBe(1);
+  });
+
+  it('a rescan while a row has the keyboard hands it to the new scan\'s rows once they load, unless the user moved on (Qodo 489fb0a7)', async () => {
+    let head = miniTree.head;
+    const t = panel(async () => ({ ...miniTree, head }));
+    toggle().fire('click');
+    await flush();
+    press('ArrowDown'); // src/
+    head = OTHER;
+    t.p.setLayout(layoutAt(OTHER)); // a commit lands: the old rows go while the new list loads
+    expect(rows()).toEqual([]);
+    expect(page.activeElement!.textContent).toBe('close');
+    await flush();
+    expect(page.activeElement).toBe(row('src/'));
+    press('ArrowDown');
+    expect(page.activeElement).toBe(row('test/')); // the arrows work again
+    // the user went back to the map while the next one loaded: its rows don't take the keyboard
+    head = miniTree.head;
+    t.p.setLayout(miniLayout);
+    page.activeElement = null;
+    await flush();
+    expect(names()).toHaveLength(6);
+    expect(page.activeElement).toBeNull();
+  });
+
+  it('after a failed fetch, the keyboard waits on the close button for a later list\'s rows', async () => {
+    let fail = false;
+    const t = panel(async () => { if (fail) throw new Error('down'); return { ...miniTree, head: OTHER }; });
+    t.p.setLayout(layoutAt(OTHER));
+    toggle().fire('click');
+    await flush();
+    press('ArrowDown');
+    fail = true;
+    t.p.setLayout(miniLayout); // another scan, whose list fails
+    await flush();
+    expect(note()).toBe('file list unavailable: something went wrong');
+    expect(page.activeElement!.textContent).toBe('close');
+    fail = false;
+    t.p.setLayout(layoutAt(OTHER));
+    await flush();
+    expect(page.activeElement).toBe(row('src/'));
   });
 
   it('the close button closes it the same way', async () => {

@@ -4,7 +4,8 @@
 // click, or Enter) focuses it on the map: a file's planet turned to its settlement, a folder's planet or
 // continent, else the star. A WAI-ARIA tree (arrows move, Right and Left open and close folders, Home and
 // End, Enter opens, Escape closes), crisp DOM outside the pixel pass, text only through textContent and
-// nothing animated: under reduced motion there is nothing here to stop, and the map's focus cuts.
+// nothing animated: under reduced motion there is nothing here to stop, and the map's focus cuts. A big
+// folder shows its rows a page at a time, then a row that says how many more there are and shows them.
 import type { FogView } from '../../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
 import { ViewError, type DataClient } from '../data/client.js';
@@ -12,7 +13,7 @@ import { textCanvas } from '../labels/overlay.js';
 import { fogLine } from '../model/describe.js';
 import { UI_COLOURS } from '../ui/colours.js';
 import { byId } from '../ui/dom.js';
-import { buildTree, openText, parentPath, rowLabel, rowTag, treeFog, visibleRows, type Place, type Row, type TreeDir, type TreeFog, type TreeSource } from './model.js';
+import { buildTree, openText, parentPath, rowLabel, rowTag, treeFog, visibleRows, type Place, type Row, type TreeDir, type TreeFog, type TreeMore, type TreeSource } from './model.js';
 
 export interface TreeHost {
   client: Pick<DataClient, 'files'>;
@@ -47,8 +48,9 @@ export class TreePanel {
   private tree: TreeDir | null = null;
   private rows: Row[] = [];
   private rowEls: HTMLElement[] = [];
-  /** Expanded folders and the row with the keyboard (by path): they survive reloads and fog changes. */
+  /** Expanded folders, how many children each big one shows (TREE_PAGE more per "more" row opened) and the row with the keyboard (by path): they survive reloads and fog changes. */
   private readonly expanded = new Set<string>();
+  private readonly shown = new Map<string, number>();
   private activePath: string | null = null;
   /** Why there is no tree to show: loading, a failure, a list of another scan. */
   private loadNote = '';
@@ -181,20 +183,24 @@ export class TreePanel {
     this.note.textContent = this.noteText(fog);
     const hadFocus = this.rowEls.some((r) => r === document.activeElement)
       || (this.enterRows && document.activeElement === this.closeButton); // opened while loading, and the user hasn't moved on
-    this.rows = t ? visibleRows(t, this.expanded) : [];
+    this.rows = t ? visibleRows(t, this.expanded, this.shown) : [];
     const active = this.activeIndex();
     this.activePath = this.rows[active]?.node.path ?? this.activePath;
     this.rowEls = fog ? this.rows.map((r, i) => this.rowEl(r, i, i === active, fog)) : [];
     this.list.replaceChildren(...this.rowEls);
     if (this.rows.length === 0 && t) this.list.append(el('p', 'no files', 'note'));
     if (this.rowEls.length > 0) this.enterRows = false;
-    if (hadFocus) (this.rowEls[active] ?? this.closeButton).focus({ preventScroll: true });
+    if (!hadFocus) return;
+    const row = this.rowEls[active];
+    // No rows now (a rescan's list is loading, or failed): the close button holds the keyboard until they come (Qodo 489fb0a7)
+    if (!row) this.enterRows = true;
+    (row ?? this.closeButton).focus({ preventScroll: true });
   }
 
   private rowEl(r: Row, i: number, active: boolean, fog: TreeFog): HTMLElement {
     const n = r.node;
     const open = n.kind === 'dir' && this.expanded.has(n.path);
-    const row = el('div', undefined, n.kind === 'dir' ? 'row dir' : `row file ${fog.fogged(n) ? 'fogged' : 'clear'}`);
+    const row = el('div', undefined, n.kind === 'file' ? `row file ${fog.fogged(n) ? 'fogged' : 'clear'}` : `row ${n.kind}`);
     row.setAttribute('role', 'treeitem');
     row.setAttribute('aria-level', String(r.level));
     row.setAttribute('aria-setsize', String(r.setsize));
@@ -241,9 +247,18 @@ export class TreePanel {
     if (!r || !t || !layout) return;
     this.moveTo(i, false);
     const n = r.node;
+    if (n.kind === 'more') { this.showMore(n); return; }
     const said = openText(n, this.rowFog(t), layout);
     if (n.kind === 'dir' && !this.expanded.has(n.path)) this.setExpanded(n.path, true);
     this.host.open(n.place, said);
+  }
+
+  /** Opens a "more" row: its folder shows its next children, and the keyboard moves to the first of them, in the row's place. */
+  private showMore(more: TreeMore): void {
+    const upTo = more.dir.children.length - more.hidden;
+    this.shown.set(more.dir.path, upTo + more.next);
+    this.activePath = more.dir.children[upTo]!.path;
+    this.render();
   }
 
   private key(e: KeyboardEvent): void {

@@ -5,11 +5,12 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { FogView } from '../../src/core/contract/fog.js';
 import { fibonacciCell } from '../../src/core/contract/layout.js';
+import type { FileId } from '../../src/core/snapshot/types.js';
 import { basis, focusPose, PARKED_POSE } from '../../web/src/camera/pose.js';
 import { TURNS, turnAngle } from '../../web/src/model/motion.js';
 import { surfaceDirection, systemModel } from '../../web/src/model/system.js';
 import { checkTreeSource } from '../../web/src/model/validate.js';
-import { buildTree, chartedPercent, openText, placeText, rowLabel, rowTag, treeFog, visibleRows, type TreeDir, type TreeFile, type TreeNode } from '../../web/src/tree/model.js';
+import { buildTree, chartedPercent, openText, placeText, rowLabel, rowTag, TREE_PAGE, treeFog, visibleRows, type Row, type TreeDir, type TreeFile, type TreeNode, type TreeSource } from '../../web/src/tree/model.js';
 import { miniFog, miniLayout } from '../fixtures/contract/mini.js';
 import { miniTree } from '../fixtures/tree.js';
 
@@ -125,6 +126,28 @@ describe('the rows shown (#209)', () => {
     ]);
     // a folder inside a closed one stays hidden, even when it is open itself
     expect(visibleRows(t, new Set(['src/core'])).map((r) => r.node.path)).toEqual(top.map((r) => r.node.path));
+  });
+
+  it('show a folder\'s first page of children, then a row standing for the rest; more pages show as many more (Qodo fb9c0d80)', () => {
+    const n = 2 * TREE_PAGE + 5;
+    const src: TreeSource = { head: miniTree.head, dirs: [{ id: 'd_00000000000a', path: 'big' }],
+      files: Array.from({ length: n }, (_, i) => ({ id: `f_${i.toString(16).padStart(12, '0')}` as FileId, path: `big/f${String(i).padStart(4, '0')}.ts` })) };
+    const t = buildTree(src, miniLayout);
+    const paths = (rows: Row[]) => rows.map((r) => r.node.path);
+    const closed = visibleRows(t, new Set());
+    expect(paths(closed)).toEqual(['big']);
+    const one = visibleRows(t, new Set(['big']));
+    expect(one).toHaveLength(1 + TREE_PAGE + 1);
+    expect(one.at(-1)).toEqual({ node: { kind: 'more', path: 'big/', name: `${n - TREE_PAGE} more`, dir: t.children[0], hidden: n - TREE_PAGE, next: TREE_PAGE },
+      level: 2, setsize: n, posinset: TREE_PAGE + 1, parent: 0 });
+    const two = visibleRows(t, new Set(['big']), new Map([['big', 2 * TREE_PAGE]]));
+    expect(two.at(-1)!.node).toMatchObject({ kind: 'more', hidden: 5, next: 5 });
+    expect(two.at(-2)!.node.path).toBe(`big/f${String(2 * TREE_PAGE - 1).padStart(4, '0')}.ts`);
+    const all = visibleRows(t, new Set(['big']), new Map([['big', 3 * TREE_PAGE]]));
+    expect(all).toHaveLength(1 + n); // every file, and no row for more
+    expect(all.every((r) => r.node.kind === 'file' || r.node.path === 'big')).toBe(true);
+    expect(rowLabel(one.at(-1)!.node, treeFog(t, null))).toBe(`${n - TREE_PAGE} more not shown, open to show ${TREE_PAGE}`);
+    expect(rowTag(two.at(-1)!.node, treeFog(t, null))).toBe('show 5');
   });
 });
 
