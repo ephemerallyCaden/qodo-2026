@@ -7,6 +7,7 @@ import { byCodepoint } from '../core/canonical-json.js';
 import type { FogView } from '../core/contract/fog.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import { chartedFileId, fogFrom } from '../core/fog/index.js';
+import { masteryPercent } from '../core/mastery.js';
 import type { FileEntry, FileId } from '../core/snapshot/types.js';
 import { gitRunner, tryGit } from '../scan/git.js';
 import { writeBeacon } from '../state/beacons.js';
@@ -47,8 +48,8 @@ const unknownHead = (head: string) => new CommetError(`the snapshot changed whil
 /** Paths are shown as git has them; one holding control characters is quoted so it can't drive the terminal. */
 export const label = (path: string) => (/\p{Cc}/u.test(path) ? JSON.stringify(path) : path);
 
-interface Row { name: string; files: number; fogged: number; charted: number; clear: number }
-const row = (name: string): Row => ({ name, files: 0, fogged: 0, charted: 0, clear: 0 });
+interface Row { name: string; files: number; fogged: number; haze: number; clear: number }
+const row = (name: string): Row => ({ name, files: 0, fogged: 0, haze: 0, clear: 0 });
 
 /** Per-planet, star and total counts by state, and the row each file is counted in. */
 function tally(src: FogSource, fog: FogView) {
@@ -68,7 +69,7 @@ function tally(src: FogSource, fog: FogView) {
   return { planets: [...planets.values()].sort((a, b) => byCodepoint(a.name, b.name)), star, total, rowOf };
 }
 
-const summary = (r: Row) => `${r.fogged} fogged, ${r.charted} charted, ${r.clear} clear (${r.files} files)`;
+const summary = (r: Row) => `${r.fogged} fogged, ${r.haze} haze, ${r.clear} clear (${r.files} files)`;
 
 async function notes(src: FogSource, cwd: string): Promise<string> {
   let out = '';
@@ -85,13 +86,14 @@ async function status(src: FogSource, io: Io): Promise<number> {
   const fog = await currentFog(src);
   const { planets, star, total } = tally(src, fog);
   const width = Math.max(6, ...[...planets, star].map((r) => r.name.length));
-  const line = (r: Row | Record<keyof Row, string>) =>
-    `${String(r.name).padEnd(width)}  ${[r.files, r.fogged, r.charted, r.clear].map((v) => String(v).padStart(8)).join('')}\n`;
-  const clear = planets.filter((p) => p.fogged === 0).length;
+  const cells = (r: Row) => [r.name, r.files, r.fogged, r.haze, r.clear, `${masteryPercent(r.clear, r.files)}%`];
+  const line = ([name, ...rest]: (string | number)[]) => `${String(name).padEnd(width)}  ${rest.map((v) => String(v).padStart(8)).join('')}\n`;
+  const unfogged = planets.filter((p) => p.fogged === 0).length;
   io.stdout(`fog at ${short(fog.head)}, baseline ${fog.baseline ? short(fog.baseline) : 'none'}\n`
-    + line({ name: 'planet', files: 'files', fogged: 'fogged', charted: 'charted', clear: 'clear' })
-    + planets.map(line).join('') + line(star) + line(total)
-    + `${clear} of ${planets.length} planets clear; the star holds root files, unmatched tests and test data\n`);
+    + line(['planet', 'files', 'fogged', 'haze', 'clear', 'mastery'])
+    + [...planets, star, total].map((r) => line(cells(r))).join('')
+    + `${unfogged} of ${planets.length} planets with nothing fogged. Haze is seen, clear is understood (a quiz passed); `
+    + 'the star holds root files, unmatched tests and test data\n');
   return 0;
 }
 
@@ -177,8 +179,10 @@ async function chartFile(src: FogSource, io: Io, arg: string, note: string | nul
   const now = after.files.find((f) => f.fileId === id);
   if (!was || !now) throw new CommetError('charted file is missing from the fog view', EXIT.internal);
   const before = was.state === 'fogged' ? `It was fogged (${was.reasons.join(', ')}) since ${short(was.since!)}.`
-    : was.state === 'charted' ? 'It was already charted.' : "It had no changes you didn't write.";
-  const still = now.state === 'fogged' ? ` It is still fogged (${now.reasons.join(', ')}) since ${short(now.since!)}.` : '';
+    : was.state === 'clear' ? 'It was already clear (understood).' : 'It was already haze (seen).';
+  // #201: a chart moves fogged to haze, never to clear; only a passed quiz clears.
+  const still = now.state === 'fogged' ? ` It is still fogged (${now.reasons.join(', ')}) since ${short(now.since!)}.`
+    : was.state === 'fogged' && now.state === 'haze' ? ' It is haze now: seen, not yet understood.' : '';
   io.stdout(`Charted ${label(path)} at ${short(at)}. ${before}${still}\n`);
   const where = tally({ ...src, base: r.base }, after).rowOf.get(id)!;
   io.stdout(`${where.name}: ${where.fogged} of ${where.files} files fogged\n`);

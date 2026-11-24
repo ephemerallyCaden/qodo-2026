@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/core/canonical-json.js';
 import type { FileFog, FogView } from '../src/core/contract/fog.js';
 import {
-  applyChartAction, chartedFileId, emptyChart, fileIdOf, fogBase, fogFrom, fogView, homes, parseChartAction, parseChartState, reasonsOf, unrowedChanges, type ChartState,
+  applyChartAction, applyQuizPass, chartedFileId, emptyChart, fileIdOf, fogBase, fogFrom, fogView, homes, parseChartAction, parseChartState, reasonsOf, unrowedChanges, type ChartState,
 } from '../src/core/fog/index.js';
 import { pathHistory, type PathHistory } from '../src/core/renames.js';
 import type { Commit, FileId } from '../src/core/snapshot/types.js';
@@ -43,7 +43,7 @@ describe('reasons', () => {
 });
 
 describe('fogView', () => {
-  it('fogs files with changes you did not write, from the oldest one, and leaves yours clear', () => {
+  it('fogs files with changes you did not write, from the oldest one, and leaves yours haze (seen, #201)', () => {
     const m = new Model();
     m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }, { op: 'add', path: 'src/b.ts' }, { op: 'add', path: 'README.md' }]);
     const agentSha = m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
@@ -52,10 +52,10 @@ describe('fogView', () => {
     const fog = fogOf(m, emptyChart());
     expect(fileAt(fog, 'src/a.ts')).toEqual({ fileId: fileIdOf('src/a.ts'), state: 'fogged',
       reasons: ['agent', 'self-committed-agent-written', 'unknown'], since: agentSha });
-    expect(fileAt(fog, 'src/b.ts').state).toBe('clear');
+    expect(fileAt(fog, 'src/b.ts').state).toBe('haze');
     expect(fog.files.map((f) => f.fileId)).toEqual([...fog.files.map((f) => f.fileId)].sort());
-    expect(fog).toMatchObject({ schemaVersion: 'fog.1', head: m.sha(m.head), baseline: null, star: { total: 1, fogged: 0 } });
-    expect(fog.planets).toEqual([{ dirId: m.snapshot().dirs[0]!.id, total: 2, fogged: 1 }]);
+    expect(fog).toMatchObject({ schemaVersion: 'fog.2', head: m.sha(m.head), baseline: null, charted: false, star: { total: 1, fogged: 0, haze: 1, clear: 0 } });
+    expect(fog.planets).toEqual([{ dirId: m.snapshot().dirs[0]!.id, total: 2, fogged: 1, haze: 1, clear: 0 }]);
   });
 
   it('an agent edit before your rename still fogs the renamed file (the lineage, not the path)', () => {
@@ -84,8 +84,8 @@ describe('fogView', () => {
     m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }, { op: 'add', path: 'src/b.ts' }]);
     m.commit(AGENT, [{ op: 'rename', from: 'src/a.ts', to: 'src/x/c.ts' }, { op: 'chmod', path: 'src/b.ts' }]);
     const fog = fogOf(m, emptyChart());
-    expect(fileAt(fog, 'src/x/c.ts').state).toBe('clear');
-    expect(fileAt(fog, 'src/b.ts').state).toBe('clear');
+    expect(fileAt(fog, 'src/x/c.ts').state).toBe('haze');
+    expect(fileAt(fog, 'src/b.ts').state).toBe('haze');
   });
 
   it('a chart covers changes up to its commit; a later one you did not write refogs the whole file', () => {
@@ -94,13 +94,13 @@ describe('fogView', () => {
     m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
     let chart = chartPath(m, emptyChart(), 'src/a.ts');
     expect(chart.charts).toEqual([{ fileId: fileIdOf('src/a.ts'), at: m.sha(1) }]);
-    expect(fileAt(fogOf(m, chart), 'src/a.ts')).toEqual({ fileId: fileIdOf('src/a.ts'), state: 'charted', reasons: [], since: null });
+    expect(fileAt(fogOf(m, chart), 'src/a.ts')).toEqual({ fileId: fileIdOf('src/a.ts'), state: 'haze', reasons: [], since: null });
     const mate = m.commit({ who: MATE, cls: 'human' }, [{ op: 'edit', path: 'src/a.ts' }]);
     expect(fileAt(fogOf(m, chart), 'src/a.ts')).toMatchObject({ state: 'fogged', reasons: ['teammate'], since: mate });
     chart = chartPath(m, chart, 'src/a.ts');
     // The new chart covers the old one, which is dropped.
     expect(chart.charts).toEqual([{ fileId: fileIdOf('src/a.ts'), at: mate }]);
-    expect(fileAt(fogOf(m, chart), 'src/a.ts').state).toBe('charted');
+    expect(fileAt(fogOf(m, chart), 'src/a.ts').state).toBe('haze');
   });
 
   it('a chart follows its file through a rename, not its old path', () => {
@@ -112,7 +112,7 @@ describe('fogView', () => {
     m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }]);
     m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
     const fog = fogOf(m, chart);
-    expect(fileAt(fog, 'src/b.ts').state).toBe('charted');
+    expect(fileAt(fog, 'src/b.ts').state).toBe('haze');
     // The new file at the old path was born after the chart, so the chart says nothing about it.
     expect(fileAt(fog, 'src/a.ts')).toMatchObject({ state: 'fogged', since: m.sha(4) });
   });
@@ -146,13 +146,13 @@ describe('fogView', () => {
     m.commit(AGENT, [{ op: 'add', path: 'src/b.ts' }]);
     let fog = fogOf(m, chart);
     expect(fog.baseline).toBe(m.sha(0));
-    expect(fileAt(fog, 'src/a.ts').state).toBe('charted');
-    expect(fileAt(fog, 'g.ts').state).toBe('charted');
+    expect(fileAt(fog, 'src/a.ts').state).toBe('haze');
+    expect(fileAt(fog, 'g.ts').state).toBe('haze');
     expect(fileAt(fog, 'src/b.ts')).toMatchObject({ state: 'fogged', since: m.sha(1) });
     chart = act(m, chart, { kind: 'baseline' });
     fog = fogOf(m, chart);
     expect(fog.baseline).toBe(m.sha(1));
-    expect(fog.files.every((f) => f.state === 'charted')).toBe(true);
+    expect(fog.files.every((f) => f.state === 'haze')).toBe(true);
     chart = act(m, chart, { kind: 'baseline-undo' });
     expect(fogOf(m, chart).baseline).toBe(m.sha(0));
     chart = act(m, chart, { kind: 'baseline-undo' });
@@ -180,8 +180,8 @@ describe('fogView', () => {
     // The pre-rename id as of `at` charts the renamed file; its later change is yours.
     expect(chartedFileId(base, { fileId: fileIdOf('lib/e.ts'), at: seen })).toBe(fileIdOf('lib/f.ts'));
     expect(chartedFileId(base, { fileId: fileIdOf('lib/e.ts'), at: m.sha(m.head) })).toBeNull();
-    expect(fileAt(fogFrom(base, renamed.chart), 'lib/f.ts').state).toBe('charted');
-    expect(fileAt(fogFrom(base, baseline.chart), 'lib/f.ts').state).toBe('charted');
+    expect(fileAt(fogFrom(base, renamed.chart), 'lib/f.ts').state).toBe('haze');
+    expect(fileAt(fogFrom(base, baseline.chart), 'lib/f.ts').state).toBe('haze');
     expect(applyChartAction(base, baseline.chart, { kind: 'baseline-undo', at: seen })).toEqual({ ok: true, chart: emptyChart() });
   });
 
@@ -211,6 +211,112 @@ describe('fogView', () => {
   });
 });
 
+describe('#201 fog levels: fogged, haze (seen), clear (understood)', () => {
+  /** Records a passed quiz at the model's head (or `at`), failing the test on a refusal. */
+  const pass = (m: Model, chart: ChartState, path: string, at = m.head): ChartState => {
+    const r = applyQuizPass(fogBase(m.snapshot({ at }), m.history(at)), chart, { fileId: fileIdOf(path), at: m.sha(at) });
+    if (!r.ok) throw new Error(r.error);
+    return r.chart;
+  };
+  const stateOf = (m: Model, chart: ChartState, path: string) => fileAt(fogOf(m, chart), path).state;
+  const agentFile = () => {
+    const m = new Model();
+    m.commit(YOURS, [{ op: 'add', path: 'src/a.ts' }, { op: 'add', path: 'src/b.ts' }]);
+    m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
+    return m;
+  };
+
+  it('charting moves fogged to haze, never to clear; so does the baseline', () => {
+    const m = agentFile();
+    expect(stateOf(m, emptyChart(), 'src/a.ts')).toBe('fogged');
+    expect(stateOf(m, chartPath(m, emptyChart(), 'src/a.ts'), 'src/a.ts')).toBe('haze');
+    expect(stateOf(m, act(m, emptyChart(), { kind: 'baseline' }), 'src/a.ts')).toBe('haze');
+    // Charting again, or a baseline over it, never gets a file further than haze.
+    const twice = chartPath(m, act(m, chartPath(m, emptyChart(), 'src/a.ts'), { kind: 'baseline' }), 'src/a.ts');
+    expect(fogOf(m, twice).files.every((f) => f.state === 'haze')).toBe(true);
+  });
+
+  it('a passed quiz clears a file, from haze or straight from fogged, and is recorded per file and SHA', () => {
+    const m = agentFile();
+    const charted = chartPath(m, emptyChart(), 'src/a.ts');
+    const cleared = pass(m, charted, 'src/a.ts');
+    expect(cleared).toEqual({ ...charted, clears: [{ fileId: fileIdOf('src/a.ts'), at: m.sha(1) }] });
+    expect(fileAt(fogOf(m, cleared), 'src/a.ts')).toEqual({ fileId: fileIdOf('src/a.ts'), state: 'clear', reasons: [], since: null });
+    expect(stateOf(m, pass(m, emptyChart(), 'src/a.ts'), 'src/a.ts')).toBe('clear');
+    // Your own file is haze (seen) until a quiz on it passes too.
+    expect(stateOf(m, cleared, 'src/b.ts')).toBe('haze');
+    expect(stateOf(m, pass(m, cleared, 'src/b.ts'), 'src/b.ts')).toBe('clear');
+  });
+
+  it('a cleared file whose content changes drops to haze on the next scan, whoever changed it, never straight to fogged', () => {
+    for (const author of [AGENT, YOURS, ...NOT_YOURS]) {
+      const m = agentFile();
+      const chart = pass(m, emptyChart(), 'src/a.ts');
+      expect(stateOf(m, chart, 'src/a.ts')).toBe('clear');
+      m.commit(author, [{ op: 'edit', path: 'src/a.ts' }]);
+      expect(fileAt(fogOf(m, chart), 'src/a.ts'), JSON.stringify(author)).toEqual({ fileId: fileIdOf('src/a.ts'), state: 'haze', reasons: [], since: null });
+      // More changes keep it haze: it never stays clear and never fogs from changes alone.
+      m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
+      m.commit({ who: MATE, cls: 'human' }, [{ op: 'rename', from: 'src/a.ts', to: 'src/c.ts', edit: true }]);
+      expect(stateOf(m, chart, 'src/c.ts')).toBe('haze');
+      // A new quiz on the changed version clears it again (U2).
+      expect(stateOf(m, pass(m, chart, 'src/c.ts'), 'src/c.ts')).toBe('clear');
+    }
+  });
+
+  it('a change with no content (a pure rename or mode change) leaves a cleared file clear', () => {
+    const m = agentFile();
+    const chart = pass(m, emptyChart(), 'src/a.ts');
+    m.commit(AGENT, [{ op: 'rename', from: 'src/a.ts', to: 'src/x/a.ts' }]);
+    m.commit(AGENT, [{ op: 'chmod', path: 'src/x/a.ts' }]);
+    expect(stateOf(m, chart, 'src/x/a.ts')).toBe('clear');
+  });
+
+  it('a quiz is recorded at the head it was taken at: a change that landed after it re-hazes at once', () => {
+    const m = agentFile();
+    const taken = m.head;
+    m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
+    const r = applyQuizPass(fogBase(m.snapshot(), m.history()), emptyChart(), { fileId: fileIdOf('src/a.ts'), at: m.sha(taken) });
+    if (!r.ok) throw new Error(r.error);
+    expect(stateOf(m, r.chart, 'src/a.ts')).toBe('haze');
+  });
+
+  it('charting a cleared file never lowers it', () => {
+    const m = agentFile();
+    const chart = chartPath(m, act(m, pass(m, emptyChart(), 'src/a.ts'), { kind: 'baseline' }), 'src/a.ts');
+    expect(stateOf(m, chart, 'src/a.ts')).toBe('clear');
+  });
+
+  it('history that can\'t be followed past a quiz fogs the file (Rule 1)', () => {
+    const m = agentFile();
+    const chart = pass(m, emptyChart(), 'src/a.ts');
+    m.commit(YOURS, [{ op: 'edit', path: 'src/b.ts' }]);
+    m.commit(YOURS, [{ op: 'edit', path: 'src/b.ts' }]);
+    expect(fileAt(fogOf(m, chart, { holes: new Set([2]) }), 'src/a.ts')).toMatchObject({ state: 'fogged', reasons: ['lineage-unknown'], since: m.sha(3) });
+    // A quiz before the window clears nothing in it.
+    expect(fileAt(fogOf(m, chart, { from: 2 }), 'src/a.ts').state).toBe('haze');
+  });
+
+  it('refuses a quiz pass at an unknown head or for a file not at HEAD; a newer one replaces the old', () => {
+    const m = agentFile();
+    const base = fogBase(m.snapshot(), m.history());
+    expect(applyQuizPass(base, emptyChart(), { fileId: fileIdOf('src/a.ts'), at: 'c'.repeat(40) })).toEqual({ ok: false, error: 'unknown-head', head: m.sha(1) });
+    expect(applyQuizPass(base, emptyChart(), { fileId: fileIdOf('src/zz.ts'), at: m.sha(1) })).toEqual({ ok: false, error: 'no such file at that head' });
+    const first = pass(m, emptyChart(), 'src/a.ts', 0);
+    m.commit(AGENT, [{ op: 'edit', path: 'src/a.ts' }]);
+    expect(pass(m, first, 'src/a.ts').clears).toEqual([{ fileId: fileIdOf('src/a.ts'), at: m.sha(2) }]);
+  });
+
+  it('counts each planet\'s files by level, so mastery is clear ÷ total by count', () => {
+    const m = agentFile();
+    m.commit(YOURS, [{ op: 'add', path: 'src/c.ts' }, { op: 'add', path: 'src/d.ts' }]);
+    const chart = pass(m, chartPath(m, emptyChart(), 'src/b.ts'), 'src/c.ts');
+    const fog = fogOf(m, chart);
+    expect(fog.planets).toEqual([{ dirId: m.snapshot().dirs[0]!.id, total: 4, fogged: 1, haze: 2, clear: 1 }]);
+    expect(fog.charted).toBe(true);
+  });
+});
+
 describe('lineage-unknown: where a change can\'t be tied to a file for certain, it errs to fog', () => {
   const base = () => {
     const m = new Model();
@@ -236,7 +342,7 @@ describe('lineage-unknown: where a change can\'t be tied to a file for certain, 
     const short: PathHistory = pathHistory(m.lineage().slice(1), 1);
     expect(fileAt(fogView(m.snapshot(), emptyChart(), short), 'src/b.ts').reasons).toEqual(['lineage-unknown']);
     expect(fileAt(fogView(m.snapshot(), emptyChart(), m.history(0)), 'src/a.ts').reasons).toEqual(['lineage-unknown']);
-    expect(fileAt(fogView(m.snapshot({ from: 1 }), emptyChart(), short), 'src/a.ts').state).toBe('clear');
+    expect(fileAt(fogView(m.snapshot({ from: 1 }), emptyChart(), short), 'src/a.ts').state).toBe('haze');
   });
 
   it('a gap in the window fogs every file it may have touched', () => {
@@ -245,11 +351,11 @@ describe('lineage-unknown: where a change can\'t be tied to a file for certain, 
     m.commit(YOURS, [{ op: 'add', path: 'g.ts' }]);
     for (const history of [m.history(), null]) {
       // src/b.ts has no visible change in the window (from seq 1); only the gap at seq 2 can hide one.
-      expect(fileAt(fogView(m.snapshot({ from: 1 }), emptyChart(), history), 'src/b.ts').state).toBe('clear');
+      expect(fileAt(fogView(m.snapshot({ from: 1 }), emptyChart(), history), 'src/b.ts').state).toBe('haze');
       const fog = fogView(m.snapshot({ from: 1, holes: new Set([2]) }), emptyChart(), history);
       expect(fileAt(fog, 'src/b.ts')).toEqual({ fileId: fileIdOf('src/b.ts'), state: 'fogged', reasons: ['lineage-unknown'], since: m.sha(3) });
       // A file born after the gap can't have been touched by it, when its birth is known.
-      expect(fileAt(fog, 'g.ts').state).toBe(history ? 'clear' : 'fogged');
+      expect(fileAt(fog, 'g.ts').state).toBe(history ? 'haze' : 'fogged');
     }
   });
 
@@ -258,7 +364,7 @@ describe('lineage-unknown: where a change can\'t be tied to a file for certain, 
     m.commit(YOURS, [{ op: 'add', path: 'g.ts' }]);
     const history = m.history();
     const unsure = { ...history, births: history.births.map((b) => (b.path === 'g.ts' ? { ...b, unsure: true } : b)) };
-    expect(fileAt(fogView(m.snapshot(), emptyChart(), history), 'g.ts').state).toBe('clear');
+    expect(fileAt(fogView(m.snapshot(), emptyChart(), history), 'g.ts').state).toBe('haze');
     expect(fileAt(fogView(m.snapshot(), emptyChart(), unsure), 'g.ts')).toMatchObject({ state: 'fogged', reasons: ['lineage-unknown'], since: m.sha(2) });
   });
 });
@@ -297,7 +403,9 @@ describe('planets (the rule #18 layout must match)', () => {
 
 describe('chart state on disk', () => {
   const sha = 'a'.repeat(40);
-  const good: ChartState = { schemaVersion: 'chart.1', charts: [{ fileId: 'f_000000000001', at: sha }, { fileId: 'f_000000000002', at: sha }], baselines: [sha] };
+  const good: ChartState = { schemaVersion: 'chart.2', charts: [{ fileId: 'f_000000000001', at: sha }, { fileId: 'f_000000000002', at: sha }],
+    clears: [{ fileId: 'f_000000000002', at: sha }], baselines: [sha] };
+  const v1 = { schemaVersion: 'chart.1', charts: good.charts, baselines: good.baselines };
 
   it('round-trips through canonical JSON', () => {
     expect(parseChartState(canonicalJson(good))).toEqual(good);
@@ -306,14 +414,24 @@ describe('chart state on disk', () => {
 
   it('refuses anything but ids and SHAs in the exact shape', () => {
     const bad = [
-      '{', '[]', JSON.stringify({ ...good, schemaVersion: 'chart.2' }), JSON.stringify({ ...good, extra: 1 }),
+      '{', '[]', JSON.stringify({ ...good, schemaVersion: 'chart.3' }), JSON.stringify({ ...good, extra: 1 }),
       JSON.stringify({ ...good, charts: [{ fileId: 'src/a.ts', at: sha }] }),
       JSON.stringify({ ...good, charts: [{ fileId: 'f_000000000001', at: sha, path: 'src/a.ts' }] }),
       JSON.stringify({ ...good, charts: [...good.charts].reverse() }),
       JSON.stringify({ ...good, charts: [good.charts[0], good.charts[0]] }),
       JSON.stringify({ ...good, baselines: ['2026-11-10T00:00:00Z'] }),
+      // #201: clears hold ids and SHAs only, sorted and unique, and only chart.2 has them.
+      JSON.stringify({ ...good, clears: [{ fileId: 'f_000000000002', at: 'HEAD' }] }),
+      JSON.stringify({ ...good, clears: [good.clears[0], good.clears[0]] }),
+      JSON.stringify({ ...good, clears: undefined }),
+      JSON.stringify({ ...v1, clears: [] }),
     ];
     for (const text of bad) expect(() => parseChartState(text), text).toThrow();
+  });
+
+  it('reads a chart.1 file as chart.2 with no clears: its charts stay haze (#201 migration)', () => {
+    expect(parseChartState(JSON.stringify(v1))).toEqual({ ...good, clears: [] });
+    expect(parseChartState('{"schemaVersion":"chart.1","charts":[],"baselines":[]}')).toEqual(emptyChart());
   });
 
   it('accepts exactly one ChartAction, always with the head it was decided at (#58)', () => {
@@ -370,11 +488,9 @@ function oracle(run: ReturnType<typeof randomRun>, from: number, holes: Readonly
   const files = new Map<FileId, FileFog>();
   for (const [path, uid] of m.live()) {
     const through = Math.max(baseSeq, ...charted.filter((c) => c.uid === uid && placeable(c.seq)).map((c) => c.seq));
-    let notYours = false;
     let since = Infinity;
     const why = new Set<string>();
     const fog = (seq: number, reasons: string[]) => {
-      notYours = true;
       if (seq <= through) return;
       reasons.forEach((x) => why.add(x));
       since = Math.min(since, seq);
@@ -387,7 +503,7 @@ function oracle(run: ReturnType<typeof randomRun>, from: number, holes: Readonly
     for (let seq = from; seq <= m.head; seq++) if (gap(seq) && [...m.live(seq).values()].includes(uid)) fog(seq, ['lineage-unknown']);
     const id = fileIdOf(path);
     files.set(id, why.size ? { fileId: id, state: 'fogged', reasons: [...why].sort() as FileFog['reasons'], since: m.sha(nextKnown(since)) }
-      : { fileId: id, state: notYours ? 'charted' : 'clear', reasons: [], since: null });
+      : { fileId: id, state: 'haze', reasons: [], since: null }); // no quiz in these runs, so nothing is clear (#201)
   }
   return { files, baseline: baseSeq < 0 ? null : m.sha(baseSeq) };
 }
@@ -398,7 +514,7 @@ describe('property tests (AC 7, seeded)', () => {
   it('fog matches an oracle that follows file identity through renames, deletes and re-adds', () => {
     const r = prng(0xf06);
     let fogged = 0;
-    let charted = 0;
+    let hazed = 0;
     for (let k = 0; k < RUNS; k++) {
       const run = randomRun(r, 2 + r.int(24));
       const from = r.int(Math.max(1, run.m.head));
@@ -410,11 +526,11 @@ describe('property tests (AC 7, seeded)', () => {
       for (const f of fog.files) expect(f, `run ${k}`).toEqual(want.files.get(f.fileId));
       expect(fog.star.total + fog.planets.reduce((n, p) => n + p.total, 0)).toBe(fog.files.length);
       fogged += fog.files.filter((f) => f.state === 'fogged').length;
-      charted += fog.files.filter((f) => f.state === 'charted').length;
+      hazed += fog.files.filter((f) => f.state === 'haze').length;
     }
     // Guards against a vacuous pass.
     expect(fogged).toBeGreaterThan(200);
-    expect(charted).toBeGreaterThan(200);
+    expect(hazed).toBeGreaterThan(200);
   });
 
   it('your own human commit never fogs a file', () => {
@@ -429,7 +545,7 @@ describe('property tests (AC 7, seeded)', () => {
         const was = byUid.get(uid);
         const now = fileAt(after, path);
         if (was) expect({ ...now, fileId: was.fileId }, `run ${k}`).toEqual(was);
-        else expect(now.state).toBe('clear');
+        else expect(now.state).toBe('haze');
       }
     }
   });
@@ -448,6 +564,30 @@ describe('property tests (AC 7, seeded)', () => {
       const now = [...m.live()].find(([, u]) => u === uid)![0];
       expect(fileAt(fogOf(m, chart), now), `run ${k}`).toMatchObject({ state: 'fogged', reasons: expectedReasons(author), since: sha });
     }
+  });
+
+  it('#201: a cleared file stays clear until its content changes, then is haze, never fogged, whoever changes it', () => {
+    const r = prng(0x201);
+    let rehazed = 0;
+    for (let k = 0; k < RUNS; k++) {
+      const run = randomRun(r, 1 + r.int(20));
+      const { m } = run;
+      if (m.live().size === 0) continue;
+      const [path, uid] = r.pick([...m.live()]);
+      const at = fogBase(m.snapshot(), m.history());
+      const passed = applyQuizPass(at, run.chart, { fileId: fileIdOf(path), at: m.sha(m.head) });
+      if (!passed.ok) throw new Error(passed.error);
+      expect(fileAt(fogOf(m, passed.chart), path).state, `run ${k}`).toBe('clear');
+      const from = m.head;
+      for (let j = 1 + r.int(4); j > 0; j--) m.commit(r.pick([YOURS, ...NOT_YOURS]), randomOps(m, r, ['edit', 'chmod', 'add', 'rename']));
+      const now = [...m.live()].find(([, u]) => u === uid)?.[0];
+      if (now === undefined) continue;
+      const changed = (m.touches.get(uid) ?? []).some((t) => t.seq > from && t.content);
+      const state = fileAt(fogOf(m, passed.chart), now).state;
+      expect(state, `run ${k}`).toBe(changed ? 'haze' : 'clear');
+      if (changed) rehazed++;
+    }
+    expect(rehazed).toBeGreaterThan(50);
   });
 
   it('baseline followed by undo leaves state unchanged', () => {

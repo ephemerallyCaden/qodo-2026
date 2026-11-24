@@ -84,23 +84,28 @@ const fileIds = [
   'f_000000000011', // test data (#23): counted on the star, in the fog, never drawn
   'f_000000000012',
 ].sort();
+// fog.2 (#201): two fogged files; two hazed (seen) files that aren't drawn (docs' surface overflow
+// and a test data file), so every drawn file keeps fog.1's pixels and the render goldens hold; every
+// other file clear (understood).
 const FOGGED: Record<string, FogView['files'][number]> = {
   f_00000000000d: { fileId: 'f_00000000000d', state: 'fogged', reasons: ['agent', 'self-committed-agent-written'], since: '2222222222222222222222222222222222222222' },
   f_000000000003: { fileId: 'f_000000000003', state: 'fogged', reasons: ['unknown'], since: '3333333333333333333333333333333333333333' },
-  f_00000000000a: { fileId: 'f_00000000000a', state: 'charted', reasons: [], since: null },
+  f_000000000010: { fileId: 'f_000000000010', state: 'haze', reasons: [], since: null },
+  f_000000000011: { fileId: 'f_000000000011', state: 'haze', reasons: [], since: null },
 };
 
 export const miniFog: FogView = {
-  schemaVersion: 'fog.1',
+  schemaVersion: 'fog.2',
   head: HEAD,
   baseline: null,
+  charted: true,
   files: fileIds.map((id) => FOGGED[id] ?? { fileId: id as `f_${string}`, state: 'clear', reasons: [], since: null }),
   planets: [
-    { dirId: 'd_00000000000a', total: 4, fogged: 0 },
-    { dirId: 'd_00000000000c', total: 25, fogged: 1 },
-    { dirId: 'd_00000000000d', total: 3, fogged: 0 },
+    { dirId: 'd_00000000000a', total: 4, fogged: 0, haze: 0, clear: 4 },
+    { dirId: 'd_00000000000c', total: 25, fogged: 1, haze: 0, clear: 24 },
+    { dirId: 'd_00000000000d', total: 3, fogged: 0, haze: 1, clear: 2 },
   ],
-  star: { total: 5, fogged: 1 },
+  star: { total: 5, fogged: 1, haze: 1, clear: 3 },
 };
 
 // Drone view of the same repo: a placed main session (on the src planet) with an inheriting subagent,

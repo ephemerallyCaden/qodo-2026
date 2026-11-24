@@ -40,6 +40,11 @@ describe('Phase 2 contract fixtures', () => {
     const total = miniFog.star.total + miniFog.planets.reduce((n, p) => n + p.total, 0);
     expect(total).toBe(ids.length);
     for (const f of miniFog.files) expect(f.reasons.length > 0).toBe(f.state === 'fogged');
+    // #201: each count is its levels' sum, and the files at each level add up to the counts.
+    for (const c of [...miniFog.planets, miniFog.star]) expect(c.fogged + c.haze + c.clear).toBe(c.total);
+    for (const level of ['fogged', 'haze', 'clear'] as const) {
+      expect(miniFog.files.filter((f) => f.state === level).length, level).toBe(miniFog.star[level] + miniFog.planets.reduce((n, p) => n + p[level], 0));
+    }
   });
 
   it('drones are sorted, counted, and carry no counts or paths (Rules 2 and 6)', () => {

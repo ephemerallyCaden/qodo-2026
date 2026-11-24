@@ -201,7 +201,7 @@ describe('commet beacon on a real repo', () => {
     expect(res.code).toBe(0);
     expect(res.out).toMatch(/^Charted aa\/two\.ts at /);
     expect(res.out).toContain('Beacon left on aa/two.ts: two is the config loader\n');
-    expect((await readFog(r.dir)).files.find((f) => f.fileId === fileIdOf('aa/two.ts'))!.state).toBe('charted');
+    expect((await readFog(r.dir)).files.find((f) => f.fileId === fileIdOf('aa/two.ts'))!.state).toBe('haze');
     expect(r.stored().beacons.map((b) => b.text)).toEqual(['two is the config loader']);
     expect((await r.run('chart', '--note', 'x', 'status')).err).toContain('--note goes with charting one file');
   });

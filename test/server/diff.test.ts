@@ -126,7 +126,7 @@ describe('#75 charting from the view, on a real repo', () => {
     const res = await api(API.chart, { 'content-type': 'application/json' }, 'POST', JSON.stringify({ kind: 'chart', fileId: fileIdOf('src/a.ts'), at: f.head }));
     expect(res.status).toBe(200);
     const after = await fog();
-    expect(after.files.find((x) => x.fileId === fileIdOf('src/a.ts'))!.state).toBe('charted');
+    expect(after.files.find((x) => x.fileId === fileIdOf('src/a.ts'))!.state).toBe('haze');
     expect(((await diffOf('src/a.ts', after.head)).body as DiffView)).toMatchObject({ since: null, base: null, sections: [], truncated: false, shownLines: 0 });
 
     r.git('mv', 'src/a.ts', 'src/renamed.ts');

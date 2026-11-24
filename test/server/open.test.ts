@@ -184,7 +184,7 @@ describe('commet open', () => {
       const fogNow = async () => JSON.parse((await req(s.port, { path: API.fog, headers: auth })).body) as FogView;
       const first = await fogNow();
       const h1 = head();
-      expect(first).toMatchObject({ schemaVersion: 'fog.1', head: h1, baseline: null });
+      expect(first).toMatchObject({ schemaVersion: 'fog.2', head: h1, baseline: null, charted: false });
       expect(first.files.find((f) => f.fileId === fileId)).toMatchObject({ state: 'fogged', reasons: ['unknown'] });
 
       const stream = openStream(s.port, API.events, auth);
@@ -208,11 +208,12 @@ describe('commet open', () => {
       expect(ok.status).toBe(200);
       const okBody = JSON.parse(ok.body) as { ok: true; fog: FogView };
       expect(okBody.ok).toBe(true);
-      expect(okBody.fog.files.find((f) => f.fileId === fileId)!.state).toBe('charted');
+      expect(okBody.fog.files.find((f) => f.fileId === fileId)!.state).toBe('haze');
       await waitFor(() => fogEvents() >= 1, 10_000, 'fog event after the write');
-      expect((await fogNow()).files.find((f) => f.fileId === fileId)!.state).toBe('charted');
+      expect((await fogNow()).files.find((f) => f.fileId === fileId)!.state).toBe('haze');
       const status = await cli(['chart', 'status'], repo.dir, env);
-      expect(status.out).toMatch(/^src\s+1\s+0\s+1\s+0$/m);
+      // files, fogged, haze, clear, mastery (#201)
+      expect(status.out).toMatch(/^src\s+1\s+0\s+1\s+0\s+0%$/m);
 
       // `commet chart` run while the view is open: the view hears about it too.
       const before = fogEvents();

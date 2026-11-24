@@ -1,5 +1,6 @@
 {
   "baseline": null,
+  "charted": true,
   "files": [
     {
       "fileId": "f_000000000001",
@@ -25,7 +26,7 @@
       "fileId": "f_00000000000a",
       "reasons": [],
       "since": null,
-      "state": "charted"
+      "state": "clear"
     },
     {
       "fileId": "f_00000000000b",
@@ -64,13 +65,13 @@
       "fileId": "f_000000000010",
       "reasons": [],
       "since": null,
-      "state": "clear"
+      "state": "haze"
     },
     {
       "fileId": "f_000000000011",
       "reasons": [],
       "since": null,
-      "state": "clear"
+      "state": "haze"
     },
     {
       "fileId": "f_000000000012",
@@ -232,24 +233,32 @@
   "head": "1111111111111111111111111111111111111111",
   "planets": [
     {
+      "clear": 4,
       "dirId": "d_00000000000a",
       "fogged": 0,
+      "haze": 0,
       "total": 4
     },
     {
+      "clear": 24,
       "dirId": "d_00000000000c",
       "fogged": 1,
+      "haze": 0,
       "total": 25
     },
     {
+      "clear": 2,
       "dirId": "d_00000000000d",
       "fogged": 0,
+      "haze": 1,
       "total": 3
     }
   ],
-  "schemaVersion": "fog.1",
+  "schemaVersion": "fog.2",
   "star": {
+    "clear": 3,
     "fogged": 1,
+    "haze": 1,
     "total": 5
   }
 }

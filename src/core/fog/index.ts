@@ -5,7 +5,7 @@
 // `lineage-unknown` (Rule 1).
 import { byCodepoint } from '../canonical-json.js';
 import type { UnseenFile } from '../contract/api.js';
-import type { ChartAction, ChartUnknownHead, FileFog, FogCounts, FogReason, FogView } from '../contract/fog.js';
+import type { ChartAction, ChartUnknownHead, FileFog, FogCounts, FogReason, FogView, QuizPass } from '../contract/fog.js';
 import { sha256Hex } from '../hash.js';
 import type { PathHistory, Unrowed } from '../renames.js';
 import type { Commit, CommitFile, DirId, FileEntry, FileId, PersonId, Sha, SnapshotV02 } from '../snapshot/types.js';
@@ -216,63 +216,101 @@ export function chartedFileId(base: FogBase, e: ChartEntry): FileId | null {
   return p ? base.files[p.file]!.id : null;
 }
 
-function fileFog(base: FogBase, i: number, through: number): FileFog {
+/**
+ * One file's level (#201). `through` is the seq it's reviewed through (charts, baseline and quizzes;
+ * -1: nothing yet) and `cleared` the seq of its latest quiz pass placed in the window (-1: none).
+ * - History that can't be followed past `through` (a window gap, an unsure birth, a name two files
+ *   claim) fogs it with `lineage-unknown` whatever else holds: no chart or quiz can be tied to the
+ *   file across it (Rule 1).
+ * - With a quiz pass: clear while no content change (anyone's, yours too, AC3) came after it, else
+ *   haze, never fogged: the change re-hazes it until a quiz on it clears it again (U2).
+ * - Without one: fogged while a content change that isn't yours is newer than `through`, else haze.
+ */
+function fileFog(base: FogBase, i: number, through: number, cleared: number): FileFog {
   const fileId = base.files[i]!.id;
   const why = new Set<FogReason>();
   let since = Infinity;
-  let notYours = false;
   const fog = (seq: number, reasons: FogReason[]) => {
     for (const r of reasons) why.add(r);
     since = Math.min(since, seq);
   };
-  for (const x of base.touches[i]!) {
-    if (!x.content || x.reasons.length === 0) continue;
-    notYours = true;
-    if (x.seq > through) fog(x.seq, x.reasons);
-  }
+  let lost = false;
   for (const seq of base.unknownAt[i]!) {
-    notYours = true;
-    if (seq > through) fog(seq, ['lineage-unknown']);
+    if (seq > through) {
+      fog(seq, ['lineage-unknown']);
+      lost = true;
+    }
   }
-  if (why.size === 0) return { fileId, state: notYours ? 'charted' : 'clear', reasons: [], since: null };
+  let changedSinceClear = false;
+  for (const x of base.touches[i]!) {
+    if (!x.content) continue;
+    if (x.seq > cleared) changedSinceClear = true;
+    if (x.reasons.length > 0 && x.seq > through) fog(x.seq, x.reasons);
+  }
+  if (!lost && cleared >= 0) return { fileId, state: changedSinceClear ? 'haze' : 'clear', reasons: [], since: null };
+  if (why.size === 0) return { fileId, state: 'haze', reasons: [], since: null };
   return { fileId, state: 'fogged', reasons: [...why].sort(byCodepoint), since: base.shaAt.get(since)! };
 }
 
-/** The latest baseline in the window, and per file the seq it's reviewed through (-1: nothing yet). */
-function reviewedThrough(base: FogBase, chart: ChartState): { baseline: { sha: Sha; seq: number } | null; reviewed: number[] } {
+interface Reviewed {
+  baseline: { sha: Sha; seq: number } | null;
+  /** Per file: the seq it's reviewed through by its charts, quizzes or the baseline (-1: nothing yet). */
+  reviewed: number[];
+  /** Per file: the seq of its latest quiz pass placed in the window (-1: none). */
+  cleared: number[];
+  /** Whether any chart or quiz entry is placed at a file in the window. */
+  charted: boolean;
+}
+
+/** The latest baseline in the window, and per file what it's reviewed through and cleared at. */
+function reviewedThrough(base: FogBase, chart: ChartState): Reviewed {
   let baseline: { sha: Sha; seq: number } | null = null;
   for (const sha of chart.baselines) {
     const seq = base.seqOf.get(sha);
     if (seq !== undefined && seq > (baseline?.seq ?? -1)) baseline = { sha, seq };
   }
   const reviewed = base.files.map(() => baseline?.seq ?? -1);
+  const cleared = base.files.map(() => -1);
+  let charted = false;
   for (const e of chart.charts) {
     const p = place(base, e);
-    if (p) reviewed[p.file] = Math.max(reviewed[p.file]!, p.seq);
+    if (!p) continue;
+    reviewed[p.file] = Math.max(reviewed[p.file]!, p.seq);
+    charted = true;
   }
-  return { baseline, reviewed };
+  for (const e of chart.clears) {
+    const p = place(base, e);
+    if (!p) continue;
+    // A passed quiz reviewed the file as of `at` too, so it covers what a chart there would.
+    reviewed[p.file] = Math.max(reviewed[p.file]!, p.seq);
+    cleared[p.file] = Math.max(cleared[p.file]!, p.seq);
+    charted = true;
+  }
+  return { baseline, reviewed, cleared, charted };
 }
 
-/** Per file of `base.files`, the seq it is reviewed through by its charts or the baseline (-1: nothing yet), for #211's missing-pair flags. */
+/** Per file of `base.files`, the seq it is reviewed through by its charts, quizzes or the baseline (-1: nothing yet), for #211's missing-pair flags. */
 export const reviewedSeqs = (base: FogBase, chart: ChartState): readonly number[] => reviewedThrough(base, chart).reviewed;
 
 /** The fog view for `chart` on a prepared base. */
 export function fogFrom(base: FogBase, chart: ChartState): FogView {
-  const { baseline, reviewed } = reviewedThrough(base, chart);
-  const files = base.files.map((_, i) => fileFog(base, i, reviewed[i]!));
+  const { baseline, reviewed, cleared, charted } = reviewedThrough(base, chart);
+  const files = base.files.map((_, i) => fileFog(base, i, reviewed[i]!, cleared[i]!));
+  const zero = (): FogCounts => ({ total: 0, fogged: 0, haze: 0, clear: 0 });
   const planets = new Map<DirId, FogCounts>();
-  for (const id of base.home.values()) if (id !== null && !planets.has(id)) planets.set(id, { total: 0, fogged: 0 });
-  const star: FogCounts = { total: 0, fogged: 0 };
+  for (const id of base.home.values()) if (id !== null && !planets.has(id)) planets.set(id, zero());
+  const star = zero();
   for (const f of files) {
     const id = base.home.get(f.fileId);
     const counts = id ? planets.get(id)! : star;
     counts.total++;
-    if (f.state === 'fogged') counts.fogged++;
+    counts[f.state]++;
   }
   return {
-    schemaVersion: 'fog.1',
+    schemaVersion: 'fog.2',
     head: base.snapshot.repo.head,
     baseline: baseline?.sha ?? null,
+    charted,
     files,
     planets: [...planets].sort((a, b) => byCodepoint(a[0], b[0])).map(([dirId, c]) => ({ dirId, ...c })),
     star,
@@ -280,10 +318,11 @@ export function fogFrom(base: FogBase, chart: ChartState): FogView {
 }
 
 /**
- * The fog view (contract `fog.1`). A file is fogged while any change to it since its last chart (or
- * the baseline) isn't yours: agent, mixed, teammate, unknown, or committed by you but written by an
- * agent. Only content changes count, so a pure rename never fogs. `history` is the PathHistory for the
- * snapshot's window, or null when it couldn't be read.
+ * The fog view (contract `fog.2`, #201). A file is fogged while any change to it since its last
+ * chart (or the baseline) isn't yours: agent, mixed, teammate, unknown, or committed by you but
+ * written by an agent. Only content changes count, so a pure rename never fogs. Otherwise it is haze
+ * (seen), or clear (understood) when a quiz on its current content was passed. `history` is the
+ * PathHistory for the snapshot's window, or null when it couldn't be read.
  */
 export const fogView = (snapshot: SnapshotV02, chart: ChartState, history: PathHistory | null, roots: readonly string[] = []): FogView =>
   fogFrom(fogBase(snapshot, history, roots), chart);
@@ -310,7 +349,8 @@ export function unseenRange(base: FogBase, chart: ChartState, fileId: FileId): U
   const i = base.files.findIndex((f) => f.id === fileId);
   if (i < 0) return null;
   const path = base.files[i]!.path;
-  const { since } = fileFog(base, i, reviewedThrough(base, chart).reviewed[i]!);
+  const r = reviewedThrough(base, chart);
+  const { since } = fileFog(base, i, r.reviewed[i]!, r.cleared[i]!);
   if (since === null) return { path, oldPath: null, since: null, start: null };
   // For a gap, `since` is the commit just above it (shaAt), with only gaps between: the latest commit
   // below `since` is the latest below the gap too.
@@ -336,11 +376,11 @@ export function unseenRange(base: FogBase, chart: ChartState, fileId: FileId): U
  */
 export function unseenFiles(base: FogBase, chart: ChartState, home: DirId | null): UnseenFile[] | null {
   if (home !== null && ![...base.home.values()].includes(home)) return null;
-  const { reviewed } = reviewedThrough(base, chart);
+  const { reviewed, cleared } = reviewedThrough(base, chart);
   const out: UnseenFile[] = [];
   base.files.forEach((f, i) => {
     if ((base.home.get(f.id) ?? null) !== home) return;
-    const fog = fileFog(base, i, reviewed[i]!);
+    const fog = fileFog(base, i, reviewed[i]!, cleared[i]!);
     if (fog.state === 'fogged') out.push({ fileId: f.id, path: f.path, since: fog.since!, reasons: fog.reasons });
   });
   return out.sort((a, b) => byCodepoint(a.path, b.path));
@@ -363,13 +403,34 @@ export function applyChartAction(base: FogBase, chart: ChartState, action: Chart
     if (chart.baselines.length === 0) return { ok: false, error: 'no baseline to undo' };
     return { ok: true, chart: { ...chart, baselines: chart.baselines.slice(0, -1) } };
   }
-  const entry: ChartEntry = { fileId: action.fileId, at: action.at };
+  const charts = withEntry(base, chart.charts, { fileId: action.fileId, at: action.at });
+  return charts ? { ok: true, chart: { ...chart, charts } } : { ok: false, error: 'no such file at that head' };
+}
+
+/**
+ * `list` with `entry` in, dropping older entries of the same file, which the new one covers. Null
+ * when `entry` doesn't lead to a file at HEAD.
+ */
+function withEntry(base: FogBase, list: readonly ChartEntry[], entry: ChartEntry): ChartEntry[] | null {
   const mine = place(base, entry);
-  if (!mine) return { ok: false, error: 'no such file at that head' };
-  const kept = chart.charts.filter((e) => {
+  if (!mine) return null;
+  const kept = list.filter((e) => {
     if (byEntry(e, entry) === 0) return false;
     const p = place(base, e);
     return !p || p.file !== mine.file || p.seq > mine.seq;
   });
-  return { ok: true, chart: { ...chart, charts: [...kept, entry].sort(byEntry) } };
+  return [...kept, entry].sort(byEntry);
+}
+
+/**
+ * Records a passed quiz (#201): the file `pass.fileId` names as of `pass.at` is understood as of that
+ * commit, so it is clear until its content changes again (then haze). Recorded at `at` like a chart
+ * (#58), so it never covers a change the quiz didn't ask about. Not a ChartAction: only the quiz
+ * (#203) calls it, after checking the answers (AGENTS.md Rule 6). `at` must be a commit this window
+ * knows, else `unknown-head`; the file must lead to one at HEAD.
+ */
+export function applyQuizPass(base: FogBase, chart: ChartState, pass: QuizPass): ChartApplied {
+  if (!base.seqOf.has(pass.at)) return { ok: false, error: 'unknown-head', head: base.snapshot.repo.head };
+  const clears = withEntry(base, chart.clears, { fileId: pass.fileId, at: pass.at });
+  return clears ? { ok: true, chart: { ...chart, clears } } : { ok: false, error: 'no such file at that head' };
 }

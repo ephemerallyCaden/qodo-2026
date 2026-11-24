@@ -6,12 +6,13 @@ import { join } from 'node:path';
 import { canonicalJson } from '../core/canonical-json.js';
 import type { ChartResult } from '../core/contract/api.js';
 import type { DroneDetailQuery, DroneDetailResult, DroneView } from '../core/contract/drones.js';
-import type { ChartAction, ChartUnknownHead, FogView } from '../core/contract/fog.js';
+import type { ChartAction, ChartUnknownHead, FogView, QuizPass } from '../core/contract/fog.js';
 import { isSessionEntry } from '../core/drone-detail-check.js';
 import { droneDetail, droneView } from '../core/drones.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import {
-  applyChartAction, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges, type ChartState, type FogBase,
+  applyChartAction, applyQuizPass, emptyChart, fogBase, fogFrom, parseChartAction, parseChartState, unrowedChanges,
+  type ChartApplied, type ChartState, type FogBase,
 } from '../core/fog/index.js';
 import { pathHistory, type PathHistory } from '../core/renames.js';
 import { isCanonicalRoot, parseRoots } from '../core/roots.js';
@@ -283,13 +284,22 @@ const WRITE_TRIES = 3;
  * snapshot.json changed since `src` was read, the source is reloaded first. The ok result carries the
  * base it was applied on.
  */
-export async function writeChart(src: FogSource, action: ChartAction): Promise<ChartWrite> {
+export const writeChart = (src: FogSource, action: ChartAction): Promise<ChartWrite> => writeWith(src, (base, prev) => applyChartAction(base, prev, action));
+
+/**
+ * Records a passed quiz (#201), as writeChart records a chart: under the chart lock, at the pass's
+ * own `at`. No route or CLI command calls it: the quiz (#203) does, once it has checked the answers
+ * (AGENTS.md Rule 6: fog clears only when a question is answered).
+ */
+export const writeQuizPass = (src: FogSource, pass: QuizPass): Promise<ChartWrite> => writeWith(src, (base, prev) => applyQuizPass(base, prev, pass));
+
+async function writeWith(src: FogSource, apply: (base: FogBase, prev: ChartState) => ChartApplied): Promise<ChartWrite> {
   for (let tries = 1; ; tries++) {
     const cur = src;
     const r = await withChartLock(cur.dir, async (): Promise<ChartWrite | null> => {
       if (snapshotKey(cur.dir) !== cur.key) return null;
       const prev = await readChart(cur.dir);
-      const applied = applyChartAction(cur.base, prev, action);
+      const applied = apply(cur.base, prev);
       if (!applied.ok) return applied;
       writeAtomic(join(cur.dir, CHART_FILE), canonicalJson(applied.chart));
       return { ok: true, prev, chart: applied.chart, base: cur.base };

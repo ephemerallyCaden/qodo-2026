@@ -10,9 +10,9 @@ The full loop: `commet scan` → your repo is a star system → click planets to
 
 ## Requirements
 Fog
-- [ ] U1. **Two fog levels per file.** Fogged: never seen, or changed by someone else. Haze: seen or reviewed (today's charting, or opening a file in the view). Clear: understood (passed a quiz on the current version).
-- [ ] U2. **Changes re-haze.** When a file you've cleared changes (agents, teammates), it drops back to haze, and a short quiz on just the change clears it again.
-- [ ] U3. **Mastery % per planet**, shown on the planet's panel and as its fog coverage.
+- [x] U1. **Two fog levels per file.** Fogged: never seen, or changed by someone else. Haze: seen or reviewed (today's charting, or opening a file in the view). Clear: understood (passed a quiz on the current version). (#201: `fog.2`, `chart.2`; the quiz that records a pass is #203.)
+- [x] U2. **Changes re-haze.** When a file you've cleared changes (agents, teammates), it drops back to haze, and a short quiz on just the change clears it again. (#201; the short quiz is #203.)
+- [x] U3. **Mastery % per planet**, shown on the planet's panel and as its fog coverage. (#201)
 
 Missions (in the 3D view: click a planet → "Start mission")
 - [ ] U4. **File quiz, adaptive.** It starts easy and gets harder, and the file clears once you answer a hard question right. Question types are multiple choice and "point at it" (click the planet, file or line in the map). Wrong answers get feedback on what you missed, and a retry gets fresh questions.

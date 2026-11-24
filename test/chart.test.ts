@@ -51,7 +51,8 @@ const lines = (tag: string) => [1, 2, 3].map((i) => `export const ${tag}Line${i}
 describe('commet chart on a real repo', () => {
   let r: ReturnType<typeof repo>;
   const status = async () => (await r.run('chart', 'status')).out;
-  const row = (out: string, name: string) => out.split('\n').find((l) => l.startsWith(`${name} `))!.trim().split(/\s+/).slice(1).map(Number);
+  // files, fogged, haze, clear, mastery % (#201)
+  const row = (out: string, name: string) => out.split('\n').find((l) => l.startsWith(`${name} `))!.trim().split(/\s+/).slice(1).map((x) => Number(x.replace(/%$/, '')));
 
   beforeAll(async () => {
     r = repo();
@@ -64,32 +65,32 @@ describe('commet chart on a real repo', () => {
     expect((await r.run('scan')).code).toBe(0);
   });
 
-  it('status prints fogged and charted counts per planet', async () => {
+  it('status prints the files at each fog level and the mastery per planet (#201)', async () => {
     const out = await status();
     expect(out).toContain('baseline none');
-    // files, fogged, charted, clear
-    expect(row(out, 'src')).toEqual([2, 1, 0, 1]);
-    expect(row(out, 'star')).toEqual([1, 0, 0, 1]);
-    expect(out).toContain('0 of 1 planets clear');
+    expect(out).toMatch(/planet +files +fogged +haze +clear +mastery\n/);
+    expect(row(out, 'src')).toEqual([2, 1, 1, 0, 0]);
+    expect(row(out, 'star')).toEqual([1, 0, 1, 0, 0]);
+    expect(out).toContain('0 of 1 planets with nothing fogged');
   });
 
-  it('charting a file records its id and commit (ids and SHAs only, 0600) and clears the planet', async () => {
+  it('charting a file records its id and commit (ids and SHAs only, 0600) and moves it to haze, never clear', async () => {
     const res = await r.run('chart', 'src/a.ts');
     expect(res.code).toBe(0);
-    expect(res.out).toMatch(/^Charted src\/a\.ts at [0-9a-f]{7}\. It was fogged \(unknown\) since [0-9a-f]{7}\.\nsrc: 0 of 2 files fogged\n$/);
+    expect(res.out).toMatch(/^Charted src\/a\.ts at [0-9a-f]{7}\. It was fogged \(unknown\) since [0-9a-f]{7}\. It is haze now: seen, not yet understood\.\nsrc: 0 of 2 files fogged\n$/);
     const text = readFileSync(r.chartJson(), 'utf8');
-    expect(JSON.parse(text)).toEqual({ schemaVersion: 'chart.1', charts: [{ fileId: fileIdOf('src/a.ts'), at: r.git(['rev-parse', 'HEAD']) }], baselines: [] });
+    expect(JSON.parse(text)).toEqual({ schemaVersion: 'chart.2', charts: [{ fileId: fileIdOf('src/a.ts'), at: r.git(['rev-parse', 'HEAD']) }], clears: [], baselines: [] });
     expect(text).not.toMatch(/src|\//);
     expect(statSync(r.chartJson()).mode & 0o777).toBe(0o600);
-    expect(row(await status(), 'src')).toEqual([2, 0, 1, 1]);
-    expect(await status()).toContain('1 of 1 planets clear');
+    expect(row(await status(), 'src')).toEqual([2, 0, 2, 0, 0]);
+    expect(await status()).toContain('1 of 1 planets with nothing fogged');
   });
 
   it('a rename keeps charted state across a re-scan; a later change that isn\'t yours refogs it', async () => {
     r.commit(SELF, () => r.git(['mv', 'src/a.ts', 'src/moved.ts']));
     expect((await r.run('scan')).code).toBe(0);
     let fog = await readFog(r.dir);
-    expect(fog.files.find((f) => f.fileId === fileIdOf('src/moved.ts'))).toMatchObject({ state: 'charted' });
+    expect(fog.files.find((f) => f.fileId === fileIdOf('src/moved.ts'))).toMatchObject({ state: 'haze' });
     const mate = r.commit(TEAMMATE, () => r.write('src/moved.ts', lines('alpha') + lines('mate') + lines('again')));
     expect((await r.run('scan')).code).toBe(0);
     fog = await readFog(r.dir);
@@ -102,8 +103,8 @@ describe('commet chart on a real repo', () => {
     const set = await r.run('chart', 'baseline');
     expect(set.code).toBe(0);
     expect(set.out).toContain('charting 1 fogged files, every change up to this commit');
-    expect(set.out).toContain('Now: 0 fogged, 1 charted, 2 clear (3 files)');
-    expect(row(await status(), 'src')).toEqual([2, 0, 1, 1]);
+    expect(set.out).toContain('Now: 0 fogged, 3 haze, 0 clear (3 files)');
+    expect(row(await status(), 'src')).toEqual([2, 0, 2, 0, 0]);
     const undo = await r.run('chart', 'baseline', '--undo');
     expect(undo.code).toBe(0);
     expect(undo.out).toContain('1 files are fogged again. Baseline now: none.');
@@ -118,7 +119,7 @@ describe('commet chart on a real repo', () => {
     expect(await applyChart(r.dir, { kind: 'chart', fileId: fileIdOf('src/moved.ts') })).toEqual({ ok: false, error: 'not a chart action' });
     expect(await applyChart(r.dir, { kind: 'chart', fileId: fileIdOf('nope.ts'), at })).toEqual({ ok: false, error: 'no such file at that head' });
     const ok = await applyChart(r.dir, { kind: 'chart', fileId: fileIdOf('src/moved.ts'), at });
-    expect(ok.ok && ok.fog.files.find((f) => f.fileId === fileIdOf('src/moved.ts'))!.state).toBe('charted');
+    expect(ok.ok && ok.fog.files.find((f) => f.fileId === fileIdOf('src/moved.ts'))!.state).toBe('haze');
     // The chart that the new one covers is dropped.
     expect(JSON.parse(readFileSync(r.chartJson(), 'utf8')).charts).toHaveLength(1);
   });
@@ -189,8 +190,8 @@ describe('a scan between the fog read and the chart write (#58)', () => {
       expect(res.ok && res.fog.head).toBe(unseen);
       expect(res.ok && res.fog.files.find((f) => f.fileId === fileIdOf('src/a.ts'))).toMatchObject({ state: 'fogged', since: unseen });
     }
-    expect(JSON.parse(readFileSync(r.chartJson(), 'utf8'))).toEqual({ schemaVersion: 'chart.1',
-      charts: [{ fileId: fileIdOf('src/a.ts'), at: shown.head }], baselines: [shown.head] });
+    expect(JSON.parse(readFileSync(r.chartJson(), 'utf8'))).toEqual({ schemaVersion: 'chart.2',
+      charts: [{ fileId: fileIdOf('src/a.ts'), at: shown.head }], clears: [], baselines: [shown.head] });
     expect(await applyChart(r.dir, { kind: 'baseline-undo', at: shown.head })).toMatchObject({ ok: true });
     // An `at` the snapshot doesn't know is refused, with the head to refetch at.
     const before = readFileSync(r.chartJson(), 'utf8');
