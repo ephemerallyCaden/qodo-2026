@@ -7,7 +7,7 @@ import type { FogView } from '../../../src/core/contract/fog.js';
 import { palette } from '../../../src/core/palette.js';
 import { ASPECT, FAR, FOV_DEG, NEAR, basis, fovOf, project, projectedRadius, systemDepth, type OrbitPose } from '../camera/pose.js';
 import type { DepthStretch } from '../model/depth.js';
-import { fileFogAt, foggedBy, planetPulse, planetTally, type FogEvent } from '../model/fog.js';
+import { fileFogAt, levelBy, planetPulse, planetTally, type FogEvent } from '../model/fog.js';
 import { loopPhase, TURNS, turnAngle } from '../model/motion.js';
 import { frameWidth } from '../model/pixels.js';
 import { mulberry32 } from '../model/prng.js';
@@ -126,9 +126,9 @@ export class SystemScene {
   private poseFog(frame: number): void {
     FOG_SHARED.uFogPhase.value = loopPhase(frame);
     if (!this.fogDirty && this.fogEvents.length === 0) return;
-    const fogged = foggedBy(this.fog);
+    const level = levelBy(this.fog);
     const events = new Map(this.fogEvents.map((e) => [e.fileId, e]));
-    const at = (id: string) => fileFogAt(fogged(id), events.get(id), frame);
+    const at = (id: string) => fileFogAt(level(id), events.get(id), frame);
     for (const p of this.planets) {
       const moonIds = p.model.moons.map((m) => m.fileId);
       p.fog.set(p.fog.plan.fileIds.map(at), planetPulse(p.fog.plan, events, moonIds, planetTally(this.fog, p.model.dirId)?.fogged ?? null, frame));

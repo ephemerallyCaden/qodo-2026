@@ -1,7 +1,9 @@
 // The text the view shows beside the pixels: the info panel and the screen-reader status. Every
 // count the layout caps is shown as "not drawn", never hidden (Rule 1). Repo totals only, no
-// per-person figures and no scores (Rule 6). Pure.
+// per-person figures and no scores (Rule 6); a planet's mastery (#201, U3) is the share of its own
+// files understood, the human's call (understanding mode, 2026-11-23). Pure.
 import type { FogView } from '../../../src/core/contract/fog.js';
+import { masteryPercent } from '../../../src/core/mastery.js';
 import { beaconLine, type BeaconSpot } from './beacons.js';
 import { planetTally, systemTally, type FogTally } from './fog.js';
 import type { PlanetModel, SystemModel } from './system.js';
@@ -17,11 +19,21 @@ export function bandLine(p: PlanetModel): string {
 }
 
 /**
- * Fog of war in words (F2: coverage, exact): the view's own counts, unplaced files and moons
- * included. Private map coverage, never a score. Without a usable fog view nothing is known, and
- * every file is drawn uncharted (Rule 1).
+ * Fog of war in words (F2: coverage, exact): the view's own counts by level (#201), unplaced files
+ * and moons included. Private map coverage, never a score. Without a usable fog view nothing is
+ * known, and every file is drawn uncharted (Rule 1).
  */
-export const fogLine = (t: FogTally | null): string => (t ? `uncharted: ${t.fogged} of ${plural(t.total, 'file')}` : 'uncharted: unknown, so every file is drawn uncharted');
+export const fogLine = (t: FogTally | null): string => (t
+  ? `uncharted: ${t.fogged} of ${plural(t.total, 'file')}; ${t.haze} haze (seen), ${t.clear} clear (understood)`
+  : 'uncharted: unknown, so every file is drawn uncharted');
+
+/**
+ * Mastery (#201, U3): the planet's cleared files over all its files, by count, as its fog draws them
+ * (clear files carry no cloud). Rounded down, so it never says 100% while a file isn't clear.
+ */
+export const masteryLine = (t: FogTally | null): string => (t
+  ? `mastery: ${masteryPercent(t.clear, t.total)}% (${t.clear} of ${plural(t.total, 'file')} understood)`
+  : 'mastery: unknown, so every file is drawn uncharted');
 
 export function planetLines(p: PlanetModel, fog: FogView | null = null): string[] {
   const c = p.counts;
@@ -30,7 +42,8 @@ export function planetLines(p: PlanetModel, fog: FogView | null = null): string[
   lines.push(c.qodoUnknown || c.qodoOpen === null ? 'qodo findings unknown' : plural(c.qodoOpen, 'open qodo finding'));
   lines.push(`${plural(c.moons, 'test moon')}${notDrawn(c.moonOverflow)}`);
   lines.push(`${plural(c.settlements, 'file')} on the surface${c.surfaceOverflow > 0 ? ` (+${c.surfaceOverflow} unplaced)` : ''}`);
-  lines.push(fogLine(fog ? planetTally(fog, p.dirId) : null));
+  const tally = fog ? planetTally(fog, p.dirId) : null;
+  lines.push(masteryLine(tally), fogLine(tally));
   return lines;
 }
 

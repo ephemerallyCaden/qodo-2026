@@ -5,7 +5,7 @@ import { API, TOKEN_HEADER, type DiffView } from '../../src/core/contract/api.js
 import type { FogView } from '../../src/core/contract/fog.js';
 import { serverClient, ViewError } from '../../web/src/data/client.js';
 import { checkDiff, checkUnseen } from '../../web/src/model/validate.js';
-import { baselineState, diffFreshness, diffNotes, fogKey, gitDiffCommand, lineKind, shellWord } from '../../web/src/model/review.js';
+import { baselineState, diffFreshness, diffNotes, fogKey, gitDiffCommand, lineKind, seenOnOpen, shellWord } from '../../web/src/model/review.js';
 import { miniFog } from '../fixtures/contract/mini.js';
 
 const A = 'a'.repeat(40);
@@ -22,13 +22,13 @@ const fogWith = (over: Partial<FogView>): FogView => ({ ...miniFog, ...over });
 
 describe('#75 baseline offer', () => {
   it('is offered only with no chart state and something fogged, and not again once dismissed', () => {
-    const fresh = fogWith({ baseline: null, files: miniFog.files.map((f) => (f.state === 'charted' ? { ...f, state: 'clear' as const } : f)) });
+    const fresh = fogWith({ baseline: null, charted: false });
     expect(baselineState(fresh, false)).toBe('offer');
     expect(baselineState(fresh, true)).toBeNull();
-    // A charted file is chart state: no offer.
-    expect(baselineState(fogWith({ baseline: null }), false)).toBe(miniFog.files.some((f) => f.state === 'charted') ? null : 'offer');
+    // A charted file (or a passed quiz) is chart state: no offer. fog.2 says so in `charted` (#201).
+    expect(baselineState(fogWith({ baseline: null, charted: true }), false)).toBeNull();
     // Nothing fogged: nothing to offer.
-    expect(baselineState(fogWith({ baseline: null, files: miniFog.files.map((f) => ({ ...f, state: 'clear' as const, reasons: [], since: null })) }), false)).toBeNull();
+    expect(baselineState(fogWith({ baseline: null, charted: false, files: miniFog.files.map((f) => ({ ...f, state: 'haze' as const, reasons: [], since: null })) }), false)).toBeNull();
     // A baseline exists: show it with its undo, dismissed or not.
     expect(baselineState(fogWith({ baseline: A }), true)).toBe('set');
   });
@@ -42,6 +42,10 @@ describe('#75 fogKey', () => {
     expect(fogKey(reasons)).not.toBe(key);
     expect(fogKey(fogWith({ head: B }))).not.toBe(key);
     expect(fogKey(fogWith({ baseline: A }))).not.toBe(key);
+    // #201: a level and the counts by level are shown too.
+    expect(fogKey(fogWith({ files: miniFog.files.map((f) => (f.state === 'clear' ? { ...f, state: 'haze' as const } : f)) }))).not.toBe(key);
+    expect(fogKey(fogWith({ star: { ...miniFog.star, haze: 0, clear: 4 } }))).not.toBe(key);
+    expect(fogKey(fogWith({ charted: false }))).not.toBe(key);
   });
 });
 
@@ -51,9 +55,27 @@ describe('#75 diff freshness', () => {
     expect(diffFreshness(view(), fogWith({ head: B }))).toBe('newer');
     const moved = fogWith({ files: miniFog.files.map((f) => (f.fileId === FILE.fileId ? { ...f, since: A } : f)) });
     expect(diffFreshness(view(), moved)).toBe('stale');
-    const charted = fogWith({ files: miniFog.files.map((f) => (f.fileId === FILE.fileId ? { ...f, state: 'charted' as const, reasons: [], since: null } : f)) });
+    const charted = fogWith({ files: miniFog.files.map((f) => (f.fileId === FILE.fileId ? { ...f, state: 'haze' as const, reasons: [], since: null } : f)) });
     expect(diffFreshness(view(), charted)).toBe('stale');
     expect(diffFreshness(view(), fogWith({ files: miniFog.files.filter((f) => f.fileId !== FILE.fileId) }))).toBe('stale');
+  });
+
+  it('#201: after opening the diff charted it (seen), the file being haze is that chart, not a moved range', () => {
+    const seen = fogWith({ files: miniFog.files.map((f) => (f.fileId === FILE.fileId ? { ...f, state: 'haze' as const, reasons: [], since: null } : f)) });
+    expect(diffFreshness(view(), seen, true)).toBe('current');
+    expect(diffFreshness(view(), { ...seen, head: B }, true)).toBe('newer');
+    // Fogged again from a newer change: the range moved, so it waits for a reload.
+    const refogged = fogWith({ files: miniFog.files.map((f) => (f.fileId === FILE.fileId ? { ...f, since: A } : f)) });
+    expect(diffFreshness(view(), refogged, true)).toBe('stale');
+    expect(diffFreshness(view(), fogWith({ files: miniFog.files.filter((f) => f.fileId !== FILE.fileId) }), true)).toBe('stale');
+  });
+
+  it('#201 (AC2): opening a diff charts it only when the panel shows the whole change as text', () => {
+    expect(seenOnOpen(view())).toBe(true);
+    expect(seenOnOpen(view({ truncated: true }))).toBe(false);
+    expect(seenOnOpen(view({ since: null }))).toBe(false);
+    expect(seenOnOpen(view({ sections: [] }))).toBe(false);
+    expect(seenOnOpen(view({ sections: [{ status: 'modified', path: 'x.png', oldPath: null, binary: true, hunks: [] }] }))).toBe(false);
   });
 });
 

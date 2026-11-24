@@ -88,25 +88,33 @@ describe('checkLayout', () => {
 
 describe('checkFog', () => {
   it('refuses a fog view with its required fields missing', () => {
-    const c = checkFog({ schemaVersion: 'fog.1', head: 'x', files: [], planets: [{}], star: {} });
+    const c = checkFog({ schemaVersion: 'fog.2', head: 'x', files: [], planets: [{}], star: {} });
     expect(c.ok ? [] : c.errors).toEqual([
       'fog.baseline must be a non-empty string',
+      'fog.charted must be a boolean',
       'fog.planets[0].dirId must be a non-empty string',
       'fog.planets[0].total must be an integer',
       'fog.planets[0].fogged must be an integer',
+      'fog.planets[0].haze must be an integer',
+      'fog.planets[0].clear must be an integer',
       'fog.star.total must be an integer',
-      'fog.star.fogged must be an integer',
+      '…and 3 more', // the star's fogged, haze and clear: the list stays short (MAX_ERRORS)
     ]);
-    const counts = checkFog({ ...structuredClone(miniFog), star: { total: 1, fogged: 2 } });
-    expect(counts.ok ? [] : counts.errors).toEqual(['fog.star.fogged must not exceed total']);
+    const counts = checkFog({ ...structuredClone(miniFog), star: { total: 1, fogged: 2, haze: 0, clear: 0 } });
+    expect(counts.ok ? [] : counts.errors).toEqual(['fog.star fogged, haze and clear must add up to total']);
+  });
+
+  it('#201: refuses a fog.1 view (its clear meant "nothing to review", not "understood"), so the view draws everything fogged (Rule 1)', () => {
+    const old = { ...structuredClone(miniFog), schemaVersion: 'fog.1' };
+    expect(checkFog(old)).toEqual({ ok: false, errors: ['fog.schemaVersion must be "fog.2" (got "fog.1")'] });
   });
 
   it('accepts the contract fixture and refuses a broken one', () => {
     expect(checkFog(structuredClone(miniFog)).ok).toBe(true);
-    const c = checkFog({ ...structuredClone(miniFog), files: [{ fileId: 'x', state: 'hazy' }] });
+    const c = checkFog({ ...structuredClone(miniFog), files: [{ fileId: 'x', state: 'charted' }] });
     expect(c.ok ? [] : c.errors).toEqual([
       'fog.files[0].fileId must start with "f_"',
-      'fog.files[0].state must be one of clear, charted, fogged',
+      'fog.files[0].state must be one of fogged, haze, clear',
       'fog.files[0].reasons must be an array',
       'fog.files[0].since must be a non-empty string',
     ]);

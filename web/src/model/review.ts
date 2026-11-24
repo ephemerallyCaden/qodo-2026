@@ -13,8 +13,7 @@ export const shortSha = (sha: string): string => sha.slice(0, 7);
 export function baselineState(fog: FogView, dismissed: boolean): 'offer' | 'set' | null {
   if (fog.baseline !== null) return 'set';
   if (dismissed) return null;
-  const charted = fog.files.some((f) => f.state === 'charted');
-  return !charted && fog.files.some((f) => f.state === 'fogged') ? 'offer' : null;
+  return !fog.charted && fog.files.some((f) => f.state === 'fogged') ? 'offer' : null;
 }
 
 /**
@@ -22,15 +21,25 @@ export function baselineState(fog: FogView, dismissed: boolean): 'offer' | 'set'
  * scan landed, but the file's oldest unseen change is the same, so charting at the diff's own head
  * still covers exactly what it shows (#58). `stale`: the unseen range itself moved (a baseline undone,
  * a chart from the CLI) or the file is gone, so Chart waits for a reload: it could otherwise clear
- * changes the diff never showed (Rule 1).
+ * changes the diff never showed (Rule 1). `seen` (#201): opening this diff charted it at its own head,
+ * so the file being no longer fogged is that chart, not a moved range; once it is fogged again (a
+ * newer change), the range did move.
  */
-export function diffFreshness(view: DiffView, fog: FogView): 'current' | 'newer' | 'stale' {
+export function diffFreshness(view: DiffView, fog: FogView, seen = false): 'current' | 'newer' | 'stale' {
   const f = fog.files.find((x) => x.fileId === view.fileId);
   if (!f) return 'stale';
   const since = f.state === 'fogged' ? f.since : null;
-  if (since !== view.since) return 'stale';
+  if (since !== view.since && !(seen && f.state !== 'fogged')) return 'stale';
   return fog.head === view.at ? 'current' : 'newer';
 }
+
+/**
+ * Whether opening a diff charts its file (#201, AC2: opening a file in the review panel moves it from
+ * fogged to haze, never to clear): only when the panel shows the whole unseen change as text. A cut
+ * diff, a binary part or a change git shows no text for waits for Chart, which says so.
+ */
+export const seenOnOpen = (view: DiffView): boolean =>
+  view.since !== null && !view.truncated && view.sections.length > 0 && view.sections.every((s) => !s.binary);
 
 /** A path as one POSIX shell word: single-quoted, so nothing in it is ever run or expanded. */
 export const shellWord = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -67,6 +76,7 @@ export function sectionTitle(s: DiffView['sections'][number]): string {
 }
 
 /** What the panel shows of a fog: head, baseline, each file's state, range and reasons, and the planets. Equal keys, nothing to redo. */
-export const fogKey = (fog: FogView): string => [fog.head, fog.baseline ?? '',
+export const fogKey = (fog: FogView): string => [fog.head, fog.baseline ?? '', String(fog.charted),
   fog.files.map((f) => `${f.fileId}:${f.state}:${f.since ?? ''}:${f.reasons.join('+')}`).join(','),
-  fog.planets.map((p) => `${p.dirId}:${p.fogged}/${p.total}`).join(','), `${fog.star.fogged}/${fog.star.total}`].join('|');
+  fog.planets.map((p) => `${p.dirId}:${p.fogged}/${p.haze}/${p.clear}/${p.total}`).join(','),
+  `${fog.star.fogged}/${fog.star.haze}/${fog.star.clear}/${fog.star.total}`].join('|');

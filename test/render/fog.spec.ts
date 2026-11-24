@@ -1,6 +1,6 @@
 // Fog of war on the real view (#74, R5; D2d, docs/features/fog-of-war-art.md). The goldens
-// (view.spec.ts) are fogged frames of mini; these check what a golden can't say on its own: clear
-// and charted draw the same, fog without evidence covers everything (Rule 1), the veil and its
+// (view.spec.ts) are fogged frames of mini; these check what a golden can't say on its own: haze
+// (#201) is thin cloud between clear and fogged, fog without evidence covers everything (Rule 1), the veil and its
 // limb are palette colours, teal shows only on events, the hatch drift closes the loop (on a planet
 // followed along its orbit, #60), and fog costs no draw call or triangle.
 import { expect, test } from '@playwright/test';
@@ -40,20 +40,37 @@ function count(r: Rendered, colours: readonly string[], box?: number): number {
 }
 const VEILS = Object.values(palette.fog.veil).flatMap((v) => [v.lit, v.night, v.hatch, v.line]);
 
-test('clear and charted draw the same pixels (contract: the renderer draws them the same)', async ({ page }) => {
+/** mini with every drawn file haze (#201: seen, not yet understood). */
+const allHaze = (layout = MINI): FogView => fogFor(layout, () => false, () => true);
+
+test('#201: haze draws thin cloud, distinct from clear (no cloud) and from fogged, in palette colours and no veil', async ({ page }) => {
   const view = await openView(page, systemView());
-  const charted: FogView = { ...MINI_FOG, files: MINI_FOG.files.map((f) => (f.state === 'clear' ? { ...f, state: 'charted' } : f)) };
-  const allClear = fogFor(MINI), allCharted: FogView = { ...allClear, files: allClear.files.map((f) => ({ ...f, state: 'charted' })) };
-  for (const extra of [{}, focus('src')]) {
-    const [a] = await render(view, { ...MINI_INPUT, ...extra }, [0]);
-    const [b] = await render(view, { layout: MINI, fog: charted, ...extra }, [0]);
-    const [c] = await render(view, { layout: MINI, fog: allClear, ...extra }, [0]);
-    const [d] = await render(view, { layout: MINI, fog: allCharted, ...extra }, [0]);
-    for (const r of [a, b, c, d]) assertRendered(r!.pixels, r!.stats);
-    expect(diffPixels(a!.pixels, b!.pixels)).toBe(0);
-    expect(diffPixels(c!.pixels, d!.pixels)).toBe(0);
-    expect(diffPixels(a!.pixels, c!.pixels), 'not vacuous: the fogged files show').toBeGreaterThan(0);
+  for (const [what, extra] of [['src focused', focus('src')], ['web focused', focus('web')]] as const) {
+    const base = { layout: MINI, ...extra, depthFade: false };
+    const [clear] = await render(view, { ...base, fog: fogFor(MINI) }, [0]);
+    const [haze] = await render(view, { ...base, fog: allHaze() }, [0]);
+    const [fogged] = await render(view, { ...base, fog: fogFor(MINI, () => true) }, [0]);
+    for (const r of [clear, haze, fogged]) assertRendered(r!.pixels, r!.stats);
+    expect(paletteProblems(haze!.pixels), what).toEqual([]);
+    const thin = diffPixels(clear!.pixels, haze!.pixels), veil = diffPixels(clear!.pixels, fogged!.pixels);
+    console.log(`${what}: haze differs from clear by ${thin} px, fogged by ${veil} px; veil px clear ${count(clear!, VEILS)}, haze ${count(haze!, VEILS)}`);
+    expect(thin, `${what}: haze draws something (not vacuous)`).toBeGreaterThan(0);
+    expect(diffPixels(haze!.pixels, fogged!.pixels), `${what}: haze is not fogged`).toBeGreaterThan(0);
+    expect(thin, `${what}: haze is thin, far less than the veil`).toBeLessThan(veil / 2);
+    expect(count(haze!, VEILS), `${what}: haze adds no veil colour`).toBeLessThanOrEqual(count(clear!, VEILS));
   }
+  expect(view.errors).toEqual([]);
+});
+
+test('#201: haze under reduced motion holds still, and costs no draw call or triangle', async ({ page }) => {
+  const view = await openView(page, systemView());
+  const input = { layout: MINI, fog: allHaze(), ...focus('src'), reducedMotion: true };
+  const [a, b] = await render(view, input, [0, 180]);
+  for (const r of [a, b]) assertRendered(r!.pixels, r!.stats);
+  expect(diffPixels(a!.pixels, b!.pixels)).toBe(0);
+  const [clear] = await render(view, { layout: MINI, fog: fogFor(MINI), ...focus('src') }, [0]);
+  const [haze] = await render(view, { layout: MINI, fog: allHaze(), ...focus('src') }, [0]);
+  expect(haze!.stats).toEqual(clear!.stats);
   expect(view.errors).toEqual([]);
 });
 
@@ -85,7 +102,7 @@ test('a fogged frame is palette-only with the depth fade off: the veil, its line
 
 test('teal stays off the frame at rest (it marks events only)', async ({ page }) => {
   const view = await openView(page, systemView());
-  for (const input of [{ ...MINI_INPUT }, { ...MINI_INPUT, ...focus('web') }, { layout: MINI, fog: null, ...focus('src') }]) {
+  for (const input of [{ ...MINI_INPUT }, { ...MINI_INPUT, ...focus('web') }, { layout: MINI, fog: null, ...focus('src') }, { layout: MINI, fog: allHaze(), ...focus('src') }]) {
     for (const r of await render(view, { ...input, depthFade: false }, [0, LATER])) {
       assertRendered(r.pixels, r.stats); // a blank frame has no teal either
       expect(count(r, palette.accent.teal)).toBe(0);
@@ -132,7 +149,7 @@ test('fog adds no draw call and no triangle', async ({ page }) => {
 // Fog hides health (#74, Qodo local r1 and PR #117 r1): a fully fogged lava world shows none of the
 // lava look's own colours, neither its glowing fissures nor its smoke, so the ground, the shadow pass
 // and the clouds all say the same thing. The fade is off, so every pixel is a palette colour.
-test('a fully fogged lava planet shows no fissure glow or smoke colour at hero focus; charted looks like clear', async ({ page }) => {
+test('a fully fogged lava planet shows no fissure glow or smoke colour at hero focus; hazed, its health shows through', async ({ page }) => {
   const lava = { ...MINI, planets: MINI.planets.map((p) => (p.path === 'src' ? { ...p, health: { ...p.health, band: 'lava' as const } } : p)) };
   const view = await openView(page, systemView());
   const base = { layout: lava, ...focus('src'), depthFade: false };
@@ -141,8 +158,8 @@ test('a fully fogged lava planet shows no fissure glow or smoke colour at hero f
   const [clear] = await render(view, { ...base, fog: fogFor(lava) }, [0]);
   const [fogged] = await render(view, { ...base, fog: fogFor(lava, () => true) }, [0]);
   const [fogged90] = await render(view, { ...base, ...focus('src', 90), fog: fogFor(lava, () => true) }, [90]); // followed to frame 90 (#60)
-  const [charted] = await render(view, { ...base, fog: { ...fogFor(lava), files: fogFor(lava).files.map((f) => ({ ...f, state: 'charted' as const })) } }, [0]);
-  for (const r of [clear, fogged, charted]) assertRendered(r!.pixels, r!.stats);
+  const [hazed] = await render(view, { ...base, fog: allHaze(lava) }, [0]);
+  for (const r of [clear, fogged, hazed]) assertRendered(r!.pixels, r!.stats);
   // The star glows in the same colours, so only the middle of the frame, where the planet is, is counted.
   const BOX = 0.3;
   const glow = (r: Rendered) => count(r, palette.world.glow, BOX), all = (r: Rendered) => count(r, LAVA, BOX);
@@ -151,7 +168,8 @@ test('a fully fogged lava planet shows no fissure glow or smoke colour at hero f
   expect(all(clear!), 'not vacuous: smoke and ash ground show').toBeGreaterThan(glow(clear!));
   expect(all(fogged!), 'fogged: no glow or smoke colour').toBe(0);
   expect(all(fogged90!), 'fogged, a later frame').toBe(0);
-  expect(diffPixels(clear!.pixels, charted!.pixels)).toBe(0);
+  // #201: haze is seen ground, so its health reads through the thin cloud.
+  expect(glow(hazed!), 'hazed: the glow shows through').toBeGreaterThan(0);
   expect(view.errors).toEqual([]);
 });
 

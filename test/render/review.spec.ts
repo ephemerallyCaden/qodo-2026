@@ -308,6 +308,33 @@ test.describe('#75 review panel', () => {
   });
 });
 
+/** The charts in chart.json (none when there is no file yet). */
+async function chartsOnDisk(f: Fixture): Promise<unknown[]> {
+  const file = join(f.dir, '.git', 'commet', 'chart.json');
+  return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as { charts: unknown[] }).charts : [];
+}
+/** #201: the one chart opening `path`'s whole diff writes, at the head the view showed. */
+const openedOnly = async (f: Fixture, path: string) => [{ fileId: fileIdOf(path), at: (await readFog(f.dir)).head }];
+
+test.describe('#201 opening a file in the review panel', () => {
+  test('opening a whole diff moves its file from fogged to haze, never clear, and it leaves the unseen list', async ({ page }) => {
+    const f = await fixture();
+    await open(page, f, 'aa');
+    expect(await listed(page)).toEqual(['aa/one.ts', 'aa/two.ts']);
+    await openFile(page, 'aa/one.ts');
+    await page.waitForSelector('#panel pre.diff');
+    await expect.poll(async () => (await readFog(f.dir)).files.find((x) => x.fileId === fileIdOf('aa/one.ts'))!.state, { timeout: 10_000 }).toBe('haze');
+    expect(await chartsOnDisk(f)).toEqual(await openedOnly(f, 'aa/one.ts'));
+    await expect.poll(() => panelText(page), { timeout: 10_000 }).toContain('Seen: opening this diff charted it, so it is haze now');
+    // The diff stays open and chartable (a note can still be left), never marked out of date by its own chart.
+    expect(await panelText(page)).not.toContain('out of date');
+    expect(await has(page, 'chart')).toBe(true);
+    await page.click('#panel button[data-key="back"]');
+    await expect.poll(() => listed(page), { timeout: 10_000 }).toEqual(['aa/two.ts']);
+    expect((await readFog(f.dir)).files.some((x) => x.state === 'clear')).toBe(false);
+  });
+});
+
 test.describe('#79 captain\'s log', () => {
   const beaconsFile = (f: Fixture) => join(f.dir, '.git', 'commet', 'beacons.json');
   const status = (page: Page) => page.$eval('#status', (s) => s.textContent ?? '');
@@ -357,7 +384,7 @@ test.describe('#79 captain\'s log', () => {
     expect(await page.$eval('#panel input[data-key="note"]', (i) => (i as HTMLInputElement).value)).toBe('safe\u202etxt.exe');
     expect(await activeInPanel(page)).toBe('INPUT:note');
     expect(f.posted).toEqual([]);
-    expect(existsSync(join(f.dir, '.git', 'commet', 'chart.json'))).toBe(false);
+    expect(await chartsOnDisk(f)).toEqual(await openedOnly(f, 'aa/one.ts'));
   });
 
   test('a note refused on Enter keeps the diff where the reader was, and the field as typed (#170)', async ({ page }) => {
@@ -375,7 +402,7 @@ test.describe('#79 captain\'s log', () => {
     expect(await page.$eval('#panel input[data-key="note"]', (i) => (i as HTMLInputElement).value)).toBe(note);
     expect(await activeInPanel(page)).toBe('INPUT:note');
     expect(f.posted).toEqual([]);
-    expect(existsSync(join(f.dir, '.git', 'commet', 'chart.json'))).toBe(false);
+    expect(await chartsOnDisk(f)).toEqual(await openedOnly(f, 'aa/one.ts'));
   });
 
   test('Enter in the note charts, and what was typed survives the panel redrawing under it', async ({ page }) => {
@@ -409,7 +436,9 @@ test.describe('#79 captain\'s log', () => {
       i.dispatchEvent(safari);
     });
     await page.waitForTimeout(1500);
-    expect(existsSync(join(f.dir, '.git', 'commet', 'chart.json'))).toBe(false);
+    // No chart from the Enter: only the one opening the diff wrote (#201), and no note.
+    expect(await chartsOnDisk(f)).toEqual(await openedOnly(f, 'aa/one.ts'));
+    expect(f.posted).toEqual([]);
     expect(await page.$('#panel pre.diff')).not.toBeNull();
     await page.focus('#panel input[data-key="note"]');
     await page.keyboard.press('Enter');
@@ -429,6 +458,9 @@ test.describe('#79 captain\'s log', () => {
     await openFile(page, 'aa/two.ts');
     await page.waitForSelector('#panel input[data-key="note"]');
     await page.focus('#panel input[data-key="note"]');
+    // #201: opening aa/two.ts charts it; let that write and its announcement land before the beacon's answer.
+    await expect.poll(async () => (await readFog(f.dir)).files.find((x) => x.fileId === fileIdOf('aa/two.ts'))!.state, { timeout: 10_000 }).toBe('haze');
+    await page.waitForTimeout(500);
     g.open();
     await expect.poll(() => status(page), { timeout: 10_000 }).toContain('Charted, but the beacon was not left: no such file at that head.');
     await page.waitForTimeout(300);

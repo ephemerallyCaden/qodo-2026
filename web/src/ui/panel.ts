@@ -11,7 +11,7 @@ import type { ChartAction, FogView } from '../../../src/core/contract/fog.js';
 import type { DirId } from '../../../src/core/snapshot/types.js';
 import { ViewError, type DataClient } from '../data/client.js';
 import { textCanvas } from '../labels/overlay.js';
-import { baselineState, diffFreshness, diffNotes, fogKey, gitDiffCommand, lineKind, sectionTitle, shortSha } from '../model/review.js';
+import { baselineState, diffFreshness, diffNotes, fogKey, gitDiffCommand, lineKind, sectionTitle, seenOnOpen, shortSha } from '../model/review.js';
 import { UI_COLOURS } from './colours.js';
 import { byId } from './dom.js';
 
@@ -38,9 +38,10 @@ const say = (e: unknown) => (e instanceof ViewError ? e.title : 'something went 
 
 /**
  * An open diff: what it was opened from, the answer, its lines and its captain's log field, each built
- * once (they never depend on the text scale, and a rebuild must keep what the user typed).
+ * once (they never depend on the text scale, and a rebuild must keep what the user typed). `seen`
+ * (#201): opening it charted the file at the diff's head, so it is haze now.
  */
-interface OpenDiff { file: UnseenFile; view: DiffView; pre: HTMLPreElement; log: HTMLInputElement }
+interface OpenDiff { file: UnseenFile; view: DiffView; pre: HTMLPreElement; log: HTMLInputElement; seen: boolean }
 
 export class Panel {
   private readonly root = byId<HTMLElement>('panel');
@@ -68,6 +69,8 @@ export class Panel {
   private diffGen = 0;
   /** The open diff's file last told to the host (#211). */
   private told: string | null = null;
+  /** #201: the write that charts a diff as it opens, while it's out; Chart waits for it, so the two never race. */
+  private seenWrite: Promise<void> | null = null;
 
   constructor(private readonly host: PanelHost) {
     this.root.addEventListener('keydown', (e) => {
@@ -98,7 +101,7 @@ export class Panel {
       this.open = null;
       this.diffGen++; // a diff still loading must not reopen when a usable fog returns (PR #108 r1 #6)
     }
-    if (this.open && fog && diffFreshness(this.open.view, fog) === 'stale') this.note = 'This file\'s unseen range changed, so this diff is out of date. Reload it to chart.';
+    if (this.open && fog && diffFreshness(this.open.view, fog, this.open.seen) === 'stale') this.note = 'This file\'s unseen range changed, so this diff is out of date. Reload it to chart.';
     if (this.open) this.listStale = true;
     else void this.loadList();
     this.render();
@@ -184,10 +187,12 @@ export class Panel {
       const r = await this.host.client.diff(file.fileId, fog.head);
       if (gen !== this.diffGen) return;
       if (r.ok) {
-        this.open = { file, view: r, pre: this.lines(r, file.path), log: this.logField() };
+        const o: OpenDiff = { file, view: r, pre: this.lines(r, file.path), log: this.logField(), seen: false };
+        this.open = o;
         this.note = '';
         this.render('chart');
         this.host.announce(`showing the unseen diff of ${file.path}`);
+        if (seenOnOpen(r)) this.markSeen(o);
         return;
       }
       if (r.head !== undefined) {
@@ -237,9 +242,47 @@ export class Panel {
     return 'failed';
   }
 
+  /**
+   * #201 (AC2): a diff shown whole is a review, so opening it charts its file at the diff's own head
+   * (#58), moving it from fogged to haze (seen), never to clear. The diff stays open; Chart still
+   * leaves a captain's log note. A refusal leaves the file fogged and is said.
+   */
+  private markSeen(o: OpenDiff): void {
+    // Set before the write, so the fog event it causes (which can land before its own answer) reads as
+    // this chart, not as a moved range. Charting a file that isn't fogged can't cover anything unseen.
+    o.seen = true;
+    const failed = (why: string) => {
+      o.seen = false;
+      if (this.open !== o) return;
+      this.note = `Opening it didn't mark ${o.file.path} seen: ${why}. Chart still can.`;
+      this.render();
+    };
+    const write = (async () => {
+      try {
+        const ticket = this.host.fogTicket();
+        const r = await this.host.client.chart({ kind: 'chart', fileId: o.view.fileId, at: o.view.at });
+        if (r.ok) {
+          // A newer fog won the ticket race but may predate this write: read the current one (PR #108 r1 #2).
+          if (!this.host.applyFog(r.fog, ticket)) await this.refetchFog();
+          return;
+        }
+        if (r.head !== undefined) {
+          o.seen = false;
+          await this.refetchFog();
+        } else failed(r.error);
+      } catch (e) {
+        failed(say(e));
+      }
+    })();
+    this.seenWrite = write;
+    void write.finally(() => { if (this.seenWrite === write) this.seenWrite = null; });
+  }
+
   private async chart(): Promise<void> {
     const o = this.open;
-    if (!o || !this.fog || diffFreshness(o.view, this.fog) === 'stale') return;
+    if (!o || !this.fog) return;
+    if (this.seenWrite) await this.seenWrite;
+    if (!this.fog || diffFreshness(o.view, this.fog, o.seen) === 'stale') return;
     // #79: an invalid note stops the chart before anything is written, so the user can fix it.
     const note = cleanBeaconText(o.log.value);
     const problem = note === '' ? null : beaconTextProblem(note);
@@ -417,11 +460,13 @@ export class Panel {
     const v = o.view;
     const box = document.createElement('div');
     box.className = 'review';
-    const fresh = diffFreshness(v, fog);
+    const fresh = diffFreshness(v, fog, o.seen);
     box.append(this.heading(o.file.path, 'h3'));
     box.append(this.text(v.since === null
       ? 'Nothing here is unseen any more.'
       : `Unseen since ${shortSha(v.since)}, shown up to ${shortSha(v.at)}.`, 'note dim'));
+    const now = fog.files.find((f) => f.fileId === v.fileId)?.state;
+    if (o.seen && now === 'haze') box.append(this.text('Seen: opening this diff charted it, so it is haze now (seen, not yet understood).', 'note dim'));
     for (const n of diffNotes(v)) box.append(this.text(n));
     const cmd = v.truncated ? gitDiffCommand(v) : null;
     if (cmd) {

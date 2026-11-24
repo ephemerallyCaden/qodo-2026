@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { FileFog, FogView } from '../../src/core/contract/fog.js';
 import { fibonacciCell } from '../../src/core/contract/layout.js';
 import {
-  cellRows, FLAG, FOG_EVENT_FRAMES, FOG_TEX_ROWS, FogLedger, eventLife, fileFogAt, fogChanges, foggedBy, mergeEvents,
+  cellRows, FLAG, FOG_EVENT_FRAMES, FOG_TEX_ROWS, FogLedger, eventLife, fileFogAt, fogChanges, levelBy, mergeEvents,
   planetPulse, planetTally, surfacePlan, systemTally, type FogEvent,
 } from '../../web/src/model/fog.js';
 import { coverRadius, searchWindow, territories } from '../../web/src/model/territory.js';
@@ -78,35 +78,41 @@ describe('territories (F1, F2: a parcel per file, sharing every cell)', () => {
   });
 });
 
-describe('the fogged bit (clear and charted look the same; without evidence a file is fogged, Rule 1)', () => {
+describe('fog levels (#201: 0 clear, 1 haze, 2 fogged; without evidence a file is fogged, Rule 1)', () => {
   const plan = surfacePlan({ cells: 64, settlements: miniLayout.planets[0]!.surface.settlements });
 
-  it('is false for clear and charted, true for fogged, and true for a file the view does not list', () => {
-    const f = foggedBy(withStates({ f_00000000000a: 'charted', f_00000000000b: 'clear', f_00000000000c: 'fogged' }));
-    expect([f('f_00000000000a'), f('f_00000000000b'), f('f_00000000000c'), f('f_ffffffffffff')]).toEqual([false, false, true, true]);
+  it('is 0 for clear, 1 for haze, 2 for fogged, and 2 for a file the view does not list or a state it does not know', () => {
+    const f = levelBy(withStates({ f_00000000000a: 'haze', f_00000000000b: 'clear', f_00000000000c: 'fogged' }));
+    expect([f('f_00000000000a'), f('f_00000000000b'), f('f_00000000000c'), f('f_ffffffffffff')]).toEqual([1, 0, 2, 2]);
+    const odd = { ...miniFog, files: miniFog.files.map((x) => (x.fileId === 'f_00000000000a' ? { ...x, state: 'charted' as never } : x)) };
+    expect(levelBy(odd)('f_00000000000a')).toBe(2);
   });
 
-  it('is true for every file with no usable fog view', () => {
-    expect(foggedBy(null)('f_00000000000a')).toBe(true);
+  it('is fogged for every file with no usable fog view', () => {
+    expect(levelBy(null)('f_00000000000a')).toBe(2);
   });
 
-  it('gives byte-identical cell rows when every clear file is charted instead (the shader cannot tell them apart)', () => {
-    const rows = (fog: FogView) => { const f = foggedBy(fog); return cellRows(plan, plan.fileIds.map((id) => fileFogAt(f(id), undefined, 0))); };
-    const allCharted = { ...miniFog, files: miniFog.files.map((x) => (x.state === 'clear' ? { ...x, state: 'charted' as const } : x)) };
-    expect(Buffer.from(rows(allCharted).buffer)).toEqual(Buffer.from(rows(miniFog).buffer));
-    // not vacuous: a fogged file does change them
-    expect(Buffer.from(rows(withStates({ f_00000000000a: 'fogged' })).buffer)).not.toEqual(Buffer.from(rows(miniFog).buffer));
+  it('gives the shader three distinct cell rows for the three levels', () => {
+    const rows = (fog: FogView) => { const f = levelBy(fog); return Buffer.from(cellRows(plan, plan.fileIds.map((id) => fileFogAt(f(id), undefined, 0))).buffer); };
+    const all = (state: FileFog['state']) => withStates(Object.fromEntries(plan.fileIds.map((id) => [id, state])));
+    const [clear, haze, fogged] = [rows(all('clear')), rows(all('haze')), rows(all('fogged'))];
+    expect(haze).not.toEqual(clear);
+    expect(haze).not.toEqual(fogged);
+    expect(fogged).not.toEqual(clear);
+    expect(rows(miniFog)).toEqual(clear); // mini's src files are all clear
   });
 });
 
 describe('a planet whose settlements are all off its grid (Rule 1, Qodo PR #117 r5)', () => {
   const plan = surfacePlan({ cells: 64, settlements: [{ fileId: 'f_00000000000a', cell: 99999 }, { fileId: 'f_00000000000b', cell: -3 }] as never });
-  it('owns no cell, so its cells are drawn fogged whenever a file is (and under no fog view, every file is)', () => {
+  it('owns no cell, so its cells are drawn at its foggiest file\'s level (and under no fog view, every file is fogged)', () => {
     expect([...plan.territory.owner].every((k) => k === -1)).toBe(true);
-    const fogged = cellRows(plan, plan.fileIds.map((id) => fileFogAt(foggedBy(null)(id), undefined, 0)));
-    for (let i = 0; i < 64; i++) expect(fogged[i * 4], `cell ${i}`).toBe(1);
+    const fogged = cellRows(plan, plan.fileIds.map((id) => fileFogAt(levelBy(null)(id), undefined, 0)));
+    for (let i = 0; i < 64; i++) expect(fogged[i * 4], `cell ${i}`).toBe(2);
+    const hazed = cellRows(plan, [fileFogAt(0, undefined, 0), fileFogAt(1, undefined, 0)]);
+    for (let i = 0; i < 64; i++) expect(hazed[i * 4], `cell ${i}`).toBe(1);
     // not vacuous: with every file known clear, the unowned cells are clear
-    const clear = cellRows(plan, plan.fileIds.map(() => fileFogAt(false, undefined, 0)));
+    const clear = cellRows(plan, plan.fileIds.map(() => fileFogAt(0, undefined, 0)));
     for (let i = 0; i < 64; i++) expect(clear[i * 4], `cell ${i}`).toBe(0);
   });
 });
@@ -115,17 +121,18 @@ describe('cell rows (the fog shader\'s data texture)', () => {
   const planet = miniLayout.planets[0]!;
   const plan = surfacePlan({ cells: planet.surface.grid.cells, settlements: planet.surface.settlements });
 
-  it('lays out cells x 3 RGBA texels: rest state + anchor + reach + flags, event + size + dash, cell centre + owned', () => {
-    const at = plan.fileIds.map((_, k) => ({ fogged: k === 1, kind: (k === 2 ? 1 : 0) as 0 | 1, progress: k === 2 ? 0.5 : 0 }));
+  it('lays out cells x 3 RGBA texels: rest level + anchor + reach + flags, event + progress + from level + dash, cell centre + owned', () => {
+    // file 0 clear, file 1 fogged, file 2 haze in the middle of a clear front from fogged
+    const at = plan.fileIds.map((_, k) => (k === 2 ? { level: 1 as const, from: 2 as const, kind: 1 as const, progress: 0.5 } : fileFogAt(k === 1 ? 2 : 0, undefined, 0)));
     const rows = cellRows(plan, at);
     const n = plan.territory.cells;
     expect(rows.length).toBe(n * FOG_TEX_ROWS * 4);
     for (let i = 0; i < n; i++) {
       const k = plan.territory.owner[i]!;
-      expect(rows[i * 4]).toBe(k === 1 ? 1 : 0);
+      expect(rows[i * 4]).toBe([0, 2, 1][k]);
       expect(rows[i * 4 + 1]).toBe(plan.territory.anchor[k]);
       expect(rows[i * 4 + 3]).toBe(plan.flags[k]);
-      expect([rows[(n + i) * 4], rows[(n + i) * 4 + 1], rows[(n + i) * 4 + 2]]).toEqual([k === 2 ? 1 : 0, k === 2 ? 0.5 : 0, plan.territory.size[k]]);
+      expect([rows[(n + i) * 4], rows[(n + i) * 4 + 1], rows[(n + i) * 4 + 2]]).toEqual([k === 2 ? 1 : 0, k === 2 ? 0.5 : 0, [0, 2, 2][k]]);
       const c = fibonacciCell(i, n);
       expect(rows[(2 * n + i) * 4]).toBeCloseTo(c[0], 6);
       expect(rows[(2 * n + i) * 4 + 3]).toBe(1);
@@ -146,13 +153,25 @@ describe('cell rows (the fog shader\'s data texture)', () => {
 
 describe('events (F5 clear, F6 refog)', () => {
   const ids = ['f_00000000000a', 'f_00000000000b', 'f_00000000000c', 'f_00000000000d'];
-  const before = withStates({ f_00000000000a: 'fogged', f_00000000000b: 'clear', f_00000000000c: 'charted', f_00000000000d: 'fogged' });
-  const after = withStates({ f_00000000000a: 'charted', f_00000000000b: 'fogged', f_00000000000c: 'charted', f_00000000000d: 'fogged' });
+  const before = withStates({ f_00000000000a: 'fogged', f_00000000000b: 'clear', f_00000000000c: 'haze', f_00000000000d: 'fogged' });
+  const after = withStates({ f_00000000000a: 'haze', f_00000000000b: 'fogged', f_00000000000c: 'haze', f_00000000000d: 'fogged' });
 
-  it('clears a file that was fogged and isn\'t, refogs one that wasn\'t and is, and leaves the rest', () => {
+  it('clears a file whose fog thinned, refogs one whose fog thickened, from the level it was at, and leaves the rest', () => {
     expect(fogChanges(before, after, ids, 90)).toEqual([
-      { fileId: 'f_00000000000a', kind: 'clear', start: 90 },
-      { fileId: 'f_00000000000b', kind: 'refog', start: 90 },
+      { fileId: 'f_00000000000a', kind: 'clear', from: 2, start: 90 },
+      { fileId: 'f_00000000000b', kind: 'refog', from: 0, start: 90 },
+    ]);
+  });
+
+  it('#201: a quiz (haze → clear) thins, a change to a cleared file (clear → haze) thickens', () => {
+    const quizzed = withStates({ f_00000000000a: 'clear', f_00000000000c: 'clear' }, after);
+    expect(fogChanges(after, quizzed, ids, 5)).toEqual([
+      { fileId: 'f_00000000000a', kind: 'clear', from: 1, start: 5 },
+      { fileId: 'f_00000000000c', kind: 'clear', from: 1, start: 5 },
+    ]);
+    expect(fogChanges(quizzed, after, ids, 7)).toEqual([
+      { fileId: 'f_00000000000a', kind: 'refog', from: 0, start: 7 },
+      { fileId: 'f_00000000000c', kind: 'refog', from: 0, start: 7 },
     ]);
   });
 
@@ -163,15 +182,15 @@ describe('events (F5 clear, F6 refog)', () => {
 
   it('runs a clear for 1 s and a refog for 2.4 s of loop frames, from 0 to 1, then rests', () => {
     expect(FOG_EVENT_FRAMES).toEqual({ clear: 30, refog: 72, pulse: 27 });
-    const e: FogEvent = { fileId: 'f_1', kind: 'refog', start: 100 };
-    expect(fileFogAt(true, e, 100)).toEqual({ fogged: true, kind: 2, progress: 0 });
-    expect(fileFogAt(true, e, 136)).toEqual({ fogged: true, kind: 2, progress: 0.5 });
-    expect(fileFogAt(true, e, 172)).toEqual({ fogged: true, kind: 0, progress: 0 });
-    expect(fileFogAt(false, { ...e, kind: 'clear' }, 115)).toEqual({ fogged: false, kind: 1, progress: 0.5 });
+    const e: FogEvent = { fileId: 'f_1', kind: 'refog', from: 0, start: 100 };
+    expect(fileFogAt(2, e, 100)).toEqual({ level: 2, from: 0, kind: 2, progress: 0 });
+    expect(fileFogAt(2, e, 136)).toEqual({ level: 2, from: 0, kind: 2, progress: 0.5 });
+    expect(fileFogAt(2, e, 172)).toEqual({ level: 2, from: 2, kind: 0, progress: 0 });
+    expect(fileFogAt(1, { ...e, kind: 'clear', from: 2 }, 115)).toEqual({ level: 1, from: 2, kind: 1, progress: 0.5 });
   });
 
   it('keeps one event per file (the newer wins) and drops events once over, a clear only after its pulse', () => {
-    const a: FogEvent = { fileId: 'f_1', kind: 'clear', start: 0 }, b: FogEvent = { fileId: 'f_1', kind: 'refog', start: 10 };
+    const a: FogEvent = { fileId: 'f_1', kind: 'clear', from: 2, start: 0 }, b: FogEvent = { fileId: 'f_1', kind: 'refog', from: 1, start: 10 };
     expect(mergeEvents([a], [b], 10)).toEqual([b]);
     expect(eventLife(a)).toBe(30 + 27);
     expect(mergeEvents([a], [], 56)).toEqual([a]);
@@ -182,7 +201,7 @@ describe('events (F5 clear, F6 refog)', () => {
 describe('the planet-clear pulse (F5\'s landing moment)', () => {
   const plan = surfacePlan({ cells: 64, settlements: miniLayout.planets[0]!.surface.settlements });
   const [f0, f1] = plan.fileIds;
-  const events = new Map<string, FogEvent>([[f0!, { fileId: f0!, kind: 'clear', start: 0 }], [f1!, { fileId: f1!, kind: 'clear', start: 6 }]]);
+  const events = new Map<string, FogEvent>([[f0!, { fileId: f0!, kind: 'clear', from: 2, start: 0 }], [f1!, { fileId: f1!, kind: 'clear', from: 2, start: 6 }]]);
 
   it('runs once the last front is done, from the last parcel charted, only when the view counts no fogged file left', () => {
     expect(planetPulse(plan, events, [], 0, 35)).toBeNull(); // f1's front still running
@@ -196,24 +215,30 @@ describe('the planet-clear pulse (F5\'s landing moment)', () => {
   });
 
   it('waits for a moon\'s clear too, and starts from the last surface parcel', () => {
-    const withMoon = new Map(events).set('f_moon', { fileId: 'f_moon', kind: 'clear', start: 20 });
+    const withMoon = new Map(events).set('f_moon', { fileId: 'f_moon', kind: 'clear', from: 2, start: 20 });
     expect(planetPulse(plan, withMoon, ['f_moon'], 0, 49)).toBeNull();
     expect(planetPulse(plan, withMoon, ['f_moon'], 0, 50)).toEqual({ cell: plan.territory.anchor[1], progress: 0 });
+  });
+
+  it('#201: a quiz clearing a hazed file is not a chart of a fogged one, so it runs no pulse', () => {
+    const quizzes = new Map<string, FogEvent>([[f0!, { fileId: f0!, kind: 'clear', from: 1, start: 0 }]]);
+    expect(planetPulse(plan, quizzes, [], 0, 30)).toBeNull();
   });
 });
 
 describe('fog counts in words (F2, exact)', () => {
-  it('reads each planet\'s and the whole repo\'s counts from the view, and nothing without one', () => {
-    expect(planetTally(miniFog, 'd_00000000000c')).toEqual({ fogged: 1, total: 25 });
+  it('reads each planet\'s and the whole repo\'s counts by level from the view, and nothing without one', () => {
+    expect(planetTally(miniFog, 'd_00000000000c')).toEqual({ fogged: 1, haze: 0, clear: 24, total: 25 });
+    expect(planetTally(miniFog, 'd_00000000000d')).toEqual({ fogged: 0, haze: 1, clear: 2, total: 3 });
     expect(planetTally(miniFog, 'd_ffffffffffff')).toBeNull();
-    expect(systemTally(miniFog)).toEqual({ fogged: 2, total: 37 });
+    expect(systemTally(miniFog)).toEqual({ fogged: 2, haze: 2, clear: 33, total: 37 });
     expect(systemTally(null)).toBeNull();
   });
 });
 
 describe('the view\'s fog ledger (tickets, the head check, fronts)', () => {
   const ids = miniFog.files.map((f) => f.fileId);
-  const charted = withStates({ f_000000000003: 'charted' });
+  const charted = withStates({ f_000000000003: 'haze' });
 
   it('drops an answer older than one already applied (Qodo #75 local r1 #3: a reload\'s fog never lands over a newer chart answer)', () => {
     const l = new FogLedger();
@@ -254,7 +279,7 @@ describe('the view\'s fog ledger (tickets, the head check, fronts)', () => {
     expect(l.setLayout(NEXT, true)).toBe(true); // the old fog is dropped for the new layout
     expect(l.fog).toBeNull();
     expect(l.apply({ ...miniFog, head: NEXT }, l.ticket(), ids, 10, true)).toBe(true); // f_000000000003 is fogged again
-    expect(l.events).toEqual([{ fileId: 'f_000000000003', kind: 'refog', start: 10 }]);
+    expect(l.events).toEqual([{ fileId: 'f_000000000003', kind: 'refog', from: 1, start: 10 }]);
     expect(l.change).toEqual({ cleared: 0, refogged: 1 });
     // unknown to known still snaps: nothing to measure against
     l.setLayout(HEAD, true);
@@ -268,12 +293,21 @@ describe('the view\'s fog ledger (tickets, the head check, fronts)', () => {
     l.setLayout(HEAD, true);
     l.apply(miniFog, l.ticket(), ids, 0, true);
     expect(l.apply(charted, l.ticket(), ids, 40, true)).toBe(true);
-    expect(l.events).toEqual([{ fileId: 'f_000000000003', kind: 'clear', start: 40 }]);
+    expect(l.events).toEqual([{ fileId: 'f_000000000003', kind: 'clear', from: 2, start: 40 }]);
     expect(l.change).toEqual({ cleared: 1, refogged: 0 });
     expect(l.prune(40 + 56)).toBe(false);
     expect(l.prune(40 + 57)).toBe(true);
     l.apply(miniFog, l.ticket(), ids, 200, false);
     expect([l.events, l.change]).toEqual([[], { cleared: 0, refogged: 1 }]);
+  });
+
+  it('#201 under reduced motion (animate false) every level change snaps: no front, still counted', () => {
+    const l = new FogLedger();
+    l.setLayout(HEAD, true);
+    l.apply(miniFog, l.ticket(), ids, 0, false);
+    const quizzed = withStates({ f_000000000010: 'clear', f_00000000000a: 'haze' });
+    l.apply(quizzed, l.ticket(), ids, 10, false);
+    expect([l.events, l.change]).toEqual([[], { cleared: 1, refogged: 1 }]);
   });
 
   it('ends every front at once for reduced motion', () => {

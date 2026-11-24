@@ -111,7 +111,8 @@ describe('fog in the GLSL three submits (#74)', () => {
     expect(CLOUD_FRAG).toContain('if (uSmoke > 0.5 && smokeFogged()) discard;'); // lava smoke hints at health
     const toon = fragments.filter((f) => f.includes('moonFog('));
     expect(toon.length).toBeGreaterThanOrEqual(1);
-    expect(vertices.some((v) => v.includes('in vec3 aFog;') && v.includes('flat out vec3 vFog;'))).toBe(true);
+    // #201: (level, kind, progress, from level) per instance
+    expect(vertices.some((v) => v.includes('in vec4 aFog;') && v.includes('flat out vec4 vFog;'))).toBe(true);
   });
 
   it('declares projectionMatrix at most once per fragment program (the fog projects its glyph anchors)', () => {

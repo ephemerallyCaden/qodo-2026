@@ -2,7 +2,7 @@
 // server or a dev fixture). Every field the renderer reads is checked here, and a bad document is
 // refused with a readable reason (AC9) instead of half-drawing. Pure: no three.js, no DOM.
 import type { ChartResult, DiffResult, UnseenResult } from '../../../src/core/contract/api.js';
-import type { FogView } from '../../../src/core/contract/fog.js';
+import { FOG_LEVELS, type FogView } from '../../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
 import type { TreeSource } from '../tree/model.js';
 
@@ -11,7 +11,7 @@ export type Checked<T> = { ok: true; value: T } | { ok: false; errors: string[] 
 const BANDS = ['lava', 'toxic', 'ash', 'healthy'];
 const MOONLET_KINDS = ['root-file', 'unmatched-test'];
 const ZONES = ['content', 'outer'];
-const FOG_STATES = ['clear', 'charted', 'fogged'];
+const FOG_STATES = [...FOG_LEVELS];
 const FOG_REASONS = ['agent', 'mixed', 'self-committed-agent-written', 'teammate', 'unknown', 'lineage-unknown'];
 /** Reasons beyond this many are summarised, so a garbage document still gives a short message. */
 const MAX_ERRORS = 8;
@@ -52,11 +52,14 @@ class Checker {
   nullableStr(v: unknown, at: string): void {
     if (v !== null) this.str(v, at);
   }
-  /** FogCounts: total and fogged, with fogged ≤ total. */
+  /** FogCounts: total and a count per level (#201), the levels adding up to total. */
   counts(o: Obj, at: string): void {
-    this.int(o['total'], `${at}.total`);
-    this.int(o['fogged'], `${at}.fogged`);
-    if (typeof o['total'] === 'number' && typeof o['fogged'] === 'number' && o['fogged'] > o['total']) this.fail(`${at}.fogged`, 'must not exceed total');
+    const keys = ['total', 'fogged', 'haze', 'clear'] as const;
+    for (const k of keys) this.int(o[k], `${at}.${k}`);
+    const [total, fogged, haze, clear] = keys.map((k) => o[k]);
+    if ([total, fogged, haze, clear].every((v) => typeof v === 'number') && (fogged as number) + (haze as number) + (clear as number) !== total) {
+      this.fail(`${at}`, 'fogged, haze and clear must add up to total');
+    }
   }
   result<T>(value: unknown): Checked<T> {
     if (this.errors.length === 0) return { ok: true, value: value as T };
@@ -168,17 +171,22 @@ export function checkLayout(v: unknown): Checked<LayoutV1> {
   return c.result(v);
 }
 
-/** Checks an untrusted fog view. The view accepts it but doesn't draw fog yet (#30 scope). */
+/**
+ * Checks an untrusted fog view (fog.2, #201). Any other schema, fog.1 included, is refused, so the
+ * view draws every file fogged until a fog it knows arrives (Rule 1): fog.1's `clear` meant "nothing
+ * to review", not "understood".
+ */
 export function checkFog(v: unknown): Checked<FogView> {
   const c = new Checker();
   const f = c.obj(v, 'fog');
   if (!f) return c.result(v);
-  if (f['schemaVersion'] !== 'fog.1') {
-    c.fail('fog.schemaVersion', `must be "fog.1" (got ${JSON.stringify(f['schemaVersion'])})`);
+  if (f['schemaVersion'] !== 'fog.2') {
+    c.fail('fog.schemaVersion', `must be "fog.2" (got ${JSON.stringify(f['schemaVersion'])})`);
     return c.result(v);
   }
   c.str(f['head'], 'fog.head');
   c.nullableStr(f['baseline'], 'fog.baseline');
+  if (typeof f['charted'] !== 'boolean') c.fail('fog.charted', 'must be a boolean');
   c.arr(f['files'], 'fog.files').forEach((x, i) => {
     const at = `fog.files[${i}]`;
     const o = c.obj(x, at);

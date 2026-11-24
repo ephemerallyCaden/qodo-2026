@@ -52,7 +52,7 @@ export class PlanetFog {
       uFogRadiusPx: { value: 0 },
       uFogVeil: { value: ramps.flatMap((r) => veilOf(fogRole(r))) },
     };
-    this.set(plan.fileIds.map(() => ({ fogged: true, kind: 0, progress: 0 })), null);
+    this.set(plan.fileIds.map(() => ({ level: 2, from: 2, kind: 0, progress: 0 })), null);
   }
 
   /** The planet's files at a frame (in plan order) and its pulse. */
@@ -65,19 +65,19 @@ export class PlanetFog {
       const c = centresOf(this.plan.territory.cells);
       pv.set(c[3 * pulse.cell]!, c[3 * pulse.cell + 1]!, c[3 * pulse.cell + 2]!, Math.max(1e-4, pulse.progress));
     } else pv.w = 0;
-    u['uFogOn']!.value = pulse || at.some((f) => f.fogged || f.kind !== 0) ? 1 : 0;
+    u['uFogOn']!.value = pulse || at.some((f) => f.level > 0 || f.kind !== 0) ? 1 : 0;
   }
 
   dispose(): void { this.tex.dispose(); }
 }
 
-/** Per-instance fog of a moon or moonlet mesh: (fogged, event kind, progress). */
+/** Per-instance fog of a moon or moonlet mesh: (level at rest 0..2, event kind, progress, the level the event started from). */
 export function moonFogAttribute(count: number): THREE.InstancedBufferAttribute {
-  const a = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, count) * 3).fill(0), 3);
-  for (let i = 0; i < count; i++) a.setX(i, 1); // fogged until a fog view says otherwise (Rule 1)
+  const a = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, count) * 4).fill(0), 4);
+  for (let i = 0; i < count; i++) a.setXYZW(i, 2, 0, 0, 2); // fogged until a fog view says otherwise (Rule 1)
   return a;
 }
 export function setMoonFog(a: THREE.InstancedBufferAttribute, at: readonly FileFogAt[]): void {
-  at.forEach((f, i) => a.setXYZ(i, f.fogged ? 1 : 0, f.kind, f.progress));
+  at.forEach((f, i) => a.setXYZW(i, f.level, f.kind, f.progress, f.from));
   a.needsUpdate = true;
 }

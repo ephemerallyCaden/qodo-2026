@@ -59,22 +59,28 @@ export function eventsPage(): Target {
 
 /** The contract's `mini` fixture (test/fixtures/contract). */
 export const MINI = JSON.parse(readFileSync(join(ROOT, 'test/fixtures/contract/mini.layout.json'), 'utf8')) as LayoutV1;
-/** Its fog view (#74): the toxic `web` planet's one surface file and one moonlet fogged, one file charted, the rest clear. */
+/** Its fog view (#74, fog.2 #201): the toxic `web` planet's one surface file and one moonlet fogged, two undrawn files haze, the rest clear. */
 export const MINI_FOG = JSON.parse(readFileSync(join(ROOT, 'test/fixtures/contract/mini.fog.json'), 'utf8')) as FogView;
 /** What the suite renders: mini with its fog, so every golden is a fogged frame. */
 export const MINI_INPUT = { layout: MINI, fog: MINI_FOG } as const;
 
 /**
  * A fog view for a layout with every drawn file (settlements, moons, moonlets) clear except those
- * `fogged` picks, with matching counts and the layout's head (the view checks it).
+ * `fogged` picks, and of the rest those `hazed` picks haze (#201), with matching counts and the
+ * layout's head (the view checks it).
  */
-export function fogFor(layout: LayoutV1, fogged: (fileId: string) => boolean = () => false): FogView {
+export function fogFor(layout: LayoutV1, fogged: (fileId: string) => boolean = () => false, hazed: (fileId: string) => boolean = () => false): FogView {
   const ids = (p: LayoutV1['planets'][number]) => [...p.surface.settlements.map((s) => s.fileId), ...p.moons.map((m) => m.fileId)];
   const all = [...layout.planets.flatMap(ids), ...layout.star.moonlets.map((m) => m.fileId)].sort();
-  const count = (list: string[]) => ({ total: list.length, fogged: list.filter(fogged).length });
+  const level = (id: string) => (fogged(id) ? 'fogged' : hazed(id) ? 'haze' : 'clear');
+  const count = (list: string[]) => {
+    const n = (l: string) => list.filter((id) => level(id) === l).length;
+    return { total: list.length, fogged: n('fogged'), haze: n('haze'), clear: n('clear') };
+  };
   return {
-    schemaVersion: 'fog.1', head: layout.source.head, baseline: null,
-    files: all.map((fileId) => (fogged(fileId) ? { fileId, state: 'fogged', reasons: ['agent'], since: layout.source.head } : { fileId, state: 'clear', reasons: [], since: null })),
+    schemaVersion: 'fog.2', head: layout.source.head, baseline: null, charted: false,
+    files: all.map((fileId) => (fogged(fileId) ? { fileId, state: 'fogged', reasons: ['agent'], since: layout.source.head }
+      : { fileId, state: hazed(fileId) ? 'haze' : 'clear', reasons: [], since: null })),
     planets: [...layout.planets].sort((a, b) => (a.dirId < b.dirId ? -1 : 1)).map((p) => ({ dirId: p.dirId, ...count(ids(p)) })),
     star: count(layout.star.moonlets.map((m) => m.fileId)),
   };

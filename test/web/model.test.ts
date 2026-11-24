@@ -1,7 +1,7 @@
 // The view's pure scene model (#30): layout → bodies, loop-locked motion, the slow orbits (#60), the info text.
 import { describe, expect, it } from 'vitest';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
-import { infoLines, planetLines, summaryText, systemLines } from '../../web/src/model/describe.js';
+import { infoLines, masteryLine, planetLines, summaryText, systemLines } from '../../web/src/model/describe.js';
 import { startPose, project } from '../../web/src/camera/pose.js';
 import { MIN_FLY_SPEED } from '../../web/src/camera/rig.js';
 import { FPS, LOOP_FRAMES, LOOP_SECONDS, ORBIT_FRAMES, ORBIT_SECONDS, REDUCED_MOTION_FRAME, TURNS, effectiveFrame, loopPhase, orbitAngle, turnAngle } from '../../web/src/model/motion.js';
@@ -266,11 +266,21 @@ describe('info text', () => {
   });
 
   it('counts uncharted files from the fog view, unplaced files and moons included, and says when it is unknown (F2, Rule 1)', () => {
-    expect(planetLines(m.planets[1]!, miniFog)).toContain('uncharted: 1 of 25 files');
-    expect(systemLines(m, miniFog)).toContain('uncharted: 2 of 37 files');
+    expect(planetLines(m.planets[1]!, miniFog)).toContain('uncharted: 1 of 25 files; 0 haze (seen), 24 clear (understood)');
+    expect(systemLines(m, miniFog)).toContain('uncharted: 2 of 37 files; 2 haze (seen), 33 clear (understood)');
     expect(planetLines(m.planets[1]!)).toContain('uncharted: unknown, so every file is drawn uncharted');
     expect(infoLines(m, 1, miniFog)).toEqual(planetLines(m.planets[1]!, miniFog));
     expect(summaryText(m, null, miniFog)).toContain('uncharted: 2 of 37 files');
+  });
+
+  it('#201 (U3): a planet\'s panel shows its mastery, cleared files over its files by count, rounded down, as its fog counts them', () => {
+    const docs = m.planets.find((p) => p.path === 'docs')!;
+    expect(planetLines(docs, miniFog)).toContain('mastery: 66% (2 of 3 files understood)'); // 2/3, never rounded up
+    expect(planetLines(m.planets.find((p) => p.path === 'src')!, miniFog)).toContain('mastery: 100% (4 of 4 files understood)');
+    const none = { ...miniFog, planets: miniFog.planets.map((p) => ({ ...p, haze: p.haze + p.clear, clear: 0 })) };
+    expect(planetLines(docs, none)).toContain('mastery: 0% (0 of 3 files understood)');
+    expect(planetLines(docs)).toContain('mastery: unknown, so every file is drawn uncharted');
+    expect(masteryLine({ fogged: 0, haze: 1, clear: 199, total: 200 })).toBe('mastery: 99% (199 of 200 files understood)');
   });
 
   it('gives screen readers everything the canvas shows: the info panel and every planet name', () => {

@@ -130,8 +130,8 @@ export const VERT = /* glsl */ `
   }
 `;
 
-/** Moons and moonlets: VERT, plus each instance's fog (fog.ts moonFogAttribute: fogged, event, progress). */
-export const TOON_VERT = VERT.replace('out vec3 vLocal;', 'out vec3 vLocal;\n  in vec3 aFog;\n  flat out vec3 vFog;')
+/** Moons and moonlets: VERT, plus each instance's fog (fog.ts moonFogAttribute: level, event, progress, from). */
+export const TOON_VERT = VERT.replace('out vec3 vLocal;', 'out vec3 vLocal;\n  in vec4 aFog;\n  flat out vec4 vFog;')
   .replace('vLocal = position;', 'vLocal = position;\n    vFog = aFog;');
 
 /** Moons and moonlets: a 4-step ramp in light bands, each one test file or root file, fogged as a whole (#74). */
