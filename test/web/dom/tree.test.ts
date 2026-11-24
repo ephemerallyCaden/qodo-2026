@@ -164,6 +164,29 @@ describe('the directory view\'s toggle and tree (#209 AC 1)', () => {
     expect(t.fetched()).toBe(3);
   });
 
+  it('a list that answers after a rescan landed while the tree was closed is of the old map, and is never shown (Qodo 5ce7d479)', async () => {
+    let answerOld: (s: TreeSource) => void = () => {};
+    let next: () => Promise<TreeSource> = () => new Promise((r) => { answerOld = r; });
+    const t = panel(() => next());
+    toggle().fire('click'); // opens on miniLayout's scan, its list still loading
+    toggle().fire('click'); // and closes before it answers
+    t.p.setLayout(layoutAt(OTHER)); // a commit lands while it's closed
+    answerOld(miniTree); // the old scan's list answers now
+    await flush();
+    next = async () => { throw new Error('down'); };
+    toggle().fire('click'); // reopened: the new scan's list is fetched, and fails
+    await flush();
+    expect(t.fetched()).toBe(2);
+    expect(rows()).toEqual([]); // not the old scan's rows, whose places are on the old map
+    expect(note()).toBe('file list unavailable: something went wrong');
+    next = async () => ({ ...miniTree, head: OTHER });
+    t.p.setLayout(layoutAt(OTHER));
+    await flush();
+    expect(names()).toHaveLength(6);
+    row('src/').fire('click');
+    expect(t.opened).toHaveLength(1); // only a row of the map drawn now opens
+  });
+
   it('a failed fetch is said in the tree and the status line, not fatal', async () => {
     const t = panel(async () => { throw new Error('down'); });
     toggle().fire('click');

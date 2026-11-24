@@ -127,19 +127,22 @@ export class TreePanel {
     const layout = this.layout;
     if (!layout || !this.isOpen || this.source?.head === layout.source.head) return;
     const gen = ++this.gen;
+    // A newer layout asked again, or one came while the tree was closed (which asks nothing until it opens):
+    // either way this answer is for a map no longer drawn, and opening it asks again (Qodo 5ce7d479)
+    const stale = () => gen !== this.gen || this.layout !== layout;
     this.loadNote = 'loading the file list…';
     this.render();
     let got: TreeSource;
     try {
       got = await this.host.client.files();
     } catch (e) {
-      if (gen !== this.gen) return;
+      if (stale()) return;
       this.loadNote = `file list unavailable: ${say(e)}`;
       this.host.announce(this.loadNote);
       this.render();
       return;
     }
-    if (gen !== this.gen) return; // a newer layout asked again
+    if (stale()) return;
     if (got.head !== layout.source.head) {
       // a scan landed between the layout and this fetch: its paths aren't this map's (#64); the next layout asks again
       this.loadNote = `file list not shown: it is of ${short(got.head)} but the map of ${short(layout.source.head)} (different scans); waiting for the next update`;
