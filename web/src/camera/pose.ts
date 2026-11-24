@@ -131,9 +131,12 @@ export function systemDepth(model: SystemModel, start: OrbitPose = startPose(mod
 /** The distance at which a focused body of `radius` fills FOCUS_FILL of the frame, with `p`'s field of view. */
 export const focusDistance = (p: OrbitPose, radius: number): number => framingDistance(radius, FOCUS_FILL, fovOf(p));
 
-/** The pose that frames a body of `radius` at `centre`, seen from the current eye's direction. */
-export function focusPose(current: OrbitPose, centre: Vec3, radius: number): OrbitPose {
-  const { yaw, pitch } = anglesOf(sub(eyeOf(current), centre), current);
+/**
+ * The pose that frames a body of `radius` at `centre`, seen from the current eye's direction, or from
+ * `facing` (a direction out of the centre, e.g. towards a settlement, #209) when it's given.
+ */
+export function focusPose(current: OrbitPose, centre: Vec3, radius: number, facing?: Vec3): OrbitPose {
+  const { yaw, pitch } = anglesOf(facing ?? sub(eyeOf(current), centre), current);
   return { ...current, target: [...centre], yaw, pitch, dist: focusDistance(current, radius) };
 }
 

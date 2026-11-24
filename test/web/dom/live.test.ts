@@ -25,6 +25,8 @@ vi.mock('../../../web/src/ui/panel.js', () => ({ Panel: class { setFog() {} sele
 // The drone panel stub records what its session-detail section is told to show (#148).
 const detailShown = vi.hoisted(() => [] as { kind: string; text?: string; detail?: unknown }[]);
 vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} showDetail(s: { kind: string }) { detailShown.push(s); } } }));
+// The directory view (#209) has its own DOM test (tree.test.ts).
+vi.mock('../../../web/src/tree/panel.js', () => ({ TreePanel: class { scale() {} setLayout() {} setFog() {} } }));
 
 const HEAD = miniLayout.source.head;
 const OTHER = 'b'.repeat(40);
@@ -98,6 +100,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     beacons: () => { beaconCalls++; return (beaconAnswers.shift() ?? (async () => beaconsAt(head)))(); },
     beacon: async () => ({ ok: false, error: 'not used' }),
     cochange: () => { coCalls++; return (coAnswers.shift() ?? (async () => coAt(head)))(); },
+    files: async () => ({ head, dirs: [], files: [] }),
   };
   let model: SystemModel | null = null;
   const view = {

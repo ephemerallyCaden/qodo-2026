@@ -44,5 +44,7 @@ export function fixtureClient(name: string): DataClient {
     // No co-change in the fixtures (#211): an empty view of the fixture's own head.
     cochange: async () => ({ schemaVersion: 'cochange.1', head: JSON.parse(await file('mini.fog.json')).head as string, needsRescan: false,
       links: [], flags: [], dismissed: 0, files: [] }),
+    // The directory view needs a scanned repository: the fixtures have no paths (#209).
+    files: () => Promise.reject(new ViewError('The directory view needs `commet open`: the dev fixtures have no paths.')),
   };
 }

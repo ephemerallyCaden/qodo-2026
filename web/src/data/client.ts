@@ -10,7 +10,8 @@ import type { DirId, FileId, SessionKey, Sha } from '../../../src/core/snapshot/
 import { checkCoChange } from '../cochange/check.js';
 import { checkDroneDetail, checkDrones } from '../drones/check.js';
 import { checkBeaconResult, checkBeacons } from '../model/beacons.js';
-import { checkChartResult, checkDiff, checkFog, checkLayout, checkUnseen, type Checked } from '../model/validate.js';
+import { checkChartResult, checkDiff, checkFog, checkLayout, checkTreeSource, checkUnseen, type Checked } from '../model/validate.js';
+import type { TreeSource } from '../tree/model.js';
 import { EventStreamParser } from './sse.js';
 
 /** A failure the view shows as text: a title and the reasons (AC9: a readable error, never a blank canvas). */
@@ -42,6 +43,11 @@ export interface DataClient {
   beacon(action: BeaconAction): Promise<BeaconResult>;
   /** #211: co-change links and the missing-pair flags at the server's head. A failure is announced, not fatal. */
   cochange(): Promise<CoChangeView>;
+  /**
+   * #209: the snapshot's folder and file paths at the server's head, for the directory view (from the
+   * snapshot route; nothing else of the snapshot is kept). A failure is said in the tree, not fatal.
+   */
+  files(): Promise<TreeSource>;
 }
 
 const HINTS: Record<number, string> = {
@@ -80,6 +86,7 @@ export const parseFog = (text: string, source: string): FogView => parseChecked(
 export const parseDrones = (text: string, source: string): DroneView => parseChecked(text, 'drone view', source, checkDrones);
 export const parseBeacons = (text: string, source: string): BeaconView => parseChecked(text, 'beacon view', source, checkBeacons);
 export const parseCoChange = (text: string, source: string): CoChangeView => parseChecked(text, 'co-change view', source, checkCoChange);
+export const parseTreeSource = (text: string, source: string): TreeSource => parseChecked(text, 'file list', source, checkTreeSource);
 
 /** Statuses whose JSON body is an answer the view acts on (a refusal it can explain), not an error. */
 const ANSWERS = [200, 400, 404, 409];
@@ -125,6 +132,7 @@ export function serverClient(token: string): DataClient {
     beacons: async () => parseBeacons(await get(API.beacons), API.beacons),
     beacon: (action) => answer(API.beacon, API.beacon, 'beacon answer', checkBeaconResult, JSON.stringify(action)),
     cochange: async () => parseCoChange(await get(API.cochange), API.cochange),
+    files: async () => parseTreeSource(await get(API.snapshot), API.snapshot),
     follow(onEvent, onStatus) {
       const abort = new AbortController();
       let attempt = 0;

@@ -23,8 +23,11 @@ export interface CameraRig {
   reset(pose: OrbitPose): void;
   /** Applies input over `dtMs`; true when the pose changed (so the view must redraw). */
   step(input: RigInput, dtMs: number): boolean;
-  /** Focuses a body (null returns to free flight). `cut` jumps; otherwise the camera glides. */
-  focus(target: Sphere | null, cut: boolean): void;
+  /**
+   * Focuses a body (null returns to free flight). `cut` jumps; otherwise the camera glides. `facing`, a
+   * direction out of the body's centre, frames it from that side (#209: a settlement turned to the camera).
+   */
+  focus(target: Sphere | null, cut: boolean, facing?: Vec3): void;
   /** Follows the focused body as it moves or resizes (a reload); true when the pose changed. */
   track(body: Sphere): boolean;
   /** True while a glide is running, so the loop keeps drawing until it ends. */
@@ -72,10 +75,10 @@ export class FreeFlightRig implements CameraRig {
     this.glide = null;
   }
 
-  focus(target: Sphere | null, cut: boolean): void {
+  focus(target: Sphere | null, cut: boolean, facing?: Vec3): void {
     this.target = target;
     if (!target) { this.glide = null; return; } // free flight from wherever the camera is now
-    const to = focusPose(this.current, target.centre, target.radius);
+    const to = focusPose(this.current, target.centre, target.radius, facing);
     if (cut) { this.glide = null; this.current = to; return; }
     this.glide = { from: this.current, to, ms: 0 };
   }

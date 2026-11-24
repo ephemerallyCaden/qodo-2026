@@ -34,6 +34,27 @@ canvas.bitmap, #error canvas { display: block; image-rendering: pixelated; }
 #drone-panel .note { margin: 2px 0; color: var(--dim); overflow-wrap: anywhere; }
 #drone-panel canvas.timeline { display: block; margin-top: 2px; image-rendering: pixelated; }
 #drone-panel .axis { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: 1ch; margin: 1px 0 0; color: var(--dim); }
+/* Directory view (#209): its HUD toggle and the file tree, bottom left over the map. DOM text in palette
+   colours; nothing transitions or scrolls smoothly, so reduced motion has nothing to stop here. */
+#tree-toggle { background: var(--space); border: 1px solid var(--rule); padding: 2px 4px; cursor: pointer; line-height: 0; }
+#tree-toggle[aria-expanded=true] { border-color: var(--accent); }
+#tree-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#tree { position: fixed; left: 8px; bottom: 40px; box-sizing: border-box; width: min(44ch, 36vw); max-height: 50vh; display: flex; flex-direction: column; gap: 4px;
+  padding: 6px; background: var(--space); border: 1px solid var(--rule); color: var(--ink); font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+#tree[hidden] { display: none; }
+#tree h2, #tree p { margin: 0; font-size: 12px; }
+#tree .top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+#tree button { background: var(--space); color: var(--ink); border: 1px solid var(--rule); padding: 2px 5px; cursor: pointer; font: inherit; }
+#tree button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#tree .note { color: var(--dim); overflow-wrap: anywhere; }
+#tree .rows { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+#tree .row { display: flex; gap: 1ch; cursor: pointer; white-space: pre; }
+#tree .row:focus { outline: none; }
+#tree .row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+#tree .row .name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; } /* a path's spaces are part of its name: pre keeps them */
+#tree .row .tag, #tree .row .twisty { color: var(--dim); flex: none; }
+#tree .row.fogged .name { color: var(--dim); }
+#tree .row[aria-selected=true] .name { color: var(--accent); }
 
 /* Review panel (#75): crisp DOM outside the pixel pass. Bitmap titles and buttons; diff text monospace. */
 #panel { position: fixed; right: 8px; top: 56px; max-height: calc(100vh - 64px); box-sizing: border-box; width: min(64ch, 42vw); display: flex; flex-direction: column; gap: 6px;

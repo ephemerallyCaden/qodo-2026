@@ -5,7 +5,7 @@
 // a pure function of the layout, so appending a moon or a moonlet never moves the others
 // (principle 4; contract: append-only slots). No rings: they have no meaning yet (contract amendment
 // 2026-11-10), so the view draws none.
-import type { HealthBand, LayoutV1, Planet } from '../../../src/core/contract/layout.js';
+import { fibonacciCell, type HealthBand, type LayoutV1, type Planet } from '../../../src/core/contract/layout.js';
 import { orbitAngle, TURNS, turnAngle } from './motion.js';
 import { INV_PHI, R2, fract } from './prng.js';
 import type { Vec3 } from './vec.js';
@@ -176,6 +176,18 @@ export function moonOffset(m: { orbit: number; incl: number; yaw: number; offset
   const z = Math.sin(a) * m.orbit * Math.cos(m.incl);
   const c = Math.cos(m.yaw), s = Math.sin(m.yaw);
   return [x * c + z * s, y, -x * s + z * c];
+}
+
+/**
+ * The world direction from a planet's centre to cell `cell` of its surface grid at a frame (#209: the
+ * directory view turns the camera to a file's settlement or a folder's continent): the cell's Fibonacci
+ * centre, turned with the surface (render/planet.ts: `spin.rotation.y = -turn`).
+ */
+export function surfaceDirection(p: PlanetModel, cell: number, frame: number): Vec3 {
+  const [x, y, z] = fibonacciCell(cell, p.surface.cells);
+  const t = turnAngle(frame, TURNS.surface), c = Math.cos(t), s = Math.sin(t);
+  // three's rotation.y by θ = -t: x' = x cos θ + z sin θ, z' = -x sin θ + z cos θ
+  return [x * c - z * s, y, x * s + z * c];
 }
 
 /** A moonlet's position around the star (the star is at the origin); slots sit golden-ratio steps apart on the orbit. */

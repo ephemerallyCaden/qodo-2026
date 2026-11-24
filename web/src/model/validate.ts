@@ -4,6 +4,7 @@
 import type { ChartResult, DiffResult, UnseenResult } from '../../../src/core/contract/api.js';
 import type { FogView } from '../../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
+import type { TreeSource } from '../tree/model.js';
 
 export type Checked<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 
@@ -268,4 +269,46 @@ export function checkChartResult(v: unknown): Checked<ChartResult> {
   const fog = checkFog(o['fog']);
   if (!fog.ok) fog.errors.forEach((e) => c.fail('chart.fog:', e));
   return c.result(v);
+}
+
+// ---- #209: the directory view's file list, from the snapshot ----
+
+/** A repository-relative path: no leading or trailing slash, no empty, `.` or `..` segment. */
+function repoPath(c: Checker, v: unknown, at: string): void {
+  c.str(v, at);
+  if (typeof v === 'string' && v.length > 0 && v.split('/').some((s) => s === '' || s === '.' || s === '..')) c.fail(at, 'must be a repository-relative path');
+}
+
+/**
+ * Checks an untrusted snapshot (GET /api/snapshot) for what the directory view reads, and returns only
+ * that: the head and each folder's and file's id and path (the rest of the snapshot is never kept).
+ * One bad or repeated entry refuses the whole list, so no file is silently left out (Rule 1).
+ */
+export function checkTreeSource(v: unknown): Checked<TreeSource> {
+  const c = new Checker();
+  const s = c.obj(v, 'snapshot');
+  if (!s) return c.result(v);
+  if (s['schemaVersion'] !== '0.2') {
+    c.fail('snapshot.schemaVersion', `must be "0.2" (got ${JSON.stringify(s['schemaVersion'])})`);
+    return c.result(v);
+  }
+  const repo = c.obj(s['repo'], 'snapshot.repo');
+  c.str(repo?.['head'], 'snapshot.repo.head');
+  const entries = <P extends string>(key: 'dirs' | 'files', prefix: P): { id: `${P}${string}`; path: string }[] => {
+    const ids = new Set<unknown>(), paths = new Set<unknown>();
+    return c.arr(s[key], `snapshot.${key}`).flatMap((x, i) => {
+      const at = `snapshot.${key}[${i}]`;
+      const o = c.obj(x, at);
+      if (!o) return [];
+      c.str(o['id'], `${at}.id`, prefix);
+      repoPath(c, o['path'], `${at}.path`);
+      if (ids.has(o['id'])) c.fail(`${at}.id`, 'is repeated');
+      if (paths.has(o['path'])) c.fail(`${at}.path`, 'is repeated');
+      ids.add(o['id']);
+      paths.add(o['path']);
+      return [{ id: o['id'] as `${P}${string}`, path: o['path'] as string }];
+    });
+  };
+  const dirs = entries('dirs', 'd_'), files = entries('files', 'f_');
+  return c.result({ head: repo?.['head'], dirs, files });
 }

@@ -5,13 +5,17 @@ import type { FogView } from '../../src/core/contract/fog.js';
 import { Beacons } from './beacons/controller.js';
 import { CoChange } from './cochange/controller.js';
 import { PARKED_POSE, startPoseAt } from './camera/pose.js';
-import { FreeFlightRig } from './camera/rig.js';
+import { FreeFlightRig, GLIDE_MS } from './camera/rig.js';
 import { ViewError, type DataClient } from './data/client.js';
 import { Drones } from './drones/controller.js';
 import { coveredBy } from './labels/overlay.js';
 import { startLoop } from './loop.js';
 import { planetLines, summaryText } from './model/describe.js';
+import { FPS } from './model/motion.js';
 import { PIXEL_HEIGHT } from './model/pixels.js';
+import { surfaceDirection } from './model/system.js';
+import type { Place } from './tree/model.js';
+import { TreePanel } from './tree/panel.js';
 import { byId } from './ui/dom.js';
 import type { Hud } from './ui/hud.js';
 import { Input } from './ui/input.js';
@@ -20,6 +24,8 @@ import type { View } from './view.js';
 import type { DirId } from '../../src/core/snapshot/types.js';
 
 const REDUCE = '(prefers-reduced-motion: reduce)';
+/** A focus glide in loop frames: a settlement is turned to where it will be when the glide ends (#209). */
+const GLIDE_FRAMES = Math.round((GLIDE_MS * FPS) / 1000);
 
 const describeError = (e: unknown): ViewError =>
   e instanceof ViewError ? e : new ViewError('The view hit an internal error.', [e instanceof Error ? e.message : String(e)]);
@@ -70,6 +76,9 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     announce: (t) => hud.announce(t), release: () => view.pass.canvas.focus({ preventScroll: true }),
     beaconTicket: () => beacons.ticket(), applyBeacons: (b, t) => beacons.apply(b, drawnHead, t), // #79: a note left with a chart
     focusFile: (id) => { view.focusFile = id; view.focusSince = shown(); summarise(); redraw(); } }); // #211: the open diff's constellation
+  // #209: the directory view, which hands a file or folder to the map (openPlace).
+  const tree = new TreePanel({ client, open: (place, said) => openPlace(place, said), announce: (t) => hud.announce(t),
+    release: () => view.pass.canvas.focus({ preventScroll: true }) });
 
   /** Something changed that needs a redraw: mark it and wake the loop. */
   const redraw = () => { dirty = true; loop.wake(); };
@@ -78,6 +87,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     view.resize(pixelHeight, innerWidth, innerHeight, dpr);
     hud.scale(view.labels.px, dpr);
     panel.scale(view.labels.px, dpr);
+    tree.scale(view.labels.px, dpr);
     redraw();
   };
 
@@ -96,11 +106,14 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     hud.announce(p ? `focused ${planetLines(p, view.fog).join(', ')}` : 'free flight');
     summarise();
   };
-  const setFocus = (i: number | null) => {
+  /** Focuses planet i (null: free flight); `cell`, one of its surface cells, is turned to the camera, where it is once the glide ends (#209). */
+  const setFocus = (i: number | null, cell: number | null = null) => {
     focus = i;
     view.focusSince = shown(); // #211: the constellation draws in from here
     focusId = i === null ? null : view.model?.planets[i]?.dirId ?? null;
-    rig.focus(i === null ? null : view.focusTarget(i, shown()), reduced);
+    const p = i === null ? undefined : view.model?.planets[i];
+    const facing = p && cell !== null ? surfaceDirection(p, cell, shown() + (reduced ? 0 : GLIDE_FRAMES)) : undefined;
+    rig.focus(i === null ? null : view.focusTarget(i, shown()), reduced, facing);
     panel.select(focusId as DirId | null, i === null ? null : view.model?.planets[i]?.path ?? null);
     say();
     dirty = true;
@@ -112,6 +125,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   // What changed is announced, since a front can be on the far side, or not drawn under reduced motion.
   view.onFog = (f) => {
     panel.setFog(f); // the review panel follows every applied fog (#75)
+    tree.setFog(f); // so does the directory view (#209)
     const { cleared, refogged } = view.fogChange;
     const notice = view.fogNotice;
     if (cleared || refogged) hud.announce(fogChanged = [cleared ? `charted ${files(cleared)}` : '', refogged ? `${files(refogged)} refogged` : ''].filter(Boolean).join(', '));
@@ -128,7 +142,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   const cochange = new CoChange({ view, client, announce: (t) => hud.announce(t), changed: () => { summarise(); redraw(); } });
   // #80: the agent drones, refetched with every layout load and snapshot event.
   const drones = new Drones({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }),
-    others: () => [byId('panel')] });
+    others: () => [byId('panel'), byId('tree')] });
 
   const fetchFog = (): Promise<Fetched> => client.fog().then((fog) => ({ fog }), (error: unknown) => ({ error }));
   const loadOnce = async () => {
@@ -158,6 +172,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
         const t = view.focusTarget(kept, shown());
         if (t) rig.track(t);
       } else if (focus !== null) setFocus(null);
+      tree.setLayout(layout);
       say();
       if (fogChanged) hud.announce(fogChanged); // what the reload's fog changed (a rescan's refogs), not overwritten by say()
       if (paired.notice) hud.announce(paired.notice); // after say(), so the status line keeps it
@@ -221,6 +236,27 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     home: () => { drones.deselect(); if (view.model) { rig.reset(startPoseAt(view.model, shown())); setFocus(null); } },
   });
 
+  /**
+   * #209: the directory view opened a file or folder. Its planet is focused, turned to the settlement or
+   * continent when it has one; a root file, unmatched test or a folder with no planet of its own goes
+   * home to the star, whose files the review panel then lists. Then `said` is announced over say()'s line.
+   */
+  const openPlace = (place: Place, said: string) => {
+    const m = view.model;
+    if (!loaded || !m) return;
+    drones.deselect();
+    if (place.kind === 'star' || place.kind === 'moonlet') {
+      rig.reset(startPoseAt(m, shown()));
+      setFocus(null);
+    } else {
+      const i = m.planets.findIndex((p) => p.dirId === place.planet);
+      if (i < 0) { hud.announce('not focused: its planet isn\'t on the map drawn now; waiting for the next update'); return; }
+      setFocus(i, place.kind === 'settlement' || place.kind === 'continent' ? place.cell : null);
+    }
+    hud.announce(said);
+    redraw();
+  };
+
   const loop = startLoop(({ frame: f, dtMs }) => {
     frame = f;
     if (!loaded) return;
@@ -254,7 +290,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   // #169: the review and drone panels are DOM laid over the label canvas, so the note and drone labels
   // move out from under the open ones. A panel that opens, closes or grows (a list that loaded) redraws,
   // which reduced motion's still frame would otherwise not.
-  const panels = [byId('panel'), byId('drone-panel')];
+  const panels = [byId('panel'), byId('drone-panel'), byId('tree')];
   view.covered = () => coveredBy(view.labels.canvas, panels);
   const watch = new ResizeObserver(redraw);
   for (const p of panels) watch.observe(p);

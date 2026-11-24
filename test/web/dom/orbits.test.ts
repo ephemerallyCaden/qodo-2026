@@ -18,6 +18,8 @@ import { droneView } from '../../fixtures/drones.js';
 // The review panel (#75) and the drone panel need a DOM: no-ops here, as in live.test.ts.
 vi.mock('../../../web/src/ui/panel.js', () => ({ Panel: class { setFog() {} select() {} scale() {} } }));
 vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} } }));
+// The directory view (#209) has its own DOM test (tree.test.ts).
+vi.mock('../../../web/src/tree/panel.js', () => ({ TreePanel: class { scale() {} setLayout() {} setFog() {} } }));
 
 /** Frames requested with requestAnimationFrame, run by tick(). */
 let queued: FrameRequestCallback[] = [];
@@ -85,6 +87,7 @@ async function live(reduced = false) {
     beacons: async () => ({ schemaVersion: 'beacons.1', head: miniLayout.source.head, beacons: [], unplaced: 0 }),
     beacon: async () => ({ ok: false, error: 'not used' }),
     cochange: async () => ({ schemaVersion: 'cochange.1', head: miniLayout.source.head, needsRescan: false, links: [], flags: [], dismissed: 0, files: [] }),
+    files: async () => ({ head: miniLayout.source.head, dirs: [], files: [] }),
   };
   // runLive sets onReducedMotion: what the HUD's reduce-motion checkbox calls
   const hud = { announce: () => {}, summary: () => {}, scale: () => {}, clearError: () => {}, error: () => {}, setReducedMotion: () => {}, onReducedMotion: (() => {}) as (on: boolean) => void };
