@@ -146,7 +146,17 @@ export class PixelPass {
 
   /** RGBA bytes of the internal target, row 0 at the top (contract: lowResPixels). */
   pixels(): { width: number; height: number; rgba: number[] } {
-    return { width: this.width, height: this.height, rgba: Array.from(this.readTarget()) };
+    const { width: w, height: h } = this;
+    const buf = new Uint8Array(w * h * 4);
+    this.renderer.readRenderTargetPixels(this.target, 0, 0, w, h, buf);
+    // One indexed copy into a preallocated array: Array.from over the bytes was ~10x slower, per frame,
+    // which a render test reading every frame of the loop pays 2,880 times (PR #214 CI, star.spec S1).
+    const rgba = new Array<number>(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      const src = (h - 1 - y) * w * 4; // GL rows run bottom-up
+      for (let i = 0; i < w * 4; i++) rgba[y * w * 4 + i] = buf[src + i]!;
+    }
+    return { width: w, height: h, rgba };
   }
 
   dispose(): void {
