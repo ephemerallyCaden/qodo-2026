@@ -7,8 +7,8 @@ import * as THREE from 'three';
 import { makeAstronaut } from '../asset-viewer/viewer.js';
 import { eyesFor } from '../asset-viewer/faces.js';
 import { LIGHT_DIR } from '../drone-lab/drone.js';
-import { shipGlsl, shipBounds, MAX_FLAMES, MAX_LIGHTS, PAINT_WINDOW, PAINT_LIGHT } from './ship-glsl.js';
-import { SHIP_SCALE, CAP, idleAt, flameAt, lightOn } from './ship-spec.js';
+import { shipGlsl, shipBounds, MAX_FLAMES, MAX_LIGHTS, MAX_PUFFS, MAX_LICKS, PUFF_J, PAINT_WINDOW, PAINT_LIGHT } from './ship-glsl.js';
+import { SHIP_SCALE, CAP, HELMET_Y, idleAt, flameAt, flameLive, lightOn } from './ship-spec.js';
 import { CAP_PALETTE } from './palette.js';
 
 const VERT = /* glsl */ `
@@ -20,7 +20,31 @@ const VERT = /* glsl */ `
   }
 `;
 
-const frag = (spec) => /* glsl */ `
+// The flame's colour at p (j: the flame, or a puff past PUFF_J). The idle flame: hottest at the nozzle
+// and along its middle as seen. The lively flame (live): the same kind of heat with a shorter white
+// core, its bands shifted each step (alternating) and jumping per segment along its length; a puff is
+// one flat step of the ramp, cooling as it ages.
+const flameColour = (live) => live ? /* glsl */ `, its bands shifting each step, and its puffs
+      if (j >= ${PUFF_J}) c = uFlame[int(uPuffBand[j - ${PUFF_J}] + 0.5)];
+      else {
+        vec3 A = FLAME_A[j], T = flameTip(j), ax = T - A;
+        float len = length(ax);
+        vec3 ad = ax / len;
+        float u = clamp(dot(p - A, ad) / len, 0.0, 1.0);
+        float lat = abs(dot(p - (A + ad * u * len), normalize(cross(rd, ad))));
+        int seg = j * ${MAX_LICKS} + min(int(u * ${MAX_LICKS}.0), ${MAX_LICKS - 1});
+        float heat = 0.86 - 1.0 * u - 0.7 * clamp(lat / mix(FLAME_R[j], 0.035, u), 0.0, 1.0) + uFlameHeat[j] + uFlameLick[seg]; // a shorter white core than the idle flame's: all four steps show
+        c = uFlame[heat > 0.5 ? 3 : heat > 0.26 ? 2 : heat > 0.04 ? 1 : 0];
+      }` : /* glsl */ `, hottest at the nozzle and along its middle as seen
+      vec3 A = FLAME_A[j], T = flameTip(j), ax = T - A;
+      float len = length(ax);
+      vec3 ad = ax / len;
+      float u = clamp(dot(p - A, ad) / len, 0.0, 1.0);
+      float lat = abs(dot(p - (A + ad * u * len), normalize(cross(rd, ad))));
+      float heat = 1.0 - 0.9 * u - 0.6 * clamp(lat / mix(FLAME_R[j], 0.035, u), 0.0, 1.0);
+      c = uFlame[heat > 0.5 ? 3 : heat > 0.26 ? 2 : heat > 0.04 ? 1 : 0];`;
+
+const frag = (spec, live = false) => /* glsl */ `
   uniform mat4 uInvModel;
   uniform mat4 uModel;
   uniform mat4 uProj;
@@ -37,7 +61,7 @@ const frag = (spec) => /* glsl */ `
   uniform vec3 uLights[2];
   uniform int uFlameOn;
   in vec3 vPosW;
-  ${shipGlsl(spec)}
+  ${shipGlsl(spec, { live })}
 
   float scene(vec3 p) {
     int j, g;
@@ -124,14 +148,7 @@ const frag = (spec) => /* glsl */ `
     int j, g;
     float dh = hull(p), df = uFlameOn == 1 ? flameField(p, j) : 1e9, dg = glassField(p, g);
     if (df < dh && df < dg) {
-      // the thruster flame: unlit, hottest at the nozzle and along its middle as seen
-      vec3 A = FLAME_A[j], T = flameTip(j), ax = T - A;
-      float len = length(ax);
-      vec3 ad = ax / len;
-      float u = clamp(dot(p - A, ad) / len, 0.0, 1.0);
-      float lat = abs(dot(p - (A + ad * u * len), normalize(cross(rd, ad))));
-      float heat = 1.0 - 0.9 * u - 0.6 * clamp(lat / mix(FLAME_R[j], 0.035, u), 0.0, 1.0);
-      c = uFlame[heat > 0.5 ? 3 : heat > 0.26 ? 2 : heat > 0.04 ? 1 : 0];
+      // the thruster flame: unlit${flameColour(live)}
     } else if (dg < dh) {
       // glass: a glint and a lit-limb sliver on the front; elsewhere see-through to what's inside,
       // or to the dome's dark far wall (two-toned like the crew's visors)
@@ -182,16 +199,21 @@ function proxyFor(spec) {
 /**
  * One raymarched SDF object from a spec (a hull, or the captain's cap): its mesh, its palette, and
  * sync(t, camera), which sets the per-frame uniforms from the mesh's current world matrix. Each has
- * its own material; three.js compiles each distinct source once and shares the program.
+ * its own material; three.js compiles each distinct source once and shares the program. live: the
+ * lively flame (flameLive), with its puffs.
  */
-function sdfObject(spec, palette) {
+function sdfObject(spec, palette, { live = false } = {}) {
   const mesh = new THREE.Mesh(proxyFor(spec), new THREE.ShaderMaterial({
-    vertexShader: VERT, fragmentShader: frag(spec), side: THREE.BackSide,
+    vertexShader: VERT, fragmentShader: frag(spec, live), side: THREE.BackSide,
     uniforms: {
       uInvModel: { value: new THREE.Matrix4() }, uModel: { value: new THREE.Matrix4() }, uProj: { value: null }, uLightLocal: { value: new THREE.Vector3() },
       uShell: { value: [] }, uTrim: { value: [] }, uMetal: { value: [] }, uRing: { value: [] }, uGold: { value: [] }, uGlass: { value: [] }, uInterior: { value: new THREE.Color() }, uGlint: { value: [] }, uFlame: { value: [] }, uLights: { value: [] },
       uFlameL: { value: new Array(MAX_FLAMES).fill(0) }, uFlameW: { value: Array.from({ length: MAX_FLAMES }, () => new THREE.Vector2()) },
       uLightOn: { value: new Array(MAX_LIGHTS).fill(0) }, uFlameOn: { value: 1 },
+      ...(live ? {
+        uPuff: { value: Array.from({ length: MAX_PUFFS * MAX_FLAMES }, () => new THREE.Vector4()) }, uPuffBand: { value: new Array(MAX_PUFFS * MAX_FLAMES).fill(0) },
+        uFlameHeat: { value: new Array(MAX_FLAMES).fill(0) }, uFlameLick: { value: new Array(MAX_LICKS * MAX_FLAMES).fill(0) },
+      } : {}),
     },
   }));
   mesh.frustumCulled = false;
@@ -207,7 +229,15 @@ function sdfObject(spec, palette) {
     U.uProj.value = camera.projectionMatrix;
     mesh.matrixWorld.decompose(new THREE.Vector3(), q, new THREE.Vector3());
     U.uLightLocal.value.copy(LIGHT_DIR).applyQuaternion(q.invert());
-    spec.flames.forEach((fl, j) => { const a = flameAt(t, j); U.uFlameL.value[j] = fl.len * a.len; U.uFlameW.value[j].set(a.dx, a.dz); });
+    if (live) spec.flames.forEach((fl, j) => {
+      const a = flameLive(t, j, fl.len);
+      U.uFlameL.value[j] = fl.len * a.len;
+      U.uFlameW.value[j].set(a.dx, a.dz);
+      U.uFlameHeat.value[j] = a.shift;
+      a.licks.forEach((x, i) => { U.uFlameLick.value[j * MAX_LICKS + i] = x; });
+      a.puffs.forEach((q, i) => { U.uPuff.value[j * MAX_PUFFS + i].set(...q.c, q.r); U.uPuffBand.value[j * MAX_PUFFS + i] = q.band; });
+    });
+    else spec.flames.forEach((fl, j) => { const a = flameAt(t, j); U.uFlameL.value[j] = fl.len * a.len; U.uFlameW.value[j].set(a.dx, a.dz); });
     spec.lights.forEach((l, i) => { U.uLightOn.value[i] = lightOn(l, i, t) ? 1 : 0; });
     U.uFlameOn.value = flameOn ? 1 : 0;
   }
@@ -231,8 +261,11 @@ function bodyOf(a) {
  * A ship of one direction: build(n) -> spec (ship-spec.js BUILDERS), its crew pool, and update(t).
  * root (placement, view yaw) -> idle (bob, roll, pitch) -> scaled (SHIP_SCALE) -> hull proxy + crew.
  * Seat 0's astronaut, the captain, wears the cap (CAP), attached inside its body so it rides the bob.
+ * live: the lively flame (the fly-by's). setUpright(up, { sink }): each update turns every rider about
+ * its own line of sight so its head points to `up` (a world direction: the screen's up) however the
+ * hull rolls, sinking it back as it turns; setUpright(null), the default: the seats as built.
  */
-export function makeShip(build, palette) {
+export function makeShip(build, palette, { live = false } = {}) {
   const root = new THREE.Group();
   const idle = new THREE.Group();
   const scaled = new THREE.Group();
@@ -240,7 +273,7 @@ export function makeShip(build, palette) {
   root.add(idle);
   idle.add(scaled);
   const crew = [];
-  let hull = null, spec = null, pal = palette, flameOn = true, capOn = true;
+  let hull = null, spec = null, pal = palette, flameOn = true, capOn = true, upright = null, sink = 0;
   const cap = sdfObject(CAP, CAP_PALETTE);
   cap.mesh.rotation.x = CAP.tilt;
 
@@ -252,7 +285,7 @@ export function makeShip(build, palette) {
   function setCrew(n) {
     spec = build(n);
     if (hull) { scaled.remove(hull.mesh); hull.dispose(); }
-    hull = sdfObject(spec, pal);
+    hull = sdfObject(spec, pal, { live });
     scaled.add(hull.mesh);
     while (crew.length < spec.crew.length) {
       const i = crew.length;
@@ -270,12 +303,50 @@ export function makeShip(build, palette) {
     });
     return spec;
   }
+  /** The seats as built (setCrew's placement). */
+  function seatCrew() {
+    crew.forEach((a, i) => { const s = spec.crew[i]; if (s) { a.group.position.set(...s.p); a.group.rotation.set(0, s.yaw, 0); } });
+  }
+  /**
+   * Upright riders: the hull's roll on screen is undone for each rider by a turn psi about its own line
+   * of sight, the axis along its seat's facing through its pivot (the seat's `pivot`, its window's line
+   * of sight at the helmet's depth; else the helmet's centre). A turn about the window's own axis keeps
+   * the helmet where it was in the opening; the captain's drop for the cap turns with it, so the cap
+   * stays above the helmet on screen. psi takes the ship's +y to `up`, in the ship's own frame. Turned
+   * on its side a rider's body runs round the hull's curve instead of down its length, so it also sinks
+   * straight back from the ship's front (-z, the way the camera looks when the front faces it) by
+   * sink |sin psi| (design units), to keep its boots inside the hull: seen from the front, its face
+   * stays where it was in the window, only deeper (sink: one for all, or per seat, the last repeating).
+   */
+  const tmpQ = new THREE.Quaternion(), yawQ = new THREE.Quaternion(), turnQ = new THREE.Quaternion();
+  const Y = new THREE.Vector3(0, 1, 0), up = new THREE.Vector3(), axis = new THREE.Vector3(), off = new THREE.Vector3(), pv = new THREE.Vector3();
+  function uprightCrew(upWorld, sink) {
+    up.fromArray(upWorld);
+    scaled.matrixWorld.decompose(pv, tmpQ, off);
+    up.applyQuaternion(tmpQ.invert());
+    const psi = Math.atan2(-up.x, up.y);
+    crew.forEach((a, i) => {
+      const s = spec.crew[i];
+      if (!s) return;
+      pv.fromArray(s.pivot ?? [s.p[0], s.p[1] + HELMET_Y, s.p[2]]);
+      axis.set(Math.sin(s.yaw), 0, Math.cos(s.yaw));
+      turnQ.setFromAxisAngle(axis, psi);
+      off.fromArray(s.p).sub(pv).applyQuaternion(turnQ);
+      const back = Array.isArray(sink) ? sink[Math.min(i, sink.length - 1)] : sink;
+      a.group.position.copy(pv).add(off);
+      a.group.position.z -= back * Math.abs(Math.sin(psi));
+      a.group.quaternion.copy(turnQ).multiply(yawQ.setFromAxisAngle(Y, s.yaw));
+    });
+    return psi;
+  }
+  let psi = 0;
   /** Poses the ship and its crew at time t (s); camera: the one about to render. */
   function update(t, camera) {
     const m = idleAt(t);
     idle.position.y = m.bob * SHIP_SCALE;
     idle.rotation.set(m.pitch, 0, m.roll);
     root.updateMatrixWorld(true);
+    if (upright) psi = uprightCrew(upright, sink);
     hull.sync(t, camera, flameOn);
     for (const a of crew) if (a.group.visible) a.update(t); // updates each figure's matrices, the cap's too
     cap.mesh.visible = capOn;
@@ -285,6 +356,8 @@ export function makeShip(build, palette) {
     group: root, crew, setCrew, setPalette, update,
     setFlame(on) { flameOn = on; },
     setCap(on) { capOn = on; },
+    setUpright(upWorld, opts = {}) { if (upright && !upWorld) seatCrew(); upright = upWorld ?? null; sink = opts.sink ?? 0; psi = 0; },
+    get psi() { return psi; }, // the riders' last upright turn (rad)
     get spec() { return spec; }, get mesh() { return hull.mesh; }, get cap() { return cap.mesh; },
   };
 }

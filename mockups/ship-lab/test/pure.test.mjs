@@ -9,7 +9,9 @@ import { LOSPEC } from '../../asset-viewer/palettes.js';
 import { VARIANTS, R2_VARIANTS, R2B_VARIANTS, FINAL_VARIANTS, ALL_VARIANTS, specOf } from '../variants.js';
 import { shipBounds } from '../ship-glsl.js';
 import { RAMPS, TEAL, BLK36, CAP_PALETTE, paletteHexes, tealThrust } from '../palette.js';
-import { BUILDERS, CAP, SHIP_SCALE, CYCLE, CYCLES, SEATS_PER_DECK, MAX_DECKS, HELMET_Y, crewPlan, idleAt, flameAt, lightOn, hash01 } from '../ship-spec.js';
+import { BUILDERS, CAP, SHIP_SCALE, CYCLE, CYCLES, SEATS_PER_DECK, MAX_DECKS, HELMET_Y, crewPlan, idleAt, flameAt, flameLive, liveReach, LIVE, lightOn, hash01 } from '../ship-spec.js';
+import { R24C } from '../ship-r2.js';
+import { FLYBY, passAt, shipAt, middleAt, project, cameraFrame, timeAt } from '../flyby.js';
 import { shipGlsl, SLOTS, MAX_LIGHTS } from '../ship-glsl.js';
 import { tileProblems, seamProblems } from '../checks.mjs';
 import { resolveFile } from '../routes.mjs';
@@ -247,6 +249,81 @@ test('the final pick: R2-4c\'s hull, portholes and seats, with R2-4\'s red belly
   }
   const r = bandOf('R2-4', 8);
   assert.ok(near(r.b[0].y0 - r.cy, -0.3) && near(r.b[0].y1 - r.top, 0.12) && r.b[0].slot === 'trim', 'R2-4\'s band has the same offsets');
+});
+
+test('the fly-by v2 flies nose first, its front to the camera, entering and leaving off screen (flyby.js)', () => {
+  const dot = (a, b) => a.reduce((acc, x, i) => acc + x * b[i], 0), unit = (a) => { const l = Math.hypot(...a); return a.map((x) => x / l); };
+  const cam = FLYBY.camera.at;
+  let maxOff = 0;
+  for (let k = 0; k < FLYBY.frames; k++) {
+    const m = shipAt(k);
+    if (passAt(k) === null) { assert.equal(m.visible, false, `frame ${k}: shown in the hold`); continue; }
+    const { x, y, z } = m.axes;
+    for (const [a, b] of [[x, y], [y, z], [z, x]]) assert.ok(Math.abs(dot(a, b)) < 1e-9, `frame ${k}: the axes aren't orthogonal`);
+    assert.ok(Math.abs(dot(x, [y[1] * z[2] - y[2] * z[1], y[2] * z[0] - y[0] * z[2], y[0] * z[1] - y[1] * z[0]]) - 1) < 1e-9, `frame ${k}: not a rotation`);
+    const mid = m.p.map((c, i) => c + y[i] * FLYBY.mid * SHIP_SCALE);
+    // the front faces the camera (the bank tips it at most FLYBY.bank)
+    assert.ok(dot(z, unit(cam.map((c, i) => c - mid[i]))) > Math.cos(FLYBY.bank) - 1e-9, `frame ${k}: the portholes turn from the camera`);
+    // on screen the nose axis (tail to nose) points along the middle's travel, nose leading
+    const tail = project(mid), nose = project(mid.map((c, i) => c + y[i])), s = passAt(k);
+    const a = middleAt(Math.max(-1, s - 1e-3)).screen, b = middleAt(Math.min(1, s + 1e-3)).screen;
+    const axis = Math.atan2(tail[1] - nose[1], nose[0] - tail[0]), travel = Math.atan2(a[1] - b[1], b[0] - a[0]);
+    maxOff = Math.max(maxOff, Math.abs(Math.atan2(Math.sin(axis - travel), Math.cos(axis - travel))));
+    assert.ok(nose[0] > tail[0], `frame ${k}: the nose isn't to the right of the tail (it flies left to right)`);
+    // the middle is where the track puts it on screen
+    const at = project(mid), want = middleAt(s).screen;
+    assert.ok(Math.hypot(at[0] - want[0], at[1] - want[1]) < 1e-6, `frame ${k}: the middle is off its track`);
+  }
+  assert.ok(maxOff < 1e-4, `the nose is ${maxOff} rad off its travel`);
+  // left to right, a slight climb only, and slow through the middle (the glide)
+  const [x0, y0] = middleAt(-1).screen, [x1, y1] = middleAt(1).screen, [xm] = middleAt(0).screen;
+  assert.ok(x0 < -100 && x1 > FLYBY.w + 100 && Math.abs(xm - FLYBY.w / 2) < 1e-9);
+  assert.ok(y1 < y0 && Math.atan2(y0 - y1, x1 - x0) < 0.15, 'a climb, but a slight one');
+  assert.equal(timeAt(0), FLYBY.t0);
+  assert.ok(Math.abs(dot(cameraFrame().up, cameraFrame().fw)) < 1e-12);
+});
+
+test('the lively flame: deterministic, loop-locked, a new look every fly-by frame, inside its box', () => {
+  assert.equal(Number.isInteger(LIVE.hz * CYCLE) && Number.isInteger(CYCLE / LIVE.life) && Number.isInteger(LIVE.surge[1]), true, 'whole steps, lives and surges per cycle');
+  const fl = specOf('R2-4c-final', 6).flames[0];
+  let prev = null, unchanged = 0;
+  for (let k = 0; k < 240; k++) {
+    const t = FLYBY.t0 + k / FLYBY.fps, a = flameLive(t, 0, fl.len);
+    assert.deepEqual(flameLive(t, 0, fl.len), a, 'deterministic');
+    const b = flameLive(t + CYCLE, 0, fl.len);
+    assert.ok(Math.abs(a.len - b.len) < 1e-9 && a.dx === b.dx && a.shift === b.shift && a.puffs.every((p, i) => Math.abs(p.r - b.puffs[i].r) < 1e-9 && p.band === b.puffs[i].band), `t=${t}: one cycle later differs`);
+    if (prev && Math.abs(a.len - prev.len) < 0.05 && Math.abs(a.dx - prev.dx) < 0.02) unchanged++;
+    assert.ok(a.len > 1.1 && fl.len * a.len + 0.1 < liveReach(fl.len), `t=${t}: the flame's length ${a.len}`);
+    for (const p of a.puffs) {
+      assert.ok([0, 1, 2, 3].includes(p.band), 'a puff is one step of the flame ramp');
+      if (p.r > 0) assert.ok(-p.c[1] + p.r < liveReach(fl.len) && Math.hypot(p.c[0], p.c[2]) + p.r < fl.r + 0.1, `t=${t}: a puff leaves the proxy box`);
+    }
+    prev = a;
+  }
+  assert.ok(unchanged < 5, `the flame holds still for ${unchanged} of 240 steps`);
+  // the core alternates step to step, and puffs cool as they age
+  assert.ok(Math.sign(flameLive(8.0).shift - flameLive(8.05).shift) !== Math.sign(flameLive(8.05).shift - flameLive(8.1).shift));
+  const live = Array.from({ length: 24 }, (_, i) => flameLive(8 + i / 20)).flatMap((f) => f.puffs).filter((p) => p.r > 0);
+  assert.ok(live.some((p) => p.band === 3) && live.some((p) => p.band === 0), 'puffs from white to red');
+  // the idle flame (every other shot) is untouched: its hashed wag still steps 4 times a second
+  assert.ok(flameAt(8.0).dx === flameAt(8.2).dx && flameAt(8.2).dx !== flameAt(8.26).dx);
+});
+
+test('the lively flame and the seat pivots leave every default ship as it was', () => {
+  for (const v of ALL_VARIANTS) for (const n of [1, 6, 12]) {
+    const sp = specOf(v.id, n);
+    assert.equal(shipGlsl(sp, { live: false }), shipGlsl(sp), `${v.id} n=${n}: the default source changed`);
+    assert.ok(!shipGlsl(sp).includes('uPuff'), `${v.id}: puffs in the default flame`);
+    if (sp.flames.length) assert.ok(shipGlsl(sp, { live: true }).includes('uPuff'));
+  }
+  const sp = specOf('R2-4c-final', 6), fl = sp.flames[0];
+  const live = { ...sp, flames: [{ ...fl, reach: liveReach(fl.len) }] };
+  assert.ok(shipBounds(live).lo[1] < shipBounds(sp).lo[1], 'the lively flame\'s box reaches back for its puffs');
+  assert.deepEqual(shipBounds(live).hi, shipBounds(sp).hi);
+  // a porthole seat's pivot is the helmet before the drop: the captain's is `low` above, the teammates' at the helmet
+  const [captain, ...mates] = sp.crew;
+  assert.ok(Math.abs(captain.pivot[1] - (captain.p[1] + HELMET_Y) - R24C.low) < 1e-9 && captain.pivot[0] === captain.p[0] && captain.pivot[2] === captain.p[2]);
+  for (const m of mates) assert.ok(m.pivot.every((c, i) => Math.abs(c - (i === 1 ? m.p[1] + HELMET_Y : m.p[i])) < 1e-9));
 });
 
 test('the tile checks fail on empty output', () => {

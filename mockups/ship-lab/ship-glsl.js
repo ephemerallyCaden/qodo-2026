@@ -7,6 +7,7 @@ export const SLOTS = ['shell', 'trim', 'metal', 'ring', 'gold']; // the hull pai
 export const PAINT_WINDOW = 8, PAINT_LIGHT = 9; // paint() codes past the slots
 export const MAX_FLAMES = 2;
 export const MAX_LIGHTS = 32;
+export const MAX_PUFFS = 6, MAX_LICKS = 6, PUFF_J = 100; // the lively flame's puffs and heat segments per flame; a puff's flame index starts at PUFF_J
 
 const f = (x) => { const s = Number(x).toFixed(5).replace(/0+$/, '').replace(/\.$/, '.0'); return s === '-0.0' ? '0.0' : s; }; // a GLSL float literal
 const v2 = (a) => `vec2(${f(a[0])}, ${f(a[1])})`;
@@ -54,10 +55,11 @@ export function partBounds(q) {
   }
 }
 
-/** The ship's bounding box (hull, glass, flames at their longest, lights), with a margin. */
+/** The ship's bounding box (hull, glass, flames at their longest, lights), with a margin. A flame's
+ *  `reach` (the lively flame's, with its puffs) replaces the idle flame's longest, len * 1.3. */
 export function shipBounds(spec, margin = 0.06) {
   const boxes = [...spec.parts.map(partBounds), ...spec.glass.map((g) => [g.c.map((x) => x - g.r), g.c.map((x) => x + g.r)])];
-  for (const fl of spec.flames) boxes.push([[fl.a[0] - fl.r - 0.1, fl.a[1] - fl.len * 1.3 - 0.05, fl.a[2] - fl.r - 0.1], [fl.a[0] + fl.r + 0.1, fl.a[1] + fl.r, fl.a[2] + fl.r + 0.1]]);
+  for (const fl of spec.flames) boxes.push([[fl.a[0] - fl.r - 0.1, fl.a[1] - (fl.reach ?? fl.len * 1.3) - 0.05, fl.a[2] - fl.r - 0.1], [fl.a[0] + fl.r + 0.1, fl.a[1] + fl.r, fl.a[2] + fl.r + 0.1]]);
   const lo = [0, 1, 2].map((i) => Math.min(...boxes.map((b) => b[0][i])) - margin);
   const hi = [0, 1, 2].map((i) => Math.max(...boxes.map((b) => b[1][i])) + margin);
   return { lo, hi };
@@ -121,8 +123,11 @@ const HELPERS = /* glsl */ `
  *   float hull(vec3 p), float flameField(vec3 p, out int j), float glassField(vec3 p, out int g),
  *   int partOf(vec3 p), int paint(vec3 p, int part, out int win, out int light)
  * paint: a hull slot (SLOTS index), PAINT_WINDOW a see-through window (win = its index), PAINT_LIGHT a nav light.
+ * live (the fly-by's lively flame): flameField also holds each flame's exhaust puffs (uniforms uPuff,
+ * uPuffBand; a puff's j is PUFF_J + its index), and uFlameHeat / uFlameLick shift its heat bands.
+ * Without it the source is the idle flame's, unchanged.
  */
-export function shipGlsl(spec) {
+export function shipGlsl(spec, { live = false } = {}) {
   const { lo, hi } = shipBounds(spec);
   const P = spec.parts;
   const ids = P.map((q) => q.id);
@@ -157,9 +162,18 @@ export function shipGlsl(spec) {
   const vec3 FLAME_A[${F.length}] = ${arr('vec3', F.map((x) => v3(x.a)))};
   const float FLAME_R[${F.length}] = ${arr('float', F.map((x) => f(x.r)))};
   vec3 flameTip(int j) { return FLAME_A[j] + vec3(uFlameW[j].x, -uFlameL[j], uFlameW[j].y); }
-  float flameField(vec3 p, out int jj) {
+  ${live ? `uniform vec4 uPuff[${MAX_PUFFS * MAX_FLAMES}]; // each flame's puffs: centre (from its anchor), radius (0: gone)
+  uniform float uPuffBand[${MAX_PUFFS * MAX_FLAMES}]; // and its flame-ramp step
+  uniform float uFlameHeat[${MAX_FLAMES}]; // the heat bands' shift this step
+  uniform float uFlameLick[${MAX_LICKS * MAX_FLAMES}]; // and each segment's jump
+  ` : ''}float flameField(vec3 p, out int jj) {
     float best = 1e9; jj = -1;
-    for (int j = 0; j < ${F.length}; j++) { float e = sdRoundCone(p, FLAME_A[j], flameTip(j), FLAME_R[j], 0.035); if (e < best) { best = e; jj = j; } }
+    for (int j = 0; j < ${F.length}; j++) { float e = sdRoundCone(p, FLAME_A[j], flameTip(j), FLAME_R[j], 0.035); if (e < best) { best = e; jj = j; } }${live ? `
+    for (int i = 0; i < ${MAX_PUFFS * F.length}; i++) {
+      if (uPuff[i].w <= 0.0) continue;
+      float e = length(p - FLAME_A[i / ${MAX_PUFFS}] - uPuff[i].xyz) - uPuff[i].w;
+      if (e < best) { best = e; jj = ${PUFF_J} + i; }
+    }` : ''}
     return best;
   }` : `
   const vec3 FLAME_A[1] = vec3[1](vec3(0.0)); // no flame (the captain's cap): stand-ins for the shader's flame branch

@@ -9,10 +9,10 @@ import { sessionLook } from '../drone-lab/brands.js';
 import { DEFAULTS as DRONE_DEFAULTS } from '../drone-lab/params.js';
 import { makeShip } from './ship.js';
 import { ALL_VARIANTS, VARIANT_BY_ID, ALL_BUILDERS } from './variants.js';
-import { SHIP_SCALE, CYCLE, crewPlan } from './ship-spec.js';
+import { SHIP_SCALE, CYCLE, HELMET_Y, crewPlan, liveReach } from './ship-spec.js';
 import { shipBounds } from './ship-glsl.js';
 import { paletteHexes, tealThrust, CREW_HEXES, TEAL, CAP_PALETTE, BLK36 } from './palette.js';
-import { FLYBY, shipAt, droneAt, timeAt } from './flyby.js';
+import { FLYBY, shipAt, droneAt, timeAt, cameraFrame } from './flyby.js';
 
 const FOV = 35;
 const TAN = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
@@ -52,6 +52,12 @@ const ships = Object.fromEntries(ALL_VARIANTS.map((v) => {
   scene.add(s.group);
   return [v.id, s];
 }));
+// The fly-by's own ship (flyby.js): the pick with the lively flame (its box reaching back for the puffs),
+// its riders turned upright on screen as it flies on its side. Hidden in every other shot.
+const liveBuild = (n) => { const sp = ALL_BUILDERS[FLYBY.v](n); return { ...sp, flames: sp.flames.map((fl) => ({ ...fl, reach: liveReach(fl.len) })) }; };
+ships.flyby = makeShip(liveBuild, VARIANT_BY_ID[FLYBY.v].palette, { live: true });
+ships.flyby.n = null;
+scene.add(ships.flyby.group);
 
 /** A cell in full, every default filled in. */
 function full(cell) {
@@ -62,8 +68,9 @@ let current = null;
 /** Builds the scene for a cell; returns { c, ship, box } with the ship's world box. */
 function configure(raw) {
   const c = full(raw);
-  for (const [id, s] of Object.entries(ships)) s.group.visible = id === c.v;
-  const ship = ships[c.v];
+  const key = c.ship ?? c.v; // c.ship: the fly-by's own ship
+  for (const [id, s] of Object.entries(ships)) s.group.visible = id === key;
+  const ship = ships[key];
   if (ship.n !== c.n) { ship.setCrew(c.n); ship.n = c.n; }
   ship.setPalette(c.teal ? tealThrust(VARIANT_BY_ID[c.v].palette) : VARIANT_BY_ID[c.v].palette);
   ship.group.rotation.y = VIEW_YAW[c.view];
@@ -222,7 +229,7 @@ function biggestBlock(set, w) {
  * bare ship, the bare ship without its flame, and one render per astronaut with that astronaut hidden
  * (what it adds is what's visible of it).
  */
-function tileStats(raw, { perCrew = true, shoot = null } = {}) {
+function tileStats(raw, { perCrew = true, shoot = null, windows = false } = {}) {
   const { c, ship } = configure(raw);
   const take = shoot ?? ((mode, hideIndex = -1) => shot(c, mode, null, hideIndex)); // the fly-by passes its own (its frame's placement)
   const check = take('check'), bare = take('bare'), noflame = take('noflame'), nocap = take('nocap');
@@ -232,7 +239,8 @@ function tileStats(raw, { perCrew = true, shoot = null } = {}) {
   const shipOk = new Set(paletteHexes(pal).map(hexToInt));
   const crewOk = new Set([...CREW_HEXES, ...paletteHexes(CAP_PALETTE)].map(hexToInt)); // the crew's roles and the captain's cap
   const teal = new Set(TEAL.map(hexToInt));
-  const all = new Set(), shipSet = new Set(), hullSet = new Set(), capSet = new Set();
+  const all = new Set(), shipSet = new Set(), hullSet = new Set(), capSet = new Set(), fire = new Set();
+  const inner = hexToInt((pal.interior ?? pal.glass)[0]), open = new Set(); // windows: the openings (the bare ship's window insides)
   const hist = new Map(), strays = new Map();
   let crewPx = 0, flamePx = 0, tealPx = 0, clipped = 0, shipStray = 0;
   for (let i = 0; i < n; i++) {
@@ -248,11 +256,12 @@ function tileStats(raw, { perCrew = true, shoot = null } = {}) {
     if (b !== space) {
       shipSet.add(i);
       if (!shipOk.has(b)) shipStray++;
+      if (windows && b === inner) open.add(i);
     }
     if (q !== space) hullSet.add(i);
     if (a !== b) crewPx++;
     if (a !== rgbAt(nocap, i)) capSet.add(i);
-    if (b !== q) flamePx++;
+    if (b !== q) { flamePx++; if (windows) fire.add(i); }
   }
   const crew = [];
   const drawn = ship.spec.crew.length;
@@ -261,7 +270,8 @@ function tileStats(raw, { perCrew = true, shoot = null } = {}) {
       const without = take('hide', k);
       const mine = new Set();
       for (let i = 0; i < n; i++) if (rgbAt(without, i) !== rgbAt(check, i)) mine.add(i);
-      crew.push({ px: mine.size, block: biggestBlock(mine, c.w), box: bboxOf([...mine], c.w) });
+      // windows: how many of its px lie outside every window opening (it pokes through the hull)
+      crew.push({ px: mine.size, block: biggestBlock(mine, c.w), box: bboxOf([...mine], c.w), ...(windows ? { outside: [...mine].filter((i) => !open.has(i)).length } : {}) });
     }
   }
   return {
@@ -272,7 +282,10 @@ function tileStats(raw, { perCrew = true, shoot = null } = {}) {
     colours: [...hist.entries()].sort((p, q) => q[1] - p[1]).map(([k, v]) => [intToHex(k), v]),
     strays: [...strays.entries()].map(([k, v]) => [intToHex(k), v]), shipStray,
     crew,
-    cap: { px: capSet.size, block: biggestBlock(capSet, c.w), box: bboxOf([...capSet], c.w) }, // what the captain's cap adds
+    cap: { px: capSet.size, block: biggestBlock(capSet, c.w), box: bboxOf([...capSet], c.w), ...(windows ? { outside: [...capSet].filter((i) => !open.has(i)).length } : {}) }, // what the captain's cap adds
+    // windows (the fly-by): the openings' px, and the pieces with the flame and its puffs left out (the
+    // puffs drift free of the ship on purpose; the ship and its crew must still be one piece)
+    ...(windows ? { openPx: open.size, aboard: components(new Set([...all].filter((i) => !fire.has(i))), c.w).length } : {}),
   };
 }
 
@@ -373,19 +386,26 @@ function tile(cell, { stats = true, mode = 'final', t = null } = {}) {
 
 // ---------------------------------------------------------------- fly-by (flyby.js)
 // The crew's ship flying past a still camera near the star, two drones drifting in the middle distance.
-// The near framing's scene (star, drones, the ship and its crew), placed by flyby.js per frame instead.
-const flyCell = () => full({ v: FLYBY.v, n: FLYBY.n, framing: 'near', view: 'front' });
-/** One render of fly-by frame k in a mode (as shot()). */
-function flyShot(k, mode = 'final', hideIndex = -1) {
-  const { c, ship } = configure(flyCell());
+// The near framing's scene (star, drones, the ship and its crew), placed by flyby.js per frame instead:
+// the fly-by's own ship (the lively flame), on its side, nose first, its riders turned upright.
+// o: { w, h } another resolution; cam: { at, look } another camera (the orbit checks; the riders stay
+// upright for the shot's own camera); pose: the ship placed as at that frame (the flame strip); idle:
+// the pick with the idle flame instead (for comparison only).
+const SCREEN_UP = cameraFrame().up; // the shot's screen up (world): the riders' heads point here
+const flyCell = (o = {}) => full({ v: FLYBY.v, n: FLYBY.n, framing: 'near', view: 'front', ship: o.idle ? FLYBY.v : 'flyby', ...(o.w ? { w: o.w, h: o.h } : {}) });
+/** Places the scene as fly-by frame k (o as above) in a mode; returns { c, ship, m }. */
+function flyPose(k, mode = 'final', hideIndex = -1, o = {}) {
+  const { c, ship } = configure(flyCell(o));
   if (!depthSet) { applyDepth(DEPTH_OFF); retint(scene); depthSet = true; }
-  camera.position.set(...FLYBY.camera.at);
-  camera.lookAt(V(...FLYBY.camera.look));
+  const cam = o.cam ?? FLYBY.camera;
+  camera.position.set(...cam.at);
+  camera.lookAt(V(...cam.look));
   camera.updateMatrixWorld(true);
   star.group.position.set(...FLYBY.star);
-  const m = shipAt(k);
+  const m = shipAt(o.pose ?? k);
   ship.group.position.set(...m.p);
-  ship.group.rotation.set(m.bank, m.yaw, m.lean, 'ZXY'); // yaw about its own axis, then the bank, then the lean
+  ship.group.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(V(...m.axes.x), V(...m.axes.y), V(...m.axes.z))); // on its side: nose along its travel, front to the camera
+  ship.setUpright(SCREEN_UP, { sink: FLYBY.sink });
   layers(mode === 'nodrones' ? 'final' : mode, hideIndex); // 'nodrones': the final frame without the drones
   ship.group.visible = m.visible;
   DRONES.forEach((d, i) => {
@@ -393,12 +413,90 @@ function flyShot(k, mode = 'final', hideIndex = -1) {
     d.group.visible &&= !!fd && mode !== 'nodrones';
     if (fd) d.group.position.set(...droneAt(fd, k));
   });
+  setViewSize(c.w, c.h, [sky]); // the camera's aspect, before the riders and the flame read it
   pose(timeAt(k));
-  const img = capture(c.w, c.h);
+  return { c, ship, m };
+}
+/** Puts the ship back as every other shot expects it. */
+function flyReset(ship) {
   layers('final');
+  ship.setUpright(null);
   ship.group.position.set(0, 0, 0);
   ship.group.rotation.set(0, 0, 0, 'XYZ');
+}
+/** One render of fly-by frame k in a mode (as shot()). */
+function flyShot(k, mode = 'final', hideIndex = -1, o = {}) {
+  const { c, ship } = flyPose(k, mode, hideIndex, o);
+  const img = capture(c.w, c.h);
+  flyReset(ship);
   return img;
+}
+/** A screen angle (rad, y up) from internal px a to b, and an angle wrapped to (-pi, pi]. */
+const screenAngle = (a, b) => Math.atan2(a[1] - b[1], b[0] - a[0]);
+const wrapPi = (x) => Math.atan2(Math.sin(x), Math.cos(x));
+/**
+ * Fly-by frame k's geometry, as drawn (the idle motion included): where the nose points on screen
+ * against the travel (deg), and each rider's tilt from upright on screen (deg: its root's up, so the
+ * figure's own sway isn't counted) and where the cap sits from the captain's helmet (deg from up).
+ */
+function flyGeom(k) {
+  const { c, ship, m } = flyPose(k);
+  const px = (v) => { const p = v.clone().project(camera); return [((p.x + 1) / 2) * c.w, ((1 - p.y) / 2) * c.h]; };
+  const sp = ship.spec, { hi } = shipBounds(sp, 0);
+  const tail = px(ship.mesh.localToWorld(V(0, sp.flames[0].a[1], 0))), nose = px(ship.mesh.localToWorld(V(0, hi[1], 0)));
+  const riders = ship.crew.slice(0, sp.crew.length).map((a) => {
+    const h = px(a.group.localToWorld(V(0, HELMET_Y, 0))), u = px(a.group.localToWorld(V(0, HELMET_Y + 0.3, 0)));
+    return { at: h.map((x) => +x.toFixed(1)), tilt: +((wrapPi(screenAngle(h, u) - Math.PI / 2) * 180) / Math.PI).toFixed(2) };
+  });
+  ship.cap.updateMatrixWorld(true);
+  const capAt = px(ship.cap.localToWorld(V(0, 0.98, 0))), captain = px(ship.crew[0].group.localToWorld(V(0, HELMET_Y, 0)));
+  const out = {
+    k, visible: m.visible, psi: +((ship.psi * 180) / Math.PI).toFixed(2),
+    nose: +((screenAngle(tail, nose) * 180) / Math.PI).toFixed(2), travel: +((m.travel * 180) / Math.PI).toFixed(2),
+    noseOff: +((wrapPi(screenAngle(tail, nose) - m.travel) * 180) / Math.PI).toFixed(2),
+    tail, tip: nose, riders, cap: +((wrapPi(screenAngle(captain, capAt) - Math.PI / 2) * 180) / Math.PI).toFixed(2),
+  };
+  flyReset(ship);
+  return out;
+}
+/**
+ * The flame alone over frames [from, to), the ship held still as at frame `pose` (so only the flame
+ * moves): per frame its px (bare ship minus the ship without its flame), its four ramp colours, and
+ * the px that changed from the frame before (in or out of the flame, or another colour). idle: the
+ * pick's idle flame (as v1) instead of the lively one.
+ */
+function flameStrip({ pose, from = 0, to = FLYBY.frames, idle = false } = {}) {
+  const out = [];
+  let prev = null;
+  for (let k = from; k < to; k++) {
+    const bare = flyShot(k, 'bare', -1, { pose, idle }), none = flyShot(k, 'noflame', -1, { pose, idle });
+    const cur = new Map();
+    for (let i = 0; i < bare.length / 4; i++) { const b = rgbAt(bare, i); if (b !== rgbAt(none, i)) cur.set(i, b); }
+    const hist = {};
+    for (const v of cur.values()) hist[intToHex(v)] = (hist[intToHex(v)] ?? 0) + 1;
+    let changed = null;
+    if (prev) { changed = 0; for (const [i, v] of cur) if (prev.get(i) !== v) changed++; for (const i of prev.keys()) if (!cur.has(i)) changed++; }
+    out.push({ k, px: cur.size, colours: hist, changed });
+    prev = cur;
+  }
+  return out;
+}
+/**
+ * Containment from around: fly-by frame k's ship and riders (upright for the shot's camera) seen from
+ * the shot's camera and from `views` others round the ship's middle (yaw about the world's up, pitch
+ * about the camera's right, rad), at scale x the internal resolution, with the window openings: each
+ * rider's px outside every opening (poking through the hull) must be 0 from everywhere.
+ */
+function flybyOrbit(k, { scale = 2, views = [[0, 0], [-0.6, 0], [0.6, 0], [0, -0.45], [0, 0.45]] } = {}) {
+  const m = shipAt(k);
+  const mid = V(...m.p).add(V(...m.axes.y).multiplyScalar(FLYBY.mid * SHIP_SCALE));
+  const at0 = V(...FLYBY.camera.at).sub(mid), right = V(...cameraFrame().right);
+  return views.map(([yaw, pitch]) => {
+    const at = at0.clone().applyAxisAngle(V(0, 1, 0), yaw).applyAxisAngle(right, pitch).add(mid);
+    const o = { w: 320 * scale, h: 180 * scale, cam: { at: at.toArray(), look: mid.toArray() } };
+    const st = tileStats(flyCell(o), { shoot: (mode, hideIndex = -1) => flyShot(k, mode, hideIndex, o), windows: true });
+    return { yaw, pitch, scale, openPx: st.openPx, crew: st.crew.map((r) => ({ px: r.px, outside: r.outside })), cap: { px: st.cap.px, outside: st.cap.outside } };
+  });
 }
 /** Every colour the world palette (the viewer's 'final': BLK 36 crew + v2 world) can put on screen. */
 const worldHexes = () => {
@@ -411,26 +509,29 @@ const worldHexes = () => {
  * Fly-by frames [from, to) at the internal resolution, as PNG data URLs, with each frame's colours
  * (hex -> px), its non-space px, and its teal: the drones' eyes glow [OIII] teal (the drone lab's
  * look), so each frame is also rendered without the drones, and any teal px that isn't a drone's
- * counts as stray. stats: frames to measure every astronaut and the cap in (tileStats).
+ * counts as stray. Also each frame's ship px (the ship, its flame and crew alone: 0 before it enters
+ * and after it leaves). stats: frames to measure every astronaut and the cap in (tileStats, with the
+ * window openings: each rider's px outside them).
  */
 function flyby({ from = 0, to = FLYBY.frames, stats = [] } = {}) {
   const space = hexToInt(resolve('space'));
   const teal = new Set(TEAL.map(hexToInt));
   const frames = [];
   for (let k = from; k < to; k++) {
-    const img = flyShot(k), bare = flyShot(k, 'nodrones');
+    const img = flyShot(k), bare = flyShot(k, 'nodrones'), alone = flyShot(k, 'check');
     const hist = new Map();
-    let lit = 0, tealPx = 0, tealStray = 0;
+    let lit = 0, tealPx = 0, tealStray = 0, shipPx = 0;
     for (let i = 0; i < img.length / 4; i++) {
       const a = rgbAt(img, i);
       hist.set(a, (hist.get(a) ?? 0) + 1);
       if (a !== space) lit++;
+      if (rgbAt(alone, i) !== space) shipPx++;
       if (teal.has(a)) { tealPx++; if (rgbAt(bare, i) === a) tealStray++; } // teal the drones didn't put there
       else if (teal.has(rgbAt(bare, i))) tealStray++;
     }
-    frames.push({ k, t: timeAt(k), png: upscale(img, flyCell().w, flyCell().h, 1).toDataURL('image/png'), lit, tealPx, tealStray, colours: [...hist.entries()].map(([h, n]) => [intToHex(h), n]) });
+    frames.push({ k, t: timeAt(k), png: upscale(img, flyCell().w, flyCell().h, 1).toDataURL('image/png'), lit, shipPx, tealPx, tealStray, colours: [...hist.entries()].map(([h, n]) => [intToHex(h), n]) });
   }
-  const measured = stats.map((k) => ({ k, ...tileStats(flyCell(), { shoot: (mode, hideIndex = -1) => flyShot(k, mode, hideIndex) }) }));
+  const measured = stats.map((k) => ({ k, ...tileStats(flyCell(), { shoot: (mode, hideIndex = -1) => flyShot(k, mode, hideIndex), windows: true }) }));
   return { frames, stats: measured };
 }
 /** Fly-by frame k as raw RGBA (base64), for the determinism check. */
@@ -438,7 +539,7 @@ const flybyRaw = (k) => b64(new Uint8Array(flyShot(k).buffer));
 
 const viewerCycle = () => VIEWER_LOOP.period / VIEWER_LOOP.surfaceTurns;
 
-window.lab = { ready: true, cycle: CYCLE, viewerCycle: viewerCycle(), starSize: STAR_DEFAULTS.size, variants: ALL_VARIANTS.map(({ id, name, pitch, crewSeen, captain }) => ({ id, name, pitch, crewSeen, captain })), tile, sheet, loop, tileStats: (c) => tileStats(c), flyby, flybyRaw, flybyPlan: FLYBY, worldHexes: worldHexes(), blk36: BLK36, teal: TEAL };
+window.lab = { ready: true, cycle: CYCLE, viewerCycle: viewerCycle(), starSize: STAR_DEFAULTS.size, variants: ALL_VARIANTS.map(({ id, name, pitch, crewSeen, captain }) => ({ id, name, pitch, crewSeen, captain })), tile, sheet, loop, tileStats: (c) => tileStats(c), flyby, flybyRaw, flybyPlan: FLYBY, flyGeom, flameStrip, flybyOrbit, worldHexes: worldHexes(), blk36: BLK36, teal: TEAL };
 
 // ---------------------------------------------------------------- live page
 if (!document.documentElement.classList.contains('capture')) {

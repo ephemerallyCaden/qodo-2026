@@ -54,6 +54,54 @@ export function flameAt(t, j = 0) {
   };
 }
 
+// The lively flame (the fly-by's, makeShip(..., { live: true })): a frame-rate flicker on the lab's
+// stepped clock instead of the idle flame's 4 per second. Every layer is whole cycles per CYCLE, so it
+// loops like the rest. Hashes of the step (and of each puff's generation), never Math.random.
+export const LIVE = {
+  hz: 20, // flicker steps per second: one per fly-by frame (240 per cycle)
+  len: 2.3, surge: [0.3, 30], breath: 0.15, flick: 0.9, // length scale: base, a 2.5 Hz surge, the slow breath, a per-step flicker
+  kick: [0.82, 0.32], // a step with flicker hash above 0.82 kicks the flame 0.32 longer
+  wag: [0.34, 0.12], // the tip's per-step jitter across (x) and in depth (z), design units
+  core: [0.12, 0.1], // the heat bands' shift: alternating each step by +-0.12 (a white core, then a yellow one), plus a hashed +-0.05
+  licks: 6, lick: 0.22, // the flame's length in 6 segments, each band edge jumping by a hashed +-0.11 per step
+  puffs: 6, life: 0.6, // exhaust puffs: 6 slots, each living 0.6 s (one born every 0.1 s, 20 lives per cycle)
+  from: 0.45, travel: 2.3, r: 0.15, // born this far down the flame (of its base length), drifting 2.3 back, radius
+  bands: [0.18, 0.42, 0.68, 0.88], // a puff's age where it cools a step: white, yellow, orange, red, then gone
+};
+
+/**
+ * The lively flame j at time t, for a flame of base length `len`: its length scale and tip wag (as
+ * flameAt), the heat bands' shift (shift) and per-segment jumps (licks), and the exhaust puffs: each
+ * { c: [x, y, z] (design units, from the flame's anchor), r, band (3 white .. 0 red) }, r 0 when gone.
+ */
+export function flameLive(t, j = 0, len = 1) {
+  const w = wrap(t);
+  const u = (w / CYCLE) * Math.PI * 2;
+  const N = LIVE.hz * CYCLE;
+  const k = Math.floor(w * LIVE.hz + 1e-6) % N; // the step: the stepped clock's frame (t0 + k / fps lands on whole steps)
+  const f = hash01(k, 101 + j);
+  const scale = LIVE.len + LIVE.surge[0] * Math.sin(u * LIVE.surge[1] + j) + LIVE.breath * Math.sin(u * CYCLES.flame + j) + LIVE.flick * (f - 0.5) + (f > LIVE.kick[0] ? LIVE.kick[1] : 0);
+  const shift = LIVE.core[0] * (k % 2 ? -1 : 1) + LIVE.core[1] * (hash01(k, 103 + j) - 0.5);
+  const licks = Array.from({ length: LIVE.licks }, (_, i) => LIVE.lick * (hash01(k * LIVE.licks + i, 107 + j) - 0.5));
+  const lives = CYCLE / LIVE.life;
+  const puffs = Array.from({ length: LIVE.puffs }, (_, i) => {
+    const phase = (w + (i * LIVE.life) / LIVE.puffs) / LIVE.life;
+    const gen = Math.floor(phase + 1e-6), a = Math.max(0, phase - gen); // a puff born on this step: age 0, not -1e-16
+    const g = ((gen % lives) + lives) % lives;
+    const h = (s) => hash01(g * LIVE.puffs + i, s + 13 * j);
+    const spark = h(211) > 0.62; // a spark: small, quick, and it stays hot longer
+    const far = LIVE.from * len + LIVE.travel * (spark ? 1.35 : 1) * Math.pow(a, 0.8);
+    const c = [(h(223) - 0.5) * (0.1 + 0.5 * a), -far, (h(227) - 0.5) * (0.06 + 0.3 * a)];
+    const age = spark ? a * 0.7 : a;
+    const band = age < LIVE.bands[0] ? 3 : age < LIVE.bands[1] ? 2 : age < LIVE.bands[2] ? 1 : 0;
+    const r = a >= LIVE.bands[3] ? 0 : spark ? 0.055 : LIVE.r * (1 - 0.55 * a) * (0.75 + 0.5 * h(229));
+    return { c, r, band };
+  });
+  return { len: scale, dx: LIVE.wag[0] * (hash01(k, 109 + j) - 0.5), dz: LIVE.wag[1] * (hash01(k, 113 + j) - 0.5), shift, licks, puffs };
+}
+/** How far back the lively flame and its puffs can reach, for a flame of base length len (the proxy box). */
+export const liveReach = (len) => Math.max(len * (LIVE.len + LIVE.surge[0] + LIVE.breath + LIVE.flick / 2 + LIVE.kick[1]), LIVE.from * len + LIVE.travel * 1.35 + LIVE.r) + 0.1;
+
 /** Whether light i is lit at time t: a marquee chase (ring lights) or a steady blink (beacons). */
 export function lightOn(light, i, t) {
   const w = wrap(t) / CYCLE;

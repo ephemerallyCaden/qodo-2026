@@ -15,7 +15,8 @@ const add = (a, b, k = 1) => a.map((x, i) => x + k * b[i]);
  * A round window of radius rw on the round body, centred at height y and facing yaw: the see-through cap
  * on its local sphere (centre c on the axis, radius rs), its raised rim (a torus on the circle where the
  * cap meets the sphere), and the helmet seat straight back from it, so from the front the visor sits in
- * the middle of the window (`low` drops it a little, for the captain's cap to show).
+ * the middle of the window (`low` drops it a little, for the captain's cap to show). The seat's pivot
+ * is the point it was dropped from.
  */
 function porthole(id, c, rs, yaw, y, rw, { tube = TUBE, slot = 'metal', hosts = ['body'], low = 0 } = {}) {
   const pitch = Math.asin(Math.max(-0.95, Math.min(0.95, (y - c[1]) / rs)));
@@ -26,7 +27,9 @@ function porthole(id, c, rs, yaw, y, rw, { tube = TUBE, slot = 'metal', hosts = 
   const rim = { id, kind: 'ring', c: add(c, n, rs * Math.cos(ra)), n, R: rs * Math.sin(ra), r: tube, slot, k: 0.025 };
   const surface = add(c, n, rs), back = [Math.sin(yaw), 0, Math.cos(yaw)];
   const h = add(surface, back, -SEAT_DEPTH);
-  return { window, rim, seat: helmetSeat(h[0], h[1] - low, h[2], yaw) };
+  // pivot: the window's line of sight at the helmet's depth (the helmet before the drop), which an
+  // upright rider turns about when the hull rolls (ship.js setUpright), so the drop turns with it
+  return { window, rim, seat: { ...helmetSeat(h[0], h[1] - low, h[2], yaw), pivot: h } };
 }
 
 /**

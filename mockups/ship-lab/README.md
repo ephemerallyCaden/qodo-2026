@@ -73,26 +73,46 @@ The human, 2026-11-25: "I imagined one like the finned classic but shorter, fatt
 
 The human picked R2-4c with R2-4's red belly band back (2026-11-25). R2-4c-final (`node lab.mjs round=final` into `out/final/`) is R2-4c's hull, portholes and seats exactly, plus R2-4's band: red paint on the body from cy − 0.3 to top + 0.12. Its numbers are `R24C` in `ship-r2.js`, built by `buildR24c(n, { band: true })`.
 
-## The fly-by (Day 18 hype shot)
+## The fly-by (Day 18 hype shot), v2: nose first
 
-`node flyby.mjs` (or `npm run flyby`) renders R2-4c-final with six aboard (the captain and five teammates) flying past a still camera near the star. Two of your drones drift in the middle distance. It takes about 20 s and writes `out/flyby/`:
+`node flyby.mjs` (or `npm run flyby`) renders R2-4c-final with six aboard (the captain and five teammates) flying past a still camera near the star. Two of your drones drift in the middle distance. It takes about a minute and writes `out/flyby/`:
 - `frames/` at 320×180;
 - `ship-flyby.gif`: ×3 nearest-neighbour, 960×540, 120 frames at 20 fps, the frames' exact colours;
 - `still.png`;
 - `report.json`.
 
-The path is `flyby.js`, a pure function of the frame number at the lab's stepped clock:
+The human, on v1: "can we have the rocket fly so that the tip of the rocket is actually pointed in the direction its moving, and also can we animate the fire a bit more dynamically". v1 (upright, leaning into its travel) is at d6b1cfb.
+
+**Nose first.** The ship flies on its side. It's rolled in the camera's view plane so its nose points along its travel on screen: left to right, the nose right, the flame trailing left. Its front (the portholes) faces the camera, and it banks up to 0.06 rad about its own axis. The path is `flyby.js`, a pure function of the frame number at the lab's stepped clock. It's laid out on screen: the ship's middle runs on a gentle climbing arc, level as it enters and about 10° up as it leaves. Its distance from the camera swoops from 10.5 to 4.7 and back.
 - **Hold:** 10 frames of empty stars.
-- **Entry:** fast from the left, from 10 units out.
-- **Glide:** slow across the middle, 4.85 units out, looking down 0.17 rad like the close-ups.
-- **Exit:** fast to the right, then 10 frames of empty stars.
+- **Entry:** fast from the left, nose first (on screen from frame 15).
+- **Glide:** slow across the middle, the close pass at 4.7 units.
+- **Exit:** fast to the right; the last puff leaves by the edge on frame 109, then 10 frames of empty stars.
 
-On the way the ship leans into its travel (0.1–0.32 rad), turns half its bearing toward the camera and banks 0.07 rad. Its own idle motion runs on top. The clock starts at 8.0 s so three blinks land while the ship is on screen.
+**Upright crew** (`ship.js` `setUpright(up, { sink })`, the fly-by only):
+- **The turn:** each rider turns about its own window's line of sight by the angle that undoes the hull's roll (80–92°). Its head points to the screen's up, and its helmet stays where it was in the opening.
+- **The captain:** turns about the point it was dropped from for the cap (the seat's `pivot`, `ship-r2.js`), so the cap stays above the helmet in its porthole.
+- **The sink:** on its side, a rider's body runs round the hull's curve instead of down its length. Each one sinks straight back from the ship's front (the way the camera looks) to keep its boots inside the hull: 0.32 for the captain (round the upper dome), 0.14 for the teammates. Seen from the front, each face stays where it was in its window, only deeper.
 
-**Checks:**
+The see-through windows need nothing new: the hull writes the far wall's depth wherever a window shows, in its own frame, rolled or not.
+
+**The lively flame** (`ship-spec.js` `flameLive`, `LIVE`; `makeShip(..., { live: true })`, the fly-by's own ship). Every layer is whole cycles per 12 s and hashes the step, never `Math.random`:
+- **Length:** steps every frame (20 a second, 240 per cycle). It surges 2.5 times a second and flickers per step, with a kick on about one step in six.
+- **Tip:** jitters across and in depth each step.
+- **Heat:** the bands shift each step, alternating a white core and a yellow one, and jump per sixth of the length, so the band edges lick.
+- **Puffs:** six slots, one born every 0.1 s inside the flame. Each drifts 2.3 back and fades white → yellow → orange → red, then goes; about one in three is a quick, small spark.
+
+All four colours are the flame ramp (`#d83843` `#ff965f` `#ffe091` `#ffffff`). Without `live` the shader source is the idle flame's, unchanged, so every other shot keeps its pixels.
+
+**Checks** (`flyby.mjs`, exit 1 on any):
 - **Colours:** every colour is BLK 36 or the viewer's world palette. The only teal is the drones' eyes, checked against a render without them.
-- **Still (frame 59):** every astronaut and the cap clear the close-up minimums. The close pass crops the fins and flame on purpose.
-- **Whole-ship frame (91):** it shows the flame, unclipped.
+- **On screen:** the ship enters from off screen and leaves by the edge.
+- **Nose first:** in every frame, the hull's axis on screen is within 6° of its travel, nose leading.
+- **Upright:** every rider is within 6° of upright on screen, and the cap is above the captain's helmet, within 25°.
+- **Still (frame 59):** every astronaut and the cap clear the close-up minimums. The ship and crew are one piece with the flame and its puffs left out. The close pass crops the fins on purpose.
+- **In their windows:** no rider's or the cap's px fall outside the window openings (nobody pokes through the hull). This is checked at frames 34, 59 and 85, from the shot's camera and four others round the ship, at ×2.
+- **Whole-ship frame (85):** it shows the flame, unclipped.
+- **The flame:** with the ship held still, every frame's flame differs from the one before by at least a quarter of its px, and by at least 5× v1's idle flame (median).
 - **Determinism:** a re-render is pixel-identical.
 
 ## Round 2b: R2-4's windows alike and in a line (R2-4b, R2-4c)
@@ -197,7 +217,7 @@ Nothing reads a clock or `Math.random`. Flicker and blinks hash the step within 
 | `variants.js` | The four directions. |
 | `lab.js` | The page: tile renders, stats, sheets, loops. |
 | `lab.mjs` | The runner. |
-| `flyby.js`, `flyby.mjs` | The fly-by's path (pure) and its runner. |
+| `flyby.js`, `flyby.mjs` | The fly-by's path (pure: nose first, on its side) and its runner. |
 | `checks.mjs` | The tile and seam checks. |
 
 **Windows and glass are see-through.** Where a window or dome shows, the hull writes the depth of the far wall inside it. So an astronaut seated inside wins the depth test there and loses it everywhere else. That needs no sorting and no transparency.
