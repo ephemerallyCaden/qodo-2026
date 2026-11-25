@@ -157,7 +157,8 @@ async function run(a: RunArgs): Promise<number> {
     const clone = join(scratch, 'repo'), claudeDir = join(scratch, 'claude-empty'), stateStart = join(scratch, 'state-start');
     mkdirSync(claudeDir);
     const cli = join(cliTree, 'dist', 'cli.js');
-    const made = scene.fixture ? makeFixtureRepo(scene.fixture.files, scene.fixture.at, clone, scene.fixture.earlier) : makeClone(main, resolveRev(top, scene.repoAt ?? base.sha).sha, clone);
+    const made = scene.repo ? await scene.repo(clone)
+      : scene.fixture ? makeFixtureRepo(scene.fixture.files, scene.fixture.at, clone, scene.fixture.earlier) : makeClone(main, resolveRev(top, scene.repoAt ?? base.sha).sha, clone);
     const repoAt = resolveRev(clone, 'HEAD');
     const dataCmds = [...made, ...scanClone(cli, clone, scene.roots ?? ['src'], claudeDir, profile)];
     const state = join(clone, '.git', 'commet');
@@ -184,7 +185,7 @@ async function run(a: RunArgs): Promise<number> {
     const parts = sceneStep('parts', () => partsOf(scene));
     const drones = sceneStep('drones', () => Math.max(0, ...parts.map((p) => (p.drones ?? scene.drones)?.({ layout, files }).view.sessions.length ?? 0)));
     record.step('The data (R12)', [...block(screened([...dataCmds, ...setupCmds], 'the data step')),
-      `${scene.fixture ? "the scene's own repo" : 'clone'} at \`${repoAt.sha}\` ${repoAt.subject}; ${layout.planets.length} planets; roots ${JSON.stringify(layout.source.roots)}; ${files.length} files`,
+      `${scene.fixture || scene.repo ? "the scene's own repo" : 'clone'} at \`${repoAt.sha}\` ${repoAt.subject}; ${layout.planets.length} planets; roots ${JSON.stringify(layout.source.roots)}; ${files.length} files`,
       `snapshot sessions: ${sessions} (--no-ingest, CLAUDE_CONFIG_DIR empty); scripted drones: ${drones}`,
       'state every take starts from:', ...block(stateDigest(stateStart))]);
     if (sessions) throw new Stop('data-change', `the scan read ${sessions} agent sessions; it must read none (--no-ingest)`);
@@ -274,7 +275,7 @@ async function run(a: RunArgs): Promise<number> {
     const sideOf = (rev: Rev, side: 'before' | 'after'): RunSummary['before'] => ({ sha: rev.sha, subject: rev.subject, bundle: bundles[side].files.find((f) => f.endsWith('.js')) ?? bundles[side].files[0]! });
     const summary = summaryText({
       scene: { name: scene.name, summary: scene.summary }, before: sideOf(base, 'before'), after: sideOf(head, 'after'),
-      data: { ...viewAndMotion(scene, parts), source: scene.fixture ? `the scene's own ${files.length}-file repo (${scene.fixture.earlier?.length ? `${scene.fixture.earlier.length + 1} commits, head` : 'one commit,'} \`${repoAt.short}\`)` : `one clone of this repo at \`${repoAt.short}\``, sessions, drones },
+      data: { ...viewAndMotion(scene, parts), source: scene.fixture ? `the scene's own ${files.length}-file repo (${scene.fixture.earlier?.length ? `${scene.fixture.earlier.length + 1} commits, head` : 'one commit,'} \`${repoAt.short}\`)` : scene.repo ? `the scene's own ${files.length}-file repo (head \`${repoAt.short}\`)` : `one clone of this repo at \`${repoAt.short}\``, sessions, drones },
       frames: takes['before-1']!.log.frames.length, determinism: { takes: 4, framesCompared: compared, differing: 0 },
       privacy: { texts, responses, files: stateFiles, hits: 0 }, shots: c.shots, images: c.images.filter((im) => !/-(before|after)\.png$/.test(im.file)), command,
     });
@@ -354,7 +355,7 @@ async function cliMain(argv: string[]): Promise<number> {
   if (cmd === 'scenes') {
     for (const s of Object.values(SCENES)) {
       const { viewport, motion } = viewAndMotion(s, partsOf(s));
-      process.stdout.write(`${s.name}: ${s.summary} [${viewport}; ${motion}${s.fixture ? "; the scene's own repo" : ''}]\n`);
+      process.stdout.write(`${s.name}: ${s.summary} [${viewport}; ${motion}${s.fixture || s.repo ? "; the scene's own repo" : ''}]\n`);
     }
     return 0;
   }

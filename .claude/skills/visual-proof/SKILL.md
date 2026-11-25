@@ -171,7 +171,8 @@ worktree or this repo's `.git/commet`; `git status` is as it was.
 
 A scene is one TypeScript module in `scenes/`, listed in `scenes/index.ts`; `scripts/scene.ts` says
 what it may do. It declares its data (`repoAt`, or its own `fixture` repo, with `earlier` commits for history such as a
-file last changed before the scan's 24-month window; `roots`; `setup` CLI steps;
+file last changed before the scan's 24-month window, or `repo(dest)`, a test fixture's own builder for data one
+author can't make, such as `crew`'s `buildCrewRepo`; `roots`; `setup` CLI steps;
 scripted `drones`), its `viewport`, whether it runs under reduced motion, `gifScale` (a whole-number
 shrink for a big viewport's GIF), and a `run(s)` that drives the view with real input and records.
 A scene that needs shots in different pages (another viewport, motion on or off, other drones) lists

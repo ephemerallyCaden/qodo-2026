@@ -35,6 +35,12 @@ export interface Scene {
    * last change is older than the scan's 24-month window, counted back from the last commit).
    */
   fixture?: { files: Readonly<Record<string, string>>; at: string; earlier?: readonly FixtureCommit[] };
+  /**
+   * Instead of a clone or a `fixture`, the scene's own repo built into `dest` (empty) by a test fixture's own
+   * builder, for data a one-author fixture can't make (#207: test/fixtures/crew's invented crew, its own
+   * authors, dates and `.mailmap`). Deterministic: the same SHAs every run. Returns the record's lines.
+   */
+  repo?(dest: string): Promise<string[]>;
   /** CSS px (= frame px). Default: the render tests' 1280x720. */
   viewport?: { width: number; height: number };
   /** The GIF at 1/n size (nearest, a whole n), for a large viewport with motion; stills stay full size. Default 1. */
