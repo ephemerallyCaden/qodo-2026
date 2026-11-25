@@ -17,13 +17,13 @@ Ticket: #207 (understanding mode U8).
 - [ ] C2 **A cartoonish rocket**, chosen by the human from 3–4 lab variants. It must be readable at 320×180 (art direction §1), drawn in the art direction's palettes, and carry the crew.
 - [ ] C3 **Astronauts use the asset library's astronaut** (`mockups/asset-viewer/astronaut.js`, art direction §8, BLK 36 exactly). Their bob, sway and blink are loop-locked (§7).
 - [ ] C4 **A product art renderer** draws the ship and the astronauts in the live 3D view through the pixel pass. Placement is deterministic, near your star, next to your own drones. The draw budget stays under its cap.
-- [x] C5 **Astronaut panel** (#207 AC3): clicking an astronaut shows their name, the planets and files they touched in the window, with a touch count each (no code), and when they were last active. Allowed by the Rule 6 amendment (human, 2026-11-25): never ranked, sorted or compared by those numbers, one person at a time, no headline total, crew ordered by person id.
+- [ ] C5 **Astronaut panel** (#207 AC3; data and `GET /api/crew-detail` done in #226, the clickable panel lands with the renderer, C4): clicking an astronaut shows their name, the planets and files they touched in the window, with a touch count each (no code), and when they were last active. Allowed by the Rule 6 amendment (human, 2026-11-25): never ranked, sorted or compared by those numbers, one person at a time, no headline total, crew ordered by person id.
 - [x] C6 **Drones are yours only** (#207 AC4): teammates get no drones.
 - [x] C7 **Privacy** (#207 AC5): no email is shown unless it's already in git, and no absolute paths; snapshot rules apply.
 - [x] C9 **You're the captain** (human, 2026-11-25): your own astronaut is aboard and marked as captain, and your other emails merge into you (`selfEmails`, system design §5.1.9).
 - [x] C10 **Aliases** (human, 2026-11-25): `.mailmap` when present, plus exact author-name matches.
 - [x] C11 **Fixture crew** (human, 2026-11-25): the film and render tests use a deterministic fixture repo with 4–6 invented teammates; no real people's names in posts.
-- [ ] C8 **Tests** (#207 AC6): alias merging, bot exclusion, a deliberate snapshot golden update, and a render test that fails on empty output.
+- [ ] C8 **Tests** (#207 AC6): alias merging, bot exclusion, a deliberate snapshot golden update, and a render test that fails on empty output. (All but the render test done in #226; the render test lands with the renderer, C4.)
 
 ## Assumptions
 - [x] (load-bearing, C1) Verified (crew-scout L1): the snapshot (`schemaVersion '0.2'`) has `people: {id, displayName, isSelf}[]` and `Commit.author`. `PersonId` is `p_` plus a sha256 of the lowercased mailmapped email (raw email never stored). `.mailmap` is honoured, but name aliases aren't merged and bots aren't detected (`people[].isBot` is planned in system-design). No schema bump: optional fields plus `needsRescan`, as with `cochange`.
