@@ -1896,6 +1896,7 @@
     {
       "displayName": "Ada Self",
       "id": "p_391d66efc87e",
+      "isBot": false,
       "isSelf": true
     }
   ],

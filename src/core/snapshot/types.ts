@@ -199,6 +199,20 @@ export interface CoChange {
   missing: MissingPair[];
 }
 
+/**
+ * One author in the window, aliases merged (#207): `.mailmap` first (git's `--use-mailmap`), then emails
+ * whose commits share an exact author name, and every email that is yours (`user.email`, `commet.selfEmail`).
+ * `id` is `'p_' + sha256(email)[:12]` of yours for you, else of the group's first email by codepoint; no raw
+ * email is stored. Bot and agent authors are never merged by name.
+ */
+export interface Person {
+  id: PersonId;
+  displayName: string;
+  isSelf: boolean;
+  /** #207: a bot or agent author (`isBotAuthor`: `[bot]`, a no-reply address, a known agent's email), never crew. Absent in a snapshot scanned before #207. */
+  isBot?: boolean;
+}
+
 export interface SnapshotV02 {
   schemaVersion: '0.2';
   generator: { name: 'commet'; version: string };
@@ -211,7 +225,7 @@ export interface SnapshotV02 {
   branches: Branch[];
   unreadable: Unreadable;
   qodo: QodoSource;
-  people: { id: PersonId; displayName: string; isSelf: boolean }[];
+  people: Person[];
   commits: Commit[];
   sessions: Session[];
   /** #211: absent in a snapshot scanned before it. */

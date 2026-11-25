@@ -19,7 +19,12 @@ export interface RepoInfo {
   headMs: number;
   branch: string;
   repoId: string;
-  selfEmail: string | null;
+  /**
+   * Your emails, canonicalised as commit authors are (design §5.1.9), primary first: every `user.email`
+   * value (the effective one is the primary) and every `commet.selfEmail` (#207 C9). Empty: none set.
+   * Held in memory only; the snapshot keeps their person ids.
+   */
+  selfEmails: string[];
   worktreeRoots: string[];
 }
 
@@ -44,11 +49,12 @@ export async function readRepo(git: Git): Promise<RepoInfo> {
   }
   const emptyTree = EMPTY_TREE[format];
   if (!emptyTree) throw new CommetError(`unsupported object format ${JSON.stringify(format)}`, EXIT.internal);
-  const [ct, roots, name, email, worktrees] = await Promise.all([
+  const [ct, roots, name, emails, extra, worktrees] = await Promise.all([
     git(['show', '-s', '--format=%ct', head]),
     git(['rev-list', '--max-parents=0', head]),
     tryGit(git, ['config', 'user.name']),
-    tryGit(git, ['config', 'user.email']),
+    tryGit(git, ['config', '-z', '--get-all', 'user.email']),
+    tryGit(git, ['config', '-z', '--get-all', 'commet.selfEmail']),
     git(['worktree', 'list', '--porcelain', '-z']),
   ]);
   return {
@@ -58,21 +64,27 @@ export async function readRepo(git: Git): Promise<RepoInfo> {
     headMs: Number(ct.trim()) * 1000,
     branch: ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : 'HEAD',
     repoId: repoIdOf(roots),
-    selfEmail: await selfEmail(git, name?.trim() ?? '', email?.trim() ?? ''),
+    selfEmails: await selfEmails(git, name?.trim() ?? '', configValues(emails), configValues(extra)),
     worktreeRoots: worktreePaths(worktrees),
   };
 }
 
+/** The values of a `git config -z --get-all` (each NUL-terminated), trimmed, without empty ones; none when unset. */
+const configValues = (out: string | null): string[] => (out ?? '').split('\0').map((v) => v.trim()).filter(Boolean);
+
 /**
- * `user.email` canonicalised the way `--use-mailmap` canonicalises commit authors, so self
- * matches mailmapped commits (design §5.1.9). The name goes along because a mailmap entry can
- * match on name and email together. Lowercased, like every author email.
+ * Your emails canonicalised the way `--use-mailmap` canonicalises commit authors, so self matches
+ * mailmapped commits (design §5.1.9). The name goes along because a mailmap entry can match on name and
+ * email together. Lowercased, like every author email, and unique. The primary is the effective
+ * `user.email` (git reads the last value), else the first `commet.selfEmail`.
  */
-async function selfEmail(git: Git, name: string, email: string): Promise<string | null> {
-  if (!email) return null;
-  const out = await tryGit(git, ['check-mailmap', name ? `${name} <${email}>` : `<${email}>`]);
-  const mapped = out && /<([^<>]*)>\s*$/.exec(out)?.[1];
-  return (mapped || email).toLowerCase();
+async function selfEmails(git: Git, name: string, userEmails: string[], extra: string[]): Promise<string[]> {
+  const ordered = [...userEmails.slice(-1), ...userEmails.slice(0, -1), ...extra];
+  const mapped = await Promise.all(ordered.map(async (email) => {
+    const out = await tryGit(git, ['check-mailmap', name ? `${name} <${email}>` : `<${email}>`]);
+    return ((out && /<([^<>]*)>\s*$/.exec(out)?.[1]) || email).toLowerCase();
+  }));
+  return [...new Set(mapped)];
 }
 
 export interface NumstatRow { added: number; removed: number; binary: boolean }

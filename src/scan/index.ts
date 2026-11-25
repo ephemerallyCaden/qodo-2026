@@ -2,16 +2,17 @@ import { matchCommits, buildSessions, type MatchCommit } from '../attrib/match.j
 import { discoverClaude, mergeIntervals, parseClaude, redactPaths, searchOutside, type ClaudeIngest, type Interval } from '../attrib/parsers/claude.js';
 import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import { coChangeOf } from '../core/cochange.js';
+import { crewOf } from '../core/crew.js';
 import type { LayoutV1 } from '../core/contract/layout.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import { fogBase, unrowedChanges } from '../core/fog/index.js';
-import { fileId, lineHasher, sha256Hex } from '../core/hash.js';
+import { fileId, lineHasher } from '../core/hash.js';
 import type { LogCounts } from '../core/summary.js';
 import { hashLines } from '../core/lines.js';
 import { layoutReport, type LayoutNotes } from '../core/layout/index.js';
 import { applyCache, serializeCache, tallyFindings, type QodoCache } from '../core/qodo.js';
 import { pathHistory } from '../core/renames.js';
-import type { Commit, FileQodo, PersonId, QodoReason, QodoSource, SessionKey, SnapshotV02 } from '../core/snapshot/types.js';
+import type { Commit, FileQodo, QodoReason, QodoSource, SessionKey, SnapshotV02 } from '../core/snapshot/types.js';
 import { foldersOf, parseRoots } from '../core/roots.js';
 import {
   binaryNames, buildLineage, debtCounted, dirsAtHead, matchTests, rootBirthInfo, structureHistory, topBirthInfo, zeroDebt,
@@ -73,7 +74,6 @@ export interface ScanResult {
 
 const DAY_MS = 86_400_000;
 const within = (spans: Interval[], t: number) => spans.some((s) => t >= s.from && t <= s.to);
-const personId = (email: string): PersonId => `p_${sha256Hex(email).slice(0, 12)}`;
 const excluded = (path: string, row: NumstatRow | undefined) => exclusionOf(path, row?.binary) !== null;
 
 /**
@@ -138,8 +138,11 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   const since = isoUtc(sinceMs);
 
   const counts: Record<string, number> = {};
-  // One comparison for matching, people and selfPersonIds: all use the mailmapped, lowercased email.
-  const isSelf = (c: RawCommit) => repo.selfEmail !== null && c.email === repo.selfEmail;
+  // One comparison for matching, people and selfPersonIds: all use the mailmapped, lowercased emails, yours
+  // being `user.email` and `commet.selfEmail` (#207 C9). A name alias never makes a commit yours here, so it
+  // never makes one human (Rule 1); it only merges people in the crew.
+  const mine = new Set(repo.selfEmails);
+  const isSelf = (c: RawCommit) => mine.has(c.email);
   const rawP = windowCommits(git, repo.head, since);
   // Only with the opt-in; it runs alongside the git reads and never rejects.
   const qodoP = o.qodo?.fetch ? fetchQodo(o.repoDir, o.qodo.timeoutMs, signal) : null;
@@ -246,12 +249,12 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
     results = attribute();
   }
 
-  const people = new Map<string, SnapshotV02['people'][number]>();
+  // #207: people with aliases merged and bots flagged; every commit names its merged person.
+  const crew = crewOf(raw.map((c) => ({ name: c.name, email: c.email })), repo.selfEmails);
   const commits: Commit[] = raw.map((c) => {
     const seq = lineage.seqOf.get(c.sha);
     if (seq === undefined) throw new Error('window commit missing from the first-parent lineage');
-    const author = personId(c.email);
-    if (!people.has(author)) people.set(author, { id: author, displayName: redactPaths(c.name), isSelf: isSelf(c) });
+    const author = crew.personOf.get(c.email)!;
     const r = results.get(c.sha)!;
     const rows: Commit['files'] = [...c.files].filter(([p, row]) => !excluded(p, row))
       .sort((a, b) => byCodepoint(a[0], b[0]))
@@ -264,7 +267,7 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
     schemaVersion: '0.2',
     generator: { name: 'commet', version: VERSION },
     repo: { repoId: repo.repoId, head: repo.head, headDate: isoUtc(repo.headMs), branch: repo.branch,
-      selfPersonIds: repo.selfEmail ? [personId(repo.selfEmail)] : [] },
+      selfPersonIds: crew.selfPersonIds },
     window: { months: o.windowMonths, since, until: isoUtc(repo.headMs), firstParent: true },
     exclusions: { rulesetVersion: RULESET_VERSION, rules: RULES, counts },
     coverage: (found?.coverage ?? []).map((s) => ({ tool: 'claude-code', from: isoUtc(s.from), to: isoUtc(s.to) })),
@@ -274,7 +277,7 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
     unreadable: { dirs: structure.unreadable, files: files.filter((f) => f.debt === null).length, branches: rawBranches.unreadable,
       bulkCommits: bulkSkipped },
     qodo: qodo.source,
-    people: [...people.values()].sort((a, b) => byCodepoint(a.id, b.id)),
+    people: crew.people.map((p) => ({ ...p, displayName: redactPaths(p.displayName) })),
     commits,
     sessions: buildSessions(ingest?.sessions.values() ?? [], raw.map((c) => c.sha), results,
       new Map(files.map((f) => [f.path, f.id])), ingest?.events ?? []),
