@@ -202,7 +202,7 @@ Determinism applies throughout:
    - Bot authors match `[bot]` or noreply bot patterns.
    - Commits touching more than 200 files are kept, but get `bulk` evidence and are excluded from co-change.
 8. **File cap.** Rank files by `(lastTouchedSeq desc, path asc)`. The top 5,000 are in. The rest get `overflow: true` and render as the asteroid belt.
-9. **People.** `PersonId = 'p_' + sha256(lowercased mailmapped email)[:12]`. Self is `git config user.email` plus `config.json selfEmails`, canonicalised with `git check-mailmap "<user.name> <user.email>"` (the name matters for entries that match on name and email) and lowercased, so it compares equal to mailmapped commit authors. One comparison feeds matching, `people[].isSelf` and `selfPersonIds` (Issue #5 case 5).
+9. **People.** `PersonId = 'p_' + sha256(lowercased mailmapped email)[:12]`. Self is every `git config user.email` plus `commet.selfEmail` in git config (#207; not config.json), canonicalised with `git check-mailmap "<user.name> <user.email>"` (the name matters for entries that match on name and email) and lowercased, so it compares equal to mailmapped commit authors. One comparison feeds matching, `people[].isSelf` and `selfPersonIds` (Issue #5 case 5).
 
 ### 5.2 Attribution matcher
 1. **Discovery.**
