@@ -21,20 +21,28 @@ const teal = new Set<string>(palette.accent.teal);
 const SAMPLES = [0, 0.2, 0.4, 0.6, 0.8, 1];
 
 type Frame = { width: number; height: number; rgba: number[] };
-/** Frame `n` with `fog` at rest (no front): what a sample is measured against. */
-async function restFrame(page: Page, layout: LayoutV1, fog: FogView, camera: CameraPose, n: number): Promise<Frame> {
-  await page.evaluate(([l, f, c]) => window.__events.setup(l, f, c, 360), [layout, fog, camera] as const);
-  return page.evaluate((frame) => window.__events.frame(frame), n);
-}
-/** Frames at each sample of a change from `from` to `to` landing at `start`. */
-async function changeFrames(page: Page, layout: LayoutV1, from: FogView, to: FogView, camera: CameraPose, start: number, kind: 'clear' | 'refog'): Promise<Frame[]> {
-  await page.evaluate(([l, f, c]) => window.__events.setup(l, f, c, 360), [layout, from, camera] as const);
-  expect(await page.evaluate(([f, n]) => window.__events.change(f, n), [to, start] as const)).toBe(true);
-  const out: Frame[] = [];
-  for (const u of SAMPLES) out.push(await page.evaluate((frame) => window.__events.frame(frame), start + Math.round(u * FOG_EVENT_FRAMES[kind])));
+/** Frames `ns` with `fog` at rest (no front), from one load: what samples are measured against. */
+async function restFrames(page: Page, layout: LayoutV1, fog: FogView, camera: CameraPose, ns: readonly number[], height = 360): Promise<Map<number, Frame>> {
+  await page.evaluate(([l, f, c, h]) => window.__events.setup(l, f, c, h), [layout, fog, camera, height] as const);
+  const out = new Map<number, Frame>();
+  for (const n of ns) if (!out.has(n)) out.set(n, await page.evaluate((frame) => window.__events.frame(frame), n));
   return out;
 }
-const differing = (a: Frame, b: Frame) => { let n = 0; for (let p = 0; p < a.width * a.height; p++) if ([0, 1, 2].some((c) => a.rgba[p * 4 + c] !== b.rgba[p * 4 + c])) n++; return n; };
+/** The frames a change landing at `start` is sampled at. */
+const sampleFrames = (start: number, kind: 'clear' | 'refog') => SAMPLES.map((u) => start + Math.round(u * FOG_EVENT_FRAMES[kind]));
+/** Frames at each sample of a change from `from` to `to` landing at `start`. */
+async function changeFrames(page: Page, layout: LayoutV1, from: FogView, to: FogView, camera: CameraPose, start: number, kind: 'clear' | 'refog', height = 360): Promise<Frame[]> {
+  await page.evaluate(([l, f, c, h]) => window.__events.setup(l, f, c, h), [layout, from, camera, height] as const);
+  expect(await page.evaluate(([f, n]) => window.__events.change(f, n), [to, start] as const)).toBe(true);
+  const out: Frame[] = [];
+  for (const n of sampleFrames(start, kind)) out.push(await page.evaluate((frame) => window.__events.frame(frame), n));
+  return out;
+}
+const differing = (a: Frame, b: Frame) => {
+  let n = 0;
+  for (let i = 0; i < a.rgba.length; i += 4) if (a.rgba[i] !== b.rgba[i] || a.rgba[i + 1] !== b.rgba[i + 1] || a.rgba[i + 2] !== b.rgba[i + 2]) n++;
+  return n;
+};
 const tealPx = (f: Frame) => { let n = 0; for (let p = 0; p < f.width * f.height; p++) if (teal.has(hex(f.rgba, p))) n++; return n; };
 
 test('moons: a refog rolls in towards fogged, a chart clears towards clear, never the reverse', async ({ page }) => {
@@ -46,11 +54,13 @@ test('moons: a refog rolls in towards fogged, a chart clears towards clear, neve
   const view = await openView(page, target, { testMode: false });
   await page.waitForFunction(() => window.__events !== undefined);
 
+  // every moon clear at each frame a sample is taken at, from one load
+  // at the default 180 px: at 360, 30 frames of 24 moons took the render job past a test's 2 minutes in CI (#225)
+  const reference = await restFrames(page, MINI, clear, camera, [...sampleFrames(start, 'refog'), ...sampleFrames(start, 'clear')], 180);
   /** The moons' fog px at each sample: the pixels that differ from the same frame with every moon clear. */
   async function fog(from: FogView, to: FogView, kind: 'clear' | 'refog'): Promise<{ at: number[]; rest: number }> {
-    const frames = await changeFrames(page, MINI, from, to, camera, start, kind);
-    const at: number[] = [];
-    for (const [i, u] of SAMPLES.entries()) at.push(differing(frames[i]!, await restFrame(page, MINI, clear, camera, start + Math.round(u * FOG_EVENT_FRAMES[kind]))));
+    const frames = await changeFrames(page, MINI, from, to, camera, start, kind, 180);
+    const at = sampleFrames(start, kind).map((n, i) => differing(frames[i]!, reference.get(n)!));
     return { at, rest: at.at(-1)! };
   }
 
@@ -85,9 +95,9 @@ test('#224: a chart turns the file\'s storm cloud teal while it thins to mist; a
   await page.waitForFunction(() => window.__events !== undefined);
 
   const fogged = fogFor(MINI, (id) => src.includes(id)), charted = fogFor(MINI, (id) => src.includes(id) && id !== one, (id) => id === one);
-  const chart = await changeFrames(page, MINI, fogged, charted, camera, start, 'clear');
-  const rolled = await changeFrames(page, MINI, fogFor(MINI), fogFor(MINI, (id) => id === one), camera, start, 'refog');
-  const refogRest = await restFrame(page, MINI, fogFor(MINI, (id) => id === one), camera, start + FOG_EVENT_FRAMES.refog);
+  const chart = await changeFrames(page, MINI, fogged, charted, camera, start, 'clear', 180);
+  const rolled = await changeFrames(page, MINI, fogFor(MINI), fogFor(MINI, (id) => id === one), camera, start, 'refog', 180);
+  const refogRest = (await restFrames(page, MINI, fogFor(MINI, (id) => id === one), camera, [start + FOG_EVENT_FRAMES.refog], 180)).get(start + FOG_EVENT_FRAMES.refog)!;
   const chartTeal = chart.map(tealPx), refogTeal = rolled.map(tealPx);
   const refogLeft = rolled.map((f) => differing(f, refogRest));
   const frame = chart[0]!.width * chart[0]!.height;
