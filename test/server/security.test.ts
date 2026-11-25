@@ -191,7 +191,8 @@ describe('R14 server on a real socket', () => {
       const wrong = `${f.token.slice(0, -1)}${f.token.endsWith('A') ? 'B' : 'A'}`;
       const routes: [string, string][] = [[API.snapshot, 'GET'], [API.layout, 'GET'], [API.fog, 'GET'], [API.drones, 'GET'], [API.events, 'GET'],
         [API.chart, 'POST'], [API.beacon, 'POST'], [API.beacons, 'GET'], [API.cochange, 'GET'], [`${API.unseen}?home=star&at=${AT}`, 'GET'],
-        [`${API.diff}?fileId=f_000000000001&at=${AT}`, 'GET'], [`${API.droneDetail}?key=s_0123456789abcd&at=${AT}`, 'GET'], ['/api/nope', 'GET']];
+        [`${API.diff}?fileId=f_000000000001&at=${AT}`, 'GET'], [`${API.droneDetail}?key=s_0123456789abcd&at=${AT}`, 'GET'], [API.crew, 'GET'],
+        [`${API.crewDetail}?person=p_0123456789ab&at=${AT}`, 'GET'], ['/api/nope', 'GET']];
       for (const [path, method] of routes) {
         for (const headers of [{}, { [TOKEN_HEADER]: wrong }, { [TOKEN_HEADER]: '' }, { [TOKEN_HEADER]: 'x' }]) {
           const r = await req(f.port, { method, path, headers });
@@ -231,6 +232,8 @@ describe('R14 server on a real socket', () => {
         expect((await api(`${API.diff}?fileId=f_000000000001&at=${AT}`, headers)).status).toBe(403);
         expect((await api(`${API.unseen}?home=star&at=${AT}`, headers)).status).toBe(403);
         expect((await api(`${API.droneDetail}?key=s_0123456789abcd&at=${AT}`, headers)).status).toBe(403);
+        expect((await api(API.crew, headers)).status).toBe(403);
+        expect((await api(`${API.crewDetail}?person=p_0123456789ab&at=${AT}`, headers)).status).toBe(403);
       }
       // Our own origin reaches the route (501 until R5 is wired).
       expect((await api(API.chart, { origin: `http://127.0.0.1:${f.port}`, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' },
@@ -244,6 +247,8 @@ describe('R14 server on a real socket', () => {
         ['OPTIONS', API.snapshot, 405], ['GET', '/api', 404], ['GET', '/api/state', 404], ['GET', '/api/snapshot/', 404],
         ['POST', API.diff, 405], ['PUT', API.diff, 405], ['DELETE', API.unseen, 405], ['POST', API.unseen, 405], ['GET', `${API.diff}/`, 404],
         ['POST', API.droneDetail, 405], ['DELETE', API.droneDetail, 405], ['GET', `${API.droneDetail}/`, 404], ['GET', `${API.drones}/s_0123456789abcd`, 404],
+        ['POST', API.crew, 405], ['PUT', API.crew, 405], ['DELETE', API.crew, 405], ['POST', API.crewDetail, 405], ['DELETE', API.crewDetail, 405],
+        ['GET', `${API.crewDetail}/`, 404], ['GET', `${API.crew}/p_0123456789ab`, 404],
       ];
       for (const [method, path, status] of cases) expect((await api(path, {}, method)).status, `${method} ${path}`).toBe(status);
       for (const method of ['POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'TRACE']) {
@@ -258,10 +263,11 @@ describe('R14 server on a real socket', () => {
       expect(ws.status).not.toBe(101);
     });
 
-    it('validates diff, unseen and drone-detail queries, then reports not available until wired (#75, #148)', async () => {
+    it('validates diff, unseen, drone-detail and crew-detail queries, then reports not available until wired (#75, #148, #207)', async () => {
       const ok = [`${API.diff}?fileId=f_000000000001&at=${AT}`, `${API.diff}?at=${AT}&fileId=f_000000000001`,
         `${API.unseen}?home=star&at=${AT}`, `${API.unseen}?home=d_0123456789ab&at=${AT}`,
-        `${API.droneDetail}?key=s_0123456789abcd&at=${AT}`, `${API.droneDetail}?at=${AT}&key=s_0123456789abcd`];
+        `${API.droneDetail}?key=s_0123456789abcd&at=${AT}`, `${API.droneDetail}?at=${AT}&key=s_0123456789abcd`,
+        `${API.crewDetail}?person=p_0123456789ab&at=${AT}`, `${API.crewDetail}?at=${AT}&person=p_0123456789ab`, API.crew];
       for (const path of ok) expect((await api(path)).status, path).toBe(501);
       const bad = [
         API.diff, `${API.diff}?fileId=f_000000000001`, `${API.diff}?at=${AT}`,
@@ -276,6 +282,10 @@ describe('R14 server on a real socket', () => {
         API.droneDetail, `${API.droneDetail}?key=s_0123456789abcd`, `${API.droneDetail}?at=${AT}`, `${API.droneDetail}?key=../../etc/passwd&at=${AT}`,
         `${API.droneDetail}?key=s_0123456789abcd&at=HEAD`, `${API.droneDetail}?key=s_0123456789abcd&key=s_0123456789abcd&at=${AT}`,
         `${API.droneDetail}?key=s_0123456789abcd&at=${AT}&pad=${'x'.repeat(300)}`, `${API.droneDetail}?key=--output=x&at=${AT}`,
+        API.crewDetail, `${API.crewDetail}?person=p_0123456789ab`, `${API.crewDetail}?at=${AT}`, `${API.crewDetail}?person=../../etc/passwd&at=${AT}`,
+        `${API.crewDetail}?person=p_0123456789ab&at=HEAD`, `${API.crewDetail}?person=p_0123456789ab&person=p_0123456789ab&at=${AT}`,
+        `${API.crewDetail}?person=p_0123456789ab&at=${AT}&pad=${'x'.repeat(300)}`, `${API.crewDetail}?person=--output=x&at=${AT}`,
+        `${API.crewDetail}?person=self%40example.com&at=${AT}`,
       ];
       for (const path of bad) {
         const r = await api(path);

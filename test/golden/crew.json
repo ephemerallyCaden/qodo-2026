@@ -1,0 +1,273 @@
+{
+  "crew": {
+    "bots": 2,
+    "head": "3dbac26f77131e07727dd752f3ae20dbcfdb6c15",
+    "members": [
+      {
+        "captain": false,
+        "displayName": "Bram Tiller",
+        "person": "p_206cbb7a81b9",
+        "seed": 3710258663
+      },
+      {
+        "captain": false,
+        "displayName": "Esme Holt",
+        "person": "p_33da7d178551",
+        "seed": 2393886847
+      },
+      {
+        "captain": true,
+        "displayName": "Nova Reyes",
+        "person": "p_41500534dee9",
+        "seed": 4239677801
+      },
+      {
+        "captain": false,
+        "displayName": "Dax Imura",
+        "person": "p_4314cfdff962",
+        "seed": 3137127053
+      },
+      {
+        "captain": false,
+        "displayName": "Cleo Varga",
+        "person": "p_44feab12c792",
+        "seed": 3990394516
+      },
+      {
+        "captain": false,
+        "displayName": "Ada Quill",
+        "person": "p_87cea0f2291a",
+        "seed": 2222483224
+      }
+    ],
+    "needsRescan": false,
+    "schemaVersion": "crew.1",
+    "total": 6
+  },
+  "panels": [
+    {
+      "captain": false,
+      "displayName": "Bram Tiller",
+      "files": [
+        {
+          "fileId": "f_ed64e15c147b",
+          "home": "d_b7c04fef35e2",
+          "path": "ui/nav.ts",
+          "touches": 2
+        },
+        {
+          "fileId": "f_457eda0d275d",
+          "home": "d_b7c04fef35e2",
+          "path": "ui/panel.ts",
+          "touches": 1
+        }
+      ],
+      "head": "3dbac26f77131e07727dd752f3ae20dbcfdb6c15",
+      "lastActive": "2026-10-04T10:00:00Z",
+      "needsRescan": false,
+      "ok": true,
+      "otherFiles": 0,
+      "person": "p_206cbb7a81b9",
+      "planets": [
+        {
+          "home": "d_b7c04fef35e2",
+          "touches": 2
+        }
+      ],
+      "schemaVersion": "crew-detail.1"
+    },
+    {
+      "captain": false,
+      "displayName": "Esme Holt",
+      "files": [
+        {
+          "fileId": "f_b33563055168",
+          "home": "star",
+          "path": "README.md",
+          "touches": 1
+        },
+        {
+          "fileId": "f_07fdd026b11c",
+          "home": "d_00178f31922e",
+          "path": "docs/guide.md",
+          "touches": 1
+        }
+      ],
+      "head": "3dbac26f77131e07727dd752f3ae20dbcfdb6c15",
+      "lastActive": "2026-10-09T10:00:00Z",
+      "needsRescan": false,
+      "ok": true,
+      "otherFiles": 0,
+      "person": "p_33da7d178551",
+      "planets": [
+        {
+          "home": "d_00178f31922e",
+          "touches": 1
+        },
+        {
+          "home": "star",
+          "touches": 1
+        }
+      ],
+      "schemaVersion": "crew-detail.1"
+    },
+    {
+      "captain": true,
+      "displayName": "Nova Reyes",
+      "files": [
+        {
+          "fileId": "f_cfe707d77468",
+          "home": "star",
+          "path": ".mailmap",
+          "touches": 1
+        },
+        {
+          "fileId": "f_b33563055168",
+          "home": "star",
+          "path": "README.md",
+          "touches": 1
+        },
+        {
+          "fileId": "f_c5a664737389",
+          "home": "d_69c6fa4ac535",
+          "path": "engine/core.ts",
+          "touches": 1
+        },
+        {
+          "fileId": "f_94ff8db345a5",
+          "home": "d_b7c04fef35e2",
+          "path": "ui/hud.ts",
+          "touches": 1
+        },
+        {
+          "fileId": "f_457eda0d275d",
+          "home": "d_b7c04fef35e2",
+          "path": "ui/panel.ts",
+          "touches": 1
+        }
+      ],
+      "head": "3dbac26f77131e07727dd752f3ae20dbcfdb6c15",
+      "lastActive": "2026-10-11T10:00:00Z",
+      "needsRescan": false,
+      "ok": true,
+      "otherFiles": 1,
+      "person": "p_41500534dee9",
+      "planets": [
+        {
+          "home": "d_69c6fa4ac535",
+          "touches": 1
+        },
+        {
+          "home": "d_b7c04fef35e2",
+          "touches": 2
+        },
+        {
+          "home": "star",
+          "touches": 1
+        }
+      ],
+      "schemaVersion": "crew-detail.1"
+    },
+    {
+      "captain": false,
+      "displayName": "Dax Imura",
+      "files": [
+        {
+          "fileId": "f_c5a664737389",
+          "home": "d_69c6fa4ac535",
+          "path": "engine/core.ts",
+          "touches": 1
+        }
+      ],
+      "head": "3dbac26f77131e07727dd752f3ae20dbcfdb6c15",
+      "lastActive": "2026-10-08T10:00:00Z",
+      "needsRescan": false,
+      "ok": true,
+      "otherFiles": 1,
+      "person": "p_4314cfdff962",
+      "planets": [
+        {
+          "home": "d_69c6fa4ac535",
+          "touches": 1
+        }
+      ],
+      "schemaVersion": "crew-detail.1"
+    },
+    {
+      "captain": false,
+      "displayName": "Cleo Varga",
+      "files": [
+        {
+          "fileId": "f_07fdd026b11c",
+          "home": "d_00178f31922e",
+          "path": "docs/guide.md",
+          "touches": 1
+        },
+        {
+          "fileId": "f_ed64e15c147b",
+          "home": "d_b7c04fef35e2",
+          "path": "ui/nav.ts",
+          "touches": 2
+        }
+      ],
+      "head": "3dbac26f77131e07727dd752f3ae20dbcfdb6c15",
+      "lastActive": "2026-10-13T10:00:00Z",
+      "needsRescan": false,
+      "ok": true,
+      "otherFiles": 0,
+      "person": "p_44feab12c792",
+      "planets": [
+        {
+          "home": "d_00178f31922e",
+          "touches": 1
+        },
+        {
+          "home": "d_b7c04fef35e2",
+          "touches": 2
+        }
+      ],
+      "schemaVersion": "crew-detail.1"
+    },
+    {
+      "captain": false,
+      "displayName": "Ada Quill",
+      "files": [
+        {
+          "fileId": "f_c5a664737389",
+          "home": "d_69c6fa4ac535",
+          "path": "engine/core.ts",
+          "touches": 1
+        },
+        {
+          "fileId": "f_4f69b144ff7b",
+          "home": "d_69c6fa4ac535",
+          "path": "engine/physics.ts",
+          "touches": 2
+        },
+        {
+          "fileId": "f_94ff8db345a5",
+          "home": "d_b7c04fef35e2",
+          "path": "ui/hud.ts",
+          "touches": 1
+        }
+      ],
+      "head": "3dbac26f77131e07727dd752f3ae20dbcfdb6c15",
+      "lastActive": "2026-10-12T10:00:00Z",
+      "needsRescan": false,
+      "ok": true,
+      "otherFiles": 0,
+      "person": "p_87cea0f2291a",
+      "planets": [
+        {
+          "home": "d_69c6fa4ac535",
+          "touches": 2
+        },
+        {
+          "home": "d_b7c04fef35e2",
+          "touches": 1
+        }
+      ],
+      "schemaVersion": "crew-detail.1"
+    }
+  ]
+}

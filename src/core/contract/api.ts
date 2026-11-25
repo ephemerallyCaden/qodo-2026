@@ -13,7 +13,8 @@ import type { LayoutV1 } from './layout.js';
  * `events` is a text/event-stream that the view reads with fetch (not EventSource), so the token
  * travels in a header, never in a URL. `unseen` and `diff` (#75) take query parameters: see
  * UnseenQuery and DiffQuery. So does `droneDetail` (#148): see DroneDetailQuery. `cochange` (#211, R9) is
- * the co-change view (GET).
+ * the co-change view (GET). `crew` (#207) is the crew view (GET) and `crewDetail` one member's panel: see
+ * CrewDetailQuery.
  */
 export const API = {
   snapshot: '/api/snapshot',
@@ -25,6 +26,8 @@ export const API = {
   beacon: '/api/beacon',
   beacons: '/api/beacons',
   cochange: '/api/cochange',
+  crew: '/api/crew',
+  crewDetail: '/api/crew-detail',
   events: '/api/events',
   unseen: '/api/unseen',
   diff: '/api/diff',

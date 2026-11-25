@@ -6,6 +6,7 @@ import { API, TOKEN_HEADER, type ChartResult, type DiffQuery, type DiffResult, t
 import { beaconTextProblem } from '../core/beacons.js';
 import type { BeaconAction, BeaconResult, BeaconView } from '../core/contract/beacons.js';
 import type { CoChangeView } from '../core/contract/cochange.js';
+import type { CrewDetailQuery, CrewDetailResult, CrewView } from '../core/contract/crew.js';
 import type { DroneDetailQuery, DroneDetailResult, DroneView } from '../core/contract/drones.js';
 import type { ChartAction, FogView } from '../core/contract/fog.js';
 import { CommetError } from '../core/errors.js';
@@ -13,7 +14,9 @@ import { BEACONS_FILE } from '../state/beacons.js';
 import { CHART_FILE } from '../state/chart.js';
 import { readStateBytes } from '../state/io.js';
 import { bundleKey, contentType, loadBundle, NO_SNAPSHOT, readBundleFile, STATE_FILES } from './files.js';
-import { BIND_HOST, hostAllowed, parseBeaconAction, parseChartAction, parseDiffQuery, parseDroneDetailQuery, parseUnseenQuery, sameOrigin, tokenMatches } from './guard.js';
+import {
+  BIND_HOST, hostAllowed, parseBeaconAction, parseChartAction, parseCrewDetailQuery, parseDiffQuery, parseDroneDetailQuery, parseUnseenQuery, sameOrigin, tokenMatches,
+} from './guard.js';
 import { watchState, type StateWatcher } from './watch.js';
 
 export interface ServerOptions {
@@ -45,6 +48,10 @@ export interface ServerOptions {
   beacon?: (action: BeaconAction) => Promise<BeaconResult>;
   /** #211 (R9): the co-change view, from the same pair as the fog. Without it, `GET /api/cochange` answers 501. */
   cochange?: () => Promise<CoChangeView>;
+  /** #207: the crew, from the same pair as the fog. Without it, `GET /api/crew` answers 501. */
+  crew?: () => Promise<CrewView>;
+  /** #207: one crew member's panel, from the same pair. Without it, `GET /api/crew-detail` answers 501. */
+  crewDetail?: (q: CrewDetailQuery) => Promise<CrewDetailResult>;
   /** #75: a planet's or the star's fogged files. Without it, `GET /api/unseen` answers 501. */
   unseen?: (q: UnseenQuery) => Promise<UnseenResult>;
   /**
@@ -148,13 +155,20 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
         ? sendJson(res, 200, await o.cochange())
         : sendJson(res, 501, { error: 'co-change view not available' }),
     }],
+    [API.crew, {
+      method: 'GET',
+      handle: async (_req, res) => o.crew
+        ? sendJson(res, 200, await o.crew())
+        : sendJson(res, 501, { error: 'crew view not available' }),
+    }],
+    [API.crewDetail, { method: 'GET', handle: (req, res) => crewDetail(req, res) }],
     [API.events, { method: 'GET', handle: async (req, res) => events(req, res) }],
     [API.unseen, { method: 'GET', handle: (req, res) => unseen(req, res) }],
     [API.diff, { method: 'GET', handle: (req, res) => diff(req, res) }],
   ]);
 
   /** 200, 409 for a head that isn't the current one (refetch the fog), 404 for an id it doesn't have. */
-  const readStatus = (r: UnseenResult | DiffResult | DroneDetailResult) => (r.ok ? 200 : r.head !== undefined ? 409 : 404);
+  const readStatus = (r: UnseenResult | DiffResult | DroneDetailResult | CrewDetailResult) => (r.ok ? 200 : r.head !== undefined ? 409 : 404);
 
   /** #148: one session's detail. The query is checked before anything is read; refusals are fixed text. */
   async function droneDetail(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -162,6 +176,15 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
     if (!q) return sendJson(res, 400, { ok: false, error: 'expected exactly key=<session key> and at=<full commit id>' });
     if (!o.droneDetail) return sendJson(res, 501, { ok: false, error: 'not available' });
     const r = await o.droneDetail(q);
+    sendJson(res, readStatus(r), r);
+  }
+
+  /** #207: one crew member's panel. The query is checked before anything is read; refusals are fixed text. */
+  async function crewDetail(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const q = parseCrewDetailQuery(req.url ?? '');
+    if (!q) return sendJson(res, 400, { ok: false, error: 'expected exactly person=<person id> and at=<full commit id>' });
+    if (!o.crewDetail) return sendJson(res, 501, { ok: false, error: 'not available' });
+    const r = await o.crewDetail(q);
     sendJson(res, readStatus(r), r);
   }
 

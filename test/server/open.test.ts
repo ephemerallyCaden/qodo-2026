@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runOpen } from '../../src/cli/open.js';
 import { API, TOKEN_HEADER, type DiffView } from '../../src/core/contract/api.js';
+import type { CrewView } from '../../src/core/contract/crew.js';
 import type { FogView } from '../../src/core/contract/fog.js';
 import { fileIdOf } from '../../src/core/fog/index.js';
 import { EXIT } from '../../src/core/errors.js';
@@ -68,6 +69,21 @@ describe('commet open', () => {
     const d = await get(`${API.diff}?fileId=${fileIdOf('src/a.ts')}&at=${head}`);
     expect(d.status).toBe(200);
     expect((JSON.parse(d.body) as DiffView).sections[0]!.hunks[0]!.lines).toContain('+export const a = 1;');
+    expect(await s.stop()).toBe(0);
+  });
+
+  it('serves the crew and one member\'s panel of the repo it was opened in (#207)', async () => {
+    const repo = oneCommitRepo();
+    expect((await cli(['scan', '--no-ingest', '--no-root'], repo.dir, env)).code).toBe(0);
+    const s = await launch(repo.dir, ['--no-open'], join(repo.dir, 'no-web'));
+    const get = (path: string) => req(s.port, { path, headers: { [TOKEN_HEADER]: s.token } });
+    const crew = JSON.parse((await get(API.crew)).body) as CrewView;
+    expect(crew).toMatchObject({ schemaVersion: 'crew.1', total: 1, bots: 0, needsRescan: false });
+    const me = crew.members[0]!;
+    const d = await get(`${API.crewDetail}?person=${me.person}&at=${crew.head}`);
+    expect(d.status).toBe(200);
+    expect(JSON.parse(d.body)).toMatchObject({ person: me.person, files: [{ path: 'src/a.ts', touches: 1 }] });
+    expect((await get(`${API.crewDetail}?person=${me.person}&at=${'f'.repeat(40)}`)).status).toBe(409);
     expect(await s.stop()).toBe(0);
   });
 
