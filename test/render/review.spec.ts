@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { WEB_DIST, type ChartResult, type DiffQuery, type DiffResult } from '../../src/core/contract/api.js';
+import { DIFF_LIMITS, WEB_DIST, type ChartResult, type DiffQuery, type DiffResult } from '../../src/core/contract/api.js';
 import type { BeaconAction, BeaconResult } from '../../src/core/contract/beacons.js';
 import { DETAIL_BUCKETS, type DroneDetailQuery, type DroneDetailResult, type DroneView } from '../../src/core/contract/drones.js';
 import type { ChartAction, FogView } from '../../src/core/contract/fog.js';
@@ -200,10 +200,15 @@ test.describe('#75 review panel', () => {
 
   test('a layout reload\'s older fog never replaces a newer chart answer (PR #108 r1 #1)', async ({ page }) => {
     const f = await fixture();
+    // aa/one.ts's unseen diff is too long to show whole, so opening it charts nothing (#201 charts only a whole
+    // text diff on open): the Chart click below is the first chart, as this race needs, and no open's write runs into the hook.
+    f.commit('2026-10-10T10:00:00Z', () => writeFileSync(join(f.dir, 'aa/one.ts'), 'x\n'.repeat(DIFF_LIMITS.lines + 1)));
+    await f.scan();
     await open(page, f, 'aa', true);
     expect(await has(page, 'baseline')).toBe(true);
     await openFile(page, 'aa/one.ts');
     await page.waitForSelector('#panel button[data-key="chart"]');
+    expect(await chartsOnDisk(f)).toEqual([]); // the open charted nothing
     // The reload's fog is read now (nothing charted yet) and held back until the chart's answer is in.
     const g = gate();
     let held = 0;
