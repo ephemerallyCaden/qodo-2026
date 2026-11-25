@@ -40,9 +40,10 @@ jobs:
       - run: npm ci
       # Builds dist/web first (test/render/global-setup.ts): view.spec.ts drives the built view.
       - run: npm run test:render
-      # On a failure, rerun with UPDATE_GOLDEN=1 in this image and upload what it wrote, so a deliberate
-      # update needs no Docker (test/render/README.md). A blank or over-budget frame fails this step too.
-      - run: UPDATE_GOLDEN=1 npm run test:render
+      # On a failure, rerun the failed tests with UPDATE_GOLDEN=1 in this image and upload what it wrote, so
+      # a deliberate update needs no Docker (test/render/README.md). A blank or over-budget frame fails this
+      # step too. Only the failed tests: the whole suite twice no longer fits the job's 15 minutes (#225).
+      - run: UPDATE_GOLDEN=1 npx playwright test --last-failed
         id: update
         if: failure()
       - if: failure() && steps.update.outcome == 'success'

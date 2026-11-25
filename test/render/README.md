@@ -100,10 +100,11 @@ Only with `UPDATE_GOLDEN=1`, in the pinned image, for a render change you meant,
 `test/golden/` without that line (`.github/scripts/golden-update.sh`). Review the `.txt` diff before
 committing.
 
-- **From CI** (no Docker needed): push. When the `render` job fails, it reruns the suite with
-  `UPDATE_GOLDEN=1` in the same image and uploads what that wrote to `test/golden/render/` as the
-  `render-goldens` artifact. Nothing is uploaded if that run fails too: a blank or over-budget frame
-  is never written. Take it with
+- **From CI** (no Docker needed): push. When the `render` job fails, it reruns the failed tests
+  (`--last-failed`) with `UPDATE_GOLDEN=1` in the same image and uploads `test/golden/render/` as the
+  `render-goldens` artifact: the goldens it rewrote and the committed rest. Nothing is uploaded if that
+  run fails too: a blank or over-budget frame is never written, and a failure that isn't a golden fails
+  again. Take it with
   `gh run download <run-id> -n render-goldens -D test/golden/render`, and name the run ID and image
   digest in the `Golden-Update:` line.
 - **With Docker**, in a separate worktree (`npm ci` replaces `node_modules` with Linux builds):
