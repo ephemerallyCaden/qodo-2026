@@ -1,7 +1,7 @@
 # Feature: Crew spaceship (astronauts from git history) and the art renderer
 
 ## Status
-In Progress (data + API in review; ship round 2 pending the human's pick; renderer next)
+In Progress (data + API merged in #226; ship R2-4 picked; renderer next)
 
 ## Trigger
 The human, 2026-11-25: "lets do the astronauts for day 18! and the spaceship, lets get an art renderer going!" Answers the same day:
@@ -14,7 +14,7 @@ Ticket: #207 (understanding mode U8).
 
 ## Requirements
 - [x] C1 **Crew from local git history** (#207 AC1): one astronaut per human author in the scan window, merged by email and name aliases (`.mailmap` when present). Bots and agent authors are excluded. No network (R6).
-- [ ] C2 **A cartoonish rocket**, chosen by the human from 3–4 lab variants. It must be readable at 320×180 (art direction §1), drawn in the art direction's palettes, and carry the crew.
+- [ ] C2 **A cartoonish rocket**, chosen by the human from 3–4 lab variants. **Picked (human, 2026-11-25): R2-4 "Round lander"** (`feature/ship-lab`, `mockups/ship-lab/`, round 2): the fattest round finned rocket, a red belly band of portholes, four splayed fins with ball feet, a blunt dome nose with a blinking antenna, the captain's gold porthole above the band. BLK 36 only, ship scale 0.6, 8 per deck, a second deck for 9–16, "+N" past 16. It must be readable at 320×180 (art direction §1), drawn in the art direction's palettes, and carry the crew.
 - [ ] C3 **Astronauts use the asset library's astronaut** (`mockups/asset-viewer/astronaut.js`, art direction §8, BLK 36 exactly). Their bob, sway and blink are loop-locked (§7).
 - [ ] C4 **A product art renderer** draws the ship and the astronauts in the live 3D view through the pixel pass. Placement is deterministic, near your star, next to your own drones. The draw budget stays under its cap.
 - [ ] C5 **Astronaut panel** (#207 AC3; data and `GET /api/crew-detail` done in #226, the clickable panel lands with the renderer, C4): clicking an astronaut shows their name, the planets and files they touched in the window, with a touch count each (no code), and when they were last active. Allowed by the Rule 6 amendment (human, 2026-11-25): never ranked, sorted or compared by those numbers, one person at a time, no headline total, crew ordered by person id.
