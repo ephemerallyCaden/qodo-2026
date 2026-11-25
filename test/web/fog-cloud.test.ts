@@ -143,6 +143,17 @@ describe('fronts (F5 clear, F6 refog), between any two levels', () => {
     expect(steps.at(-1)!).toBe(sky.at(rest(others)).mist.length);
   });
 
+  it('starts every front exactly at the level it came from and ends it exactly at the new one: no jump at either end (Qodo 0d9f4eaa)', () => {
+    const weights = (at: FileFogAt[]) => sky.covers(at).map((c) => [c.storm, c.mist]);
+    const restAt = (l: Level) => weights(plan.fileIds.map((_, k) => fileFogAt(k === one ? l : others(k), undefined, 0)));
+    const at = (from: Level, level: Level, kind: 1 | 2, progress: number) =>
+      weights(plan.fileIds.map((_, k) => (k === one ? { level, from, kind, progress } : fileFogAt(others(k), undefined, 0))));
+    for (const [from, level, kind] of [[2, 1, 1], [2, 0, 1], [1, 0, 1], [0, 1, 2], [0, 2, 2], [1, 2, 2]] as const) {
+      expect(at(from, level, kind, 0), `${from} → ${level}: the first frame is the old level`).toEqual(restAt(from));
+      expect(at(from, level, kind, 1), `${from} → ${level}: the last is the new one`).toEqual(restAt(level));
+    }
+  });
+
   it('cellCover: a front between two levels keeps the level it came from ahead of it and the new one behind', () => {
     const clear = { level: 1, from: 2, kind: 1, progress: 0.5 } as const;
     expect(cellCover(clear, 0.01, 1, 0)).toEqual({ storm: 0, mist: 1, teal: false }); // behind the front: mist

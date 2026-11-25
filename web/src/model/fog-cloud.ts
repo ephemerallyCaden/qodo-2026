@@ -90,13 +90,16 @@ export function cellCover(f: FileFogAt, d: number, reach: number, fade: number):
   const [ts, tm] = OVER[f.level];
   if (f.kind === 0) return { storm: ts, mist: tm, teal: false };
   const [fs, fm] = OVER[f.from];
-  // how much of the level it came from is left here: 1 ahead of the front, 0 once it has passed
+  // how much of the level it came from is left here: 1 ahead of the front, 0 once it has passed. Each
+  // front's soft edge starts wholly before its first cell and ends wholly past its last, so the first
+  // frame is exactly the old level and the last the new one (Qodo 0d9f4eaa: no jump at either end).
   let left: number;
   if (f.kind === 1) {
-    left = fs === 0 && ts === 0 ? soft((fade - f.progress) / FADE_SOFT + 0.5) // mist fading to clear, cell by cell
-      : soft((d - f.progress * reach) / FRONT_SOFT + 0.5); // a clear: out from the anchor
+    left = fs === 0 && ts === 0
+      ? soft((FADE_SOFT / 2 + fade * (1 - FADE_SOFT) - f.progress) / FADE_SOFT + 0.5) // mist fading to clear, cell by cell
+      : soft((d - (f.progress * (reach + FRONT_SOFT) - FRONT_SOFT / 2)) / FRONT_SOFT + 0.5); // a clear: out from the anchor
   } else {
-    left = 1 - soft((d - (1 - f.progress) * reach) / FRONT_SOFT + 0.5); // a refog: in from the far edge
+    left = 1 - soft((d - ((1 - f.progress) * (reach + FRONT_SOFT) - FRONT_SOFT / 2)) / FRONT_SOFT + 0.5); // a refog: in from the far edge
   }
   return { storm: fs * left + ts * (1 - left), mist: fm * left + tm * (1 - left), teal: f.kind === 1 && fs > 0 && left > 0 };
 }
