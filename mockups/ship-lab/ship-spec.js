@@ -115,11 +115,11 @@ function buildA(n) {
     const [x, , z] = polar(R - 0.31, yaw, 0); // the visor just behind the glass (the bob and sway keep it inside)
     crew.push(helmetSeat(x, y, z, yaw));
   }
-  return { parts, bands, windows, crew, glass: [], lights: [], flames: [{ a: [0, -0.15, 0], r: 0.27, len: 0.8 }], plan, height: bodyTop + 1.3 + 0.47 };
+  return { parts, bands, windows, crew, glass: [], lights: [], flames: [{ a: [0, -0.15, 0], r: 0.27, len: 0.8 }], plan };
 }
 
 // ---------------------------------------------------------------- B: chubby capsule
-// A fat orange gumdrop on three stubby legs, with a cream bumper ring and an antenna with a blinking
+// A fat orange gumdrop on three stubby legs, with a white bumper ring and an antenna with a blinking
 // ball. The crew sits behind one big wraparound window, like a bus windscreen: up to four in the front
 // row and four raised behind them. A second deck adds a second window band on a taller body.
 function buildB(n) {
@@ -151,7 +151,7 @@ function buildB(n) {
   };
   deck(plan.perDeck[0], 1.16, 0.5, 0.42, 0.44);
   if (plan.decks === 2) deck(plan.perDeck[1], 2.16, -0.02, 0.36, 0.38); // set back, so its legs hang behind the lower back row
-  return { parts, bands: [], windows, crew, glass: [], lights, flames: [{ a: [0, -0.38, 0], r: 0.34, len: 0.62 }], plan, height: 3.21 + lift + 0.5 };
+  return { parts, bands: [], windows, crew, glass: [], lights, flames: [{ a: [0, -0.38, 0], r: 0.34, len: 0.62 }], plan };
 }
 
 // ---------------------------------------------------------------- C: bubble top
@@ -185,7 +185,7 @@ function buildC(n) {
     deck(plan.perDeck[1], f2, 1);
     top = glass[1].c[1] + DOME;
   }
-  return { parts, bands: [{ part: 'body', y0: 0.82, y1: 0.94, slot: 'trim' }], windows: [], crew, glass, lights: [], flames: [{ a: [0, -0.24, 0], r: 0.24, len: 0.7 }], plan, height: top + 0.47 };
+  return { parts, bands: [{ part: 'body', y0: 0.82, y1: 0.94, slot: 'trim' }], windows: [], crew, glass, lights: [], flames: [{ a: [0, -0.24, 0], r: 0.24, len: 0.7 }], plan };
 }
 
 // ---------------------------------------------------------------- D: ringed retro
@@ -223,7 +223,7 @@ function buildD(n) {
     const span = k === 1 ? 0 : Math.min((SPAN[d] * Math.PI) / 180, ((k - 1) * 40 * Math.PI) / 180 / 2); // round the front: the back of the ring hides behind the body
     for (const yaw of spread(k, span)) crew.push(seat(...polar(SEAT_R[d], yaw, y + 0.085 - 0.03), yaw));
   });
-  return { parts, bands: [], windows: [], crew, glass: [], lights, flames: [{ a: [0, -0.02, 0], r: 0.17, len: 0.55 }], plan, height: ballY + 0.14 + 0.4 };
+  return { parts, bands: [], windows: [], crew, glass: [], lights, flames: [{ a: [0, -0.02, 0], r: 0.17, len: 0.55 }], plan };
 }
 
 export const BUILDERS = { A: buildA, B: buildB, C: buildC, D: buildD };

@@ -35,7 +35,7 @@ function partExpr(q) {
 export function partBounds(q) {
   const pad = (c, r) => [c.map((x, i) => x - r[i]), c.map((x, i) => x + r[i])];
   switch (q.kind) {
-    case 'cone': { const lo = q.a.map((x, i) => Math.min(x, q.b[i]) - Math.max(q.r1, q.r2)), hi = q.a.map((x, i) => Math.max(x, q.b[i]) + Math.max(q.r1, q.r2)); return [lo, hi]; }
+    case 'cone': return [q.a.map((x, i) => Math.min(x - q.r1, q.b[i] - q.r2)), q.a.map((x, i) => Math.max(x + q.r1, q.b[i] + q.r2))]; // a round cone lies within its two end spheres' box
     case 'capcone': { const r = Math.max(q.r1, q.r2); return pad(q.c, [r, q.h, r]); }
     case 'sphere': return pad(q.c, [q.r, q.r, q.r]);
     case 'ellipsoid': return pad(q.c, q.r);

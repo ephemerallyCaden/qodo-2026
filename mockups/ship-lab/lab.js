@@ -3,7 +3,7 @@
 // render off-screen at the internal resolution (320x180 by default) and are checked here; lab.mjs and
 // the tests drive window.lab, and the live page (index.html) uses the same functions.
 import * as THREE from 'three';
-import { makeSky, makeStars, makeStar, setDepthLevel, applyDepth, setViewSize, setPixelSize, retint, resolve, renderer, camera, poseWorld, LOOP as VIEWER_LOOP, frameWidth } from '../asset-viewer/viewer.js';
+import { makeSky, makeStars, makeStar, setDepthLevel, applyDepth, setViewSize, setPixelSize, retint, resolve, renderer, camera, poseWorld, LOOP as VIEWER_LOOP, STAR_DEFAULTS } from '../asset-viewer/viewer.js';
 import { makeDrone } from '../drone-lab/drone.js';
 import { sessionLook } from '../drone-lab/brands.js';
 import { DEFAULTS as DRONE_DEFAULTS } from '../drone-lab/params.js';
@@ -34,7 +34,7 @@ const scene = new THREE.Scene();
 const sky = makeSky();
 const stars = makeStars();
 const star = makeStar();
-star.set({ size: 1.6 });
+star.set({ size: STAR_DEFAULTS.size }); // the viewer's default star
 scene.add(sky, stars, star.group);
 // Three of your own drones (the human's agent sessions), as the drone lab draws them.
 const DRONES = [['claude', 's1'], ['codex', 's2'], ['generic', 's3']].map(([brand, session]) => {
@@ -123,7 +123,6 @@ function layers(mode, hideIndex = -1) {
   ship.setFlame(mode !== 'noflame');
 }
 
-const TMP = V();
 /** Poses the configured scene at time t (s). */
 function pose(t) {
   const { c, ship } = current;
@@ -135,7 +134,6 @@ function pose(t) {
   setDepthLevel(sky, 0);
   setDepthLevel(star.group, 0);
   for (const a of ship.crew) setDepthLevel(a.group, 0);
-  void TMP;
 }
 
 let rt = null, px = null;
@@ -369,7 +367,7 @@ function tile(cell, { stats = true, mode = 'final', t = null } = {}) {
 
 const viewerCycle = () => VIEWER_LOOP.period / VIEWER_LOOP.surfaceTurns;
 
-window.lab = { ready: true, cycle: CYCLE, viewerCycle: viewerCycle(), variants: VARIANTS.map(({ id, name, pitch, crewSeen }) => ({ id, name, pitch, crewSeen })), tile, sheet, loop, tileStats: (c) => tileStats(c) };
+window.lab = { ready: true, cycle: CYCLE, viewerCycle: viewerCycle(), starSize: STAR_DEFAULTS.size, variants: VARIANTS.map(({ id, name, pitch, crewSeen }) => ({ id, name, pitch, crewSeen })), tile, sheet, loop, tileStats: (c) => tileStats(c) };
 
 // ---------------------------------------------------------------- live page
 if (!document.documentElement.classList.contains('capture')) {
@@ -407,5 +405,4 @@ if (!document.documentElement.classList.contains('capture')) {
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
-  void frameWidth;
 }
