@@ -80,7 +80,13 @@ export const R2B_VARIANTS = [
     crewSeen: 'helmets in three straight columns of identical round portholes', captain: 'the top porthole in the middle, in the gold cap', palette: A_COLOURS,
   },
 ];
-export const ALL_VARIANTS = [...VARIANTS, ...R2_VARIANTS, ...R2B_VARIANTS.slice(1)];
+// The final pick (human, 2026-11-25): R2-4c, with R2-4's red belly band back.
+export const FINAL_VARIANTS = [{
+  id: 'R2-4c-final', name: 'Round lander (final)',
+  pitch: 'The pick: R2-4\'s round lander with its red belly band, every porthole alike in three straight columns, the captain on top in the middle, in the cap.',
+  crewSeen: 'helmets in three straight columns of identical round portholes in a red belly band', captain: 'the top porthole in the middle, above the band, in the gold cap', palette: R2_VARIANTS[0].palette,
+}];
+export const ALL_VARIANTS = [...VARIANTS, ...R2_VARIANTS, ...R2B_VARIANTS.slice(1), ...FINAL_VARIANTS];
 export const VARIANT_BY_ID = Object.fromEntries(ALL_VARIANTS.map((v) => [v.id, v]));
 export const ALL_BUILDERS = { ...BUILDERS, ...R2_BUILDERS };
 

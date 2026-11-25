@@ -69,6 +69,10 @@ The human, 2026-11-25: "I imagined one like the finned classic but shorter, fatt
 
 **Distinctness:** pairs are reported, not gated, because round 2's are variations of one brief. R2-1 and R2-5 share a silhouette on purpose; their closest score is 0.22–0.28.
 
+## The pick: R2-4c-final
+
+The human picked R2-4c with R2-4's red belly band back (2026-11-25). R2-4c-final (`node lab.mjs round=final` into `out/final/`) is R2-4c's hull, portholes and seats exactly, plus R2-4's band: red paint on the body from cy − 0.3 to top + 0.12. Its numbers are `R24C` in `ship-r2.js`, built by `buildR24c(n, { band: true })`.
+
 ## Round 2b: R2-4's windows alike and in a line (R2-4b, R2-4c)
 
 The human picked R2-4, then: "I just don't like R2-4 the fact the windows are different colours, they should all be the same colour and also stack them vertically in a line instead of being stacked randomly." (`node lab.mjs round=2b` into `out/round2b/`.)

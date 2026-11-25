@@ -209,12 +209,14 @@ const SEATS_PER_COLUMN = 8;
 // One reading of "stack them vertically in a line": straight columns instead of R2-4's staggered
 // honeycomb. The captain on top in the middle, the teammates in rows of three below, each column a
 // straight vertical line, every porthole alike. It keeps R2-4's round, fat proportions (one column of
-// eight can't: R2-4b). A second deck adds three more rows.
+// eight can't: R2-4b). A second deck adds three more rows. The human's pick (2026-11-25) is R2-4c with
+// R2-4's red belly band back: R2-4c-final.
 export const R24C = { R: 1.28, rw: 0.24, tube: 0.05, pitch: 0.66, above: 0.42, low: 0.17, col: 0.54 }; // col: the side columns' yaw (31°)
-function buildR24c(n) {
+function buildR24c(n, { band = false } = {}) {
   const plan = crewPlan(n), { R, rw, tube, pitch, above, low, col } = R24C;
   const rows = Math.ceil((SEATS_PER_DECK * plan.decks - 1) / 3); // rows of teammates the decks need
   const b = base({ R, cy: 1.45, stretch: rows * pitch - above + LIFT, nose: 'dome', nFins: 4, stance: 1.22 });
+  if (band) b.bands.push({ part: 'body', y0: b.cy - 0.3, y1: b.top + 0.12, slot: 'trim' }); // R2-4's red belly band, exactly
   const parts = [], windows = [], crew = [];
   const add = (i, yaw, y) => {
     const p = porthole(`port${i}`, [0, Math.min(Math.max(y, b.cy), b.top), 0], R, yaw, y, rw, { tube, low: i === 0 ? low : 0 });
@@ -230,4 +232,4 @@ function buildR24c(n) {
   return assemble(b, { parts, windows, crew, plan });
 }
 
-export const R2_BUILDERS = { 'R2-1': buildR21, 'R2-2': buildR22, 'R2-3': buildR23, 'R2-4': buildR24, 'R2-5': buildR25, 'R2-4b': buildR24b, 'R2-4c': buildR24c };
+export const R2_BUILDERS = { 'R2-1': buildR21, 'R2-2': buildR22, 'R2-3': buildR23, 'R2-4': buildR24, 'R2-5': buildR25, 'R2-4b': buildR24b, 'R2-4c': (n) => buildR24c(n), 'R2-4c-final': (n) => buildR24c(n, { band: true }) };

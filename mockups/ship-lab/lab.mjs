@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, openLab, pngFrom } from './harness.mjs';
 import { tileProblems, seamProblems, decode, CREW_MIN, CAP_MIN } from './checks.mjs';
-import { VARIANTS, R2_VARIANTS, R2B_VARIANTS } from './variants.js';
+import { VARIANTS, R2_VARIANTS, R2B_VARIANTS, FINAL_VARIANTS } from './variants.js';
 import { paletteHexes, BLK36, CAP_PALETTE } from './palette.js';
 import { SHIP_SCALE, CYCLE, CYCLES, SEATS_PER_DECK, MAX_DECKS } from './ship-spec.js';
 import { partBounds } from './ship-glsl.js';
@@ -23,15 +23,16 @@ import { rgbOklab, dist } from '../drone-lab/oklab.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
-const R2B = args.includes('round=2b'); // round 2b: the pick R2-4, its windows alike and in a line (human, 2026-11-25)
+const FINAL = args.includes('round=final'); // the pick: R2-4c with R2-4's red belly band (human, 2026-11-25)
+const R2B = args.includes('round=2b') || FINAL; // round 2b: the pick R2-4, its windows alike and in a line (human, 2026-11-25)
 const R2 = args.includes('round=2') || R2B; // round 2: A made shorter, fatter and rounder (human, 2026-11-25)
 const names = args.filter((a) => !a.startsWith('round='));
 const want = (n) => !names.length || names.includes(n);
-const SET = R2B ? R2B_VARIANTS : R2 ? R2_VARIANTS : VARIANTS;
-const ROUND_DIR = R2B ? 'round2b' : R2 ? 'round2' : null;
+const SET = FINAL ? FINAL_VARIANTS : R2B ? R2B_VARIANTS : R2 ? R2_VARIANTS : VARIANTS;
+const ROUND_DIR = FINAL ? 'final' : R2B ? 'round2b' : R2 ? 'round2' : null;
 const OUT = ROUND_DIR ? path.join(ROOT, 'out', ROUND_DIR) : path.join(ROOT, 'out');
 const IDS = SET.map((v) => v.id);
-const COUNTS = R2 ? [1, 3, 8, 12] : [1, 3, 8, 12, 20];
+const COUNTS = FINAL ? [1, 3, 8, 12, 16, 20] : R2 ? [1, 3, 8, 12] : [1, 3, 8, 12, 20];
 const COUNT_SET = R2B ? SET.filter((v) => v.id !== 'R2-4') : R2 ? SET.filter((v) => v.id === 'R2-1' || v.id === 'R2-2') : SET; // round 2: the overflow on the two the human named; 2b: on the new ones
 const GIF = { fps: 15, scale: 2, n: 3, view: 'hero' };
 // Distinctness (as the drone lab's A4): a pair is apart when, in every view, its silhouettes overlap
@@ -74,7 +75,7 @@ async function sheet(page, file, spec) {
 async function contact(page) {
   const cols = [['close', 'front'], ['close', '3/4'], ['crew', 'front'], ['near', 'front'], ['system', '3/4']];
   const stats = await sheet(page, 'ship-lab-contact.png', {
-    title: R2B ? 'Round 2b: R2-4 (the pick) beside R2-4b (one column of identical portholes) and R2-4c (straight columns, an alternative), a crew of 3, 320x180 (x2), BLK 36 only' : R2 ? 'Round 2: the finned classic, shorter, fatter and rounder, with chunky window rims (R2-1..R2-5), a crew of 3, 320x180 (x2), BLK 36 only' : 'Crew spaceship (#207): directions A-D, a crew of 3, at 320x180 (x2), BLK 36 only',
+    title: FINAL ? 'Final: R2-4c with R2-4\'s red belly band (the human\'s pick), a crew of 3, 320x180 (x2), BLK 36 only' : R2B ? 'Round 2b: R2-4 (the pick) beside R2-4b (one column of identical portholes) and R2-4c (straight columns, an alternative), a crew of 3, 320x180 (x2), BLK 36 only' : R2 ? 'Round 2: the finned classic, shorter, fatter and rounder, with chunky window rims (R2-1..R2-5), a crew of 3, 320x180 (x2), BLK 36 only' : 'Crew spaceship (#207): directions A-D, a crew of 3, at 320x180 (x2), BLK 36 only',
     cols: cols.map(([f, v]) => `${f} · ${v}`), padL: 260, scale: 2,
     rows: SET.map((v) => ({ label: v.id, sub: sub(v), cells: cols.map(([framing, view]) => ({ v: v.id, n: 3, framing, view })) })),
     note: `close-up 72% of frame · crew close-up 2.7 from the crew · near 5.98 (drone lab system distance) · system 18.8 beside the star, 28° down · ship scale ${SHIP_SCALE} (crew at 0.6 of the viewer's figure)`,
@@ -84,7 +85,7 @@ async function contact(page) {
 
 async function crew(page) {
   const stats = await sheet(page, 'ship-lab-crew.png', {
-    title: R2B ? 'Round 2b crew counts: 1, 3 and 8 on one deck; 12 on two (R2-4b: a second column beside the first; R2-4c: three more rows), close-up · front' : R2 ? 'Round 2 crew counts: 1, 3 and 8 on one deck; 12 on two (the approved overflow rule), close-up · front' : `Crew counts: 1, 3 and 8 on one deck; 9-16 on a second deck (12); past 16, "+N" (20), close-up · front`,
+    title: FINAL ? 'Final crew counts: 1, 3 and 8 on one deck; 9-16 on two (12, 16: three more rows of three); past 16, "+N" (20), close-up · front' : R2B ? 'Round 2b crew counts: 1, 3 and 8 on one deck; 12 on two (R2-4b: a second column beside the first; R2-4c: three more rows), close-up · front' : R2 ? 'Round 2 crew counts: 1, 3 and 8 on one deck; 12 on two (the approved overflow rule), close-up · front' : `Crew counts: 1, 3 and 8 on one deck; 9-16 on a second deck (12); past 16, "+N" (20), close-up · front`,
     cols: COUNTS.map((n) => (n <= SEATS_PER_DECK ? `${n} aboard` : n <= SEATS_PER_DECK * MAX_DECKS ? `${n}: two decks` : `${n}: two decks + "+${n - SEATS_PER_DECK * MAX_DECKS}"`)), padL: 260, scale: 2,
     rows: COUNT_SET.map((v) => ({ label: v.id, sub: sub(v), cells: COUNTS.map((n) => ({ v: v.id, n, framing: 'close', view: 'front' })) })),
     statsFor: [{ framing: 'near' }],
@@ -198,9 +199,9 @@ const md = (r) => {
   const t = (rows) => rows.map((x) => `| ${x.join(' | ')} |`).join('\n');
   const tile = (list, v, framing, view) => list?.find((s) => s.cell.v === v && s.cell.framing === framing && s.cell.view === view);
   const lines = [
-    R2B ? '# Ship lab report: round 2b' : R2 ? '# Ship lab report: round 2' : '# Ship lab report',
+    FINAL ? '# Ship lab report: final (R2-4c with the red band)' : R2B ? '# Ship lab report: round 2b' : R2 ? '# Ship lab report: round 2' : '# Ship lab report',
     '',
-    R2B ? 'Round 2b for #207 (C2), on the pick R2-4. The human (2026-11-25): "I just don\'t like R2-4 the fact the windows are different colours, they should all be the same colour and also stack them vertically in a line instead of being stacked randomly." R2-4b does exactly that (one column, every porthole alike, the captain at the top, no belly band). One column of eight makes the round lander a tall capsule, so R2-4c is an alternative reading (three straight columns) that keeps R2-4\'s proportions. Generated by `node lab.mjs round=2b`. All sizes are internal pixels at 320x180; tiles are shown at x2.' : R2 ? 'Round 2 for #207 (C2), the human\'s brief (2026-11-25): "like the finned classic but shorter, fatter and rounder, and the window has a chunkier rim and is a bit chunkier in general", with one porthole each (R2-1), one big window (R2-2) and more variations (R2-3..R2-5). Generated by `node lab.mjs round=2`. All sizes are internal pixels at 320x180; tiles are shown at x2.' : 'Crew spaceship directions A-D for #207 (C2). Generated by `node lab.mjs`. All sizes are internal pixels at 320x180; tiles are shown at x2.',
+    FINAL ? 'The final pick for #207 (C2), human 2026-11-25: R2-4c (three straight columns of identical grey-rimmed portholes, the captain on top in the middle in the cap) with R2-4\'s red belly band restored exactly (red paint on the body from cy - 0.3 to top + 0.12). Generated by `node lab.mjs round=final`. All sizes are internal pixels at 320x180; tiles are shown at x2.' : R2B ? 'Round 2b for #207 (C2), on the pick R2-4. The human (2026-11-25): "I just don\'t like R2-4 the fact the windows are different colours, they should all be the same colour and also stack them vertically in a line instead of being stacked randomly." R2-4b does exactly that (one column, every porthole alike, the captain at the top, no belly band). One column of eight makes the round lander a tall capsule, so R2-4c is an alternative reading (three straight columns) that keeps R2-4\'s proportions. Generated by `node lab.mjs round=2b`. All sizes are internal pixels at 320x180; tiles are shown at x2.' : R2 ? 'Round 2 for #207 (C2), the human\'s brief (2026-11-25): "like the finned classic but shorter, fatter and rounder, and the window has a chunkier rim and is a bit chunkier in general", with one porthole each (R2-1), one big window (R2-2) and more variations (R2-3..R2-5). Generated by `node lab.mjs round=2`. All sizes are internal pixels at 320x180; tiles are shown at x2.' : 'Crew spaceship directions A-D for #207 (C2). Generated by `node lab.mjs`. All sizes are internal pixels at 320x180; tiles are shown at x2.',
     '',
     `Ship scale ${SHIP_SCALE}: the ship and its crew are drawn at ${SHIP_SCALE} of the viewer's crew figure (an astronaut aboard is ${(0.95 * SHIP_SCALE).toFixed(2)} units tall, still bigger than a drone, which is about half the viewer's astronaut). Hull heights for 8 aboard: ${IDS.map((id) => `${id} ${hullHeight(id, 8).toFixed(2)}`).join(', ')} units; with two decks: ${IDS.map((id) => `${id} ${hullHeight(id, 16).toFixed(2)}`).join(', ')}. The star's default radius is ${r.meta.starSize}. The product can scale ship and crew as one unit (C4).`,
     '',
@@ -230,7 +231,8 @@ const md = (r) => {
     '',
     t([['', 'shell', 'trim', 'ring', 'metal (the crew\'s gear; rims)', 'glass (the crew\'s visor)', 'window inside', 'glint', 'flame', 'nav lights'], ['---', '---', '---', '---', '---', '---', '---', '---', '---', '---'],
       ...SET.map((v) => [v.id, ...['shell', 'trim', 'ring', 'metal', 'glass', 'interior', 'glint', 'flame', 'lights'].map((k) => (v.palette[k] ? v.palette[k].map((h) => `\`${h}\``).join(' ') : k === 'interior' ? `\`${v.palette.glass[0]}\`` : '(trim)'))])]),
-    ...(R2B ? ['', 'R2-4 (for comparison): grey rims, the captain\'s gold, a red belly band. R2-4b and R2-4c: every porthole alike, one size and one grey rim (the crew\'s gear greys), the captain\'s too, and no belly band; the captain reads by the cap and by the top porthole. All windows open onto `#36277f`.'] : R2 ? ['', 'Rims are the crew\'s gear greys, the captain\'s gold (`' + v2gold() + '`). Round 2\'s windows open onto `#36277f` (a lighter BLK 36 indigo) instead of the visor near-black, so the crew\'s dark visors read inside them.'] : []),
+    ...(FINAL ? ['', 'Every porthole alike: radius 0.24, one grey rim (the crew\'s gear greys), the captain\'s too; R2-4\'s red belly band (trim red) under the captain\'s porthole; windows open onto `#36277f`.'] : []),
+...(R2B && !FINAL ? ['', 'R2-4 (for comparison): grey rims, the captain\'s gold, a red belly band. R2-4b and R2-4c: every porthole alike, one size and one grey rim (the crew\'s gear greys), the captain\'s too, and no belly band; the captain reads by the cap and by the top porthole. All windows open onto `#36277f`.'] : R2 ? ['', 'Rims are the crew\'s gear greys, the captain\'s gold (`' + v2gold() + '`). Round 2\'s windows open onto `#36277f` (a lighter BLK 36 indigo) instead of the visor near-black, so the crew\'s dark visors read inside them.'] : []),
     '',
     '## Crew counts (close-up front; near front in brackets)',
     '',
@@ -239,7 +241,7 @@ const md = (r) => {
     t([['', ...COUNTS.map(String)], ['---', ...COUNTS.map(() => '---')],
       ...COUNT_SET.map((v) => v.id).map((id) => [id, ...COUNTS.map((n) => { const s = r.crew?.find((x) => x.cell.v === id && x.cell.n === n); return s ? `${s.decks} deck${s.decks > 1 ? 's' : ''}, ${s.drawn} drawn${s.extra ? `, +${s.extra}` : ''}; min ${s.crewMin} px (${s.near.crewMin} px)` : '-'; })])]),
     '',
-    R2B ? 'Overflow rule (approved): 8 seats per deck, the captain\'s included; 9-16 on two decks, "+N" past 16. R2-4b keeps one column per deck: the second deck is a second column beside the first, on the same rows, so the ship gets no taller (both columns then sit 14° either side of the front). A single column of 16 would stretch the hull from 4.85 to about 7.7 units tall, so it is not proposed. R2-4c adds three more rows of three.' : R2 ? 'Overflow rule (approved): 8 seats per deck, the captain\'s included; 9-16 on two decks, "+N" past 16. In round 2 a second deck stretches the round body: R2-1, R2-4 and R2-5 grow three more honeycomb rows of portholes (3, 2, 3), R2-2 becomes a double bubble with a second big window below, R2-3 grows two rows of portholes under its glass nose.' : `Overflow rule (proposed): 8 seats per deck, the captain's included. 1-8 ride on one deck; 9-16 on two (the ship grows a second deck: A stretches with 8 more portholes, B a second window band, C a second dome, D a second, smaller ring); past 16, the captain and the first 15 teammates by person id ride (never by activity) and a "+N" label (bitmap font, outside the pixel pass) counts the rest. That keeps the draw cost at 1 hull + 16 astronauts + the cap.`,
+    FINAL ? 'Overflow rule (approved): 8 seats per deck, the captain\'s included. 1-8: the captain plus up to 7 teammates in rows of three below (one deck, three rows). 9-16: the capsule stretches by two more rows (1.32 units) and the teammates fill five rows of three. Past 16: the captain and the first 15 teammates by person id ride, and a "+N" label outside the pixel pass counts the rest (shown here as a badge).' : R2B ? 'Overflow rule (approved): 8 seats per deck, the captain\'s included; 9-16 on two decks, "+N" past 16. R2-4b keeps one column per deck: the second deck is a second column beside the first, on the same rows, so the ship gets no taller (both columns then sit 14° either side of the front). A single column of 16 would stretch the hull from 4.85 to about 7.7 units tall, so it is not proposed. R2-4c adds three more rows of three.' : R2 ? 'Overflow rule (approved): 8 seats per deck, the captain\'s included; 9-16 on two decks, "+N" past 16. In round 2 a second deck stretches the round body: R2-1, R2-4 and R2-5 grow three more honeycomb rows of portholes (3, 2, 3), R2-2 becomes a double bubble with a second big window below, R2-3 grows two rows of portholes under its glass nose.' : `Overflow rule (proposed): 8 seats per deck, the captain's included. 1-8 ride on one deck; 9-16 on two (the ship grows a second deck: A stretches with 8 more portholes, B a second window band, C a second dome, D a second, smaller ring); past 16, the captain and the first 15 teammates by person id ride (never by activity) and a "+N" label (bitmap font, outside the pixel pass) counts the rest. That keeps the draw cost at 1 hull + 16 astronauts + the cap.`,
     '',
     '## Motion (art direction §7)',
     '',
@@ -275,7 +277,7 @@ try {
   if (want('captain')) await captain(page);
   if (want('teal') && !R2) await teal(page);
   if (want('gifs')) await gifs(page);
-  if (want('distinct')) await distinct(page);
+  if (want('distinct') && IDS.length > 1) await distinct(page);
   if (page.blocked.length) problems.push(`requests off the allowlist: ${page.blocked.join(', ')}`);
 } finally {
   await browser.close();

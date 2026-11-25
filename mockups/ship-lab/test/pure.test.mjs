@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { mapPalette } from '../../asset-viewer/palette-map.js';
 import { LOSPEC } from '../../asset-viewer/palettes.js';
-import { VARIANTS, R2_VARIANTS, R2B_VARIANTS, ALL_VARIANTS, specOf } from '../variants.js';
+import { VARIANTS, R2_VARIANTS, R2B_VARIANTS, FINAL_VARIANTS, ALL_VARIANTS, specOf } from '../variants.js';
 import { shipBounds } from '../ship-glsl.js';
 import { RAMPS, TEAL, BLK36, CAP_PALETTE, paletteHexes, tealThrust } from '../palette.js';
 import { BUILDERS, CAP, SHIP_SCALE, CYCLE, CYCLES, SEATS_PER_DECK, MAX_DECKS, HELMET_Y, crewPlan, idleAt, flameAt, lightOn, hash01 } from '../ship-spec.js';
@@ -79,7 +79,7 @@ test('the captain (the repo owner) is seat 0 of every ship, alone, in a seat of 
     if (v.id === 'A') {
       // the biggest porthole, gold-framed, above every teammate's
       assert.ok(rest.every((w) => w0.w > w.w && w0.y > w.y) && w0.frameSlot === 'gold', 'A: the captain\'s porthole');
-    } else if (v.id === 'R2-4b' || v.id === 'R2-4c') {
+    } else if (v.id === 'R2-4b' || v.id === 'R2-4c' || v.id === 'R2-4c-final') {
       // every porthole alike: the captain's seat is the top one, on the ship's axis
       const top = (w) => w.c[1] + w.n[1];
       assert.ok(Math.abs(w0.n[0]) < 1e-9 && rest.every((w) => top(w) < top(w0)), `${v.id}: the captain isn't in the top porthole on the axis`);
@@ -154,7 +154,7 @@ function roundCone(p, a, b, r1, r2) {
 }
 const bodyDist = (s, p) => Math.min(...s.parts.filter((q) => q.id === 'body' || q.id === 'bulb').map((q) => (q.kind === 'sphere' ? Math.hypot(...p.map((x, i) => x - q.c[i])) - q.r : roundCone(p, q.a, q.b, q.r1, q.r2))));
 test('crew behind windows stays inside the hull, boots included (nothing pokes out below a window)', () => {
-  for (const id of ['A', 'B', 'R2-1', 'R2-2', 'R2-4', 'R2-5', 'R2-4b', 'R2-4c']) for (const n of [1, 3, 8, 12, 16]) {
+  for (const id of ['A', 'B', 'R2-1', 'R2-2', 'R2-4', 'R2-5', 'R2-4b', 'R2-4c', 'R2-4c-final']) for (const n of [1, 3, 8, 12, 16]) {
     const s = specOf(id, n);
     s.crew.forEach((c, i) => {
       // the boot sole (lifted 0.03), its toe (0.09 forward) and the helmet top, with room for the bob (0.05)
@@ -172,7 +172,7 @@ test('round 2: one-deck ships fit the near frame without pulling back; portholes
     const s = specOf(v.id, n), { lo, hi } = shipBounds(s, 0);
     assert.ok((hi[1] - lo[1]) * SHIP_SCALE <= fits, `${v.id} n=${n}: ${((hi[1] - lo[1]) * SHIP_SCALE).toFixed(2)} tall, the near frame holds ${fits.toFixed(2)}`);
   }
-  for (const v of [...R2_VARIANTS, ...R2B_VARIANTS]) for (const n of [8, 16]) for (const w of specOf(v.id, n).windows) assert.ok(Math.abs(Math.atan2(w.n[0], w.n[2])) <= 0.62 + 1e-9, `${v.id}: a porthole turns ${Math.atan2(w.n[0], w.n[2]).toFixed(2)} rad`);
+  for (const v of [...R2_VARIANTS, ...R2B_VARIANTS, ...FINAL_VARIANTS]) for (const n of [8, 16]) for (const w of specOf(v.id, n).windows) assert.ok(Math.abs(Math.atan2(w.n[0], w.n[2])) <= 0.62 + 1e-9, `${v.id}: a porthole turns ${Math.atan2(w.n[0], w.n[2]).toFixed(2)} rad`);
 });
 
 test('deterministic: the same crew count gives the same ship, byte for byte', () => {
@@ -232,6 +232,21 @@ test('round 2b: every porthole alike (one size, one grey rim, the captain\'s too
   assert.equal(yawsOf('R2-4c', 8).length, 3);
   const heights = (id, n) => specOf(id, n).windows.map((w) => +(w.c[1] + w.n[1] * 1.28).toFixed(3));
   assert.deepEqual(new Set(heights('R2-4b', 16)).size, 8, 'R2-4b two decks: the two columns share their rows');
+});
+
+test('the final pick: R2-4c\'s hull, portholes and seats, with R2-4\'s red belly band exactly', () => {
+  const near = (x, y) => Math.abs(x - y) < 1e-9;
+  const bandOf = (id, n) => { const s = specOf(id, n), body = s.parts.find((p) => p.id === 'body'), b = s.bands.filter((x) => x.part === 'body'); return { b, cy: body.a[1], top: body.b[1] }; };
+  for (const n of [1, 3, 8, 12, 16, 20]) {
+    const f = specOf('R2-4c-final', n), c = specOf('R2-4c', n);
+    assert.deepEqual(f.windows, c.windows, `n=${n}: the portholes moved`);
+    assert.deepEqual(f.crew, c.crew, `n=${n}: the seats moved`);
+    assert.deepEqual(f.parts, c.parts, `n=${n}: the hull changed`);
+    const { b, cy, top } = bandOf('R2-4c-final', n);
+    assert.ok(b.length === 1 && b[0].slot === 'trim' && near(b[0].y0, cy - 0.3) && near(b[0].y1, top + 0.12), `n=${n}: the band isn't cy - 0.3 to top + 0.12, red`);
+  }
+  const r = bandOf('R2-4', 8);
+  assert.ok(near(r.b[0].y0 - r.cy, -0.3) && near(r.b[0].y1 - r.top, 0.12) && r.b[0].slot === 'trim', 'R2-4\'s band has the same offsets');
 });
 
 test('the tile checks fail on empty output', () => {
