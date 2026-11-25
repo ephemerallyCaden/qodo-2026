@@ -65,6 +65,13 @@ test('moons: a refog rolls in towards fogged, a chart clears towards clear, neve
   expect(charted.at[0]!, 'a chart starts fogged').toBeGreaterThan(charted.rest);
   expect(charted.rest, 'a charted moon ends clear').toBe(0);
   for (const c of charted.at) expect(c, 'a chart never shows less fog than its end state').toBeGreaterThanOrEqual(charted.rest / SLACK);
+  // #224: a change to a misted (read) moon rolls its mist line in the same way, from clear (Qodo f3c7c1f6: never covered at once, then cleared)
+  const misted = await fog(clear, fogFor(MINI, () => false, (id) => moons.has(id)), 'refog');
+  console.log(`moon fog px, refog (clear → misted): ${misted.at.join(' ')}`);
+  expect(misted.rest, 'not vacuous: misted moons show their mist line').toBeGreaterThan(0);
+  expect(misted.at[0]!, 'a refog to misted starts clear').toBe(0);
+  for (const c of misted.at) expect(c, 'a refog to misted never shows more than its end state').toBeLessThanOrEqual(misted.rest * SLACK);
+  expect(misted.at[1]!, 'and grows').toBeLessThan(misted.at[4]!);
   expect(view.errors).toEqual([]);
 });
 
