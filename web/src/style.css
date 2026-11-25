@@ -54,6 +54,8 @@ canvas.bitmap, #error canvas { display: block; image-rendering: pixelated; }
 #tree .row .name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; } /* a path's spaces are part of its name: pre keeps them */
 #tree .row .tag, #tree .row .twisty { color: var(--dim); flex: none; }
 #tree .row.fogged .name, #tree .row.more .name { color: var(--dim); }
+/* A haze file (#201: seen, not yet understood) keeps the ink of a clear one under a thin dotted veil, as the map draws haze as thin cloud. */
+#tree .row.haze .name { text-decoration: underline dotted var(--dim); text-underline-offset: 2px; }
 #tree .row[aria-selected=true] .name { color: var(--accent); }
 
 /* Review panel (#75): crisp DOM outside the pixel pass. Bitmap titles and buttons; diff text monospace. */

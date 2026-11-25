@@ -32,8 +32,11 @@ export type Place =
   | { kind: 'star' };
 
 export interface TreeFile { kind: 'file'; id: FileId; path: string; name: string; place: Place }
-/** A folder; `planet` is the planet it is drawn as (its own folder, not one inside it), else null. */
-export interface TreeDir { kind: 'dir'; path: string; name: string; place: Place; planet: DirId | null; children: TreeNode[] }
+/**
+ * A folder; `planet` is the planet it is drawn as (its own folder, not one inside it), with the number of
+ * files the layout puts on it (surface, overflow and test moons, wherever they live), else null.
+ */
+export interface TreeDir { kind: 'dir'; path: string; name: string; place: Place; planet: { id: DirId; files: number } | null; children: TreeNode[] }
 export type TreeNode = TreeFile | TreeDir;
 
 /** Codepoint order (Rule 3: never localeCompare). */
@@ -42,14 +45,16 @@ const byCodepoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 
 export const parentPath = (path: string): string => { const cut = path.lastIndexOf('/'); return cut < 0 ? '' : path.slice(0, cut); };
 
 /** Each file's and folder's place, from the layout of the same scan. */
-function placesOf(src: TreeSource, layout: LayoutV1): { file(id: FileId, path: string): Place; dir(path: string): Place; planet(path: string): DirId | null } {
+function placesOf(src: TreeSource, layout: LayoutV1): { file(id: FileId, path: string): Place; dir(path: string): Place; planet(path: string): TreeDir['planet'] } {
   const onSurface = new Map<string, { planet: DirId; cell: number }>();
   const moonOf = new Map<string, DirId>();
   const moonlets = new Set<string>(layout.star.moonlets.map((m) => m.fileId));
   const planetAt = new Map<string, DirId>();
   const continentOf = new Map<string, { planet: DirId; cell: number }>();
+  const filesOn = new Map<DirId, number>();
   for (const p of layout.planets) {
     planetAt.set(p.path, p.dirId);
+    filesOn.set(p.dirId, p.surface.settlements.length + p.surface.overflow + p.moons.length + p.moonOverflow);
     for (const s of p.surface.settlements) onSurface.set(s.fileId, { planet: p.dirId, cell: s.cell });
     for (const m of p.moons) moonOf.set(m.fileId, p.dirId);
     for (const c of p.surface.continents) if (c.dirId !== p.dirId) continentOf.set(c.dirId, { planet: p.dirId, cell: c.seedCell });
@@ -80,7 +85,7 @@ function placesOf(src: TreeSource, layout: LayoutV1): { file(id: FileId, path: s
       }
       return { kind: 'planet', planet };
     },
-    planet: (path) => planetAt.get(path) ?? null,
+    planet: (path) => { const id = planetAt.get(path); return id ? { id, files: filesOn.get(id)! } : null; },
   };
 }
 
@@ -146,10 +151,10 @@ export function treeFog(root: TreeDir, fog: FogView | null): TreeFog {
   };
   const all = tally(root);
   const dir = (d: TreeDir): FogTally => {
-    const t = own.get(d) ?? { fogged: 0, haze: 0, clear: 0, total: 0 };
-    if (d.planet === null) return t;
-    // The planet's count, the info panel's (#201 U3); with none, nothing on it is known, so its files are all fogged (Rule 1)
-    return planetTally(fog, d.planet) ?? { fogged: t.total, haze: 0, clear: 0, total: t.total };
+    if (d.planet === null) return own.get(d) ?? { fogged: 0, haze: 0, clear: 0, total: 0 };
+    // The planet's count, the info panel's (#201 U3). With none, nothing on it is known, so every file the layout
+    // puts on it is fogged, its test moons from other folders too (Rule 1, Qodo e6973183)
+    return planetTally(fog, d.planet.id) ?? { fogged: d.planet.files, haze: 0, clear: 0, total: d.planet.files };
   };
   return { level: (f) => nameOf(levelOf(f.id)), dir, all };
 }

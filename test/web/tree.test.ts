@@ -1,6 +1,8 @@
 // The directory view's model (#209): the snapshot's files as a folder tree, each file's and folder's
 // place on the map, each file's fog level (#201: fogged, haze, clear) and each folder's mastery, the rows
 // shown, their words, the file list's input check, and the settlement direction the map's focus turns to.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { FogView } from '../../src/core/contract/fog.js';
@@ -104,7 +106,7 @@ describe('fog in the tree (#201: three levels)', () => {
     const fog = treeFog(t, miniFog);
     for (const p of miniLayout.planets) {
       const d = at(t, p.path) as TreeDir;
-      expect(d.planet).toBe(p.dirId);
+      expect(d.planet).toEqual({ id: p.dirId, files: p.surface.settlements.length + p.surface.overflow + p.moons.length + p.moonOverflow });
       expect(fog.dir(d)).toEqual(planetTally(miniFog, p.dirId));
       const panel = /^mastery: (\d+)% /.exec(masteryLine(planetTally(miniFog, p.dirId)))![1];
       expect(rowTag(d, fog).split('%')[0]).toBe(panel);
@@ -129,13 +131,16 @@ describe('fog in the tree (#201: three levels)', () => {
     const t = tree();
     const none = treeFog(t, null);
     expect(files(t).every((x) => none.level(x) === 'fogged')).toBe(true);
-    expect(t.children.filter((c) => c.kind === 'dir').map((c) => rowTag(c, none))).toEqual(['0% · 3 fogged', '0% · 3 fogged', '0% · 28 fogged', '0% · 1 fogged']);
+    // a planet's folder counts every file the layout puts on its planet, test moons from test/ and the moons not drawn
+    // too (Qodo e6973183): web is 1 settlement, 24 drawn moons and 2 more, as its info panel lists them
+    expect(t.children.filter((c) => c.kind === 'dir').map((c) => rowTag(c, none))).toEqual(['0% · 3 fogged', '0% · 4 fogged', '0% · 28 fogged', '0% · 27 fogged']);
+    expect(rowLabel(at(t, 'web'), none)).toBe('web, folder, mastery 0%, 0 of 27 files clear (understood), 0 haze (seen), 27 fogged, counted as its planet');
     expect(none.all).toEqual({ fogged: miniTree.files.length, haze: 0, clear: 0, total: miniTree.files.length });
     const partial: FogView = { ...miniFog, files: miniFog.files.filter((x) => x.fileId !== 'f_00000000000b') };
     expect(rowTag(at(t, 'src/b.ts'), treeFog(t, partial))).toBe('fogged');
     // a planet the fog view has no count for is unknown, so its files read fogged, never clearer
     const noWeb: FogView = { ...miniFog, planets: miniFog.planets.filter((p) => p.dirId !== 'd_00000000000c') };
-    expect(rowTag(at(t, 'web'), treeFog(t, noWeb))).toBe('0% · 1 fogged');
+    expect(rowTag(at(t, 'web'), treeFog(t, noWeb))).toBe('0% · 27 fogged');
   });
 
   it('rounds mastery down, so a folder reads 100% only when every file in it is clear', () => {
@@ -144,6 +149,18 @@ describe('fog in the tree (#201: three levels)', () => {
     const view = (clear: number): FogView => ({ ...miniFog, files: ids.map((fileId, i) => ({ fileId, state: i < clear ? 'clear' : 'haze', reasons: [], since: null })) });
     expect(rowTag(at(t, 'flat'), treeFog(t, view(199)))).toBe('99% · 1 haze');
     expect(rowTag(at(t, 'flat'), treeFog(t, view(200)))).toBe('100%');
+  });
+
+  it('draws each level differently: the page gives a haze file\'s name and a fogged one\'s their own rules, a clear one the plain ink', () => {
+    const css = readFileSync(join(import.meta.dirname, '../../web/src/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    /** The declarations of every rule whose selector list names `selector`. */
+    const rules = (selector: string) => [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter((m) => m[1]!.split(',').some((x) => x.trim() === selector)).map((m) => m[2]!.trim());
+    const haze = rules('#tree .row.haze .name'), fogged = rules('#tree .row.fogged .name');
+    expect(haze).toHaveLength(1);
+    expect(fogged).toHaveLength(1);
+    expect(haze[0]).not.toBe(fogged[0]);
+    expect(rules('#tree .row.clear .name')).toEqual([]); // clear is the row's plain ink
   });
 
   it('says it in words: the rows\' accessible names, where a place is, and what opening one announces', () => {

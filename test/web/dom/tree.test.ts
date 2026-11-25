@@ -269,7 +269,7 @@ describe('fog level per file and mastery per folder (#209 AC 2, #201)', () => {
     row('src/').fire('click');
     for (const fog of [null, { ...miniFog, head: OTHER }]) {
       t.p.setFog(fog);
-      expect(['src/', 'web/', 'test/'].map((n) => tagOf(row(n)))).toEqual(['0% · 3 fogged', '0% · 1 fogged', '0% · 28 fogged']);
+      expect(['src/', 'web/', 'test/'].map((n) => tagOf(row(n)))).toEqual(['0% · 4 fogged', '0% · 27 fogged', '0% · 28 fogged']);
       expect([tagOf(row('a.ts')), tagOf(row('main.ts'))]).toEqual(['fogged', 'fogged']);
       expect(note()).toBe('uncharted: unknown, so every file is drawn uncharted');
     }
