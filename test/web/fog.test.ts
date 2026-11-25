@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { FileFog, FogView } from '../../src/core/contract/fog.js';
 import { fibonacciCell } from '../../src/core/contract/layout.js';
 import {
-  cellRows, FLAG, FOG_EVENT_FRAMES, FOG_TEX_ROWS, FogLedger, eventLife, fileFogAt, fogChanges, levelBy, mergeEvents,
+  cellRows, FOG_EVENT_FRAMES, FOG_TEX_ROWS, FogLedger, eventLife, fileFogAt, fogChanges, levelBy, mergeEvents,
   planetPulse, planetTally, surfacePlan, systemTally, type FogEvent,
 } from '../../web/src/model/fog.js';
 import { coverRadius, searchWindow, territories } from '../../web/src/model/territory.js';
@@ -121,7 +121,7 @@ describe('cell rows (the fog shader\'s data texture)', () => {
   const planet = miniLayout.planets[0]!;
   const plan = surfacePlan({ cells: planet.surface.grid.cells, settlements: planet.surface.settlements });
 
-  it('lays out cells x 3 RGBA texels: rest level + anchor + reach + flags, event + progress + from level + dash, cell centre + owned', () => {
+  it('lays out cells x 3 RGBA texels: rest level + anchor + reach, event + progress + from level, cell centre + owned', () => {
     // file 0 clear, file 1 fogged, file 2 haze in the middle of a clear front from fogged
     const at = plan.fileIds.map((_, k) => (k === 2 ? { level: 1 as const, from: 2 as const, kind: 1 as const, progress: 0.5 } : fileFogAt(k === 1 ? 2 : 0, undefined, 0)));
     const rows = cellRows(plan, at);
@@ -131,23 +131,12 @@ describe('cell rows (the fog shader\'s data texture)', () => {
       const k = plan.territory.owner[i]!;
       expect(rows[i * 4]).toBe([0, 2, 1][k]);
       expect(rows[i * 4 + 1]).toBe(plan.territory.anchor[k]);
-      expect(rows[i * 4 + 3]).toBe(plan.flags[k]);
+      expect(rows[i * 4 + 2]).toBe(Math.fround(plan.territory.reach[k]!));
       expect([rows[(n + i) * 4], rows[(n + i) * 4 + 1], rows[(n + i) * 4 + 2]]).toEqual([k === 2 ? 1 : 0, k === 2 ? 0.5 : 0, [0, 2, 2][k]]);
       const c = fibonacciCell(i, n);
       expect(rows[(2 * n + i) * 4]).toBeCloseTo(c[0], 6);
       expect(rows[(2 * n + i) * 4 + 3]).toBe(1);
     }
-  });
-
-  it('decorates parcels from their file only: "?" on big parcels alone, deterministic', () => {
-    const big = surfacePlan({ cells: 256, settlements: [{ fileId: 'f_1', cell: 0 }, { fileId: 'f_2', cell: 128 }] });
-    const small = surfacePlan({ cells: 256, settlements: Array.from({ length: 64 }, (_, k) => ({ fileId: `f_${k}`, cell: k * 4 })) });
-    expect(surfacePlan({ cells: 256, settlements: [{ fileId: 'f_1', cell: 0 }, { fileId: 'f_2', cell: 128 }] })).toEqual(big);
-    expect([...small.flags].some((f) => (f & FLAG.qmark) !== 0)).toBe(false); // 4 cells each, under 7/256
-    const many = surfacePlan({ cells: 256, settlements: Array.from({ length: 20 }, (_, k) => ({ fileId: `f_${k}`, cell: k * 12 })) });
-    const q = [...many.flags].filter((f) => (f & FLAG.qmark) !== 0).length;
-    expect(q).toBeGreaterThan(2); // about half of 20 big parcels
-    expect(q).toBeLessThan(18);
   });
 });
 
@@ -321,12 +310,15 @@ describe('the view\'s fog ledger (tickets, the head check, fronts)', () => {
   });
 });
 
-describe('fog colours (Rule 5: palette roles only)', () => {
-  it('has a veil for every ramp a look, a test moon or a moonlet draws', async () => {
-    const { LOOKS } = await import('../../web/src/render/looks.js');
-    const { fogRole } = await import('../../web/src/render/fog.js');
+describe('fog colours (Rule 5: palette roles only; #224: no dark veil)', () => {
+  it('draws moons and moonlets in the cloud, the mist and the teal, and nothing darker for mist than the cloud\'s cream', async () => {
     const { palette } = await import('../../src/core/palette.js');
-    for (const look of Object.values(LOOKS)) for (const r of look.ramps) expect(() => fogRole(r)).not.toThrow();
-    expect(fogRole(palette.world.moonBody)).toBe('moonBody');
+    const { toonMaterial } = await import('../../web/src/render/materials.js');
+    const hex = (c: { getHexString(): string }) => `#${c.getHexString()}`;
+    const u = toonMaterial(palette.world.moonBody).uniforms;
+    expect((u['uMoonCloud']!.value as { getHexString(): string }[]).map(hex)).toEqual([...palette.world.cloud]);
+    expect((u['uMoonMist']!.value as { getHexString(): string }[]).map(hex)).toEqual([...palette.fog.mist]);
+    expect((u['uMoonTeal']!.value as { getHexString(): string }[]).map(hex)).toEqual([...palette.accent.teal]);
+    expect(u['uRampFog']).toBeUndefined(); // the D2d veil is gone
   });
 });

@@ -88,7 +88,7 @@ const held: ScenePart = {
       s.note(`${path}: fog px ${r.fog} of ${r.px} px of its parcel`);
     }
     const on = Object.values(got.regions).reduce((n, r) => n + r.fog, 0);
-    s.note(`fog px ${got.total} in all, ${got.total - on} of them off the three parcels (the limb, the haze shell)`);
+    s.note(`fog px ${got.total} in all, ${got.total - on} of them off the three parcels (the cloud's bulge past the limb, the haze shell)`);
     s.note(`commet chart status: ${s.cli('chart', 'status').trimEnd().split('\n').join(' | ')}`);
     const text = (sel: string) => s.page.$eval(sel, (e) => (e.textContent ?? '').replace(/\s+/g, ' ').trim());
     s.note(`what the canvas shows, as the view says it (#summary): ${await text('#summary')}`);

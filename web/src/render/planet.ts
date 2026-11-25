@@ -1,4 +1,4 @@
-// One planet: surface, clouds and their shadows, haze and test moons, built from a
+// One planet: surface, clouds and their shadows, the fog's cloud (#224), haze and test moons, built from a
 // PlanetModel and posed purely from a frame number. Ported from the asset viewer's makePlanet and
 // rebuild (feature/asset-library mockups/asset-viewer/viewer.js), so a planet looks as the human
 // approved there. Seeded from biomeSeed (decorative, principle 4); never Math.random.
@@ -9,7 +9,7 @@ import { surfacePlan } from '../model/fog.js';
 import { mulberry32 } from '../model/prng.js';
 import { MOON_RADIUS, moonOffset, planetReach, type PlanetModel } from '../model/system.js';
 import { dot, normalize, type Vec3 } from '../model/vec.js';
-import { moonFogAttribute, PlanetFog } from './fog.js';
+import { FogClouds, moonFogAttribute, PlanetFog } from './fog.js';
 import { LOOKS, type Weather } from './looks.js';
 import { orbitingSpheres, placeSpheres, ramp, shaderMaterial, toonMaterial } from './materials.js';
 import { crackMask, crackShare, makeFbm3, nearestCell, poolField, tangentFrame, voronoiCells } from './noise.js';
@@ -96,7 +96,7 @@ export function makePlanet(model: PlanetModel): PlanetObject {
     : model.look === 'ice' ? poolCut(CRACKS.ice, [seedOff[1], seedOff[2], seedOff[0]]) // the shader's uSeedOff.yzx
     : 9;
   const [a, b, c, g] = look.ramps;
-  const fog = new PlanetFog(surfacePlan(model.surface), look.ramps);
+  const fog = new PlanetFog(surfacePlan(model.surface));
 
   const surfaceMat = shaderMaterial(PLANET_FRAG, {
     ...fog.uniforms,
@@ -123,18 +123,25 @@ export function makePlanet(model: PlanetModel): PlanetObject {
 
   const center = { value: new THREE.Vector3() };
   const radius = { value: model.radius };
+  const toSurface = { value: new THREE.Matrix4() };
+  const cloudBands = { value: new THREE.Vector3(-0.3, 0.12, 0.42) };
+  /** A cloud material (CLOUD_FRAG) in a 4-step ramp: the weather's (fogSky 0) or the fog's (1). */
+  const cloudMaterial = (r: readonly string[], fogSky: number, smoke = 0) => shaderMaterial(CLOUD_FRAG, {
+    ...fog.uniforms, uRadius: radius, uSmoke: { value: smoke }, uRamp: { value: ramp(r, 4) }, uCenter: center, uBands: cloudBands, uFogSky: { value: fogSky },
+  }, { vertexShader: CLOUD_VERT });
+  /** The cloud-shadow material: the weather's (fogSky 0) or the fog's storm (1). */
+  const shadowMaterial = (fogSky: number) => new THREE.ShaderMaterial({
+    vertexShader: SHADOW_VERT, fragmentShader: SHADOW_FRAG, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    uniforms: { ...surfaceMat.uniforms, uCenter: center, uRadius: radius, uToSurface: toSurface, uFogSky: { value: fogSky } },
+  });
   const sky = new THREE.Group();
   body.add(sky);
-  let shadowMat: THREE.ShaderMaterial | null = null;
   let puffs: THREE.InstancedMesh | null = null, shadow: THREE.InstancedMesh | null = null;
   let puffGeos: { near: THREE.BufferGeometry; far: THREE.BufferGeometry } | null = null;
   if (look.weather) {
     const clouds = buildWeather(look.weather, model.seed, rnd, seedOff, cut, lift);
-    const cloudMat = shaderMaterial(CLOUD_FRAG, {
-      ...fog.uniforms, uRadius: radius, uSmoke: { value: look.weather.fissure ? 1 : 0 },
-      uRamp: { value: ramp(look.weather.ramp, 4) }, uCenter: center,
-      uBands: { value: new THREE.Vector3(-0.3, 0.12, 0.42) },
-    }, { vertexShader: CLOUD_VERT });
+    const cloudMat = cloudMaterial(look.weather.ramp, 0, look.weather.fissure ? 1 : 0);
     // Both detail levels carry this planet's per-puff mass anchors.
     const near = PUFF_NEAR.clone(), far = PUFF_FAR.clone();
     near.setAttribute('aMass', clouds.mass);
@@ -146,11 +153,7 @@ export function makePlanet(model: PlanetModel): PlanetObject {
     sky.add(puffs);
     disposables.push(cloudMat, near, far, puffs);
     if (!look.weather.fissure) {
-      shadowMat = new THREE.ShaderMaterial({
-        vertexShader: SHADOW_VERT, fragmentShader: SHADOW_FRAG, side: THREE.DoubleSide,
-        polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-        uniforms: { ...surfaceMat.uniforms, uCenter: center, uRadius: radius, uToSurface: { value: new THREE.Matrix4() } },
-      });
+      const shadowMat = shadowMaterial(0);
       shadow = new THREE.InstancedMesh(far, shadowMat, 0);
       shadow.instanceMatrix = puffs.instanceMatrix; // the same puffs, projected onto the surface
       shadow.count = puffs.count;
@@ -160,10 +163,17 @@ export function makePlanet(model: PlanetModel): PlanetObject {
     }
   }
 
+  // The fog (#224): storm cloud over the fogged files, mist over the misted ones, on the ground's spin.
+  const fogMats = { storm: cloudMaterial(palette.world.cloud, 1), teal: cloudMaterial(palette.accent.teal, 1), mist: cloudMaterial(palette.fog.mist, 1), shadow: shadowMaterial(1) };
+  const fogSky = new FogClouds(fog.plan, model.seed, { near: PUFF_NEAR, far: PUFF_FAR }, fogMats);
+  spin.add(fogSky.group);
+  fog.draw(fogSky);
+  disposables.push(...Object.values(fogMats), fogSky);
+
   // Test moons: warm three-tone spheres, all one size, on inclined orbits (one per surface turn).
   let moons: THREE.InstancedMesh | null = null, moonFog: THREE.InstancedBufferAttribute | null = null;
   if (model.moons.length > 0) {
-    const moonMat = toonMaterial(palette.world.moonBody, palette.fog.veil.moonBody);
+    const moonMat = toonMaterial(palette.world.moonBody);
     const geo = MOON_GEO.clone(); // its own copy: it carries this planet's per-moon fog
     moonFog = moonFogAttribute(model.moons.length);
     geo.setAttribute('aFog', moonFog);
@@ -179,6 +189,7 @@ export function makePlanet(model: PlanetModel): PlanetObject {
       puffs.geometry = radiusPx >= PUFF_LOD.nearPx ? puffGeos.near : puffGeos.far;
       if (shadow) { shadow.geometry = puffs.geometry; shadow.visible = radiusPx >= PUFF_LOD.shadowMinPx; }
     }
+    fogSky.lod(radiusPx >= PUFF_LOD.nearPx, radiusPx >= PUFF_LOD.shadowMinPx);
     const turn = turnAngle(frame, TURNS.surface);
     spin.rotation.y = -turn; // right to left
     sky.rotation.y = -turnAngle(frame, TURNS.clouds); // clouds drift ahead of the ground
@@ -186,12 +197,10 @@ export function makePlanet(model: PlanetModel): PlanetObject {
     (surfaceMat.uniforms['uLavaTime']!.value as THREE.Vector2).set(Math.cos(lava), Math.sin(lava));
     if (moons) placeSpheres(moons, model.moons.map((m) => moonOffset(m, frame)), MOON_RADIUS);
     center.value.copy(root.position);
-    // The shadow pass and the fog need this frame's surface matrix now; render() updates the rest.
+    // The shadow passes and the fog need this frame's surface matrix now; render() updates the rest.
     root.updateMatrixWorld(true);
-    if (shadowMat) (shadowMat.uniforms['uToSurface']!.value as THREE.Matrix4).copy(surface.matrixWorld).invert();
-    (fog.uniforms['uFogModel']!.value as THREE.Matrix4).copy(surface.matrixWorld);
-    (fog.uniforms['uFogToSurface']!.value as THREE.Matrix4).copy(surface.matrixWorld).invert();
-    fog.uniforms['uFogRadiusPx']!.value = radiusPx;
+    toSurface.value.copy(surface.matrixWorld).invert();
+    (fog.uniforms['uFogToSurface']!.value as THREE.Matrix4).copy(toSurface.value);
   }
 
   return {

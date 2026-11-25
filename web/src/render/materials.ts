@@ -1,7 +1,7 @@
 // Palette colours as GPU uniforms, and the uniforms every material shares (key light, eye, depth
 // tints). Colours only ever come from palette.ts (AGENTS.md Rule 5).
 import * as THREE from 'three';
-import { palette, type FogVeil } from '../../../src/core/palette.js';
+import { palette } from '../../../src/core/palette.js';
 import { TUNED_DEPTH } from '../model/depth.js';
 import type { Vec3 } from '../model/vec.js';
 import { TOON_FRAG, TOON_VERT, VERT } from './shaders.js';
@@ -34,13 +34,13 @@ export function shaderMaterial(fragmentShader: string, uniforms: Uniforms, opts:
 }
 
 /**
- * Moons and moonlets: a 4-step ramp in light bands, and the ramp's fog veil (palette.fog.veil: lit,
- * night, hatch, line) for the instances whose file is fogged (#74; the mesh carries `aFog`).
+ * Moons and moonlets: a 4-step ramp in light bands, and the fog's (#74, #224; the mesh carries `aFog`):
+ * the cloud a fogged moon is drawn in, the mist of a misted one's line, and the teal of a clear.
  */
-export const toonMaterial = (hexes: readonly string[], veil: FogVeil): THREE.ShaderMaterial =>
+export const toonMaterial = (hexes: readonly string[]): THREE.ShaderMaterial =>
   shaderMaterial(TOON_FRAG, {
     uRamp: { value: ramp(hexes, 4) }, uBands: { value: new THREE.Vector3(-0.15, 0.35, 0.7) },
-    uRampFog: { value: [veil.lit, veil.night, veil.hatch, veil.line].map(color) }, uFogTeal: { value: color(palette.accent.teal[3]) },
+    uMoonCloud: { value: ramp(palette.world.cloud, 4) }, uMoonMist: { value: ramp(palette.fog.mist, 4) }, uMoonTeal: { value: ramp(palette.accent.teal, 4) },
   }, { vertexShader: TOON_VERT });
 
 /**

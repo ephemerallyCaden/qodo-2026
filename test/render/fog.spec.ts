@@ -1,23 +1,28 @@
-// Fog of war on the real view (#74, R5; D2d, docs/features/fog-of-war-art.md). The goldens
-// (view.spec.ts) are fogged frames of mini; these check what a golden can't say on its own: haze
-// (#201) is thin cloud between clear and fogged, fog without evidence covers everything (Rule 1), the veil and its
-// limb are palette colours, teal shows only on events, the hatch drift closes the loop (on a planet
-// followed along its orbit, #60), and fog costs no draw call or triangle.
+// Fog of war on the real view (#74, R5; cloud since #224: art-direction §9 C6, the white storm front).
+// The goldens (view.spec.ts) are fogged frames of mini; these check what a golden can't say on its own:
+// fogged is storm cloud, misted (stored haze) is thin mist, clear has nothing over it, and none of it
+// darkens the ground (the human, 2026-11-25: "there should be no black area"); fog without evidence is
+// storm cloud everywhere (Rule 1); every fog colour is a palette colour and teal shows only on events;
+// the cloud is locked to the ground, so it closes the loop (on a planet followed along its orbit, #60);
+// and the fog stays inside the draw budget.
 import { expect, test } from '@playwright/test';
 import type { FogView } from '../../src/core/contract/fog.js';
+import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { palette } from '../../src/core/palette.js';
-import { focusPose, startPose, toCameraPose } from '../../web/src/camera/pose.js';
+import { focusPose, project, projectedRadius, startPose, toCameraPose } from '../../web/src/camera/pose.js';
 import { LOOP_FRAMES, ORBIT_FRAMES } from '../../web/src/model/motion.js';
 import { planetCentre, systemModel } from '../../web/src/model/system.js';
-import { assertRendered, diffPixels } from './frame.js';
+import { selfLikeRoots } from '../fixtures/overview.js';
+import { assertRendered, diffPixels, LOW_RES } from './frame.js';
 import { fogFor, following, MINI, MINI_FOG, MINI_INPUT, openView, render, systemView, type Rendered } from './harness.js';
 import { LATER } from './suite.js';
+import { BUDGET, OVERVIEW } from './thresholds.js';
 import { paletteProblems } from './twin.js';
 
 const model = systemModel(MINI);
 /**
- * The hero framing of a mini planet by path, at 360 px: big enough to show parcels, hatching and the "?".
- * At frame `n` it has followed the planet along its orbit since frame 0, as focus does (#60).
+ * The hero framing of a mini planet by path, at 360 px. At frame `n` it has followed the planet along
+ * its orbit since frame 0, as focus does (#60).
  */
 const focus = (path: string, n = 0) => ({ camera: following(model, path, n), pixelHeight: 360 });
 /** The same framing, orbited by `dyaw` and `dpitch` radians: an oblique view, where smoke overlaps its neighbours. */
@@ -27,50 +32,68 @@ const oblique = (path: string, dyaw: number, dpitch: number) => {
   return { camera: toCameraPose({ ...o, yaw: o.yaw + dyaw, pitch: o.pitch + dpitch }), pixelHeight: 360 };
 };
 const hex = (rgba: Uint8Array, p: number) => `#${[0, 1, 2].map((c) => rgba[p * 4 + c]!.toString(16).padStart(2, '0')).join('')}`;
+const luma = (rgba: Uint8Array, p: number) => 0.299 * rgba[p * 4]! + 0.587 * rgba[p * 4 + 1]! + 0.114 * rgba[p * 4 + 2]!;
+/** Whether pixel p is in the middle of the frame, `box` × the height either side of the centre (the hero planet, not the star). */
+const inBox = (r: Rendered, p: number, box?: number) => box === undefined || Math.abs((p % r.pixels.width) - r.pixels.width / 2) <= box * r.pixels.height;
 /** Pixels of each of these colours in a frame. */
 function count(r: Rendered, colours: readonly string[], box?: number): number {
   const want = new Set(colours), { width, height } = r.pixels;
   let n = 0;
-  for (let p = 0; p < width * height; p++) {
-    // box: only the middle of the frame, `box` x the height wide each side of the centre (the hero planet, not the star)
-    if (box !== undefined && Math.abs((p % width) - width / 2) > box * height) continue;
-    if (want.has(hex(r.pixels.rgba, p))) n++;
-  }
+  for (let p = 0; p < width * height; p++) if (inBox(r, p, box) && want.has(hex(r.pixels.rgba, p))) n++;
   return n;
 }
-const VEILS = Object.values(palette.fog.veil).flatMap((v) => [v.lit, v.night, v.hatch, v.line]);
+/** The pixels where two frames differ, as indices. */
+function changed(a: Rendered, b: Rendered, box?: number): number[] {
+  const out: number[] = [];
+  for (let p = 0; p < a.pixels.width * a.pixels.height; p++) {
+    if (!inBox(a, p, box)) continue;
+    if ([0, 1, 2].some((c) => a.pixels.rgba[p * 4 + c] !== b.pixels.rgba[p * 4 + c])) out.push(p);
+  }
+  return out;
+}
+/** The fog's own colours: the storm cloud (the mist is its light steps) and nothing else at rest. */
+const CLOUD = [...palette.world.cloud];
+const MIST = new Set<string>(palette.fog.mist);
 
-/** mini with every drawn file haze (#201: seen, not yet understood). */
-const allHaze = (layout = MINI): FogView => fogFor(layout, () => false, () => true);
+/** A layout with every drawn file misted (#201's haze: read, not yet tested). */
+const allMisted = (layout = MINI): FogView => fogFor(layout, () => false, () => true);
+const allFogged = (layout = MINI): FogView => fogFor(layout, () => true);
 
-test('#201: haze draws thin cloud, distinct from clear (no cloud) and from fogged, in palette colours and no veil', async ({ page }) => {
+test('#224: fogged is storm cloud, misted thin mist, clear nothing, and the fog never darkens: no black area', async ({ page }) => {
   const view = await openView(page, systemView());
   for (const [what, extra] of [['src focused', focus('src')], ['web focused', focus('web')]] as const) {
     const base = { layout: MINI, ...extra, depthFade: false };
     const [clear] = await render(view, { ...base, fog: fogFor(MINI) }, [0]);
-    const [haze] = await render(view, { ...base, fog: allHaze() }, [0]);
-    const [fogged] = await render(view, { ...base, fog: fogFor(MINI, () => true) }, [0]);
-    for (const r of [clear, haze, fogged]) assertRendered(r!.pixels, r!.stats);
-    expect(paletteProblems(haze!.pixels), what).toEqual([]);
-    const thin = diffPixels(clear!.pixels, haze!.pixels), veil = diffPixels(clear!.pixels, fogged!.pixels);
-    console.log(`${what}: haze differs from clear by ${thin} px, fogged by ${veil} px; veil px clear ${count(clear!, VEILS)}, haze ${count(haze!, VEILS)}`);
-    expect(thin, `${what}: haze draws something (not vacuous)`).toBeGreaterThan(0);
-    expect(diffPixels(haze!.pixels, fogged!.pixels), `${what}: haze is not fogged`).toBeGreaterThan(0);
-    expect(thin, `${what}: haze is thin, far less than the veil`).toBeLessThan(veil / 2);
-    expect(count(haze!, VEILS), `${what}: haze adds no veil colour`).toBeLessThanOrEqual(count(clear!, VEILS));
+    const [misted] = await render(view, { ...base, fog: allMisted() }, [0]);
+    const [fogged] = await render(view, { ...base, fog: allFogged() }, [0]);
+    for (const r of [clear, misted, fogged]) {
+      assertRendered(r!.pixels, r!.stats);
+      expect(paletteProblems(r!.pixels), what).toEqual([]);
+    }
+    const mist = changed(clear!, misted!, 0.3), storm = changed(clear!, fogged!, 0.3);
+    const lighter = (r: Rendered, px: number[]) => px.filter((p) => luma(r.pixels.rgba, p) >= luma(clear!.pixels.rgba, p)).length;
+    const mean = (r: Rendered, px: number[]) => px.reduce((s, p) => s + luma(r.pixels.rgba, p), 0) / Math.max(1, px.length);
+    console.log(`${what}: mist changes ${mist.length} px (${lighter(misted!, mist)} lighter), storm ${storm.length} px (${lighter(fogged!, storm)} lighter); `
+      + `mean luma there, clear ${mean(clear!, storm).toFixed(1)} → fogged ${mean(fogged!, storm).toFixed(1)}; cloud px clear ${count(clear!, CLOUD, 0.3)}, misted ${count(misted!, CLOUD, 0.3)}, fogged ${count(fogged!, CLOUD, 0.3)}`);
+    expect(mist.length, `${what}: mist draws something (not vacuous)`).toBeGreaterThan(0);
+    expect(diffPixels(misted!.pixels, fogged!.pixels), `${what}: misted is not fogged`).toBeGreaterThan(0);
+    expect(mist.length, `${what}: mist is thin, far less than the storm`).toBeLessThan(storm.length / 2);
+    // never dark: every pixel the mist changes is a mist colour (it has no shadow), and the storm lightens the planet
+    expect(mist.filter((p) => !MIST.has(hex(misted!.pixels.rgba, p))), `${what}: mist pixels outside the mist colours`).toEqual([]);
+    expect(mean(fogged!, storm), `${what}: the storm cloud lightens what it covers`).toBeGreaterThan(mean(clear!, storm) + 40);
+    expect(lighter(fogged!, storm), `${what}: at most its shadows (one band darker) are darker`).toBeGreaterThan(storm.length * 0.8);
+    expect(count(fogged!, CLOUD, 0.3), `${what}: the storm is cloud`).toBeGreaterThan(storm.length * 0.7);
   }
   expect(view.errors).toEqual([]);
 });
 
-test('#201: haze under reduced motion holds still, and costs no draw call or triangle', async ({ page }) => {
+test('#224: misted and fogged hold still under reduced motion', async ({ page }) => {
   const view = await openView(page, systemView());
-  const input = { layout: MINI, fog: allHaze(), ...focus('src'), reducedMotion: true };
-  const [a, b] = await render(view, input, [0, 180]);
-  for (const r of [a, b]) assertRendered(r!.pixels, r!.stats);
-  expect(diffPixels(a!.pixels, b!.pixels)).toBe(0);
-  const [clear] = await render(view, { layout: MINI, fog: fogFor(MINI), ...focus('src') }, [0]);
-  const [haze] = await render(view, { layout: MINI, fog: allHaze(), ...focus('src') }, [0]);
-  expect(haze!.stats).toEqual(clear!.stats);
+  for (const fog of [allMisted(), allFogged()]) {
+    const [a, b] = await render(view, { layout: MINI, fog, ...focus('src'), reducedMotion: true }, [0, 180]);
+    for (const r of [a, b]) assertRendered(r!.pixels, r!.stats);
+    expect(diffPixels(a!.pixels, b!.pixels)).toBe(0);
+  }
   expect(view.errors).toEqual([]);
 });
 
@@ -78,31 +101,34 @@ test('without a usable fog view every file is fogged (Rule 1): no view, or one f
   const view = await openView(page, systemView());
   const [none] = await render(view, { layout: MINI, fog: null }, [0]);
   const [stale] = await render(view, { layout: MINI, fog: { ...MINI_FOG, head: '2'.repeat(40) } }, [0]);
-  const [allFogged] = await render(view, { layout: MINI, fog: fogFor(MINI, () => true) }, [0]);
+  const [fogged] = await render(view, { layout: MINI, fog: allFogged() }, [0]);
   const [mini] = await render(view, { ...MINI_INPUT }, [0]);
   expect(diffPixels(none!.pixels, stale!.pixels)).toBe(0);
-  expect(diffPixels(none!.pixels, allFogged!.pixels)).toBe(0);
+  expect(diffPixels(none!.pixels, fogged!.pixels)).toBe(0);
   expect(diffPixels(none!.pixels, mini!.pixels), 'not vacuous').toBeGreaterThan(0);
   expect(view.errors).toEqual([]);
 });
 
-test('a fogged frame is palette-only with the depth fade off: the veil, its line and hatch, the "?" and the halo limb', async ({ page }) => {
+test('a fogged frame is palette-only with the depth fade off, and its fog is cloud colours, no veil', async ({ page }) => {
   const view = await openView(page, systemView());
   for (const [what, input] of [['mini', { ...MINI_INPUT }], ['web focused', { ...MINI_INPUT, ...focus('web') }], ['all fogged, src focused', { layout: MINI, fog: null, ...focus('src') }]] as const) {
     const [r] = await render(view, { ...input, depthFade: false }, [0]);
+    const [clear] = await render(view, { ...input, fog: fogFor(MINI), depthFade: false }, [0]);
     assertRendered(r!.pixels, r!.stats);
     expect(paletteProblems(r!.pixels), what).toEqual([]);
-    const veil = count(r!, VEILS), limb = count(r!, [palette.world.halo]);
-    console.log(`${what}: ${veil} veil px, ${limb} halo-colour px`);
-    expect(veil, `${what}: veil pixels`).toBeGreaterThan(0);
-    expect(limb, `${what}: halo limb pixels`).toBeGreaterThan(0);
+    const fog = changed(clear!, r!);
+    const cloud = fog.filter((p) => CLOUD.includes(hex(r!.pixels.rgba, p) as never)).length;
+    console.log(`${what}: the fog changes ${fog.length} px, ${cloud} of them to cloud colours`);
+    expect(fog.length, `${what}: the fog draws (not vacuous)`).toBeGreaterThan(0);
+    expect(cloud, `${what}: mostly cloud; the rest is its shadow on the ground`).toBeGreaterThan(fog.length * 0.6);
+    expect(count(r!, [palette.world.space]), `${what}: no more space than clear: the fog never reads as empty space`).toBeLessThanOrEqual(count(clear!, [palette.world.space]));
   }
   expect(view.errors).toEqual([]);
 });
 
 test('teal stays off the frame at rest (it marks events only)', async ({ page }) => {
   const view = await openView(page, systemView());
-  for (const input of [{ ...MINI_INPUT }, { ...MINI_INPUT, ...focus('web') }, { layout: MINI, fog: null, ...focus('src') }, { layout: MINI, fog: allHaze(), ...focus('src') }]) {
+  for (const input of [{ ...MINI_INPUT }, { ...MINI_INPUT, ...focus('web') }, { layout: MINI, fog: null, ...focus('src') }, { layout: MINI, fog: allMisted(), ...focus('src') }]) {
     for (const r of await render(view, { ...input, depthFade: false }, [0, LATER])) {
       assertRendered(r.pixels, r.stats); // a blank frame has no teal either
       expect(count(r, palette.accent.teal)).toBe(0);
@@ -111,78 +137,94 @@ test('teal stays off the frame at rest (it marks events only)', async ({ page })
   expect(view.errors).toEqual([]);
 });
 
-test('the hatch drift closes the loop: the fogged planet, followed along its orbit, draws the same pixels on every whole loop of its first fifth of an orbit', async ({ page }) => {
+test('the cloud is locked to the ground and closes the loop: the fogged planet, followed along its orbit, draws the same pixels on every whole loop of its first fifth of an orbit', async ({ page }) => {
   // web fills its hero frame (src has the star behind it, which the orbit moves); the planets left the loop (#60), so the
   // camera follows web as focus does, and the frames are pinned: 0, every whole loop on until the star comes into view
-  // behind web (past 80° round the orbit: five 24 s loops, 72°, were clear, as are three of #174's 48 s loops; the fourth,
-  // 96°, is not), and a frame inside the loop. Before the floating origin (render/scene.ts) float32 rounding at web's
-  // position changed 1 px at frame 720 in CI and 572 px (the fog anchor a pixel over) at frames 1440 and 2880 here (24 s loop).
+  // behind web (past 80° round the orbit), and a frame inside the loop. Fogged and misted both ride the surface's turn.
   const view = await openView(page, systemView());
-  const at = async (n: number) => (await render(view, { layout: MINI, fog: null, ...focus('web', n) }, [n]))[0]!;
-  const a = await at(0), c = await at(LATER);
-  const loops = [1, 2, 3, 4, 5].map((k) => k * LOOP_FRAMES).filter((n) => n <= ORBIT_FRAMES / 5);
-  expect(loops.length, 'more than one whole loop to compare').toBeGreaterThanOrEqual(2);
-  const diffs: number[] = [];
-  for (const n of loops) {
-    const b = await at(n);
-    assertRendered(b.pixels, b.stats);
-    diffs.push(diffPixels(a.pixels, b.pixels));
+  for (const [what, fog] of [['fogged', null], ['misted', allMisted()]] as const) {
+    const at = async (n: number) => (await render(view, { layout: MINI, fog, ...focus('web', n) }, [n]))[0]!;
+    const a = await at(0), c = await at(LATER);
+    const loops = [1, 2, 3, 4, 5].map((k) => k * LOOP_FRAMES).filter((n) => n <= ORBIT_FRAMES / 5);
+    expect(loops.length, 'more than one whole loop to compare').toBeGreaterThanOrEqual(2);
+    const diffs: number[] = [];
+    for (const n of loops) {
+      const b = await at(n);
+      assertRendered(b.pixels, b.stats);
+      diffs.push(diffPixels(a.pixels, b.pixels));
+    }
+    for (const r of [a, c]) assertRendered(r.pixels, r.stats);
+    console.log(`${what} loop, web followed at 360 px: frames ${loops.join(', ')} differ from frame 0 by ${diffs.join(', ')} px`);
+    expect(diffs, `${what}: frames ${loops.join(', ')} vs frame 0`).toEqual(loops.map(() => 0));
+    expect(diffPixels(a.pixels, c.pixels), `${what}: not vacuous: the frame moves within the loop`).toBeGreaterThan(0);
   }
-  for (const r of [a, c]) assertRendered(r.pixels, r.stats);
-  console.log(`hatch loop, web followed at 360 px: frames ${loops.join(', ')} differ from frame 0 by ${diffs.join(', ')} px`);
-  expect(diffs, `frames ${loops.join(', ')} vs frame 0`).toEqual(loops.map(() => 0));
-  expect(diffPixels(a.pixels, c.pixels), 'not vacuous: the frame moves within the loop').toBeGreaterThan(0);
   expect(view.errors).toEqual([]);
 });
 
-test('fog adds no draw call and no triangle', async ({ page }) => {
+// The fog's puffs are instanced meshes: at most four draws per planet (storm, its shadow, teal, mist), and
+// only the layers with puffs draw. Measured on mini and on a fixture the size of this repo (11 planets).
+test('the fog stays inside the draw budget, mini and a repo-sized system, fogged and misted', async ({ page }) => {
   const view = await openView(page, systemView());
-  for (const extra of [{}, focus('src'), focus('web')]) {
+  const cases: [string, LayoutV1, Record<string, unknown>][] = [['mini', MINI, {}], ['mini src', MINI, focus('src')], ['mini web', MINI, focus('web')], ['repo-sized', selfLikeRoots, {}]];
+  for (const [what, layout, extra] of cases) {
+    const planets = layout.planets.length;
     const stats = [];
-    for (const fog of [fogFor(MINI), MINI_FOG, null]) stats.push((await render(view, { layout: MINI, fog, ...extra }, [0]))[0]!.stats);
-    expect(stats[1]).toEqual(stats[0]);
-    expect(stats[2]).toEqual(stats[0]);
+    const half = new Set<string>(fogFor(layout).files.filter((_, i) => i % 2 === 0).map((f) => f.fileId));
+    for (const fog of [fogFor(layout), allMisted(layout), allFogged(layout), fogFor(layout, (id) => half.has(id), (id) => !half.has(id))]) {
+      const [r] = await render(view, { layout, fog, ...extra }, [0]);
+      if (what === 'repo-sized') assertRendered(r!.pixels, r!.stats, LOW_RES, OVERVIEW.minNonSpaceFraction);
+      else assertRendered(r!.pixels, r!.stats);
+      stats.push(r!.stats);
+    }
+    console.log(`${what} (${planets} planets): draw calls clear/misted/fogged/both ${stats.map((s) => s.drawCalls).join('/')}, triangles ${stats.map((s) => s.triangles).join('/')}`);
+    for (const s of stats) {
+      expect(s.drawCalls, what).toBeLessThanOrEqual(BUDGET.maxDrawCalls);
+      expect(s.triangles, what).toBeLessThanOrEqual(BUDGET.maxTriangles);
+      expect(s.drawCalls - stats[0]!.drawCalls, `${what}: four fog draws a planet at most`).toBeLessThanOrEqual(4 * planets);
+    }
+    expect(stats[2]!.drawCalls, `${what}: the storm draws (not vacuous)`).toBeGreaterThan(stats[0]!.drawCalls);
   }
   expect(view.errors).toEqual([]);
 });
 
-// Fog hides health (#74, Qodo local r1 and PR #117 r1): a fully fogged lava world shows none of the
-// lava look's own colours, neither its glowing fissures nor its smoke, so the ground, the shadow pass
-// and the clouds all say the same thing. The fade is off, so every pixel is a palette colour.
-test('a fully fogged lava planet shows no fissure glow or smoke colour at hero focus; hazed, its health shows through', async ({ page }) => {
-  const lava = { ...MINI, planets: MINI.planets.map((p) => (p.path === 'src' ? { ...p, health: { ...p.health, band: 'lava' as const } } : p)) };
+const lavaAt = (paths: readonly string[]): LayoutV1 => ({ ...MINI, planets: MINI.planets.map((p) => (paths.includes(p.path) ? { ...p, health: { ...p.health, band: 'lava' as const } } : p)) });
+
+// Health reads on discovered land and through the storm front's gaps (art-direction §9): a fully fogged
+// lava world shows its glow only through the gaps, far less than clear, and no smoke over the storm; misted,
+// its health shows through the mist. The fade is off, so every pixel is a palette colour.
+test('a fully fogged lava planet shows its glow only through the storm\'s gaps; misted, its health shows through', async ({ page }) => {
+  const lava = lavaAt(['src']);
   const view = await openView(page, systemView());
   const base = { layout: lava, ...focus('src'), depthFade: false };
-  // The fissure glow and the smoke (the ash ramp). The crust is the ground itself: the "?" glyph is inked in one of its steps.
-  const LAVA = [...palette.world.glow, ...palette.world.ash];
   const [clear] = await render(view, { ...base, fog: fogFor(lava) }, [0]);
-  const [fogged] = await render(view, { ...base, fog: fogFor(lava, () => true) }, [0]);
-  const [fogged90] = await render(view, { ...base, ...focus('src', 90), fog: fogFor(lava, () => true) }, [90]); // followed to frame 90 (#60)
-  const [hazed] = await render(view, { ...base, fog: allHaze(lava) }, [0]);
-  for (const r of [clear, fogged, hazed]) assertRendered(r!.pixels, r!.stats);
+  const [fogged] = await render(view, { ...base, fog: allFogged(lava) }, [0]);
+  const [fogged90] = await render(view, { ...base, ...focus('src', 90), fog: allFogged(lava) }, [90]); // followed to frame 90 (#60)
+  const [misted] = await render(view, { ...base, fog: allMisted(lava) }, [0]);
+  for (const r of [clear, fogged, fogged90, misted]) assertRendered(r!.pixels, r!.stats);
   // The star glows in the same colours, so only the middle of the frame, where the planet is, is counted.
   const BOX = 0.3;
-  const glow = (r: Rendered) => count(r, palette.world.glow, BOX), all = (r: Rendered) => count(r, LAVA, BOX);
-  console.log(`lava hero, clear: ${glow(clear!)} glow px, ${all(clear!)} glow+ash px; fogged: ${glow(fogged!)} glow, ${all(fogged!)} glow+ash px (f90: ${all(fogged90!)})`);
+  const glow = (r: Rendered) => count(r, palette.world.glow, BOX), ash = (r: Rendered) => count(r, palette.world.ash, BOX);
+  console.log(`lava hero, glow px: clear ${glow(clear!)}, fogged ${glow(fogged!)} (f90: ${glow(fogged90!)}), misted ${glow(misted!)}; smoke px: clear ${ash(clear!)}, fogged ${ash(fogged!)}`);
   expect(glow(clear!), 'not vacuous: a clear lava planet glows').toBeGreaterThan(0);
-  expect(all(clear!), 'not vacuous: smoke and ash ground show').toBeGreaterThan(glow(clear!));
-  expect(all(fogged!), 'fogged: no glow or smoke colour').toBe(0);
-  expect(all(fogged90!), 'fogged, a later frame').toBe(0);
-  // #201: haze is seen ground, so its health reads through the thin cloud.
-  expect(glow(hazed!), 'hazed: the glow shows through').toBeGreaterThan(0);
+  expect(ash(clear!), 'not vacuous: its smoke shows').toBeGreaterThan(0);
+  expect(glow(fogged!), 'fogged: some glow through the gaps').toBeGreaterThan(0);
+  expect(glow(fogged!), 'fogged: most of it under the storm').toBeLessThan(glow(clear!) * 0.3);
+  expect(glow(fogged90!), 'fogged, a later frame').toBeLessThan(glow(clear!) * 0.3);
+  expect(ash(fogged!), 'fogged: no smoke over the storm').toBe(0);
+  expect(glow(misted!), 'misted: the glow shows through').toBeGreaterThan(glow(clear!) * 0.5);
   expect(view.errors).toEqual([]);
 });
 
 // The lava smoke over partly fogged ground (PR #117 r1: smoke is tested at its own cell, so one from a
-// clear parcel could overlap a fogged neighbour). F1 fogs every file but one settlement (moons and moonlets too, so they don't show in both), F2 only that one:
-// a smoke pixel over F1's fogged ground would be an ash-coloured pixel in both, since F2 draws that
-// ground (and its smoke) clear. The ground under the one clear parcel is veiled in F2.
+// clear parcel could overlap a fogged neighbour). F1 fogs every file but one settlement (moons and moonlets
+// too, so they don't show in both), F2 only that one: a smoke pixel over F1's fogged ground would be an
+// ash-coloured pixel in both, since F2 draws that ground (and its smoke) clear.
 test('lava smoke never shows over a fogged settlement, head-on and at oblique angles', async ({ page }) => {
-  const lava = { ...MINI, planets: MINI.planets.map((p) => (p.path === 'src' ? { ...p, health: { ...p.health, band: 'lava' as const } } : p)) };
+  const lava = lavaAt(['src']);
   const src = lava.planets.find((p) => p.path === 'src')!;
   const ids = src.surface.settlements.map((s) => s.fileId);
   const view = await openView(page, systemView());
-  const ash = new Set(palette.world.ash), seen = new Map<string, number>();
+  const ashes = new Set(palette.world.ash), seen = new Map<string, number>();
   const views = [['head-on', focus('src')], ['yaw +1.1', oblique('src', 1.1, 0)], ['yaw -1.1, pitch -0.5', oblique('src', -1.1, -0.5)], ['pitch +0.6', oblique('src', 0, 0.6)]] as const;
   for (const [vname, cam, keep, i] of views.flatMap(([v, c]) => ids.map((id, i) => [v, c, id, i] as const))) {
     const name = `${vname}, parcel ${i}`;
@@ -192,9 +234,9 @@ test('lava smoke never shows over a fogged settlement, head-on and at oblique an
     let both = 0, in1 = 0;
     const { width, height } = f1!.pixels;
     for (let q = 0; q < width * height; q++) {
-      if (Math.abs((q % width) - width / 2) > 0.3 * height || !ash.has(hex(f1!.pixels.rgba, q) as never)) continue;
+      if (Math.abs((q % width) - width / 2) > 0.3 * height || !ashes.has(hex(f1!.pixels.rgba, q) as never)) continue;
       in1++;
-      if (ash.has(hex(f2!.pixels.rgba, q) as never)) both++;
+      if (ashes.has(hex(f2!.pixels.rgba, q) as never)) both++;
     }
     seen.set(vname, (seen.get(vname) ?? 0) + in1); // a parcel on the far side shows no smoke: vacuous per view, not per parcel
     console.log(`smoke over fogged ground, ${name} clear: ${both} of ${in1} ash px also ash with it fogged`);
@@ -205,25 +247,33 @@ test('lava smoke never shows over a fogged settlement, head-on and at oblique an
   expect(view.errors).toEqual([]);
 });
 
-// The contrast the fog draws: at overview a fogged lava world beside a clear one. F1 fogs src only and
-// F2 docs only; the star glows in the same colours (the all-fogged frame shows what is left of it).
-test('at overview a fogged lava planet has no glow while its clear neighbour keeps its own', async ({ page }) => {
-  const lava = { ...MINI, planets: MINI.planets.map((p) => (p.path === 'web' ? p : { ...p, health: { ...p.health, band: 'lava' as const } })) };
+// The contrast the fog draws: at overview a fogged lava world beside a clear one. Each planet's glow is
+// counted inside its own disc on screen (with the cloud's bulge), so the star's glow never counts.
+test('at overview a fogged lava planet glows far less than clear, while its clear neighbour keeps its own', async ({ page }) => {
+  const lava = lavaAt(['src', 'docs']);
   const files = (path: string) => { const p = lava.planets.find((x) => x.path === path)!; return [...p.surface.settlements, ...p.moons].map((f) => f.fileId) as string[]; };
   const view = await openView(page, systemView());
   const base = { layout: lava, depthFade: false };
-  const [none] = await render(view, { ...base, fog: fogFor(lava, () => true) }, [0]);
+  const [clear] = await render(view, { ...base, fog: fogFor(lava) }, [0]);
   const [srcFogged] = await render(view, { ...base, fog: fogFor(lava, (id) => files('src').includes(id)) }, [0]);
   const [docsFogged] = await render(view, { ...base, fog: fogFor(lava, (id) => files('docs').includes(id)) }, [0]);
-  const glowing = (r: Rendered) => { const s = new Set<number>(), g = new Set(palette.world.glow); for (let q = 0; q < r.pixels.width * r.pixels.height; q++) if (g.has(hex(r.pixels.rgba, q) as never)) s.add(q); return s; };
-  const star = glowing(none!), a = glowing(srcFogged!), b = glowing(docsFogged!);
-  const own = (s: Set<number>) => [...s].filter((q) => !star.has(q));
-  const onlyA = own(a), onlyB = own(b);
-  const shared = onlyA.filter((q) => b.has(q)).length;
-  console.log(`overview, src fogged: ${onlyA.length} planet glow px; docs fogged: ${onlyB.length}; in both: ${shared}`);
-  expect(onlyA.length, 'docs, clear, glows').toBeGreaterThan(0);
-  expect(onlyB.length, 'src, clear, glows').toBeGreaterThan(0);
-  expect(shared, 'no pixel glows in both: a fogged planet shows none').toBe(0);
+  const lavaModel = systemModel(lava), pose = startPose(lavaModel), g = new Set<string>(palette.world.glow);
+  const glowIn = (r: Rendered, path: string) => {
+    const p = lavaModel.planets.find((x) => x.path === path)!, at = project(pose, planetCentre(p, 0))!;
+    const { width, height } = r.pixels, rad = projectedRadius(p.radius, at.depth) * (height / 2) * 1.4;
+    const cx = (at.x + 1) / 2 * width, cy = (1 - at.y) / 2 * height;
+    let n = 0;
+    for (let q = 0; q < width * height; q++) if (Math.hypot((q % width) + 0.5 - cx, Math.floor(q / width) + 0.5 - cy) <= rad && g.has(hex(r.pixels.rgba, q))) n++;
+    return n;
+  };
+  const [sc, sf, dc, df] = [glowIn(clear!, 'src'), glowIn(srcFogged!, 'src'), glowIn(clear!, 'docs'), glowIn(docsFogged!, 'docs')];
+  console.log(`overview glow px: src clear ${sc}, fogged ${sf}; docs clear ${dc}, fogged ${df}`);
+  expect(sc, 'src, clear, glows').toBeGreaterThan(0);
+  expect(dc, 'docs, clear, glows').toBeGreaterThan(0);
+  expect(sf, 'src fogged: under the storm').toBeLessThan(sc * 0.35);
+  expect(df, 'docs fogged: under the storm').toBeLessThan(dc * 0.35);
+  expect(glowIn(srcFogged!, 'docs'), 'docs keeps its own glow while src is fogged').toBe(dc);
+  expect(glowIn(docsFogged!, 'src'), 'src keeps its own glow while docs is fogged').toBe(sc);
   expect(view.errors).toEqual([]);
 });
 
@@ -237,10 +287,10 @@ test('a planet whose settlements are all off its grid is drawn fogged without a 
   const [stale] = await render(view, { ...base, fog: { ...MINI_FOG, head: '2'.repeat(40) } }, [0]);
   const [known] = await render(view, { ...base, fog: fogFor(off) }, [0]);
   for (const r of [unknown, stale, known]) assertRendered(r!.pixels, r!.stats);
-  const veil = (r: Rendered) => count(r, VEILS, 0.3);
-  console.log(`src with no settlement on its grid: ${veil(unknown!)} veil px with no fog view, ${veil(known!)} with every file known clear`);
-  expect(veil(unknown!), 'no fog view: fogged all over').toBeGreaterThan(5000);
+  const cloud = (r: Rendered) => count(r, CLOUD, 0.3);
+  console.log(`src with no settlement on its grid: ${cloud(unknown!)} cloud px with no fog view, ${cloud(known!)} with every file known clear`);
+  expect(cloud(unknown!), 'no fog view: storm cloud all over').toBeGreaterThan(5000);
   expect(diffPixels(unknown!.pixels, stale!.pixels)).toBe(0);
-  expect(veil(known!), 'not vacuous: known clear files leave it clear').toBeLessThan(veil(unknown!) / 10);
+  expect(cloud(known!), 'not vacuous: known clear files leave it clear').toBeLessThan(cloud(unknown!) / 10);
   expect(view.errors).toEqual([]);
 });

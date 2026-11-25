@@ -7,7 +7,7 @@
 // are drawn with every file clear; the fogged overview has its own check below.
 //
 // Fully fogged (#74, no usable fog view: every file is drawn fogged), the same overview still shows
-// every on-screen planet: the veil is dark but never space, and its limb is the halo colour.
+// every on-screen planet: under its storm cloud (#224) it is never space.
 import { expect, test } from '@playwright/test';
 import type { HealthBand, LayoutV1 } from '../../src/core/contract/layout.js';
 import { startPose, toCameraPose } from '../../web/src/camera/pose.js';

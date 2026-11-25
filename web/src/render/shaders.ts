@@ -7,7 +7,7 @@
 // (uLight) in flat bands; there are no stock materials, shadow maps or post passes (Rule 4).
 import { DEPTH_RANGE } from '../model/depth.js';
 import { CORONA } from '../model/star.js';
-import { FOG_HAZE, FOG_MOON, FOG_SURFACE } from './fog-glsl.js';
+import { FOG_HAZE, FOG_MOON, FOG_SKY, FOG_SURFACE } from './fog-glsl.js';
 
 /**
  * Lava fissures and ice crevasses, and their open plates (lava pools, ice water), from the asset
@@ -428,8 +428,8 @@ const SURFACE = /* glsl */ `
   }
 `;
 
-// The surface, with fog over it (fog-glsl.ts, #74). A fogged pixel isn't molten glow any more, so it
-// fades at full strength: a fogged lava world doesn't glow from afar (fog hides health).
+// The surface, with the fog's planet-clear pulse over it (fog-glsl.ts, #74). A pulse pixel isn't molten
+// glow, so it fades at full strength.
 export const PLANET_FRAG = /* glsl */ `${SURFACE}
   ${FOG_SURFACE}
   void main() {
@@ -445,7 +445,8 @@ export const PLANET_FRAG = /* glsl */ `${SURFACE}
 `;
 
 // Cloud shadow: the puffs projected along the light onto the surface (r = 1.003), drawn as the
-// terrain one light band darker. It shares the surface material's uniforms.
+// terrain one light band darker. It shares the surface material's uniforms. The fog's storm cloud casts
+// one too (uFogSky 1, #224).
 export const SHADOW_VERT = /* glsl */ `
   uniform vec3 uLight;
   uniform vec3 uCenter;
@@ -472,20 +473,22 @@ export const SHADOW_VERT = /* glsl */ `
 `;
 export const SHADOW_FRAG = /* glsl */ `${SURFACE}
   ${FOG_SURFACE}
+  ${FOG_SKY}
   in vec3 vHitW;
   in float vReach;
   void main() {
-    if (vReach < 0.0 || vReach > 0.1) discard;
+    if (fogSkyOff() || vReach < 0.0 || vReach > 0.1) discard;
     vec3 p = normalize(vLocal);
     setScreenScale(p);
     int b = band(normalize(vHitW));
     if (b == 0) discard;
-    gl_FragColor = vec4(depthFade(fog(p, b, surface(p, b - 1)), vPosW, 1.0), 1.0); // a shadow never uncovers fogged ground: the veil is the surface's own (band b)
+    gl_FragColor = vec4(depthFade(fog(p, b, surface(p, b - 1)), vPosW, 1.0), 1.0);
   }
 `;
 
 // Clouds: each puff's normal blends the planet-radial direction and its mass's dome, so a mass
 // shades as one lumpy body (aMass.w = 1), not a pile of spheres; lava smoke keeps plain puffs (w = 0).
+// The fog's storm cloud, teal and mist (#224) are clouds too (uFogSky 1).
 export const CLOUD_VERT = /* glsl */ `
   in vec4 aMass;
   out vec3 vNormalW;
@@ -506,6 +509,7 @@ export const CLOUD_FRAG = /* glsl */ `
   ${BANDS}
   ${DEPTH}
   ${FOG_HAZE}
+  ${FOG_SKY}
   uniform float uSmoke; // 1: lava smoke, which rises from the fissures and so hints at the ground's health (#74)
   uniform vec3 uRamp[4];
   uniform vec3 uCenter;
@@ -522,7 +526,8 @@ export const CLOUD_FRAG = /* glsl */ `
     return disc >= 0.0 && b < 0.0 && fogHidesHaze(uEye + d * (-b - sqrt(disc)));
   }
   void main() {
-    if (uSmoke > 0.5 && smokeFogged()) discard; // no smoke over a fogged or changing cell (fog hides health)
+    if (fogSkyOff()) discard;
+    if (uSmoke > 0.5 && smokeFogged()) discard; // no smoke over a fogged or changing cell (it would hint at the band from over the storm)
     vec3 g = normalize(vNormalW), r = normalize(vPosW - uCenter), m = normalize(vPosW - vAnchorW);
     float rg = dot(r, g), mg = dot(m, g);
     if (rg < 0.0) r -= rg * g;
@@ -534,7 +539,7 @@ export const CLOUD_FRAG = /* glsl */ `
 
 /**
  * Haze: a slightly larger shell drawn only near the lit limb, a thin crescent, never an outline. None
- * over fogged ground (#74): the haze's colour would hint at the band, and fog hides health.
+ * over fogged ground (#74): its colour would hint at the band from over the storm.
  */
 export const HAZE_FRAG = /* glsl */ `
   ${DEPTH}

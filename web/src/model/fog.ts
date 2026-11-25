@@ -5,8 +5,8 @@
 // stateAt() and cellData() (feature/fog-lab 69be694, mockups/asset-viewer/fog-layout.js).
 //
 // Two rules hold everywhere downstream:
-// - three levels (#201): fogged, haze (seen: thin cloud) and clear (understood: no cloud), one
-//   number per file for the shader (Level);
+// - three levels (#201): fogged (storm cloud), haze (read, not yet tested: shown as "misted", under
+//   mist, #224) and clear (understood: nothing over it), one number per file (Level);
 // - without evidence a file is fogged (AGENTS.md Rule 1): a file the fog view doesn't list, a state
 //   it doesn't know, or every file when there is no usable fog view.
 import type { FogLevel, FogView } from '../../../src/core/contract/fog.js';
@@ -82,7 +82,7 @@ export function fileFogAt(level: Level, event: FogEvent | undefined, frame: numb
   return { level, from: event.from, kind: event.kind === 'clear' ? 1 : 2, progress };
 }
 
-/** A stable 0..1 value per key (FNV-1a, then a finaliser), for decorative per-parcel choices. */
+/** A stable 0..1 value per key (FNV-1a, then a finaliser), for seeded per-cell choices (model/fog-cloud.ts). */
 export function hash01(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
@@ -90,57 +90,45 @@ export function hash01(s: string): number {
   return (h >>> 0) / 4294967296;
 }
 
-/** A "?" sits on half the parcels covering at least this share of the grid (the lab's 7 of 256 cells). */
-export const QMARK_SHARE = 7 / 256;
-/** Per-parcel flag bits (row 0, w). */
-export const FLAG = { backslash: 1, qmark: 2 } as const;
-
-/** A planet's surface, ready for the fog: its territories, the shader's search window, each parcel's decoration. */
+/** A planet's surface, ready for the fog: its files in surface order, their territories and the shader's search window. */
 export interface SurfacePlan {
   fileIds: string[];
   territory: Territory;
   window: number;
-  /** Per file: FLAG bits. */
-  flags: Int32Array;
-  /** Per file: the hatch's dash phase, 0..1. */
-  dash: Float32Array;
 }
 
 export function surfacePlan(surface: { cells: number; settlements: readonly { fileId: string; cell: number }[] }): SurfacePlan {
   const n = surface.cells;
-  const fileIds = surface.settlements.map((s) => s.fileId);
-  const territory = territories(surface.settlements.map((s) => s.cell), n);
-  const flags = new Int32Array(fileIds.length), dash = new Float32Array(fileIds.length);
-  fileIds.forEach((id, k) => {
-    flags[k] = (hash01(`${id}:hatch`) > 0.5 ? FLAG.backslash : 0)
-      | (territory.size[k]! >= QMARK_SHARE * n && hash01(`${id}:qmark`) > 0.5 ? FLAG.qmark : 0);
-    dash[k] = hash01(`${id}:dash`);
-  });
-  return { fileIds, territory, window: searchWindow(n), flags, dash };
+  return { fileIds: surface.settlements.map((s) => s.fileId), territory: territories(surface.settlements.map((s) => s.cell), n), window: searchWindow(n) };
 }
+
+/**
+ * The level every cell no file owns is drawn at: the planet's foggiest file's, which is fogged for
+ * every file under no usable fog view (Rule 1: unknown never looks clearer). Only a planet whose every
+ * settlement is off its grid has such cells.
+ */
+export const orphanLevel = (at: readonly FileFogAt[]): Level => at.reduce<Level>((m, f) => (f.level > m ? f.level : m), 0);
 
 /** Rows of the fog shader's cell texture: 0 rest state, 1 event, 2 cell centre. */
 export const FOG_TEX_ROWS = 3;
 
 /**
- * The per-cell data the fog shader reads (cells × FOG_TEX_ROWS RGBA texels, row-major):
- * row 0 (level at rest 0 clear / 1 haze / 2 fogged, owner's anchor cell, owner's reach in rad, owner's FLAG bits),
- * row 1 (event kind 0 none / 1 clear / 2 refog, progress 0..1, the level the event started from, owner's dash phase),
+ * The per-cell data the fog shaders read (cells × FOG_TEX_ROWS RGBA texels, row-major): what the haze
+ * shell and the lava smoke need to keep off fogged ground (fog-glsl.ts FOG_HAZE).
+ * row 0 (level at rest 0 clear / 1 haze / 2 fogged, owner's anchor cell, owner's reach in rad, 0),
+ * row 1 (event kind 0 none / 1 clear / 2 refog, progress 0..1, the level the event started from, 0),
  * row 2 (cell centre x, y, z, 1 if a file owns the cell).
- * The anchor cell doubles as the owner's key: two cells belong to one file exactly when their anchors match.
  */
 export function cellRows(plan: SurfacePlan, at: readonly FileFogAt[], out?: Float32Array): Float32Array {
   const { territory: t } = plan, n = t.cells;
   const rows = out ?? new Float32Array(n * FOG_TEX_ROWS * 4);
   const c = centresOf(n);
-  // A cell no file owns (every settlement off the grid) is drawn at the planet's foggiest file's level,
-  // which is fogged for every file under no usable fog view (Rule 1: unknown never looks clearer).
-  const orphan = at.reduce((m, f) => Math.max(m, f.level), 0);
+  const orphan = orphanLevel(at);
   for (let i = 0; i < n; i++) {
     const k = t.owner[i]!;
     const f = k >= 0 ? at[k]! : null;
-    rows.set([f ? f.level : orphan, k >= 0 ? t.anchor[k]! : i, k >= 0 ? t.reach[k]! : 0, k >= 0 ? plan.flags[k]! : 0], i * 4);
-    rows.set([f ? f.kind : 0, f ? f.progress : 0, f ? f.from : orphan, k >= 0 ? plan.dash[k]! : 0], (n + i) * 4);
+    rows.set([f ? f.level : orphan, k >= 0 ? t.anchor[k]! : i, k >= 0 ? t.reach[k]! : 0, 0], i * 4);
+    rows.set([f ? f.kind : 0, f ? f.progress : 0, f ? f.from : orphan, 0], (n + i) * 4);
     rows.set([c[3 * i]!, c[3 * i + 1]!, c[3 * i + 2]!, k >= 0 ? 1 : 0], (2 * n + i) * 4);
   }
   return rows;

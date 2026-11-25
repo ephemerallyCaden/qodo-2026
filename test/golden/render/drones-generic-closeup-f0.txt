@@ -4,7 +4,7 @@ env      {"arch":"x64","browser":"158.0.8127.18","platform":"linux","playwright"
 size     320x180 (57600 px)
 rgba     sha256 9f6d71a350fd254c00870e6944bda4706c29bf0d6061eeb47f753da3ff6a6320
 stats    drawCalls 9, triangles 37198
-colours  35 (22 palette, 13 off-palette: 287 px)
+colours  35 (16 palette, 19 off-palette: 13366 px)
 
     px    share  colour   bbox x0,y0-x1,y1  palette entries
  39918   69.30%  #0d0b16  0,0-319,179      world.space
@@ -23,21 +23,21 @@ colours  35 (22 palette, 13 off-palette: 287 px)
     47    0.08%  #007c66  116,78-134,88    accent.teal[1]
    151    0.26%  #00bc9c  103,47-148,114   accent.teal[2]
    122    0.21%  #00ffd5  117,48-148,112   accent.teal[3]
- 10952   19.01%  #28314b  88,30-229,163    fog.veil.ice.lit
-  1331    2.31%  #1b1f31  115,89-231,173   fog.veil.ice.night
-   578    1.00%  #3a4a6d  90,31-229,171    fog.veil.ice.hatch
-   162    0.28%  #43291e  48,127-62,142    fog.veil.moonBody.lit
-     9    0.01%  #291a1a  57,138-62,142    fog.veil.moonBody.night
-    47    0.08%  #7a4725  47,132-63,139    fog.veil.moonBody.line
     34    0.05%  #191b3d  18,50-27,57      (off-palette)
+  1331    2.31%  #1b1f31  115,89-231,173   (off-palette)
     76    0.13%  #1d1f46  14,45-26,56      (off-palette)
      5    0.00%  #222552  14,47-25,53      (off-palette)
     83    0.14%  #242351  12,43-30,59      (off-palette)
+ 10952   19.01%  #28314b  88,30-229,163    (off-palette)
+     9    0.01%  #291a1a  57,138-62,142    (off-palette)
+   578    1.00%  #3a4a6d  90,31-229,171    (off-palette)
+   162    0.28%  #43291e  48,127-62,142    (off-palette)
      2    0.00%  #44303a  7,53-8,53        (off-palette)
      2    0.00%  #45303a  34,54-35,54      (off-palette)
      1    0.00%  #45313a  7,50-7,50        (off-palette)
      4    0.00%  #786f7a  11,50-27,59      (off-palette)
     22    0.03%  #79707a  13,44-29,59      (off-palette)
+    47    0.08%  #7a4725  47,132-63,139    (off-palette)
      2    0.00%  #7a707a  17,52-24,53      (off-palette)
      5    0.00%  #7e7e92  11,46-15,58      (off-palette)
      2    0.00%  #7f7f92  18,42-22,42      (off-palette)

@@ -3,7 +3,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FOG_MIX, FOG_RAMPS, palette, type Palette } from '../src/core/palette.js';
+import { palette, type Palette } from '../src/core/palette.js';
 
 const ROOT = join(import.meta.dirname, '..');
 const GOLDEN = join(import.meta.dirname, 'golden/palette.v1.json');
@@ -189,18 +189,13 @@ describe('palette', () => {
     expect(pureBlack(b)).toEqual(['world.space', 'crew.visor[0]']);
   });
 
-  it('derives each fog veil from its ramp\'s darkest step mixed toward space (D2d, 69be694), never space itself', () => {
-    const ch = (h: string, i: number) => parseInt(h.slice(1 + 2 * i, 3 + 2 * i), 16);
-    const mix = (a: string, b: string, k: number) => `#${[0, 1, 2].map((i) => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * k).toString(16).padStart(2, '0')).join('')}`;
-    expect(Object.keys(palette.fog.veil)).toEqual([...FOG_RAMPS]);
-    expect(FOG_MIX).toEqual({ lit: 0.65, night: 0.82, hatch: 0.42, line: 0.3 });
-    for (const r of FOG_RAMPS) {
-      const dark = palette.world[r][0]!;
-      for (const k of ['lit', 'night', 'hatch', 'line'] as const) {
-        expect(palette.fog.veil[r][k], `fog.veil.${r}.${k}`).toBe(mix(dark, palette.world.space, FOG_MIX[k]));
-        expect(palette.fog.veil[r][k]).not.toBe(palette.world.space); // fog never reads as empty space
-      }
-    }
+  it('draws fog in cloud colours only (#224, C6): mist is the cloud ramp\'s light steps, never its shadow, and no veil is left', () => {
+    expect(Object.keys(palette.fog)).toEqual(['mist']);
+    expect(palette.fog.mist).toHaveLength(4);
+    const light = palette.world.cloud.slice(1);
+    for (const c of palette.fog.mist) expect(light, `fog.mist ${c}`).toContain(c);
+    expect(palette.fog.mist).not.toContain(palette.world.cloud[0]); // the cloud's dark shadow: mist is never dark
+    expect(palette.fog.mist.at(-1)).toBe(palette.world.cloud.at(-1)); // lit, it is the cloud's top
   });
 
   it('takes every crew colour unchanged from published BLK 36', () => {

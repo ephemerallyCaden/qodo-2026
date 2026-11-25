@@ -12,7 +12,8 @@ import { startPose } from '../../web/src/camera/pose.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { SystemScene } from '../../web/src/render/scene.js';
 import { CORONA } from '../../web/src/model/star.js';
-import { CLOUD_FRAG, HAZE_FRAG, STAR, STAR_FRAG } from '../../web/src/render/shaders.js';
+import { FOG_MOON, FOG_SKY, FOG_SURFACE } from '../../web/src/render/fog-glsl.js';
+import { CLOUD_FRAG, HAZE_FRAG, PLANET_FRAG, SHADOW_FRAG, STAR, STAR_FRAG } from '../../web/src/render/shaders.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
 
 const VERTEX = 35633, FRAGMENT = 35632;
@@ -92,7 +93,7 @@ describe('the GLSL three submits for the view', () => {
   });
 });
 
-describe('fog in the GLSL three submits (#74)', () => {
+describe('fog in the GLSL three submits (#74; cloud since #224)', () => {
   const { gl, canvas, sources } = recordingGl();
   const renderer = new THREE.WebGLRenderer({ canvas, context: gl });
   const system = new SystemScene(systemModel(miniLayout));
@@ -102,20 +103,43 @@ describe('fog in the GLSL three submits (#74)', () => {
   const fragments = sources.filter((s) => s.type === FRAGMENT).map((s) => s.src);
   const vertices = sources.filter((s) => s.type === VERTEX).map((s) => s.src);
 
-  it('draws fog inside shaders that already run: every surface and cloud shadow, the haze and the moons', () => {
+  it('draws fog as cloud over the ground, never as a veil on it: the surface keeps only the planet-clear pulse', () => {
     const surfaces = fragments.filter((f) => f.includes('uvec3 pcg3d'));
     expect(surfaces.length).toBeGreaterThanOrEqual(2); // the surface and its cloud shadow
     for (const f of surfaces) expect(f).toMatch(/fog\(p, b(?: - 1)?, (?:c|surface\(p, b - 1\))\)/);
+    for (const f of [...fragments, FOG_SURFACE, FOG_MOON]) expect(f).not.toMatch(/uFogVeil|uRampFog|fogVeil|fogHatch|FOG_QMARK|uFogLimb/); // the D2d veil is gone
+    // the fog's own puffs and their shadow draw only while the planet has fog (the visual-proof fog seam holds uFogOn at 0)
+    expect(CLOUD_FRAG).toContain('if (fogSkyOff()) discard;');
+    expect(SHADOW_FRAG).toContain('if (fogSkyOff() || vReach < 0.0 || vReach > 0.1) discard;');
+    expect(FOG_SKY).toContain('return uFogSky > 0.5 && uFogOn == 0;');
     expect(HAZE_FRAG).toContain('if (fogHidesHaze(vPosW)) discard;'); // mini may draw no hazy look
     expect(fragments.filter((f) => f.includes('uniform vec3 uHaze')).every((f) => f.includes('if (fogHidesHaze(vPosW)) discard;'))).toBe(true);
     expect(CLOUD_FRAG).toContain('if (uSmoke > 0.5 && smokeFogged()) discard;'); // lava smoke hints at health
     const toon = fragments.filter((f) => f.includes('moonFog('));
     expect(toon.length).toBeGreaterThanOrEqual(1);
+    for (const f of toon) expect(f).toContain('uniform vec3 uMoonCloud[4];'); // a fogged moon is cloud
     // #201: (level, kind, progress, from level) per instance
     expect(vertices.some((v) => v.includes('in vec4 aFog;') && v.includes('flat out vec4 vFog;'))).toBe(true);
   });
 
-  it('declares projectionMatrix at most once per fragment program (the fog projects its glyph anchors)', () => {
+  it('declares projectionMatrix and uFogOn at most once per fragment program', () => {
     for (const f of fragments) expect(f.match(/uniform\s+mat4\s+projectionMatrix\s*;/g)?.length ?? 0).toBeLessThanOrEqual(1);
+    for (const f of fragments) expect(f.match(/uniform\s+int\s+uFogOn\s*;/g)?.length ?? 0).toBeLessThanOrEqual(1);
+  });
+
+  it('draws the fog sky as three cloud layers and one shadow per planet, on the ground\'s spin, in cloud, teal and mist', () => {
+    const clouds = fragments.filter((f) => f.includes('uniform float uFogSky;') && f.includes('uniform vec3 uRamp[4];'));
+    expect(clouds.length).toBeGreaterThanOrEqual(1);
+    let skies = 0;
+    system.scene.traverse((o) => {
+      if (!(o instanceof THREE.InstancedMesh)) return;
+      const m = o.material as THREE.ShaderMaterial;
+      if (m.uniforms?.['uFogSky']?.value !== 1) return;
+      skies++;
+      // under the spin that turns the surface, so the cloud stays over its files
+      const spin = o.parent!.parent!;
+      expect(spin.children.some((c) => c instanceof THREE.Mesh && (c.material as THREE.ShaderMaterial).fragmentShader === PLANET_FRAG)).toBe(true);
+    });
+    expect(skies).toBe(system.model.planets.length * 4);
   });
 });

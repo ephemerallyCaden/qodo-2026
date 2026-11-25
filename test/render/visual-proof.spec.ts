@@ -190,16 +190,16 @@ test.describe('visual-proof takes', () => {
     const seen = await fixture();
     expect((await applyChart(seen.dir, { kind: 'baseline', at: seen.layout.source.head })).ok).toBe(true);
     await take(browser, seen, scene, 'seen');
-    const [veil, thin] = measured as [typeof measured[0], typeof measured[0]];
+    const [storm, thin] = measured as [typeof measured[0], typeof measured[0]];
     // the regions cover the frame, so their fog adds up to all of it, and the probes say the same
-    expect(veil.regions['left']!.px + veil.regions['right']!.px).toBe(1280 * 720);
-    expect(veil.regions['left']!.fog + veil.regions['right']!.fog).toBe(veil.total);
-    expect(veil.total, 'a fogged system draws its veil (not vacuous)').toBeGreaterThan(500);
-    expect(a.log.frames[0]!.probes['fog px']).toBe(veil.total);
-    expect(a.log.frames[0]!.probes['fog px on left']).toBe(veil.regions['left']!.fog);
-    expect(a.log.frames[0]!.probes['px of right']).toBe(veil.regions['right']!.px);
-    // reviewed files draw thin cloud at most (haze) or none (charted)
-    expect(thin.total).toBeLessThan(veil.total / 2);
+    expect(storm.regions['left']!.px + storm.regions['right']!.px).toBe(1280 * 720);
+    expect(storm.regions['left']!.fog + storm.regions['right']!.fog).toBe(storm.total);
+    expect(storm.total, 'a fogged system draws its storm cloud (not vacuous)').toBeGreaterThan(500);
+    expect(a.log.frames[0]!.probes['fog px']).toBe(storm.total);
+    expect(a.log.frames[0]!.probes['fog px on left']).toBe(storm.regions['left']!.fog);
+    expect(a.log.frames[0]!.probes['px of right']).toBe(storm.regions['right']!.px);
+    // reviewed files draw thin mist at most (misted) or nothing (clear)
+    expect(thin.total).toBeLessThan(storm.total / 2);
     // the measure drew the frame again with the fog off, and put everything back: the next frame is the same
     expect(readFileSync(join(a.out, 'raw', '0001.png')).equals(readFileSync(join(a.out, 'raw', '0000.png')))).toBe(true);
   });

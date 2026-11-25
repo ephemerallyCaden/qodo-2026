@@ -8,13 +8,12 @@ import { palette } from '../../../src/core/palette.js';
 import { ASPECT, FAR, FOV_DEG, NEAR, basis, fovOf, project, projectedRadius, systemDepth, type OrbitPose } from '../camera/pose.js';
 import type { DepthStretch } from '../model/depth.js';
 import { fileFogAt, levelBy, planetPulse, planetTally, type FogEvent } from '../model/fog.js';
-import { loopPhase, TURNS, turnAngle } from '../model/motion.js';
-import { frameWidth } from '../model/pixels.js';
+import { TURNS, turnAngle } from '../model/motion.js';
 import { mulberry32 } from '../model/prng.js';
 import { MOON_RADIUS, MOONLET_RADIUS, moonOffset, moonletPosition, planetCentre, type SystemModel } from '../model/system.js';
 import { add, scale, sub, type Sphere, type Vec3 } from '../model/vec.js';
 import { LIGHT_VIEW, orbitingSpheres, placeSpheres, ramp, shaderMaterial, SHARED, toonMaterial } from './materials.js';
-import { FOG_SHARED, moonFogAttribute, setMoonFog } from './fog.js';
+import { moonFogAttribute, setMoonFog } from './fog.js';
 import { BeaconMarkers } from './beacons.js';
 import { DroneFleet } from './drone-fleet.js';
 import { MOON_GEO, makePlanet, type PlanetObject } from './planet.js';
@@ -90,7 +89,7 @@ export class SystemScene {
     // Moonlets (root files, unmatched tests): the planets' test-moon look (star-art.md S6: warm peach,
     // art-direction §4 small moons), on the star's innermost orbit.
     if (model.star.moonlets.length > 0) {
-      const mat = toonMaterial(palette.world.moonBody, palette.fog.veil.moonBody);
+      const mat = toonMaterial(palette.world.moonBody);
       const orbit = model.star.moonlets[0]!.orbit; // one orbit for every moonlet
       const geo = MOON_GEO.clone(); // its own copy: it carries the moonlets' fog
       this.moonletFog = moonFogAttribute(model.star.moonlets.length);
@@ -124,7 +123,6 @@ export class SystemScene {
 
   /** Writes every body's fog for this frame: a pure function of (fog, events, frame). */
   private poseFog(frame: number): void {
-    FOG_SHARED.uFogPhase.value = loopPhase(frame);
     if (!this.fogDirty && this.fogEvents.length === 0) return;
     const level = levelBy(this.fog);
     const events = new Map(this.fogEvents.map((e) => [e.fileId, e]));
@@ -174,7 +172,6 @@ export class SystemScene {
     // The key light is view-relative, so every planet keeps its top-left crescent from any angle.
     SHARED.uLight.value.set(...add(add(scale(b.right, LIGHT_VIEW.x), scale(b.up, LIGHT_VIEW.y)), scale(b.back, LIGHT_VIEW.z))).normalize();
     this.starfield.position.copy(this.camera.position);
-    FOG_SHARED.uFogView.value.set(frameWidth(pixelHeight), pixelHeight);
     this.poseFog(frame);
 
     const star = sub([0, 0, 0], origin);

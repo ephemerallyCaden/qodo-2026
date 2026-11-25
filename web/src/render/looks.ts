@@ -34,14 +34,16 @@ export interface LookSpec {
 }
 
 const base = { float: 0, mass: 2.0, size: 1, lift: 1, strays: 0, flat: 0.6, stretch: 1, fissure: false };
-const CLOUD: Weather = { ...base, ramp: w.cloud, cover: 0.27, gain: 0.57, float: 0.055, strays: 0.012 }; // Planetarium: ~25–30%
-const THIN: Weather = { ...base, ramp: w.cloud, cover: 0.27, gain: 0.63, float: 0.05, mass: 2.2, size: 0.7, lift: 0.5, strays: 0.012 };
 const SPORE: Weather = { ...base, ramp: w.spore, cover: 0.27, gain: 0.62, float: 0.05, mass: 2.2, size: 0.7, lift: 1.1, strays: 0.05 };
 const ASH: Weather = { ...base, ramp: w.ash, cover: 0.08, gain: 0.3, size: 0.45, lift: 0.3, flat: 0.3, stretch: 3.0, fissure: true }; // light, low, streaky smoke
 
+/**
+ * The looks. Lush and ocean have no weather of their own: their cream clouds are the fog (art-direction
+ * §9, #224), so a fully discovered planet has none. Toxic's rust smoke and lava's ash stay: health cues.
+ */
 export const LOOKS: Readonly<Record<Look, LookSpec>> = {
-  lush: { id: LOOK_ID.lush, ramps: [w.ocean, w.land, w.cap, w.glow], sea: [0.47, 0.55], weather: CLOUD, haze: null },
-  ocean: { id: LOOK_ID.ocean, ramps: [w.water, w.land, w.cap, w.glow], sea: [0.7, 0.73], weather: THIN, haze: w.haze.ocean },
+  lush: { id: LOOK_ID.lush, ramps: [w.ocean, w.land, w.cap, w.glow], sea: [0.47, 0.55], weather: null, haze: null },
+  ocean: { id: LOOK_ID.ocean, ramps: [w.water, w.land, w.cap, w.glow], sea: [0.7, 0.73], weather: null, haze: w.haze.ocean },
   ice: { id: LOOK_ID.ice, ramps: [w.ice, w.crevasse, w.water, w.glow], sea: [0.5, 0.5], weather: null, haze: w.haze.ice },
   toxic: { id: LOOK_ID.toxic, ramps: [w.sludge, w.toxic, w.fungus, w.glow], sea: [0.5, 0.56], weather: SPORE, haze: w.haze.toxic },
   desert: { id: LOOK_ID.desert, ramps: [w.sand, w.rock, w.cap, w.glow], sea: [0.5, 0.5], weather: null, haze: null },

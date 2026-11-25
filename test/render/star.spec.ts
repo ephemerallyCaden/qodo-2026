@@ -244,10 +244,12 @@ test.describe('the star (#81)', () => {
     const [mini] = await render(view, { ...input, fog: MINI_FOG }, [0]);
     for (const r of [fogged!, clear!, mini!]) assertRendered(r.pixels, r.stats, LOW_RES);
     const a = colours(fogged!.pixels), b = colours(clear!.pixels), c = colours(mini!.pixels);
-    // Within the star's span on screen (planets elsewhere share the glow, sand and cloud colours).
+    // Within the star's span on screen (planets elsewhere share the glow, sand and cloud colours), where the
+    // all-clear frame shows the star: a fogged moonlet is cloud (#224), whose lit top is the star core's own
+    // colour, so the star's pixels are found in the frame where no fog is drawn.
     const span = discPx(MINI, pose.dist) * 1.4 + 1;
     const changed = (x: readonly string[], y: readonly string[]) => x.flatMap((h, i) =>
-      (h !== y[i] && radiusOf(fogged!.pixels, i) <= span && (STAR_COLOURS.includes(h) || STAR_COLOURS.includes(y[i]!)) ? [i] : []));
+      (h !== y[i] && radiusOf(fogged!.pixels, i) <= span && STAR_COLOURS.includes(b[i]!) ? [i] : []));
     console.log(`star px: ${count(a, STAR_COLOURS)}; fog changed ${diffPixels(fogged!.pixels, clear!.pixels)} px of the frame, ${changed(a, b).length} of them star-coloured`);
     expect(count(a, STAR_COLOURS)).toBeGreaterThan(3000);
     expect(diffPixels(fogged!.pixels, clear!.pixels), 'not vacuous: the fog changed the moonlets').toBeGreaterThan(0);
