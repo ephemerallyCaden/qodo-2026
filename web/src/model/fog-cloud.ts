@@ -65,6 +65,45 @@ export const FADE_SOFT = 0.15;
 /** One puff: a direction from the planet's centre (ground frame, not normalised), its shape, and its mass's dome anchor (null: none). */
 export interface Puff { dir: Vec3; size: number; lift: number; flat: number; stretch: number; float: number; anchor: Vec3 | null }
 
+/** A lead puff's size, a share of its layer's: min + a seeded share of spread. */
+const LEAD_SIZE = { min: 0.85, spread: 0.3 } as const;
+/** A satellite's size, a share of its lead's, and its lift, a share of its layer's. */
+const SAT_SIZE = { min: 0.5, spread: 0.25 } as const;
+const SAT_LIFT = 0.5;
+
+type PuffShape = Pick<Puff, 'size' | 'lift' | 'flat' | 'stretch' | 'float'>;
+
+/**
+ * How far a puff's centre sits from the planet's centre, in planet radii (the weather's put(),
+ * render/planet.ts). A puff is drawn as the unit sphere scaled by size × stretch east, size × flat up
+ * and size north (render/fog.ts puffMatrix), centred here.
+ */
+export function puffRise(p: PuffShape): number {
+  return 1 + p.float + p.size * p.flat * (0.75 + p.lift * 0.5);
+}
+
+/** The farthest point of a puff from the planet's centre, in planet radii: the top of its ellipsoid, or its flank when the puff is wide and flat. */
+function puffTop(p: PuffShape): number {
+  const r = puffRise(p), a = p.size * Math.max(p.stretch, 1), b = p.size * p.flat;
+  // |centre + point|² over the ellipsoid, with s the sine of the point's elevation: a² + r² + 2rbs - (a² - b²)s²
+  const s = a > b ? Math.min(1, (r * b) / (a * a - b * b)) : 1;
+  return Math.sqrt(a * a * (1 - s * s) + (r + b * s) ** 2);
+}
+
+/** The farthest any of a layer's puffs reaches, in planet radii: its biggest lead puff at full cover, or its biggest satellite. */
+export function layerTop(layer: CloudLayer): number {
+  const lead = layer.size * (LEAD_SIZE.min + LEAD_SIZE.spread), sat = lead * (SAT_SIZE.min + SAT_SIZE.spread);
+  const shape = { flat: layer.flat, stretch: layer.stretch, float: layer.float };
+  return Math.max(puffTop({ ...shape, size: lead, lift: layer.lift }), puffTop({ ...shape, size: sat, lift: layer.lift * SAT_LIFT }));
+}
+
+/**
+ * The fog sky's top: how far the storm cloud (its bulge past the limb included) or the mist can reach
+ * from a planet's centre, in planet radii. A drone circling a planet clears it (drones/place.ts
+ * homeBody), whatever the planet's fog, since any file can be refogged.
+ */
+export const FOG_SKY_TOP = Math.max(layerTop(STORM), layerTop(MIST));
+
 /** A planet's fog sky at a moment: the storm cloud, the part of it that is clearing (drawn teal), and the mist. */
 export interface FogSky {
   storm: Puff[];
@@ -175,7 +214,7 @@ export class CloudPlan {
       const h = (tag: string) => hash01(`${layer.id}|${tag}|${this.seed}|${i}`);
       const jit = (tag: string) => (h(tag) - 0.5) * 0.09;
       const [dx, dy, dz] = [c[3 * i]!, c[3 * i + 1]!, c[3 * i + 2]!];
-      const size = layer.size * (0.85 + h('s') * 0.3);
+      const size = layer.size * (LEAD_SIZE.min + h('s') * LEAD_SIZE.spread);
       // satellites: lumpy edges and fill between neighbouring cells, round the cell in its tangent plane
       const el = Math.hypot(dz, dx) || 1;
       const [ex, ez] = [dz / el, -dx / el];
@@ -185,7 +224,7 @@ export class CloudPlan {
       const sats = Array.from({ length: count }, (_, q) => {
         const ang = h(`a${q}`) * Math.PI * 2, off = 0.11 + h(`o${q}`) * 0.06;
         const e = Math.cos(ang) * 1.4 * layer.stretch * off, nn = Math.sin(ang) * 0.7 * off;
-        return { dir: [dx + ex * e + north[0] * nn, dy + north[1] * nn, dz + ez * e + north[2] * nn] as Vec3, size: 0.5 + h(`z${q}`) * 0.25 };
+        return { dir: [dx + ex * e + north[0] * nn, dy + north[1] * nn, dz + ez * e + north[2] * nn] as Vec3, size: SAT_SIZE.min + h(`z${q}`) * SAT_SIZE.spread };
       });
       return { dir: [dx + jit('x'), dy + jit('y'), dz + jit('z')], size, sats };
     });
@@ -226,7 +265,7 @@ export class CloudPlan {
       const size = cl.size * (0.4 + 0.6 * k); // a thinning front shrinks the puffs before they go
       const out = into(i);
       out.push({ dir: cl.dir, size, lift: layer.lift * (0.7 + 0.3 * k), flat: layer.flat, stretch: layer.stretch, float: layer.float, anchor });
-      for (const s of cl.sats) out.push({ dir: s.dir, size: size * s.size, lift: layer.lift * 0.5, flat: layer.flat, stretch: layer.stretch, float: layer.float, anchor });
+      for (const s of cl.sats) out.push({ dir: s.dir, size: size * s.size, lift: layer.lift * SAT_LIFT, flat: layer.flat, stretch: layer.stretch, float: layer.float, anchor });
     }
   }
 

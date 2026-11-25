@@ -4,7 +4,7 @@
 // model/fog-cloud.ts; the state is model/fog.ts. Colours come only from palette.ts (AGENTS.md Rule 5).
 import * as THREE from 'three';
 import { palette } from '../../../src/core/palette.js';
-import { CloudPlan, SKY_SITES, type Puff } from '../model/fog-cloud.js';
+import { CloudPlan, puffRise, SKY_SITES, type Puff } from '../model/fog-cloud.js';
 import { FOG_TEX_ROWS, type FileFogAt, type Pulse, type SurfacePlan, cellRows } from '../model/fog.js';
 import { centresOf } from '../model/territory.js';
 import { tangentFrame } from './noise.js';
@@ -78,13 +78,13 @@ export interface FogSkyMaterials { storm: THREE.Material; teal: THREE.Material; 
 export interface PuffGeometry { near: THREE.BufferGeometry; far: THREE.BufferGeometry }
 
 const M4 = new THREE.Matrix4(), X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3();
-/** A puff's instance matrix: squashed along its direction and set on its float, as the weather's puffs (render/planet.ts put()). */
+/** A puff's instance matrix: squashed along its direction and set at its rise, as the weather's puffs (render/planet.ts put()). */
 function puffMatrix(p: Puff): THREE.Matrix4 {
   const l = Math.hypot(p.dir[0], p.dir[1], p.dir[2]);
   const d: [number, number, number] = [p.dir[0] / l, p.dir[1] / l, p.dir[2] / l];
   const { east, north } = tangentFrame(d);
   M4.makeBasis(X.set(east[0], east[1], east[2]).multiplyScalar(p.size * p.stretch), Y.set(d[0], d[1], d[2]).multiplyScalar(p.size * p.flat), Z.set(north[0], north[1], north[2]).multiplyScalar(p.size));
-  const r = 1 + p.float + p.size * p.flat * (0.75 + p.lift * 0.5);
+  const r = puffRise(p);
   return M4.setPosition(d[0] * r, d[1] * r, d[2] * r);
 }
 

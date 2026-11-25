@@ -2,17 +2,21 @@
 // and what the HUD says, the validator, the labels and panel rows, the orbits, the dev fixture and the palette.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { DroneView } from '../../src/core/contract/drones.js';
 import { palette } from '../../src/core/palette.js';
 import { parseDrones } from '../../web/src/data/client.js';
 import { checkDrones } from '../../web/src/drones/check.js';
-import { DRONE_TURNS, placeDrone } from '../../web/src/drones/place.js';
+import { DRONE_PICK_RADIUS, DRONE_TURNS, homeBody, placeDrone } from '../../web/src/drones/place.js';
 import { pick } from '../../web/src/camera/pose.js';
 import { capLabels, DRONE_CAP, droneLabels, droneRows, droneStatus, entryOf, selectDrones } from '../../web/src/drones/select.js';
 import { FPS, LOOP_FRAMES, LOOP_SECONDS } from '../../web/src/model/motion.js';
 import { MOTION_LOOP, sessionParams } from '../../web/src/render/drone.js';
+import { FOG_SKY_TOP, layerTop, MIST } from '../../web/src/model/fog-cloud.js';
+import { fileFogAt, surfacePlan, type Level } from '../../web/src/model/fog.js';
 import { planetCentre, systemModel } from '../../web/src/model/system.js';
+import { FogClouds } from '../../web/src/render/fog.js';
 import { miniDrones, miniLayout } from '../fixtures/contract/mini.js';
 import { droneView, repoDrones, session, viewDrones } from '../fixtures/drones.js';
 import { selfLikeRoots } from '../fixtures/overview.js';
@@ -188,6 +192,51 @@ describe('orbits (AC 5, Rule 4)', () => {
     expect(dist(at(0).centre, [c, 0, 0])).toBeGreaterThan(planet.radius);
     expect(at(0, 1).centre).not.toEqual(at(0, 2).centre);
     expect(placeDrone(model, 'd_nowhere', 1, 0)).toBeNull();
+  });
+});
+
+describe('drones clear the fog sky (#224, Qodo 1f87de0f)', () => {
+  // The largest planet with no moons, so only its clouds set how far out its drones fly.
+  const layout = structuredClone(miniLayout);
+  const docs = layout.planets.find((p) => p.moons.length === 0)!;
+  docs.radiusMilli = layout.constants.maxPlanetRadiusMilli;
+  const model = systemModel(layout);
+  const planet = model.planets.find((p) => p.dirId === docs.dirId)!;
+  const plan = surfacePlan(planet.surface);
+  /** The farthest drawn vertex of the planet's fog sky from its centre, in planet radii, with every file at `level`. */
+  const skyTop = (level: Level): number => {
+    const puff = new THREE.IcosahedronGeometry(1, 1); // render/planet.ts PUFF_NEAR, the finer of the two
+    const mat = new THREE.ShaderMaterial();
+    const sky = new FogClouds(plan, planet.seed, { near: puff, far: puff }, { storm: mat, teal: mat, mist: mat, shadow: mat });
+    sky.set(plan.fileIds.map(() => fileFogAt(level, undefined, 0)));
+    const m = new THREE.Matrix4(), v = new THREE.Vector3(), pos = puff.getAttribute('position');
+    let top = 0;
+    for (const mesh of sky.group.children as THREE.InstancedMesh[]) {
+      for (let i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, m);
+        for (let j = 0; j < pos.count; j++) top = Math.max(top, v.fromBufferAttribute(pos, j).applyMatrix4(m).length());
+      }
+    }
+    sky.dispose();
+    return top;
+  };
+
+  it.each([{ level: 2, sky: 'storm cloud (fogged), its bulge past the limb included' }, { level: 1, sky: 'mist (misted)' }] as const)('keeps every drone, its drift and bob included, outside a planet\'s $sky', ({ level }) => {
+    const top = skyTop(level) * planet.radius;
+    expect(top, 'the sky is drawn').toBeGreaterThan(planet.radius);
+    for (let seed = 0; seed < 64; seed++) {
+      for (const f of [0, LOOP_FRAMES / 4, LOOP_FRAMES / 2]) {
+        const d = Math.hypot(...placeDrone(model, planet.dirId, seed, f)!.centre.map((x, i) => x - planetCentre(planet, f)[i]!));
+        expect(d - DRONE_PICK_RADIUS, `seed ${seed}, frame ${f}`).toBeGreaterThan(top);
+      }
+    }
+  });
+
+  it("takes the reach a drone clears from the fog sky's own shape, which bounds the drawn puffs and is reached by them", () => {
+    expect(skyTop(2)).toBeLessThanOrEqual(FOG_SKY_TOP);
+    expect(skyTop(2)).toBeGreaterThan(FOG_SKY_TOP * 0.99); // not a padded number
+    expect(skyTop(1)).toBeLessThanOrEqual(layerTop(MIST));
+    expect(homeBody(model, planet.dirId, 0)!.reach).toBe(planet.radius * FOG_SKY_TOP);
   });
 });
 
