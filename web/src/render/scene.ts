@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import type { FogView } from '../../../src/core/contract/fog.js';
 import { palette } from '../../../src/core/palette.js';
-import { ASPECT, FAR, FOV_DEG, NEAR, basis, fovOf, project, projectedRadius, systemDepth, type OrbitPose } from '../camera/pose.js';
+import { ASPECT, FAR, FOV_DEG, NEAR, basis, fovOf, project, projectedRadius, startPose, systemDepth, type OrbitPose } from '../camera/pose.js';
+import { shipCorners } from '../crew/place.js';
 import type { DepthStretch } from '../model/depth.js';
 import { fileFogAt, levelBy, planetPulse, planetTally, type FogEvent } from '../model/fog.js';
 import { TURNS, turnAngle } from '../model/motion.js';
@@ -16,7 +17,7 @@ import { LIGHT_VIEW, orbitingSpheres, placeSpheres, ramp, shaderMaterial, SHARED
 import { moonFogAttribute, setMoonFog } from './fog.js';
 import { BeaconMarkers } from './beacons.js';
 import { DroneFleet } from './drone-fleet.js';
-import { CrewShip } from './ship.js';
+import { CrewShip, type Rider } from './ship.js';
 import { MOON_GEO, makePlanet, type PlanetObject } from './planet.js';
 import { STAR, STAR_FRAG, STARFIELD_FRAG, STARFIELD_VERT } from './shaders.js';
 
@@ -69,8 +70,8 @@ export class SystemScene {
   /** The fog changed since its rows were last written; events rewrite them every frame anyway. */
   private fogDirty = true;
   private readonly disposables: { dispose(): void }[] = [];
-  /** The depth fade's later steps, scaled to this system (#59). */
-  private readonly depth: DepthStretch;
+  /** The depth fade's later steps, scaled to this system (#59) as the start pose sees it, the crew's ship included (#207). */
+  private depth: DepthStretch;
 
   constructor(readonly model: SystemModel) {
     this.depth = systemDepth(model);
@@ -108,6 +109,15 @@ export class SystemScene {
       this.scene.add(obj.root);
       return obj;
     });
+  }
+
+  /**
+   * Seats this crew aboard the ship (#207; ship.ts CrewShip.set), and measures the depth fade again from the
+   * start pose that now frames the ship too. Without a ship it is the layout's own, as before.
+   */
+  setCrew(seats: readonly (Rider | null)[]): void {
+    this.crew.set(seats);
+    this.depth = systemDepth(this.model, startPose(this.model, shipCorners(this.model, this.crew.spec)));
   }
 
   /** Every file this scene draws (settlements, test moons, moonlets): what fog events are about. */

@@ -26,6 +26,8 @@ export interface CrewHost {
   release(): void;
   /** The other panels laid over the view, which the crew panel docks clear of when they're open. */
   others(): readonly HTMLElement[];
+  /** The ship drawn changed (another crew, or none): the start pose that frames it moved. */
+  reframe(): void;
 }
 
 const short = (head: string) => head.slice(0, 7);
@@ -90,9 +92,11 @@ export class Crew {
       return;
     }
     if (!drawn || gen !== this.gen) return;
+    const before = this.seating?.seats.length ?? 0;
     this.data = data;
     this.seating = seating;
     this.line.textContent = (seating ? crewStatus(seating) : 'crew: none loaded') + (this.note ? ` (${this.note})` : '');
+    if ((seating?.seats.length ?? 0) !== before) this.host.reframe(); // the ship's size, so Home's framing, follows its seats
     const open = this.selected();
     if (open) this.showPanel(open, false);
     else this.deselect();

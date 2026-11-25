@@ -436,7 +436,7 @@ async function live(reduced: boolean) {
     reducedMotion: reduced, fogChange: { cleared: 0, refogged: 0 }, fogTicket: () => 1,
     applyFog(f: FogView | null) { view.fog = f; view.onFog?.(f); return true; },
     async load(layout: LayoutV1, fog: FogView | null) { model = systemModel(layout); view.applyFog(fog); },
-    selectedDrone: null, setDrones: async () => true, selectedPerson: null, selectedName: '', setCrew: async () => true, pickCrewAt: () => null, crewSpec: null, crewSeat: () => null, setBeacons: () => true, pickDroneAt: () => null, pickAt: () => null, resize: () => {},
+    selectedDrone: null, setDrones: async () => true, selectedPerson: null, selectedName: '', setCrew: async () => true, pickCrewAt: () => null, crewSpec: null, crewSeat: () => null, homePose: (frame = 0) => (model ? startPoseAt(model, frame) : null), setBeacons: () => true, pickDroneAt: () => null, pickAt: () => null, resize: () => {},
     setCoChange: () => true, coChangeLines: () => [], arrowAt: () => null, focusFile: null, focusSince: 0, // #211, as orbits.test.ts
     draw: (frame: number, pose: OrbitPose, focus: number | null) => { drawn.push({ frame, pose: structuredClone(pose), focus }); return {}; },
     focusTarget: (i: number, frame: number) => (model ? { centre: planetCentre(model.planets[i]!, frame), radius: model.planets[i]!.radius } : null),

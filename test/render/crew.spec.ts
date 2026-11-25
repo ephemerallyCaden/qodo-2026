@@ -12,7 +12,7 @@ import type { CrewMember, CrewView } from '../../src/core/contract/crew.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { palette } from '../../src/core/palette.js';
 import { startPose, toCameraPose, type OrbitPose } from '../../web/src/camera/pose.js';
-import { placeShip, portholes } from '../../web/src/crew/place.js';
+import { placeShip, portholes, shipCorners } from '../../web/src/crew/place.js';
 import { FPS } from '../../web/src/model/motion.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { buildShip, CYCLE, MAX_ABOARD } from '../../web/src/render/ship-spec.js';
@@ -104,6 +104,21 @@ test.describe('crew ship', () => {
     expect(count(capt.pixels, gold)).toBeGreaterThan(20);
     expect(count(none.pixels, gold)).toBe(0);
     expect(count(capt.pixels, visor)).toBeGreaterThan(40);
+    expect(view.errors).toEqual([]);
+  });
+
+  test('with a crew, the start view (no camera given, as Home) frames the ship; without one it is the layout\'s own', async ({ page }) => {
+    const view = await openView(page, systemView());
+    const home = toCameraPose(startPose(model, shipCorners(model, buildShip(ABOARD))));
+    const [shipHome] = await render(view, { layout: MINI, crew: crewOn(MINI), depthFade: false }, [0]);
+    const [bareHome] = await render(view, { layout: MINI, camera: home, depthFade: false }, [0]);
+    const [plain] = await render(view, { layout: MINI, depthFade: false }, [0]);
+    const [plainPose] = await render(view, { layout: MINI, camera: toCameraPose(startPose(model)), depthFade: false }, [0]);
+    const ship = diffPixels(bareHome!.pixels, shipHome!.pixels);
+    console.log(`start view: the ship adds ${ship} px; the framing moved ${diffPixels(plain!.pixels, bareHome!.pixels)} px of the bare system`);
+    expect(shipHome!.stats.drawCalls - bareHome!.stats.drawCalls).toBe(1 + ABOARD + 1); // every proxy in view
+    expect(ship).toBeGreaterThan(400);
+    expect(diffPixels(plain!.pixels, plainPose!.pixels)).toBe(0); // no crew: the start pose is untouched
     expect(view.errors).toEqual([]);
   });
 

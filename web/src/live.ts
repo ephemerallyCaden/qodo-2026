@@ -4,7 +4,7 @@
 import type { FogView } from '../../src/core/contract/fog.js';
 import { Beacons } from './beacons/controller.js';
 import { CoChange } from './cochange/controller.js';
-import { PARKED_POSE, startPoseAt } from './camera/pose.js';
+import { PARKED_POSE, type OrbitPose } from './camera/pose.js';
 import { FreeFlightRig, GLIDE_MS } from './camera/rig.js';
 import { ViewError, type DataClient } from './data/client.js';
 import { Crew } from './crew/controller.js';
@@ -72,6 +72,18 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   /** #95: what the HUD says while the server's own rescans fail; null once one works again. */
   let rescanFailed: string | null = null;
   const rig = new FreeFlightRig(PARKED_POSE); // replaced by the start pose once a layout loads
+  /**
+   * The start pose the camera was last put at (first load, Home), while the user hasn't moved it since: a crew
+   * that arrives or changes then reframes it, so Home's framing includes the ship (#207). Null once moved.
+   */
+  let atHome: OrbitPose | null = null;
+  /** The camera to the start pose at the frame shown, the crew's ship framed too (View.homePose). */
+  const goHome = () => {
+    const p = view.homePose(shown());
+    if (!p) return;
+    atHome = p;
+    rig.reset(p);
+  };
   // #75: review and chart the focused planet's unseen files (the star's in free flight).
   const panel = new Panel({ client, fogTicket: () => view.fogTicket(), applyFog: (f, t) => view.applyFog(f, t),
     announce: (t) => hud.announce(t), release: () => view.pass.canvas.focus({ preventScroll: true }),
@@ -147,7 +159,9 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   // #207: the crew aboard the ship, refetched with every layout load and snapshot event. One selection at a
   // time: picking a crew member closes a drone's panel, and the other way round.
   const crew = new Crew({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }),
-    others: () => [byId('panel'), byId('tree')] });
+    others: () => [byId('panel'), byId('tree')],
+    // the ship changed: a camera still where Home put it frames the new ship (#207)
+    reframe: () => { if (atHome !== null && rig.pose() === atHome && !rig.focused() && !rig.moving()) { goHome(); redraw(); } } });
   const deselect = () => { drones.deselect(); crew.deselect(); };
 
   const fetchFog = (): Promise<Fetched> => client.fog().then((fog) => ({ fog }), (error: unknown) => ({ error }));
@@ -166,7 +180,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       // Later reloads keep the camera (planets keep their slots, append-only, and the frame count runs
       // on, so nothing jumps), except that a system which started empty, framed on its star, is
       // reframed once planets appear. The start pose turns with the orbits (#60): framed as at frame 0.
-      if (!loaded || (!framedPlanets && model.planets.length > 0)) rig.reset(startPoseAt(model, shown()));
+      if (!loaded || (!framedPlanets && model.planets.length > 0)) goHome();
       framedPlanets = model.planets.length > 0;
       loaded = true;
       // focusId is read now, after the awaits, so a focus change made during the reload wins
@@ -241,7 +255,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       setFocus(focus === null ? (dir > 0 ? 0 : n - 1) : (focus + dir + n) % n);
     },
     release: () => { deselect(); setFocus(null); },
-    home: () => { deselect(); if (view.model) { rig.reset(startPoseAt(view.model, shown())); setFocus(null); } },
+    home: () => { deselect(); if (view.model) { goHome(); setFocus(null); } },
   });
 
   /**
@@ -254,7 +268,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     if (!loaded || !m) return;
     deselect();
     if (place.kind === 'star' || place.kind === 'moonlet') {
-      rig.reset(startPoseAt(m, shown()));
+      goHome();
       setFocus(null);
     } else {
       const i = m.planets.findIndex((p) => p.dirId === place.planet);

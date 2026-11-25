@@ -9,6 +9,7 @@ import type { FogView } from '../../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
 import { ViewError, type DataClient } from '../../../web/src/data/client.js';
 import { runLive } from '../../../web/src/live.js';
+import { startPoseAt } from '../../../web/src/camera/pose.js';
 import { systemModel, type SystemModel } from '../../../web/src/model/system.js';
 import type { Hud } from '../../../web/src/ui/hud.js';
 import type { View } from '../../../web/src/view.js';
@@ -134,6 +135,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     pickCrewAt: () => null,
     crewSpec: null,
     crewSeat: () => null,
+    homePose: (frame = 0) => (model ? startPoseAt(model, frame) : null), // no crew drawn: the layout's own start pose
     beaconsDrawn: null as BeaconView | null,
     setBeacons: (v: BeaconView | null) => { view.beaconsDrawn = v; return true; },
     coDrawn: null as CoChangeView | null,

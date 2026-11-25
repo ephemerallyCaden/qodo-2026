@@ -5,7 +5,7 @@ import type { BeaconView } from '../../src/core/contract/beacons.js';
 import type { CoChangeView } from '../../src/core/contract/cochange.js';
 import type { FogView } from '../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
-import { eyeOf, fovOf, pick, project, projectedRadius, startPose, type OrbitPose } from './camera/pose.js';
+import { eyeOf, fovOf, pick, project, projectedRadius, startPose, startPoseAt, type OrbitPose } from './camera/pose.js';
 import { ViewError } from './data/client.js';
 import { beaconSpots, spotBody } from './model/beacons.js';
 import { FogLedger } from './model/fog.js';
@@ -23,7 +23,7 @@ import { PixelPass } from './render/pixel.js';
 import { DroneFleet, type FleetEntry } from './render/drone-fleet.js';
 import { CrewShip, type Rider } from './render/ship.js';
 import type { ShipSpec } from './render/ship-spec.js';
-import { placeShip, portholes } from './crew/place.js';
+import { placeShip, portholes, shipCorners } from './crew/place.js';
 import { capLabels } from './drones/select.js';
 import { SystemScene } from './render/scene.js';
 import { starOccluders } from './render/corona.js';
@@ -162,7 +162,7 @@ export class View {
     const next = new SystemScene(systemModel(layout));
     try {
       next.fleet.set(this.dronesHead === layout.source.head ? this.drones : []);
-      next.crew.set(this.crewHead === layout.source.head ? this.crewSeats : []);
+      next.setCrew(this.crewHead === layout.source.head ? this.crewSeats : []);
       next.beacons.set(this.beaconHead === layout.source.head ? beaconSpots(this.beaconView, next.model).spots : []);
       next.pose(0, startPose(next.model), this.pass.height);
       // Compile every program up front, hidden ones (small planets' cloud shadows) included, and force
@@ -244,7 +244,7 @@ export class View {
         if (failed.length > 0) throw new ViewError("The view could not compile the crew's ship.", failed);
       }
       if (this.system !== s || head !== this.layoutHead) return false; // a layout reload replaced the scene meanwhile
-      s.crew.set(seats);
+      s.setCrew(seats);
     } finally {
       probe.dispose();
     }
@@ -508,6 +508,15 @@ export class View {
     }
     if (this.crewExtra > 0) below(at.centre, 0, `+${this.crewExtra} crew`, UI_COLOURS.ink);
     return out;
+  }
+
+  /**
+   * The start pose of the system drawn, at `frame` (startPoseAt), with the crew's ship fitted in when one is
+   * drawn (#207: Home always frames it); exactly the layout's own start pose without one. Null before a layout.
+   */
+  homePose(frame = 0): OrbitPose | null {
+    const s = this.system;
+    return s ? startPoseAt(s.model, frame, shipCorners(s.model, s.crew.spec)) : null;
   }
 
   /** The ship drawn (#207), or null when nobody is aboard. */

@@ -6,14 +6,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { CrewDetail, CrewMember, CrewView } from '../../src/core/contract/crew.js';
 import { palette } from '../../src/core/palette.js';
-import { startPose } from '../../web/src/camera/pose.js';
+import { project, startPose, startPoseAt, systemDepth } from '../../web/src/camera/pose.js';
 import { checkCrew, checkCrewDetail } from '../../web/src/crew/check.js';
 import { bodyRows, crewAnnouncement, crewDetailState, crewFileGroups, crewRows, RESCAN_NOTE } from '../../web/src/crew/detail.js';
-import { placeShip, portholes, SHIP_FOOTPRINT, SHIP_MARGIN, shipPoint, shipSpot } from '../../web/src/crew/place.js';
+import { placeShip, portholes, shipCorners, SHIP_FOOTPRINT, SHIP_MARGIN, shipPoint, shipSpot } from '../../web/src/crew/place.js';
 import { crewStatus, riderOf, seatCrew } from '../../web/src/crew/select.js';
 import { DRONE_LANE_OUT, DRONE_PICK_RADIUS, homeBody } from '../../web/src/drones/place.js';
 import { FPS, ORBIT_FRAMES } from '../../web/src/model/motion.js';
-import { planetReach, systemModel } from '../../web/src/model/system.js';
+import { planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
+import type { Vec3 } from '../../web/src/model/vec.js';
 import { astronautLook, blinkAt, CONTRIBUTORS, figureLayout, figurePose, idleOf, type Ring } from '../../web/src/render/astronaut.js';
 import { EYE_DESIGNS } from '../../web/src/render/faces.js';
 import { shipBounds, shipGlsl } from '../../web/src/render/ship-glsl.js';
@@ -254,6 +255,31 @@ describe('where the ship is (C4)', () => {
           const y = Math.min(w[1], bottom);
           expect(Math.hypot(rho - p.orbit, y), `${p.path}`).toBeGreaterThan(clear);
         }
+      }
+    }
+  });
+
+  it('with no crew, the start pose and depth fade are exactly the layout\'s own (nothing without a crew moves)', () => {
+    for (const m of models) {
+      expect(startPose(m, shipCorners(m, null))).toEqual(startPose(m));
+      expect(systemDepth(m, startPose(m, []))).toEqual(systemDepth(m));
+    }
+  });
+
+  it('with a crew, the start pose frames the whole ship and every body, the ship on the star\'s left (clear of the review panel\'s top right)', () => {
+    for (const m of models) for (const n of [1, 6, 16]) {
+      const corners = shipCorners(m, buildShip(n)), pose = startPose(m, corners);
+      const inFit = (p: Vec3) => { const q = project(pose, p); return q !== null && Math.abs(q.x) <= 0.92 + 1e-9 && Math.abs(q.y) <= 0.85 + 1e-9; };
+      expect(corners.every(inFit), `n=${n}`).toBe(true);
+      expect(m.planets.every((p) => inFit(planetCentre(p, 0)))).toBe(true);
+      expect(inFit([0, 0, 0])).toBe(true);
+      expect(project(pose, placeShip(m, 0).centre)!.x).toBeLessThan(project(pose, [0, 0, 0])!.x);
+      // Home later: the same framing turned with the orbits, the ship still fully in it
+      const later = startPoseAt(m, 9000, corners), at = placeShip(m, 9000);
+      const { lo, hi } = shipBounds(buildShip(n), 0);
+      for (const x of [lo[0], hi[0]]) for (const z of [lo[2], hi[2]]) for (const y of [lo[1], hi[1]]) {
+        const q = project(later, shipPoint(at, [x, y, z], 0))!;
+        expect(Math.abs(q.x)).toBeLessThanOrEqual(0.93); expect(Math.abs(q.y)).toBeLessThanOrEqual(0.87);
       }
     }
   });

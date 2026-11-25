@@ -60,6 +60,9 @@ export function fromCameraPose(c: CameraPose): OrbitPose {
 /** The distance at which a sphere of radius r fills `fill` of the frame height. */
 export const framingDistance = (r: number, fill: number, fovDeg: number = FOV_DEG): number => r / (fill * tanHalfV(fovDeg));
 
+/** The start pose's angles: turned 0.35 rad, 28° above the orbit plane. Only its target and distance are fitted. */
+export const START_ANGLES = { yaw: 0.35, pitch: (28 * Math.PI) / 180 } as const;
+
 /** The start pose fits every body inside this share of the frame (NDC), leaving room for labels. */
 const START_FIT = { x: 0.92, y: 0.85 } as const;
 
@@ -68,9 +71,10 @@ const START_FIT = { x: 0.92, y: 0.85 } as const;
  * (each planet with its moons, the star, the moonlet orbit), as close as they all fit START_FIT at
  * frame 0, found by bisection. The planets then orbit out of this framing, slowly (#60): see
  * startPoseAt for the same framing at a later frame. A star alone fills 45% of the frame height, like
- * a focused planet.
+ * a focused planet. `extra` points are fitted too: the crew's ship when one is drawn (#207, crew/place.ts
+ * shipCorners), so Home always frames it; with none, the pose is exactly as before.
  */
-export function startPose(model: SystemModel): OrbitPose {
+export function startPose(model: SystemModel, extra: readonly Vec3[] = []): OrbitPose {
   const pts: Vec3[] = [];
   const sphere = (c: Vec3, r: number) => {
     for (const d of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as Vec3[]) pts.push(add(c, scale(d, r)));
@@ -81,9 +85,10 @@ export function startPose(model: SystemModel): OrbitPose {
   sphere([0, 0, 0], model.star.radius);
   if (model.star.moonlets.length) circle(model.star.moonlets[0]!.orbit);
   for (const p of model.planets) sphere(planetCentre(p, 0), planetReach(p));
-  let pose: OrbitPose = { target: [0, 0, 0], yaw: 0.35, pitch: (28 * Math.PI) / 180, dist: 1 };
-  // a star alone (no planets) is framed like a focused planet, so the frame is never near-empty
-  if (model.planets.length === 0) return { ...pose, dist: framingDistance(model.star.radius, FOCUS_FILL) };
+  pts.push(...extra);
+  let pose: OrbitPose = { target: [0, 0, 0], ...START_ANGLES, dist: 1 };
+  // a star alone (no planets, no ship) is framed like a focused planet, so the frame is never near-empty
+  if (model.planets.length === 0 && extra.length === 0) return { ...pose, dist: framingDistance(model.star.radius, FOCUS_FILL) };
   const fit = (p: OrbitPose): OrbitPose => {
     const fits = (dist: number) => pts.every((pt) => {
       const q = project({ ...p, dist }, pt);
@@ -110,8 +115,8 @@ export function startPose(model: SystemModel): OrbitPose {
  * rate, #60), so it frames the system exactly as frame 0 does, and every body is as far from the eye. Home
  * goes here, so it always shows the system as it first appeared, wherever the orbits have taken it.
  */
-export function startPoseAt(model: SystemModel, frame: number): OrbitPose {
-  const p = startPose(model), a = orbitAngle(frame);
+export function startPoseAt(model: SystemModel, frame: number, extra: readonly Vec3[] = []): OrbitPose {
+  const p = startPose(model, extra), a = orbitAngle(frame);
   const c = Math.cos(a), s = Math.sin(a), [x, y, z] = p.target;
   // the same turn as planetCentre's: +a about +y takes (x, z) to (x cos a + z sin a, z cos a - x sin a)
   return { ...p, target: [x * c + z * s, y, z * c - x * s], yaw: p.yaw + a };

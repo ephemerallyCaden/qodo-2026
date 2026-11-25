@@ -70,6 +70,7 @@ async function live(reduced = false) {
     pickCrewAt: () => null,
     crewSpec: null,
     crewSeat: () => null,
+    homePose: (frame = 0) => (model ? startPoseAt(model, frame) : null), // no crew drawn: the layout's own start pose
     setBeacons: () => true,
     setCoChange: () => true,
     coChangeLines: () => [],

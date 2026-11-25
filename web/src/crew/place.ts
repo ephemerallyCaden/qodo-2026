@@ -2,12 +2,15 @@
 // Rule 3). There is one ship per system and nothing about it varies, so it has no seed: its place comes
 // from the layout alone, and stays put between scans unless the bodies near it change.
 //
-// It hovers beside the star, on the start pose's right (camera/pose.ts startPose), past the star's drone
-// lane, and high enough above the orbit plane that no planet, moon or planet drone passes through it. It
-// faces the start pose's camera, so the crew in its front portholes shows. Like the start pose, it turns
-// round the star with the planets (one constant rate, model/motion.ts orbitAngle), so Home always sees its
-// front and it keeps its place among the planets.
-import { fovOf, project, projectedRadius, startPose, type OrbitPose } from '../camera/pose.js';
+// It hovers beside the star, on the start pose's left (camera/pose.ts START_ANGLES), past the star's drone
+// lane, and high enough above the orbit plane that no planet, moon or planet drone passes through it: the
+// left, because the review panel opens over the top right of the start view (free flight lists the star's
+// files there), where it would hide the ship's top portholes, the captain's among them. It
+// faces the start pose's camera, so the crew in its front portholes shows, and the start pose fits it in
+// (shipCorners; human, 2026-11-25), so Home always frames it. Like the start pose, it turns round the star
+// with the planets (one constant rate, model/motion.ts orbitAngle), so Home always sees its front and it
+// keeps its place among the planets.
+import { fovOf, project, projectedRadius, START_ANGLES, type OrbitPose } from '../camera/pose.js';
 import { DRONE_LANE_OUT, DRONE_PICK_RADIUS, homeBody } from '../drones/place.js';
 import type { Rect } from '../labels/place.js';
 import { FPS, LOOP_SECONDS, loopPhase, orbitAngle } from '../model/motion.js';
@@ -34,12 +37,11 @@ export interface ShipPlacement {
 
 /**
  * The ship at frame 0: its horizontal distance from the star puts its footprint just past the star's drone
- * lane, on the start pose's right; its height lifts its lowest point clear of every planet's reach plus its
+ * lane, on the start pose's left; its height lifts its lowest point clear of every planet's reach plus its
  * drones' lane wherever the footprint crosses that planet's orbit.
  */
 export function shipSpot(model: SystemModel): ShipPlacement {
-  const start = startPose(model);
-  const right: Vec3 = [Math.cos(start.yaw), 0, -Math.sin(start.yaw)];
+  const left: Vec3 = [-Math.cos(START_ANGLES.yaw), 0, Math.sin(START_ANGLES.yaw)];
   const star = homeBody(model, 'star', 0)!;
   const d = star.reach + DRONE_LANE_OUT + DRONE_PICK_RADIUS + SHIP_MARGIN + SHIP_FOOTPRINT;
   const inner = d - SHIP_FOOTPRINT, outer = d + SHIP_FOOTPRINT;
@@ -50,7 +52,19 @@ export function shipSpot(model: SystemModel): ShipPlacement {
     if (gap < clear) floor = Math.max(floor, Math.sqrt(clear * clear - gap * gap) + SHIP_MARGIN);
   }
   const bob = 0.07 * SHIP_SCALE; // idleAt's largest bob
-  return { centre: [right[0] * d, floor - SHIP_BOTTOM + bob, right[2] * d], yaw: start.yaw };
+  return { centre: [left[0] * d, floor - SHIP_BOTTOM + bob, left[2] * d], yaw: START_ANGLES.yaw };
+}
+
+/**
+ * The corners of the box round the ship drawn (`spec`) at frame 0, its bob included, in world units: what the
+ * start pose fits in when a crew is drawn (camera/pose.ts startPose `extra`). Empty without a ship.
+ */
+export function shipCorners(model: SystemModel, spec: ShipSpec | null): Vec3[] {
+  if (!spec) return [];
+  const at = placeShip(model, 0), { lo, hi } = shipBounds(spec, 0), bob = 0.07;
+  const out: Vec3[] = [];
+  for (const x of [lo[0], hi[0]]) for (const y of [lo[1] - bob, hi[1] + bob]) for (const z of [lo[2], hi[2]]) out.push(shipPoint(at, [x, y, z], 0));
+  return out;
 }
 
 /** The ship at a frame: its frame-0 spot turned round the star with the planets (the turn startPoseAt makes). */

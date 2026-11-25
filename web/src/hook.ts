@@ -2,7 +2,7 @@
 // animation loop runs; each renderFrame(n) draws exactly frame n from the loaded input, so a frame
 // is a pure function of (RenderInput, n) whatever was drawn before (principle 3).
 import type { RenderHook, RenderInput, RenderStats } from '../../src/core/contract/api.js';
-import { fromCameraPose, startPose, type OrbitPose } from './camera/pose.js';
+import { fromCameraPose, type OrbitPose } from './camera/pose.js';
 import { checkCrew } from './crew/check.js';
 import { riderOf, seatCrew } from './crew/select.js';
 import { checkDrones } from './drones/check.js';
@@ -71,7 +71,7 @@ export function renderHook(view: View, viewport: () => { w: number; h: number; d
       view.resize(clampPixelHeight(next.pixelHeight), vp.w, vp.h, vp.dpr);
       // No camera: the start pose of frame 0, held for every frame, as the live view's camera stays put
       // while the planets orbit (#60), so frame n shows how far they have moved.
-      pose = next.camera ? fromCameraPose(next.camera) : startPose(view.model!);
+      pose = next.camera ? fromCameraPose(next.camera) : view.homePose(0)!; // the ship framed too when a crew is drawn (#207)
       input = next;
     },
     async renderFrame(n: number): Promise<RenderStats> {
