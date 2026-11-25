@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "node serve.mjs",
     "lab": "node lab.mjs",
+    "flyby": "node flyby.mjs",
     "test": "node --test --test-concurrency=1 test/pure.test.mjs test/render.test.mjs"
   },
   "dependencies": {

@@ -73,6 +73,28 @@ The human, 2026-11-25: "I imagined one like the finned classic but shorter, fatt
 
 The human picked R2-4c with R2-4's red belly band back (2026-11-25). R2-4c-final (`node lab.mjs round=final` into `out/final/`) is R2-4c's hull, portholes and seats exactly, plus R2-4's band: red paint on the body from cy − 0.3 to top + 0.12. Its numbers are `R24C` in `ship-r2.js`, built by `buildR24c(n, { band: true })`.
 
+## The fly-by (Day 18 hype shot)
+
+`node flyby.mjs` (or `npm run flyby`) renders R2-4c-final with six aboard (the captain and five teammates) flying past a still camera near the star. Two of your drones drift in the middle distance. It takes about 20 s and writes `out/flyby/`:
+- `frames/` at 320×180;
+- `ship-flyby.gif`: ×3 nearest-neighbour, 960×540, 120 frames at 20 fps, the frames' exact colours;
+- `still.png`;
+- `report.json`.
+
+The path is `flyby.js`, a pure function of the frame number at the lab's stepped clock:
+- **Hold:** 10 frames of empty stars.
+- **Entry:** fast from the left, from 10 units out.
+- **Glide:** slow across the middle, 4.85 units out, looking down 0.17 rad like the close-ups.
+- **Exit:** fast to the right, then 10 frames of empty stars.
+
+On the way the ship leans into its travel (0.1–0.32 rad), turns half its bearing toward the camera and banks 0.07 rad. Its own idle motion runs on top. The clock starts at 8.0 s so three blinks land while the ship is on screen.
+
+**Checks:**
+- **Colours:** every colour is BLK 36 or the viewer's world palette. The only teal is the drones' eyes, checked against a render without them.
+- **Still (frame 59):** every astronaut and the cap clear the close-up minimums. The close pass crops the fins and flame on purpose.
+- **Whole-ship frame (91):** it shows the flame, unclipped.
+- **Determinism:** a re-render is pixel-identical.
+
 ## Round 2b: R2-4's windows alike and in a line (R2-4b, R2-4c)
 
 The human picked R2-4, then: "I just don't like R2-4 the fact the windows are different colours, they should all be the same colour and also stack them vertically in a line instead of being stacked randomly." (`node lab.mjs round=2b` into `out/round2b/`.)
@@ -175,6 +197,7 @@ Nothing reads a clock or `Math.random`. Flicker and blinks hash the step within 
 | `variants.js` | The four directions. |
 | `lab.js` | The page: tile renders, stats, sheets, loops. |
 | `lab.mjs` | The runner. |
+| `flyby.js`, `flyby.mjs` | The fly-by's path (pure) and its runner. |
 | `checks.mjs` | The tile and seam checks. |
 
 **Windows and glass are see-through.** Where a window or dome shows, the hull writes the depth of the far wall inside it. So an astronaut seated inside wins the depth test there and loses it everywhere else. That needs no sorting and no transparency.
