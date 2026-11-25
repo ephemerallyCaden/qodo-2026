@@ -1,7 +1,7 @@
 # Feature: Crew spaceship (astronauts from git history) and the art renderer
 
 ## Status
-Research
+Research (L1 done; ship variants pending the human's pick)
 
 ## Trigger
 The human, 2026-11-25: "lets do the astronauts for day 18! and the spaceship, lets get an art renderer going!" Answers the same day:
@@ -17,18 +17,21 @@ Ticket: #207 (understanding mode U8).
 - [ ] C2 **A cartoonish rocket**, chosen by the human from 3–4 lab variants. It must be readable at 320×180 (art direction §1), drawn in the art direction's palettes, and carry the crew.
 - [ ] C3 **Astronauts use the asset library's astronaut** (`mockups/asset-viewer/astronaut.js`, art direction §8, BLK 36 exactly). Their bob, sway and blink are loop-locked (§7).
 - [ ] C4 **A product art renderer** draws the ship and the astronauts in the live 3D view through the pixel pass. Placement is deterministic, near your star, next to your own drones. The draw budget stays under its cap.
-- [ ] C5 **Astronaut panel** (#207 AC3): clicking an astronaut shows their name, the planets and files they touched in the window (counts only, no code) and when they were last active.
+- [ ] C5 **Astronaut panel** (#207 AC3): clicking an astronaut shows their name, the planets and files they touched in the window, with a touch count each (no code), and when they were last active. Allowed by the Rule 6 amendment (human, 2026-11-25): never ranked, sorted or compared by those numbers, one person at a time, no headline total, crew ordered by person id.
 - [ ] C6 **Drones are yours only** (#207 AC4): teammates get no drones.
 - [ ] C7 **Privacy** (#207 AC5): no email is shown unless it's already in git, and no absolute paths; snapshot rules apply.
+- [ ] C9 **You're the captain** (human, 2026-11-25): your own astronaut is aboard and marked as captain, and your other emails merge into you (`selfEmails`, system design §5.1.9).
+- [ ] C10 **Aliases** (human, 2026-11-25): `.mailmap` when present, plus exact author-name matches.
+- [ ] C11 **Fixture crew** (human, 2026-11-25): the film and render tests use a deterministic fixture repo with 4–6 invented teammates; no real people's names in posts.
 - [ ] C8 **Tests** (#207 AC6): alias merging, bot exclusion, a deliberate snapshot golden update, and a render test that fails on empty output.
 
 ## Assumptions
-- [ ] (load-bearing, C1) The scan already records per-commit authors and person ids (attribution `selfPersonIds`, a human/agent/mixed class). Which fields exist in `snapshot.v1`, and does adding a crew list need a snapshot schema bump?
-- [ ] (load-bearing, C4) How the product draws drones today (sprites, billboards or models; which pass; the draw budget). Can astronauts and the ship reuse that path?
-- [ ] (C3) How portable `astronaut.js` is: pure drawing code or tied to the viewer, and its dependencies.
-- [ ] (C2) Where the ship sits relative to the star and the drones' ring, and how many astronauts fit before it needs an overflow rule.
-- [ ] (C7) Do author names or emails already appear in any served response? R14 (local server hardening) applies to any new endpoint.
-
+- [x] (load-bearing, C1) Verified (crew-scout L1): the snapshot (`schemaVersion '0.2'`) has `people: {id, displayName, isSelf}[]` and `Commit.author`. `PersonId` is `p_` plus a sha256 of the lowercased mailmapped email (raw email never stored). `.mailmap` is honoured, but name aliases aren't merged and bots aren't detected (`people[].isBot` is planned in system-design). No schema bump: optional fields plus `needsRescan`, as with `cochange`.
+- [x] (load-bearing, C4) Verified: each drone is one raymarched SDF proxy box (one draw call) in `SystemScene.fleet.group` through the pixel pass; placement is pure (model, home, seed, frame); `DRONE_CAP` is 16; the budget is 100 draw calls / 500k triangles; picking is CPU pick spheres → panel → `dock.ts`. Astronauts and the ship can reuse the pattern.
+- [x] (C3) Verified: `astronaut.js` is pure (three.js only, with a loop-locked pose and `ASTRO_SDF_GLSL`); the `makeAstronaut` wrapper uses viewer globals the product mostly has (`palette.crew`, depth fade, light). Missing: 8 of the 10 V2 eyes. The precedent is the drone port (87ffe32, one commit).
+- [x] (C7) Verified: names are already served raw in `GET /api/snapshot`; emails are in no response. New routes go in the server's routes Map, which inherits every gate (Host, origin, token, method), and must be added to `security.test.ts`. Plan: `GET /api/crew` and `GET /api/crew-detail?person=&at=`, mirroring drones and drone-detail.
+- [ ] (C2) Ship placement relative to the star lane, which the star-home drones share; crew cap and overflow (from the lab).
+- [ ] Commet's own repo has one author (you), so it draws only the captain; hence C11.
 ## Flow
 `commet scan` → git log authors in the window → aliases merged, bots/agents dropped → crew list in the snapshot (ids, display names, per-file touch counts) → `commet open` serves it → the view places the ship near the star and an astronaut per crew member → click → panel.
 
