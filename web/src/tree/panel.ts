@@ -1,6 +1,6 @@
 // The directory view (#209, understanding mode U10): a 2D file tree of the snapshot beside the map, for
-// people who'd rather browse folders than planets. Each file says whether it's fogged or clear and each
-// folder the charted share of its files, from today's fog (#74; haze comes with #201). Opening a row (a
+// people who'd rather browse folders than planets. Each file says its fog level (fogged, haze or clear,
+// #201) and each folder its mastery and how many of its files are haze and fogged. Opening a row (a
 // click, or Enter) focuses it on the map: a file's planet turned to its settlement, a folder's planet or
 // continent, else the star. A WAI-ARIA tree (arrows move, Right and Left open and close folders, Home and
 // End, Enter opens, Escape closes), crisp DOM outside the pixel pass, text only through textContent and
@@ -176,7 +176,7 @@ export class TreePanel {
     if (!this.layout) return 'waiting for the map…';
     if (!fog) return '';
     const usable = this.fog !== null && this.fog.head === this.source?.head;
-    return fogLine(usable ? { fogged: fog.all.total - fog.all.clear, total: fog.all.total } : null);
+    return fogLine(usable ? fog.all : null);
   }
 
   private render(): void {
@@ -203,7 +203,7 @@ export class TreePanel {
   private rowEl(r: Row, i: number, active: boolean, fog: TreeFog): HTMLElement {
     const n = r.node;
     const open = n.kind === 'dir' && this.expanded.has(n.path);
-    const row = el('div', undefined, n.kind === 'file' ? `row file ${fog.fogged(n) ? 'fogged' : 'clear'}` : `row ${n.kind}`);
+    const row = el('div', undefined, n.kind === 'file' ? `row file ${fog.level(n)}` : `row ${n.kind}`);
     row.setAttribute('role', 'treeitem');
     row.setAttribute('aria-level', String(r.level));
     row.setAttribute('aria-setsize', String(r.setsize));

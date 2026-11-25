@@ -1,12 +1,15 @@
 // The directory view's model (#209, understanding mode U10): the snapshot's files as a folder tree,
 // where each file and folder sits on the map, and its fog. Pure: no DOM, no three.js, no clock.
-// Today's fog has the two states the map draws (model/fog.ts): a file is fogged or clear (charted
-// counts as clear), and a folder shows the share of its files that aren't fogged. Without a usable fog
-// view every file is fogged (AGENTS.md Rule 1). The two-level fog (#201) adds haze later.
-import type { FogView } from '../../../src/core/contract/fog.js';
+// A file's fog level (#201: fogged, haze = seen, clear = understood) comes from levelBy, the source the
+// map's fog shader reads, so the tree and the map never disagree about a file. A folder counts its
+// files by level and shows their mastery (masteryPercent, clear ÷ files); a planet's own folder shows
+// the planet's count from the fog view, the one its info panel shows (test moons in, test data out).
+// Without a usable fog view every file is fogged (AGENTS.md Rule 1).
+import type { FogLevel, FogView } from '../../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
+import { masteryPercent } from '../../../src/core/mastery.js';
 import type { DirId, FileId, Sha } from '../../../src/core/snapshot/types.js';
-import { foggedBy } from '../model/fog.js';
+import { levelBy, planetTally, type FogTally, type Level } from '../model/fog.js';
 
 /** What the directory view reads of the snapshot (GET /api/snapshot): its head and its folders' and files' paths, nothing else. */
 export interface TreeSource { head: Sha; dirs: { id: DirId; path: string }[]; files: { id: FileId; path: string }[] }
@@ -29,7 +32,8 @@ export type Place =
   | { kind: 'star' };
 
 export interface TreeFile { kind: 'file'; id: FileId; path: string; name: string; place: Place }
-export interface TreeDir { kind: 'dir'; path: string; name: string; place: Place; children: TreeNode[] }
+/** A folder; `planet` is the planet it is drawn as (its own folder, not one inside it), else null. */
+export interface TreeDir { kind: 'dir'; path: string; name: string; place: Place; planet: DirId | null; children: TreeNode[] }
 export type TreeNode = TreeFile | TreeDir;
 
 /** Codepoint order (Rule 3: never localeCompare). */
@@ -38,7 +42,7 @@ const byCodepoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 
 export const parentPath = (path: string): string => { const cut = path.lastIndexOf('/'); return cut < 0 ? '' : path.slice(0, cut); };
 
 /** Each file's and folder's place, from the layout of the same scan. */
-function placesOf(src: TreeSource, layout: LayoutV1): { file(id: FileId, path: string): Place; dir(path: string): Place } {
+function placesOf(src: TreeSource, layout: LayoutV1): { file(id: FileId, path: string): Place; dir(path: string): Place; planet(path: string): DirId | null } {
   const onSurface = new Map<string, { planet: DirId; cell: number }>();
   const moonOf = new Map<string, DirId>();
   const moonlets = new Set<string>(layout.star.moonlets.map((m) => m.fileId));
@@ -76,6 +80,7 @@ function placesOf(src: TreeSource, layout: LayoutV1): { file(id: FileId, path: s
       }
       return { kind: 'planet', planet };
     },
+    planet: (path) => planetAt.get(path) ?? null,
   };
 }
 
@@ -90,13 +95,13 @@ function sortTree(d: TreeDir): void {
  */
 export function buildTree(src: TreeSource, layout: LayoutV1): TreeDir {
   const places = placesOf(src, layout);
-  const root: TreeDir = { kind: 'dir', path: '', name: '', place: { kind: 'star' }, children: [] };
+  const root: TreeDir = { kind: 'dir', path: '', name: '', place: { kind: 'star' }, planet: null, children: [] };
   const dirs = new Map<string, TreeDir>([['', root]]);
   const dirAt = (path: string): TreeDir => {
     let d = dirs.get(path);
     if (d) return d;
     const parent = dirAt(parentPath(path));
-    d = { kind: 'dir', path, name: path.slice(path.lastIndexOf('/') + 1), place: places.dir(path), children: [] };
+    d = { kind: 'dir', path, name: path.slice(path.lastIndexOf('/') + 1), place: places.dir(path), planet: places.planet(path), children: [] };
     parent.children.push(d);
     dirs.set(path, d);
     return d;
@@ -108,31 +113,46 @@ export function buildTree(src: TreeSource, layout: LayoutV1): TreeDir {
   return root;
 }
 
-/** A folder's files at any depth that aren't fogged, of all of them. */
-export interface DirFog { clear: number; total: number }
-/** The tree's fog: each file's state and each folder's counts. */
-export interface TreeFog { fogged(f: TreeFile): boolean; dir(d: TreeDir): DirFog; all: DirFog }
+/** The level names by the shader's Level (0 clear, 1 haze, 2 fogged). */
+const LEVEL_NAME: readonly FogLevel[] = ['clear', 'haze', 'fogged'];
+const nameOf = (l: Level): FogLevel => LEVEL_NAME[l]!;
+
+/**
+ * The tree's fog: each file's level, each folder's counts by level and the whole repo's. A folder counts
+ * its files at any depth, except a planet's own folder, which counts as its planet does in the fog view.
+ */
+export interface TreeFog { level(f: TreeFile): FogLevel; dir(d: TreeDir): FogTally; all: FogTally }
 
 /** The fog of every row under a fog view (null: none usable, so every file is fogged, Rule 1). */
 export function treeFog(root: TreeDir, fog: FogView | null): TreeFog {
-  const isFogged = foggedBy(fog);
-  const counts = new Map<TreeDir, DirFog>();
-  const tally = (d: TreeDir): DirFog => {
-    const t = { clear: 0, total: 0 };
+  const levelOf = levelBy(fog);
+  const own = new Map<TreeDir, FogTally>();
+  const tally = (d: TreeDir): FogTally => {
+    const t: FogTally = { fogged: 0, haze: 0, clear: 0, total: 0 };
     for (const c of d.children) {
-      const s = c.kind === 'dir' ? tally(c) : { clear: isFogged(c.id) ? 0 : 1, total: 1 };
+      if (c.kind === 'file') {
+        t[nameOf(levelOf(c.id))]++;
+        t.total++;
+        continue;
+      }
+      const s = tally(c);
+      t.fogged += s.fogged;
+      t.haze += s.haze;
       t.clear += s.clear;
       t.total += s.total;
     }
-    counts.set(d, t);
+    own.set(d, t);
     return t;
   };
   const all = tally(root);
-  return { fogged: (f) => isFogged(f.id), dir: (d) => counts.get(d) ?? { clear: 0, total: 0 }, all };
+  const dir = (d: TreeDir): FogTally => {
+    const t = own.get(d) ?? { fogged: 0, haze: 0, clear: 0, total: 0 };
+    if (d.planet === null) return t;
+    // The planet's count, the info panel's (#201 U3); with none, nothing on it is known, so its files are all fogged (Rule 1)
+    return planetTally(fog, d.planet) ?? { fogged: t.total, haze: 0, clear: 0, total: t.total };
+  };
+  return { level: (f) => nameOf(levelOf(f.id)), dir, all };
 }
-
-/** A folder's mastery today: the charted share of its files, rounded down, so 100% only when every one is clear. */
-export const chartedPercent = (t: DirFog): number => (t.total === 0 ? 0 : Math.floor((100 * t.clear) / t.total));
 
 /**
  * How many of a folder's children show at first, and how many more each of its "more" rows adds: a big
@@ -169,17 +189,26 @@ export function visibleRows(root: TreeDir, expanded: ReadonlySet<string>, shown:
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
-/** What a row shows after its name: a file's fog, a folder's charted share, or how many more a "more" row shows. */
-export function rowTag(n: TreeNode | TreeMore, fog: TreeFog): string {
-  if (n.kind === 'more') return `show ${n.next}`;
-  return n.kind === 'file' ? (fog.fogged(n) ? 'fogged' : 'clear') : `${chartedPercent(fog.dir(n))}%`;
+/** A file's level in words, as the info panel says them. */
+const LEVEL_WORDS: Readonly<Record<FogLevel, string>> = { fogged: 'fogged', haze: 'haze (seen)', clear: 'clear (understood)' };
+
+/** A folder's tag: its mastery, then how many of its files are haze and fogged (none: not said), e.g. "66% · 1 haze". */
+function dirTag(t: FogTally): string {
+  const rest = [t.haze > 0 ? `${t.haze} haze` : '', t.fogged > 0 ? `${t.fogged} fogged` : ''].filter(Boolean);
+  return [`${masteryPercent(t.clear, t.total)}%`, ...rest].join(' · ');
 }
 
-/** A row's fog in words, e.g. "fogged", or "50% charted, 1 of 2 files clear". */
+/** What a row shows after its name: a file's fog level, a folder's mastery and the rest of its counts, or how many more a "more" row shows. */
+export function rowTag(n: TreeNode | TreeMore, fog: TreeFog): string {
+  if (n.kind === 'more') return `show ${n.next}`;
+  return n.kind === 'file' ? fog.level(n) : dirTag(fog.dir(n));
+}
+
+/** A row's fog in words, e.g. "haze (seen)", or "mastery 66%, 2 of 3 files clear (understood), 1 haze (seen), 0 fogged". */
 export function fogWords(n: TreeNode, fog: TreeFog): string {
-  if (n.kind === 'file') return fog.fogged(n) ? 'fogged' : 'clear';
+  if (n.kind === 'file') return LEVEL_WORDS[fog.level(n)];
   const t = fog.dir(n);
-  return `${chartedPercent(t)}% charted, ${t.clear} of ${plural(t.total, 'file')} clear`;
+  return `mastery ${masteryPercent(t.clear, t.total)}%, ${t.clear} of ${plural(t.total, 'file')} clear (understood), ${t.haze} haze (seen), ${t.fogged} fogged${n.planet === null ? '' : ', counted as its planet'}`;
 }
 
 /** A row's accessible name: its name, whether it's a file or folder, and its fog; or what a "more" row holds back and shows. */
@@ -202,6 +231,6 @@ export function placeText(place: Place, layout: LayoutV1): string {
   }
 }
 
-/** What opening a row announces, e.g. "focused src/core/c.ts (fogged): a settlement on the planet src". */
+/** What opening a row announces, e.g. "focused src/core/c.ts: a settlement on the planet src; fogged". */
 export const openText = (n: TreeNode, fog: TreeFog, layout: LayoutV1): string =>
-  `focused ${n.path}${n.kind === 'dir' ? '/' : ''} (${fogWords(n, fog)}): ${placeText(n.place, layout)}`;
+  `focused ${n.path}${n.kind === 'dir' ? '/' : ''}: ${placeText(n.place, layout)}; ${fogWords(n, fog)}`;

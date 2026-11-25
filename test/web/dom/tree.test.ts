@@ -1,6 +1,7 @@
 // The directory view's DOM (#209 AC 1–5) against a small fake document: the toggle opens a tree of the
-// snapshot's folders and files, each file says fogged or clear and each folder its charted share, the
-// arrow keys, Enter and Escape work as a WAI-ARIA tree with screen-reader labels, and opening a row hands
+// snapshot's folders and files, each file says its fog level (fogged, haze or clear, #201) and each folder
+// its mastery and its haze and fogged counts, the arrow keys, Enter and Escape work as a WAI-ARIA tree
+// with screen-reader labels, and opening a row hands
 // it to the map: through runLive and the real free-flight rig, a file's planet is focused turned to its
 // settlement, a folder's to its continent, and a root file goes home to the star, cutting under reduced
 // motion and gliding otherwise. Vitest has no DOM, so the fake records what is built and fires events,
@@ -209,7 +210,7 @@ describe('the directory view\'s toggle and tree (#209 AC 1)', () => {
     expect(more.className).toBe('row more');
     expect([nameOf(more), tagOf(more)]).toEqual([`${n - TREE_PAGE} more`, `show ${TREE_PAGE}`]);
     expect(more.attrs).toMatchObject({ 'aria-label': `${n - TREE_PAGE} more not shown, open to show ${TREE_PAGE}`, 'aria-level': '1', 'aria-setsize': String(n), 'aria-posinset': String(TREE_PAGE + 1) });
-    expect(note()).toBe(`uncharted: ${n} of ${n} files`); // the fog still counts every file
+    expect(note()).toBe(`uncharted: ${n} of ${n} files; 0 haze (seen), 0 clear (understood)`); // the fog still counts every file
     press('End');
     expect(page.activeElement).toBe(more);
     press('Enter'); // the next page, and the keyboard on its first row
@@ -230,35 +231,46 @@ describe('the directory view\'s toggle and tree (#209 AC 1)', () => {
   });
 });
 
-describe('fog per file and charted share per folder (#209 AC 2)', () => {
-  it('each file shows fogged or clear and each folder its charted %, in the row and its screen-reader label', async () => {
+describe('fog level per file and mastery per folder (#209 AC 2, #201)', () => {
+  it('each file shows fogged, haze or clear and each folder its mastery and its haze and fogged counts, in the row and its screen-reader label', async () => {
     panel();
     toggle().fire('click');
     await flush();
-    expect(rows().slice(0, 4).map(tagOf)).toEqual(['100%', '100%', '96%', '0%']);
+    expect(rows().slice(0, 4).map(tagOf)).toEqual(['66% · 1 haze', '100%', '92% · 1 haze · 1 fogged', '96% · 1 fogged']);
     row('web/').fire('click');
     expect(tagOf(row('main.ts'))).toBe('fogged');
     expect(row('main.ts').className).toBe('row file fogged');
     expect(row('main.ts').attrs['aria-label']).toBe('main.ts, file, fogged');
-    expect(row('test/').attrs['aria-label']).toBe('test, folder, 96% charted, 27 of 28 files clear');
+    expect(row('web/').attrs['aria-label']).toBe('web, folder, mastery 96%, 24 of 25 files clear (understood), 0 haze (seen), 1 fogged, counted as its planet');
+    expect(row('test/').attrs['aria-label']).toBe('test, folder, mastery 92%, 26 of 28 files clear (understood), 1 haze (seen), 1 fogged');
+    row('docs/').fire('click');
+    expect(tagOf(row('z.md'))).toBe('haze'); // seen, not yet understood
+    expect(row('z.md').className).toBe('row file haze');
+    expect(row('z.md').attrs['aria-label']).toBe('z.md, file, haze (seen)');
     row('src/').fire('click');
-    expect(tagOf(row('a.ts'))).toBe('clear'); // charted reads as clear
+    expect(tagOf(row('a.ts'))).toBe('clear');
     expect(row('a.ts').className).toBe('row file clear');
-    expect(note()).toBe(`uncharted: 2 of ${miniTree.files.length} files`);
+    expect(row('a.ts').attrs['aria-label']).toBe('a.ts, file, clear (understood)');
+    expect(note()).toBe(`uncharted: 2 of ${miniTree.files.length} files; 2 haze (seen), ${miniTree.files.length - 4} clear (understood)`);
   });
 
-  it('follows every fog the view takes; with none usable, or one of another scan, every file is fogged (Rule 1)', async () => {
+  it('follows every fog the view takes: charting makes a file haze, a passed quiz clear; with none usable, or one of another scan, every file is fogged (Rule 1)', async () => {
     const t = panel();
     toggle().fire('click');
     await flush();
+    row('web/').fire('click');
+    const fogWith = (state: 'haze' | 'clear'): FogView => ({ ...miniFog,
+      files: miniFog.files.map((f) => (f.fileId === 'f_00000000000d' ? { ...f, state, reasons: [], since: null } : f)),
+      planets: miniFog.planets.map((p) => (p.dirId === 'd_00000000000c' ? { ...p, fogged: 0, [state]: p[state] + 1 } : p)) });
+    t.p.setFog(fogWith('haze')); // charted: seen
+    expect([tagOf(row('web/')), tagOf(row('main.ts')), row('main.ts').className]).toEqual(['96% · 1 haze', 'haze', 'row file haze']);
+    t.p.setFog(fogWith('clear')); // a quiz passed on this version: understood
+    expect([tagOf(row('web/')), tagOf(row('main.ts')), row('main.ts').className]).toEqual(['100%', 'clear', 'row file clear']);
     row('src/').fire('click');
-    const charted: FogView = { ...miniFog, files: miniFog.files.map((f) => (f.fileId === 'f_00000000000d' ? { ...f, state: 'charted', reasons: [], since: null } : f)) };
-    t.p.setFog(charted);
-    expect(rows().slice(0, 1).concat(row('web/')).map(tagOf)).toEqual(['100%', '100%']);
     for (const fog of [null, { ...miniFog, head: OTHER }]) {
       t.p.setFog(fog);
-      expect(['src/', 'web/', 'test/'].map((n) => tagOf(row(n)))).toEqual(['0%', '0%', '0%']);
-      expect(tagOf(row('a.ts'))).toBe('fogged');
+      expect(['src/', 'web/', 'test/'].map((n) => tagOf(row(n)))).toEqual(['0% · 3 fogged', '0% · 1 fogged', '0% · 28 fogged']);
+      expect([tagOf(row('a.ts')), tagOf(row('main.ts'))]).toEqual(['fogged', 'fogged']);
       expect(note()).toBe('uncharted: unknown, so every file is drawn uncharted');
     }
   });
@@ -310,7 +322,7 @@ describe('keyboard and screen readers (#209 AC 4)', () => {
     const t = await opened();
     press('End');
     press('Enter');
-    expect(t.opened).toEqual([{ place: { kind: 'moonlet' }, said: 'focused package.json (clear): a moonlet of the star' }]);
+    expect(t.opened).toEqual([{ place: { kind: 'moonlet' }, said: 'focused package.json: a moonlet of the star; clear (understood)' }]);
     expect(press('Escape').defaultPrevented).toBe(true);
     expect(treeEl().hidden).toBe(true);
     expect(toggle().attrs['aria-expanded']).toBe('false');
@@ -374,12 +386,12 @@ describe('opening a row hands it to the map (#209 AC 3)', () => {
     toggle().fire('click');
     await flush();
     row('src/').fire('click');
-    expect(t.opened.at(-1)).toEqual({ place: { kind: 'planet', planet: 'd_00000000000a' }, said: 'focused src/ (100% charted, 3 of 3 files clear): the planet src' });
+    expect(t.opened.at(-1)).toEqual({ place: { kind: 'planet', planet: 'd_00000000000a' }, said: 'focused src/: the planet src; mastery 100%, 4 of 4 files clear (understood), 0 haze (seen), 0 fogged, counted as its planet' });
     expect(row('src/').attrs['aria-expanded']).toBe('true');
     row('core/').fire('click');
     expect(t.opened.at(-1)!.place).toEqual({ kind: 'continent', planet: 'd_00000000000a', cell: 21 });
     row('c.ts').fire('click');
-    expect(t.opened.at(-1)).toEqual({ place: { kind: 'settlement', planet: 'd_00000000000a', cell: 21 }, said: 'focused src/core/c.ts (clear): a settlement on the planet src' });
+    expect(t.opened.at(-1)).toEqual({ place: { kind: 'settlement', planet: 'd_00000000000a', cell: 21 }, said: 'focused src/core/c.ts: a settlement on the planet src; clear (understood)' });
     expect(active(row('c.ts'))).toBe(true);
     row('test/').fire('click');
     expect(t.opened.at(-1)!.place).toEqual({ kind: 'star' });
@@ -473,7 +485,7 @@ describe('the focus hand-off to the map (#209 AC 3, AC 4 reduced motion)', () =>
     expect(selected.at(-1)).toBe('d_00000000000a'); // the review panel follows the focus
     d.pose.target.forEach((v, k) => expect(v).toBeCloseTo(planetCentre(p, d.frame)[k]!, 9));
     expect(angle(eyeSide(d), surfaceDirection(p, 13, d.frame))).toBeLessThan(1e-6); // the frame is frozen: the settlement faces the camera
-    expect(l.status.at(-1)).toBe('focused src/b.ts (clear): a settlement on the planet src');
+    expect(l.status.at(-1)).toBe('focused src/b.ts: a settlement on the planet src; clear (understood)');
     l.tick(30);
     expect(l.last().pose).toEqual(d.pose); // nothing moves afterwards
   });
@@ -483,7 +495,7 @@ describe('the focus hand-off to the map (#209 AC 3, AC 4 reduced motion)', () =>
     row('web/').fire('click');
     l.tick();
     expect(l.last().focus).toBe(1);
-    expect(l.status.at(-1)).toBe('focused web/ (0% charted, 0 of 1 file clear): the planet web');
+    expect(l.status.at(-1)).toBe('focused web/: the planet web; mastery 96%, 24 of 25 files clear (understood), 0 haze (seen), 1 fogged, counted as its planet');
     row('src/').fire('click');
     row('core/').fire('click');
     l.tick();
@@ -502,11 +514,11 @@ describe('the focus hand-off to the map (#209 AC 3, AC 4 reduced motion)', () =>
     expect(l.last().focus).toBeNull();
     expect(selected.at(-1)).toBeNull(); // the review panel lists the star's files
     expect(l.last().pose).toEqual(startPoseAt(l.model(), l.last().frame));
-    expect(l.status.at(-1)).toBe('focused README.md (clear): a moonlet of the star');
+    expect(l.status.at(-1)).toBe('focused README.md: a moonlet of the star; clear (understood)');
     row('test/').fire('click');
     l.tick();
     expect(l.last().focus).toBeNull();
-    expect(l.status.at(-1)).toMatch(/: no planet of its own, so showing the star$/);
+    expect(l.status.at(-1)).toBe('focused test/: no planet of its own, so showing the star; mastery 92%, 26 of 28 files clear (understood), 1 haze (seen), 1 fogged');
   });
 
   it('with motion, the camera glides and lands turned to where the settlement is when the glide ends', async () => {
