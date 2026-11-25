@@ -13,8 +13,8 @@ colours  47 (27 palette, 20 off-palette: 396 px)
      2    0.00%  #fff8ff  254,19-266,30    world.stars[2]
    623    1.08%  #ffffff  91,56-145,131    world.cap[3], world.ice[4], world.haze.ice, crew.suit[3], crew.glint, drone.generic.trim[3], drone.generic.smoke[2], drone.claude.smoke[2], ship.hull.shell[3], ship.hull.flame[3]
     39    0.06%  #30285a  57,132-232,171   world.cloud[0], world.halo
-  1993    3.46%  #f2d8b8  47,37-258,179    world.cloud[1], world.cloud[2], world.ring[1], world.moonBody[3], fog.mist[0], fog.mist[1], fog.mist[2]
- 21861   37.95%  #fffaf0  47,6-252,179     world.cloud[3], world.starDisc[4], fog.mist[3]
+  1993    3.46%  #f2d8b8  47,37-258,179    world.cloud[1], world.cloud[2], world.ring[1], world.moonBody[3], fog.mist[0]
+ 21861   37.95%  #fffaf0  47,6-252,179     world.cloud[3], world.starDisc[4], fog.mist[1], fog.mist[2], fog.mist[3]
     16    0.02%  #0f1a4e  98,30-222,133    world.water[0]
    325    0.56%  #18378f  98,31-223,150    world.water[1]
     28    0.04%  #2560c8  99,40-159,125    world.water[2]

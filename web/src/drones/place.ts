@@ -34,7 +34,7 @@ export interface DronePlacement {
 /**
  * The body a drone circles: its centre and the radius its orbit clears, or null when the home isn't in
  * this layout. A planet's is its reach (moons and weather) or its fog sky's top (model/fog-cloud.ts
- * FOG_SKY_TOP: the storm cloud, bulge and all, or the mist), whichever is further, on every planet
+ * FOG_SKY_TOP: the cloud, its domes past the limb included, or the mist), whichever is further, on every planet
  * whatever its fog now: so a drone never flies through the cloud, and never moves when a file is
  * charted or refogged (#224, Qodo 1f87de0f).
  */

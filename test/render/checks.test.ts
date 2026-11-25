@@ -147,7 +147,7 @@ describe('text twin', () => {
       '',
       '    px    share  colour   bbox x0,y0-x1,y1  palette entries',
       '     4   50.00%  #0d0b16  0,0-3,0          world.space',
-      '     2   25.00%  #f2d8b8  0,1-1,1          world.cloud[1], world.cloud[2], world.ring[1], world.moonBody[3], fog.mist[0], fog.mist[1], fog.mist[2]',
+      '     2   25.00%  #f2d8b8  0,1-1,1          world.cloud[1], world.cloud[2], world.ring[1], world.moonBody[3], fog.mist[0]',
       '     2   25.00%  #123456  2,1-3,1          (off-palette)',
       '',
     ].join('\n'));

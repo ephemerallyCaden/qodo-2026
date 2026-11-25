@@ -1,8 +1,8 @@
-// Fog of war on the real view (#74, R5; cloud since #224: art-direction §9 C6, the white storm front).
+// Fog of war on the real view (#74, R5; cloud since #224, the planets' own weather since #228: art-direction §9).
 // The goldens (view.spec.ts) are fogged frames of mini; these check what a golden can't say on its own:
-// fogged is storm cloud, misted (stored haze) is thin mist, clear has nothing over it, and none of it
+// fogged is cloud, misted (stored haze) is thin mist, clear has nothing over it, and none of it
 // darkens the ground (the human, 2026-11-25: "there should be no black area"); fog without evidence is
-// storm cloud everywhere (Rule 1); every fog colour is a palette colour and teal shows only on events;
+// cloud everywhere (Rule 1); every fog colour is a palette colour and teal shows only on events;
 // the cloud is locked to the ground, so it closes the loop (on a planet followed along its orbit, #60);
 // and the fog stays inside the draw budget.
 import { expect, test } from '@playwright/test';
@@ -51,7 +51,7 @@ function changed(a: Rendered, b: Rendered, box?: number): number[] {
   }
   return out;
 }
-/** The fog's own colours: the storm cloud (the mist is its light steps) and nothing else at rest. */
+/** The fog's own colours: the cloud (the mist is its light steps) and nothing else at rest. */
 const CLOUD = [...palette.world.cloud];
 const MIST = new Set<string>(palette.fog.mist);
 
@@ -59,7 +59,7 @@ const MIST = new Set<string>(palette.fog.mist);
 const allMisted = (layout = MINI): FogView => fogFor(layout, () => false, () => true);
 const allFogged = (layout = MINI): FogView => fogFor(layout, () => true);
 
-test('#224: fogged is storm cloud, misted thin mist, clear nothing, and the fog never darkens: no black area', async ({ page }) => {
+test('#224, #228: fogged is cloud, misted thin mist, clear nothing, and the fog never darkens: no black area', async ({ page }) => {
   const view = await openView(page, systemView());
   for (const [what, extra] of [['src focused', focus('src')], ['web focused', focus('web')]] as const) {
     const base = { layout: MINI, ...extra, depthFade: false };
@@ -77,21 +77,21 @@ test('#224: fogged is storm cloud, misted thin mist, clear nothing, and the fog 
       + `mean luma there, clear ${mean(clear!, storm).toFixed(1)} → fogged ${mean(fogged!, storm).toFixed(1)}; cloud px clear ${count(clear!, CLOUD, 0.3)}, misted ${count(misted!, CLOUD, 0.3)}, fogged ${count(fogged!, CLOUD, 0.3)}`);
     expect(mist.length, `${what}: mist draws something (not vacuous)`).toBeGreaterThan(0);
     expect(diffPixels(misted!.pixels, fogged!.pixels), `${what}: misted is not fogged`).toBeGreaterThan(0);
-    expect(mist.length, `${what}: mist is thin, far less than the storm`).toBeLessThan(storm.length / 2);
-    // never dark: every pixel the mist changes is a mist colour (it has no shadow), and the storm lightens the planet
+    expect(mist.length, `${what}: mist is thin, far less than the cloud`).toBeLessThan(storm.length / 2);
+    // never dark: every pixel the mist changes is a mist colour (it has no shadow), and the cloud lightens the planet
     expect(mist.filter((p) => !MIST.has(hex(misted!.pixels.rgba, p))), `${what}: mist pixels outside the mist colours`).toEqual([]);
-    expect(mean(fogged!, storm), `${what}: the storm cloud lightens what it covers`).toBeGreaterThan(mean(clear!, storm) + 40);
+    expect(mean(fogged!, storm), `${what}: the cloud lightens what it covers`).toBeGreaterThan(mean(clear!, storm) + 40);
     expect(lighter(fogged!, storm), `${what}: at most its shadows (one band darker) are darker`).toBeGreaterThan(storm.length * 0.8);
-    expect(count(fogged!, CLOUD, 0.3), `${what}: the storm is cloud`).toBeGreaterThan(storm.length * 0.7);
+    expect(count(fogged!, CLOUD, 0.3), `${what}: the fog is cloud`).toBeGreaterThan(storm.length * 0.7);
   }
   expect(view.errors).toEqual([]);
 });
 
-// The storm's offset shadow (§6 Clouds; Qodo c8a30ce7, PR #225): its lead puffs float higher than the
-// weather's, so with the weather's reach (0.1 R) only their satellites cast a shadow. One of src's three
-// files fogged, so its storm front faces discovered ground; the shadow is the ground the fog darkens
+// The cloud's offset shadow (§6 Clouds; Qodo c8a30ce7, PR #225, whose storm floated too high for the
+// weather's reach; since #228 the fog is the weather's own puffs, at the weather's 0.1 R). One of src's
+// three files fogged, so its cloud faces discovered ground; the shadow is the ground the fog darkens
 // without covering it (darker than clear, and no cloud colour), over four turns of the surface.
-test('the storm casts its offset shadow on the discovered ground beside it', async ({ page }) => {
+test('the cloud casts its offset shadow on the discovered ground beside it', async ({ page }) => {
   const view = await openView(page, systemView());
   const ids = MINI.planets.find((p) => p.path === 'src')!.surface.settlements.map((s) => s.fileId as string);
   let shadow = 0, storm = 0;
@@ -105,9 +105,9 @@ test('the storm casts its offset shadow on the discovered ground beside it', asy
       else if (luma(one!.pixels.rgba, p) < luma(clear!.pixels.rgba, p)) shadow++;
     }
   }
-  console.log(`src, one file fogged, four turns: ${storm} storm px, ${shadow} shadow px`);
-  expect(storm, 'not vacuous: the storm draws').toBeGreaterThan(10_000);
-  expect(shadow, 'the storm\'s main masses cast their shadow, not only its satellites').toBeGreaterThan(storm * 0.06);
+  console.log(`src, one file fogged, four turns: ${storm} cloud px, ${shadow} shadow px`);
+  expect(storm, 'not vacuous: the cloud draws').toBeGreaterThan(10_000);
+  expect(shadow, 'the cloud\'s main masses cast their shadow, not only its satellites').toBeGreaterThan(storm * 0.06);
   expect(view.errors).toEqual([]);
 });
 
@@ -185,7 +185,7 @@ test('the cloud is locked to the ground and closes the loop: the fogged planet, 
   expect(view.errors).toEqual([]);
 });
 
-// The fog's puffs are instanced meshes: at most four draws per planet (storm, its shadow, teal, mist), and
+// The fog's puffs are instanced meshes: at most four draws per planet (cloud, its shadow, teal, mist), and
 // only the layers with puffs draw. Measured on mini and on a fixture the size of this repo (11 planets).
 test('the fog stays inside the draw budget, mini and a repo-sized system, fogged and misted', async ({ page }) => {
   const view = await openView(page, systemView());
@@ -206,17 +206,19 @@ test('the fog stays inside the draw budget, mini and a repo-sized system, fogged
       expect(s.triangles, what).toBeLessThanOrEqual(BUDGET.maxTriangles);
       expect(s.drawCalls - stats[0]!.drawCalls, `${what}: four fog draws a planet at most`).toBeLessThanOrEqual(4 * planets);
     }
-    expect(stats[2]!.drawCalls, `${what}: the storm draws (not vacuous)`).toBeGreaterThan(stats[0]!.drawCalls);
+    expect(stats[2]!.drawCalls, `${what}: the cloud draws (not vacuous)`).toBeGreaterThan(stats[0]!.drawCalls);
   }
   expect(view.errors).toEqual([]);
 });
 
 const lavaAt = (paths: readonly string[]): LayoutV1 => ({ ...MINI, planets: MINI.planets.map((p) => (paths.includes(p.path) ? { ...p, health: { ...p.health, band: 'lava' as const } } : p)) });
 
-// Health reads on discovered land and through the storm front's gaps (art-direction §9): a fully fogged
-// lava world shows its glow only through the gaps, far less than clear, and no smoke over the storm; misted,
-// its health shows through the mist. The fade is off, so every pixel is a palette colour.
-test('a fully fogged lava planet shows its glow only through the storm\'s gaps; misted, its health shows through', async ({ page }) => {
+// Health reads on discovered land and through the clear sky between the cloud's masses (art-direction §9;
+// #228, C, the human, 2026-11-25): the fog is the planets' weather at 0.35 of the sites, so a fully fogged
+// lava world shows about half its glow, by the human's choice; the cloud still hides a real share of it,
+// there's no smoke over fogged ground, and misted (sparse white puffs) shows clearly more. The fade is off,
+// so every pixel is a palette colour.
+test('a fully fogged lava planet hides a share of its glow under the cloud, its health showing through the clear sky; misted, far more shows', async ({ page }) => {
   const lava = lavaAt(['src']);
   const view = await openView(page, systemView());
   const base = { layout: lava, ...focus('src'), depthFade: false };
@@ -231,11 +233,12 @@ test('a fully fogged lava planet shows its glow only through the storm\'s gaps; 
   console.log(`lava hero, glow px: clear ${glow(clear!)}, fogged ${glow(fogged!)} (f90: ${glow(fogged90!)}), misted ${glow(misted!)}; smoke px: clear ${ash(clear!)}, fogged ${ash(fogged!)}`);
   expect(glow(clear!), 'not vacuous: a clear lava planet glows').toBeGreaterThan(0);
   expect(ash(clear!), 'not vacuous: its smoke shows').toBeGreaterThan(0);
-  expect(glow(fogged!), 'fogged: some glow through the gaps').toBeGreaterThan(0);
-  expect(glow(fogged!), 'fogged: most of it under the storm').toBeLessThan(glow(clear!) * 0.3);
-  expect(glow(fogged90!), 'fogged, a later frame').toBeLessThan(glow(clear!) * 0.3);
-  expect(ash(fogged!), 'fogged: no smoke over the storm').toBe(0);
-  expect(glow(misted!), 'misted: the glow shows through').toBeGreaterThan(glow(clear!) * 0.5);
+  expect(glow(fogged!), 'fogged: its health shows through the clear sky').toBeGreaterThan(glow(clear!) * 0.2);
+  expect(glow(fogged!), 'fogged: over a third of it under the cloud').toBeLessThan(glow(clear!) * 0.65);
+  expect(glow(fogged90!), 'fogged, a later frame').toBeLessThan(glow(clear!) * 0.65);
+  expect(ash(fogged!), 'fogged: no smoke over the fogged ground').toBe(0);
+  expect(glow(misted!), 'misted: most of the glow shows through').toBeGreaterThan(glow(clear!) * 0.7);
+  expect(glow(misted!), 'misted shows clearly more than fogged').toBeGreaterThan(glow(fogged!) * 1.3);
   expect(view.errors).toEqual([]);
 });
 
@@ -273,7 +276,7 @@ test('lava smoke never shows over a fogged settlement, head-on and at oblique an
 
 // The contrast the fog draws: at overview a fogged lava world beside a clear one. Each planet's glow is
 // counted inside its own disc on screen (with the cloud's bulge), so the star's glow never counts.
-test('at overview a fogged lava planet glows far less than clear, while its clear neighbour keeps its own', async ({ page }) => {
+test('at overview a fogged lava planet glows less than clear (#228 C: over a quarter under the cloud), while its clear neighbour keeps its own', async ({ page }) => {
   const lava = lavaAt(['src', 'docs']);
   const files = (path: string) => { const p = lava.planets.find((x) => x.path === path)!; return [...p.surface.settlements, ...p.moons].map((f) => f.fileId) as string[]; };
   const view = await openView(page, systemView());
@@ -294,8 +297,8 @@ test('at overview a fogged lava planet glows far less than clear, while its clea
   console.log(`overview glow px: src clear ${sc}, fogged ${sf}; docs clear ${dc}, fogged ${df}`);
   expect(sc, 'src, clear, glows').toBeGreaterThan(0);
   expect(dc, 'docs, clear, glows').toBeGreaterThan(0);
-  expect(sf, 'src fogged: under the storm').toBeLessThan(sc * 0.35);
-  expect(df, 'docs fogged: under the storm').toBeLessThan(dc * 0.35);
+  expect(sf, 'src fogged: under the cloud').toBeLessThan(sc * 0.75);
+  expect(df, 'docs fogged: under the cloud').toBeLessThan(dc * 0.75);
   expect(glowIn(srcFogged!, 'docs'), 'docs keeps its own glow while src is fogged').toBe(dc);
   expect(glowIn(docsFogged!, 'src'), 'src keeps its own glow while docs is fogged').toBe(sc);
   expect(view.errors).toEqual([]);
@@ -313,7 +316,7 @@ test('a planet whose settlements are all off its grid is drawn fogged without a 
   for (const r of [unknown, stale, known]) assertRendered(r!.pixels, r!.stats);
   const cloud = (r: Rendered) => count(r, CLOUD, 0.3);
   console.log(`src with no settlement on its grid: ${cloud(unknown!)} cloud px with no fog view, ${cloud(known!)} with every file known clear`);
-  expect(cloud(unknown!), 'no fog view: storm cloud all over').toBeGreaterThan(5000);
+  expect(cloud(unknown!), 'no fog view: cloud all over').toBeGreaterThan(5000);
   expect(diffPixels(unknown!.pixels, stale!.pixels)).toBe(0);
   expect(cloud(known!), 'not vacuous: known clear files leave it clear').toBeLessThan(cloud(unknown!) / 10);
   expect(view.errors).toEqual([]);

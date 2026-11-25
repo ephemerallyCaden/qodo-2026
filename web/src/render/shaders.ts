@@ -445,16 +445,15 @@ export const PLANET_FRAG = /* glsl */ `${SURFACE}
 `;
 
 // Cloud shadow: the puffs projected along the light onto the surface (r = 1.003), drawn as the
-// terrain one light band darker. It shares the surface material's uniforms. The fog's storm cloud casts
-// one too (uFogSky 1, #224).
+// terrain one light band darker. It shares the surface material's uniforms. The fog's cloud casts one
+// too (uFogSky 1, #224).
 /**
  * How far a shadow may fall from its cloud along the light, in planet radii (uShadowReach): past it,
- * near the terminator, a shadow would smear across the disc (the asset viewer's 0.1, for the weather,
- * whose puffs' bases float about 0.06 R up). The fog's storm floats higher, its lead puffs' bases about
- * 0.106 R up (model/fog-cloud.ts STORM), so the same cut, light within about 54° of the vertical at the
- * base, is 0.18; with the weather's 0.1 the storm's main masses cast no shadow (Qodo c8a30ce7, PR #225).
+ * near the terminator, a shadow would smear across the disc (the asset viewer's 0.1). Since #228 the
+ * fog's cloud is the weather's own puffs, at the weather's height, so it has the weather's cut too (#224's
+ * storm, its bases higher, needed 0.18: Qodo c8a30ce7, PR #225).
  */
-export const SHADOW_REACH = { weather: 0.1, storm: 0.18 } as const;
+export const SHADOW_REACH = 0.1;
 export const SHADOW_VERT = /* glsl */ `
   uniform vec3 uLight;
   uniform vec3 uCenter;
@@ -482,7 +481,7 @@ export const SHADOW_VERT = /* glsl */ `
 export const SHADOW_FRAG = /* glsl */ `${SURFACE}
   ${FOG_SURFACE}
   ${FOG_SKY}
-  uniform float uShadowReach; // SHADOW_REACH: the weather's or the storm's
+  uniform float uShadowReach; // SHADOW_REACH
   in vec3 vHitW;
   in float vReach;
   void main() {
@@ -497,7 +496,7 @@ export const SHADOW_FRAG = /* glsl */ `${SURFACE}
 
 // Clouds: each puff's normal blends the planet-radial direction and its mass's dome, so a mass
 // shades as one lumpy body (aMass.w = 1), not a pile of spheres; lava smoke keeps plain puffs (w = 0).
-// The fog's storm cloud, teal and mist (#224) are clouds too (uFogSky 1).
+// The fog's cloud, teal and mist (#224, #228) are clouds too (uFogSky 1).
 export const CLOUD_VERT = /* glsl */ `
   in vec4 aMass;
   out vec3 vNormalW;
@@ -536,7 +535,7 @@ export const CLOUD_FRAG = /* glsl */ `
   }
   void main() {
     if (fogSkyOff()) discard;
-    if (uSmoke > 0.5 && smokeFogged()) discard; // no smoke over a fogged or changing cell (it would hint at the band from over the storm)
+    if (uSmoke > 0.5 && smokeFogged()) discard; // no smoke over a fogged or changing cell (it would hint at the band from under the cloud)
     vec3 g = normalize(vNormalW), r = normalize(vPosW - uCenter), m = normalize(vPosW - vAnchorW);
     float rg = dot(r, g), mg = dot(m, g);
     if (rg < 0.0) r -= rg * g;
@@ -548,7 +547,7 @@ export const CLOUD_FRAG = /* glsl */ `
 
 /**
  * Haze: a slightly larger shell drawn only near the lit limb, a thin crescent, never an outline. None
- * over fogged ground (#74): its colour would hint at the band from over the storm.
+ * over fogged ground (#74): its colour would hint at the band from under the cloud.
  */
 export const HAZE_FRAG = /* glsl */ `
   ${DEPTH}

@@ -195,7 +195,7 @@ describe('orbits (AC 5, Rule 4)', () => {
   });
 });
 
-describe('drones clear the fog sky (#224, Qodo 1f87de0f)', () => {
+describe('drones clear the fog sky (#224, Qodo 1f87de0f; the weather\'s cloud since #228)', () => {
   // The largest planet with no moons, so only its clouds set how far out its drones fly.
   const layout = structuredClone(miniLayout);
   const docs = layout.planets.find((p) => p.moons.length === 0)!;
@@ -204,10 +204,10 @@ describe('drones clear the fog sky (#224, Qodo 1f87de0f)', () => {
   const planet = model.planets.find((p) => p.dirId === docs.dirId)!;
   const plan = surfacePlan(planet.surface);
   /** The farthest drawn vertex of the planet's fog sky from its centre, in planet radii, with every file at `level`. */
-  const skyTop = (level: Level): number => {
+  const skyTop = (level: Level, seed = planet.seed): number => {
     const puff = new THREE.IcosahedronGeometry(1, 1); // render/planet.ts PUFF_NEAR, the finer of the two
     const mat = new THREE.ShaderMaterial();
-    const sky = new FogClouds(plan, planet.seed, { near: puff, far: puff }, { storm: mat, teal: mat, mist: mat, shadow: mat });
+    const sky = new FogClouds(plan, seed, { near: puff, far: puff, tiny: puff }, { cloud: mat, teal: mat, mist: mat, shadow: mat });
     sky.set(plan.fileIds.map(() => fileFogAt(level, undefined, 0)));
     const m = new THREE.Matrix4(), v = new THREE.Vector3(), pos = puff.getAttribute('position');
     let top = 0;
@@ -221,7 +221,7 @@ describe('drones clear the fog sky (#224, Qodo 1f87de0f)', () => {
     return top;
   };
 
-  it.each([{ level: 2, sky: 'storm cloud (fogged), its bulge past the limb included' }, { level: 1, sky: 'mist (misted)' }] as const)('keeps every drone, its drift and bob included, outside a planet\'s $sky', ({ level }) => {
+  it.each([{ level: 2, sky: 'cloud (fogged), its domes past the limb included' }, { level: 1, sky: 'mist (misted)' }] as const)('keeps every drone, its drift and bob included, outside a planet\'s $sky', ({ level }) => {
     const top = skyTop(level) * planet.radius;
     expect(top, 'the sky is drawn').toBeGreaterThan(planet.radius);
     for (let seed = 0; seed < 64; seed++) {
@@ -234,7 +234,10 @@ describe('drones clear the fog sky (#224, Qodo 1f87de0f)', () => {
 
   it("takes the reach a drone clears from the fog sky's own shape, which bounds the drawn puffs and is reached by them", () => {
     expect(skyTop(2)).toBeLessThanOrEqual(FOG_SKY_TOP);
-    expect(skyTop(2)).toBeGreaterThan(FOG_SKY_TOP * 0.99); // not a padded number
+    // not a padded number: a full core's dome (the weather's, #228) reaches it on some planets, if not on every one
+    const tops = Array.from({ length: 12 }, (_, s) => skyTop(2, planet.seed + s));
+    expect(Math.max(...tops)).toBeLessThanOrEqual(FOG_SKY_TOP);
+    expect(Math.max(...tops)).toBeGreaterThan(FOG_SKY_TOP * 0.99);
     expect(skyTop(1)).toBeLessThanOrEqual(layerTop(MIST));
     expect(homeBody(model, planet.dirId, 0)!.reach).toBe(planet.radius * FOG_SKY_TOP);
   });

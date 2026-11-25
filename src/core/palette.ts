@@ -150,15 +150,16 @@ function deepFreeze<T>(value: T): T {
 }
 
 /**
- * Fog of war, C6 · white storm front (art-direction §9; human, 2026-11-16; #224): fogged files lie
- * under storm cloud in `world.cloud` itself, cream with its warm shadow, and a clear's cloud turns
+ * Fog of war as the planets' weather (art-direction §9; human, 2026-11-16; #224, #228): fogged files lie
+ * under cloud in `world.cloud` itself, cream with its warm shadow, and a clear's cloud turns
  * `accent.teal` while it thins. Misted files (stored `haze`: read, not yet tested) lie under `mist`,
- * the cloud ramp's light steps only, so mist is never dark at any light band. No new colours: the
- * dark veil (D2d) and its mixes toward space are gone from the product (the human, 2026-11-25:
- * "there should be no black area").
+ * the cloud ramp's light steps only: its white top on every lit band and its cream only on the night
+ * side (#228: "clearly lighter" than the cloud), so mist is never dark at any light band. No new
+ * colours: the dark veil (D2d) and its mixes toward space are gone from the product (the human,
+ * 2026-11-25: "there should be no black area").
  */
 const CLOUD = PALETTE.world.cloud;
-const FOG = { mist: [CLOUD[1]!, CLOUD[1]!, CLOUD[2]!, CLOUD[3]!] as Ramp };
+const FOG = { mist: [CLOUD[1]!, CLOUD[3]!, CLOUD[3]!, CLOUD[3]!] as Ramp };
 
 /** Frozen at runtime too, so nothing can retune a colour behind the pinned test. */
 export const palette = deepFreeze({ ...PALETTE, fog: FOG });

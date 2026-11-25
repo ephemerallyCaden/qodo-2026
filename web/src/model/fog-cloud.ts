@@ -1,33 +1,45 @@
-// Fog of war as cloud (#224; art-direction §9, "fog of war is cloud", human, 2026-11-16): C6 · the white
-// storm front over every fogged file's territory, thin mist over every misted one (stored `haze`: read,
-// not yet tested; the human, 2026-11-25: "clouds for completely unknown, and misted for read but
-// untested"), and nothing over a clear one. Ported from the asset viewer's fog-cloud.js
-// (feature/asset-library 13ebffb, mockups/asset-viewer: CLOUD_FOGS.C6 and fogClouds()), which the fog
-// doc says the product should reuse. Pure: no three.js, no DOM, no clock; every choice is a seeded hash
-// of the planet's seed, the file and the cell (principle 3), so the same fog and frame give the same puffs.
+// Fog of war as cloud (art-direction §9, "fog of war is cloud", human, 2026-11-16), in the planets'
+// original weather (#228; the human, 2026-11-25: "keep the same cloud visual language as before just make
+// its coverage proportional… the puffs were smaller and blended into each other"): the asset viewer's
+// cream weather (feature/asset-library mockups/asset-viewer/viewer.js WEATHER.cloud and rebuild(), ported
+// as render/planet.ts buildWeather) over every fogged file's territory, its thin weather (WEATHER.thin)
+// over every misted one (stored `haze`: read, not yet tested), and nothing over a clear one. The
+// placement, gaps and fronts are #224's (from the viewer's fog-cloud.js); only the puffs changed. Pure: no
+// three.js, no DOM, no clock; every choice is a seeded hash or noise of the planet's seed, the file and
+// the site (principle 3), so the same fog and frame give the same puffs.
 //
-// - One clump (a lead puff and satellites) per covered site: each cell of #18's 256-cell grid, the grid
-//   every scanned planet has (a coarser test grid's cells get several sites each). The clumps sit in the
-//   ground's own frame, so the cloud stays over its file instead of drifting with the weather
-//   (render/fog.ts puts it on the surface's spin). Every file's territory keeps the same share of its
-//   sites open (1 - density, by a seeded rank): the storm front's gap, through which the ground and its
-//   health show (§9).
-// - Cover is therefore 0.9 of the fogged share of the surface cells, which follows the fogged share of
-//   the files within the territory rule's rounding, and a planet with nothing fogged has no storm cloud.
-// - Masses: neighbouring covered sites shade as one dome (the weather's mass anchors).
+// - Sites: a Fibonacci grid as dense as the weather's for the layer's puff size (SKY_SITES at size 1), so
+//   neighbouring puffs always overlap and a mass is one body. Each site belongs to the file owning the
+//   nearest cell of the planet's #18 grid (256 cells on a scanned planet; a test fixture's coarser grid
+//   works the same).
+// - The clumps sit in the ground's own frame, so the cloud stays over its file instead of drifting with
+//   the weather (render/fog.ts puts it on the surface's spin).
+// - Cover: a site carries its layer where its file has that level and the weather's noise (merged masses
+//   and east–west streaks) is over the planet's cut at the layer's density, so a fully fogged planet wears
+//   the weather's own pattern, and a partly fogged one the part of it over its fogged files. A site's
+//   cover depends on its own file alone, so a planet's cover is the sum of its fogged files' and tracks
+//   their share; a fully reviewed planet has no cloud. Every file also keeps a floor of its own highest
+//   sites (FLOOR), so a fogged file never lies wholly in clear sky (Rule 1).
+// - Puffs: the weather's clump, a lead puff and satellites. A site's core (0 at a mass's edge, 1 deep
+//   inside) sizes and lifts its lead, so a mass domes; edge sites get 2–3 satellites for a lumpy edge.
+//   Core is the noise's rise over the cut, capped by the distance to the cloud's edge (a territory's
+//   border or a front cuts a mass where the noise doesn't).
+// - Masses: connected covered sites shade as one dome (the weather's mass anchors), split among seeded
+//   mass cells so a heavy cover still reads as separate masses.
 // - Events (model/fog.ts FileFogAt): a front between the level a file came from and the one it rests at.
-//   A clear runs out from the file's anchor; the storm cloud still ahead of it is drawn in [OIII] teal
-//   (an event, F5) and shrinks as the front passes, leaving the mist (or nothing) behind. Mist clearing
-//   (a quiz passed: haze → clear) fades instead, cell by cell. A refog rolls the new level in from the
+//   A clear runs out from the file's anchor; the cloud still ahead of it is drawn in [OIII] teal (an
+//   event, F5) and shrinks as the front passes, leaving the mist (or nothing) behind. Mist clearing (a
+//   quiz passed: haze → clear) fades instead, site by site. A refog rolls the new level in from the
 //   territory's far edge, with no teal (F6).
+import { makeFbm3 } from '../render/noise.js';
 import { hash01, orphanLevel, type FileFogAt, type Level, type SurfacePlan } from './fog.js';
 import { centresOf, neighbours } from './territory.js';
 import type { Vec3 } from './vec.js';
 
 /**
- * A cloud layer's look, in planet radii (fog-cloud.js CLOUD_FOGS): `density`, the share of a file's
- * cells that carry it (the rest is its gap); `size`, `lift`, `float`, `flat` and `stretch`, the puff's
- * shape (as the weather's, render/planet.ts put()); `sats`, the satellites per clump, from..to.
+ * A cloud layer's look (viewer.js WEATHER): `density`, the share of a file's sites that carry it (the
+ * rest is its gap); `size` and `lift`, the weather's scales on the clump's puff size and dome height;
+ * `float`, `flat` and `stretch`, the puff's base gap, radial squash and east–west stretch, in planet radii.
  */
 export interface CloudLayer {
   id: string;
@@ -37,39 +49,60 @@ export interface CloudLayer {
   float: number;
   flat: number;
   stretch: number;
-  sats: readonly [number, number];
 }
 
-/** C6 · white storm front, exactly the asset viewer's (C4's domed storm shape, white). */
-export const STORM: CloudLayer = { id: 'C6', density: 0.9, size: 0.15, lift: 1.3, float: 0.07, flat: 0.6, stretch: 1, sats: [2, 3] };
 /**
- * Mist: the same placement, thinner. Half the cells, puffs about half the size, low and flat, so the
- * ground shows between them and the mist never domes like the storm (the lead's brief for #224: lower
- * density, smaller and lower puffs, no shadow, the lightest cloud steps; palette.fog.mist).
+ * Fogged: the cream weather, exactly the viewer's WEATHER.cloud (lush's, before #224); `density` is the
+ * share of the planet's sites it covers when every file is fogged. 0.35 is the human's pick at the #228
+ * checkpoint (option C, 2026-11-25): the weather's own masses with clear sky between them, through which
+ * health shows; 0.9 (#224's cover) drew an overcast ball.
  */
-export const MIST: CloudLayer = { id: 'mist', density: 0.55, size: 0.055, lift: 0.2, float: 0.025, flat: 0.25, stretch: 3, sats: [1, 2] };
+export const CLOUD: CloudLayer = { id: 'cloud', density: 0.35, size: 1, lift: 1, float: 0.055, flat: 0.6, stretch: 1 };
+/**
+ * Misted: "a little cloud" (#228, the human: "clearly lighter"): the viewer's thin weather (WEATHER.thin,
+ * ocean's before #224), its puffs 0.7× the cloud's and lower, flatter (0.4 for its 0.6) and far sparser,
+ * so the ground shows between them. It casts no shadow and takes only the cloud ramp's light steps, white
+ * wherever lit (palette.fog.mist), so it is never dark.
+ */
+export const MIST: CloudLayer = { id: 'thin', density: 0.1, size: 0.7, lift: 0.5, float: 0.05, flat: 0.4, stretch: 1 };
+
+/** Where clumps can sit: the weather's site grid (viewer.js rebuild: 1500 sites at size 1, 1500 / size² for smaller puffs), on every planet. */
+export const SKY_SITES = 1500;
+
+/** The weather's noise (viewer.js rebuild): a mass field at this frequency, and a latitude-stretched streak field. */
+const MASS_FREQ = 2.0;
+/** A lead puff (viewer.js clump): size base + core × spread + a seeded share of jitter, lift base + core × spread; both × the layer's. */
+const LEAD = { size: 0.058, sizeCore: 0.04, sizeJitter: 0.01, lift: 0.2, liftCore: 0.9 } as const;
+/** Satellites: 2–3 round a lead below `edge` core (a lumpy edge), else 1; offset 0.9–1.4 × its size, 0.5–0.75 × its size, half its lift. */
+const SAT = { edge: 0.35, off: 0.9, offJitter: 0.5, size: 0.5, sizeJitter: 0.25, lift: 0.5 } as const;
+/** How fast core rises with the noise over the cut (viewer.js: min(1, density × 7)); and how many sites in from a mass's edge it reaches 1. */
+const CORE_GAIN = 7;
+const EDGE_SITES = 3;
+/** How far a lead puff strays from its site, either way (viewer.js: ±0.025). */
+const JITTER = 0.05;
+/**
+ * Masses: covered sites split among this many seeded centres (the nearest to each), so a heavy cover still
+ * reads as separate domed masses, as the weather's do, not one dome round the planet; the centres jitter by
+ * MASS_JITTER and each site's direction is warped by noise (amp at freq) so the masses' borders wander.
+ */
+const MASS_CELLS = 28;
+const MASS_JITTER = 0.4;
+const MASS_WARP = { amp: 0.6, freq: 2.5 } as const;
 
 /**
- * Where clumps can sit: the cells of a Fibonacci grid of at least #18's SURFACE_CELLS, the grid every
- * scanned planet has and the layers' sizes are set for. On it each site is a cell. A coarser grid (a test
- * fixture's 2, 16 or 64 cells) keeps the same sites, each one standing for the cell nearest it, so a cell
- * is covered whatever its size.
+ * The least of a file's own sites a layer covers, as a share of its density: the file's highest sites in
+ * the noise, wherever the weather's cut falls, so a file never lies wholly in clear sky (Rule 1: a fogged
+ * file never looks reviewed).
  */
-export const SKY_SITES = 256;
+const FLOOR = 0.5;
 
 /** How softly a front thins the cloud, rad (fog-cloud.js FRONT_SOFT). */
 export const FRONT_SOFT = 0.1;
-/** How softly a cell's mist goes while mist fades (a share of the fade's length). */
+/** How softly a site's mist goes while mist fades (a share of the fade's length). */
 export const FADE_SOFT = 0.15;
 
 /** One puff: a direction from the planet's centre (ground frame, not normalised), its shape, and its mass's dome anchor (null: none). */
 export interface Puff { dir: Vec3; size: number; lift: number; flat: number; stretch: number; float: number; anchor: Vec3 | null }
-
-/** A lead puff's size, a share of its layer's: min + a seeded share of spread. */
-const LEAD_SIZE = { min: 0.85, spread: 0.3 } as const;
-/** A satellite's size, a share of its lead's, and its lift, a share of its layer's. */
-const SAT_SIZE = { min: 0.5, spread: 0.25 } as const;
-const SAT_LIFT = 0.5;
 
 type PuffShape = Pick<Puff, 'size' | 'lift' | 'flat' | 'stretch' | 'float'>;
 
@@ -90,80 +123,90 @@ function puffTop(p: PuffShape): number {
   return Math.sqrt(a * a * (1 - s * s) + (r + b * s) ** 2);
 }
 
-/** The farthest any of a layer's puffs reaches, in planet radii: its biggest lead puff at full cover, or its biggest satellite. */
+/** The farthest any of a layer's puffs reaches, in planet radii: a full core's biggest lead puff at full cover, or its biggest satellite. */
 export function layerTop(layer: CloudLayer): number {
-  const lead = layer.size * (LEAD_SIZE.min + LEAD_SIZE.spread), sat = lead * (SAT_SIZE.min + SAT_SIZE.spread);
+  const size = layer.size * (LEAD.size + LEAD.sizeCore + LEAD.sizeJitter), lift = layer.lift * (LEAD.lift + LEAD.liftCore);
   const shape = { flat: layer.flat, stretch: layer.stretch, float: layer.float };
-  return Math.max(puffTop({ ...shape, size: lead, lift: layer.lift }), puffTop({ ...shape, size: sat, lift: layer.lift * SAT_LIFT }));
+  return Math.max(puffTop({ ...shape, size, lift }), puffTop({ ...shape, size: size * (SAT.size + SAT.sizeJitter), lift: lift * SAT.lift }));
 }
 
 /**
- * The fog sky's top: how far the storm cloud (its bulge past the limb included) or the mist can reach
- * from a planet's centre, in planet radii. A drone circling a planet clears it (drones/place.ts
- * homeBody), whatever the planet's fog, since any file can be refogged.
+ * The fog sky's top: how far the cloud (its domes past the limb included) or the mist can reach from a
+ * planet's centre, in planet radii. A drone circling a planet clears it (drones/place.ts homeBody),
+ * whatever the planet's fog, since any file can be refogged.
  */
-export const FOG_SKY_TOP = Math.max(layerTop(STORM), layerTop(MIST));
+export const FOG_SKY_TOP = Math.max(layerTop(CLOUD), layerTop(MIST));
 
-/** A planet's fog sky at a moment: the storm cloud, the part of it that is clearing (drawn teal), and the mist. */
+/** A planet's fog sky at a moment: the cloud, the part of it that is clearing (drawn teal), and the mist. */
 export interface FogSky {
-  storm: Puff[];
+  cloud: Puff[];
   teal: Puff[];
   mist: Puff[];
-  /** Sites carrying storm cloud (teal included), and mist, over all sites (on a 256-cell grid, cells): the cover measures. */
-  stormCover: number;
+  /** Sites carrying cloud (teal included), and mist, over all sites: the cover measures. */
+  cloudCover: number;
   mistCover: number;
 }
 
-/** What each level puts over a cell at rest: [storm, mist]. */
+/** What each level puts over a site at rest: [cloud, mist]. */
 const OVER: Readonly<Record<Level, readonly [number, number]>> = { 0: [0, 0], 1: [0, 1], 2: [1, 0] };
 const soft = (x: number) => Math.min(1, Math.max(0, x));
 
-/** A cell's cover at a moment: how much storm and mist are left over it (0..1), and whether the storm is clearing. */
-export interface CellCover { storm: number; mist: number; teal: boolean }
+/** A site's cover at a moment: how much cloud and mist are left over it (0..1), and whether the cloud is clearing. */
+export interface CellCover { cloud: number; mist: number; teal: boolean }
 
 /**
- * The cover over one cell of a file at `f`: `d` the cell's angle from the file's anchor, `reach` the
- * territory's (model/territory.ts), `fade` the cell's own place in a mist fade (0..1).
+ * The cover over one site of a file at `f`: `d` the site's angle from the file's anchor, `reach` the
+ * territory's (model/territory.ts), `fade` the site's own place in a mist fade (0..1).
  */
 export function cellCover(f: FileFogAt, d: number, reach: number, fade: number): CellCover {
-  const [ts, tm] = OVER[f.level];
-  if (f.kind === 0) return { storm: ts, mist: tm, teal: false };
-  const [fs, fm] = OVER[f.from];
+  const [tc, tm] = OVER[f.level];
+  if (f.kind === 0) return { cloud: tc, mist: tm, teal: false };
+  const [fc, fm] = OVER[f.from];
   // how much of the level it came from is left here: 1 ahead of the front, 0 once it has passed. Each
-  // front's soft edge starts wholly before its first cell and ends wholly past its last, so the first
+  // front's soft edge starts wholly before its first site and ends wholly past its last, so the first
   // frame is exactly the old level and the last the new one (Qodo 0d9f4eaa: no jump at either end).
   let left: number;
   if (f.kind === 1) {
-    left = fs === 0 && ts === 0
-      ? soft((FADE_SOFT / 2 + fade * (1 - FADE_SOFT) - f.progress) / FADE_SOFT + 0.5) // mist fading to clear, cell by cell
+    left = fc === 0 && tc === 0
+      ? soft((FADE_SOFT / 2 + fade * (1 - FADE_SOFT) - f.progress) / FADE_SOFT + 0.5) // mist fading to clear, site by site
       : soft((d - (f.progress * (reach + FRONT_SOFT) - FRONT_SOFT / 2)) / FRONT_SOFT + 0.5); // a clear: out from the anchor
   } else {
     left = 1 - soft((d - ((1 - f.progress) * (reach + FRONT_SOFT) - FRONT_SOFT / 2)) / FRONT_SOFT + 0.5); // a refog: in from the far edge
   }
-  return { storm: fs * left + ts * (1 - left), mist: fm * left + tm * (1 - left), teal: f.kind === 1 && fs > 0 && left > 0 };
+  return { cloud: fc * left + tc * (1 - left), mist: fm * left + tm * (1 - left), teal: f.kind === 1 && fc > 0 && left > 0 };
 }
 
-interface Clump { dir: Vec3; size: number; sats: { dir: Vec3; size: number }[] }
+/** A site's clump: its lead's direction and tangent frame, and its seeded shares. */
+interface Clump {
+  dir: Vec3;
+  east: Vec3;
+  north: Vec3;
+  /** The lead's size jitter (0..1) and its satellite count's share (0..1). */
+  size: number;
+  count: number;
+  /** Up to three satellites: angle round the lead (rad), and offset and size shares (0..1). */
+  sats: readonly { ang: number; off: number; size: number }[];
+}
 
 /**
- * A planet's fog sky, planned once from its surface and seed: its sites (SKY_SITES), each layer's gaps,
- * and each site's clump (where its puffs sit, and their sizes at full cover). `at(files)` turns the files'
- * fog into puffs.
+ * One layer's sites, planned once: a Fibonacci grid as dense as the weather's for its puff size (viewer.js
+ * rebuild: 1500 / size² sites), each site's file, clump and mass cell, and the layer's gaps and noise core.
  */
-export class CloudPlan {
-  /** Sites, and per site the file that owns the grid cell nearest it (-1: none). */
-  private readonly n: number;
-  private readonly owner: Int32Array;
-  private readonly centres: Float64Array;
-  /** Per layer, per site: 1 where that layer leaves the site open (its gap). */
-  private readonly gap: { storm: Uint8Array; mist: Uint8Array };
-  private readonly clumps: { storm: Clump[]; mist: Clump[] };
-  /** Per site: its angle from its file's anchor (rad), and its place in a mist fade (0..1). */
-  private readonly fromAnchor: Float64Array;
-  private readonly fade: Float64Array;
+class SkyGrid {
+  readonly n: number;
+  readonly centres: Float64Array;
+  /** Per site: the file owning the grid cell nearest it (-1: none), its angle from that file's anchor (rad), its place in a mist fade (0..1). */
+  readonly owner: Int32Array;
+  readonly fromAnchor: Float64Array;
+  readonly fade: Float64Array;
+  /** Per site: 1 where the layer leaves it open (its gap); its core from the noise alone; its mass cell. */
+  readonly gap: Uint8Array;
+  readonly noiseCore: Float64Array;
+  readonly massCell: Int32Array;
+  readonly clumps: Clump[];
 
-  constructor(readonly plan: SurfacePlan, readonly seed: number) {
-    const t = plan.territory, cells = t.cells, n = (this.n = Math.max(cells, SKY_SITES));
+  constructor(plan: SurfacePlan, seed: number, readonly layer: CloudLayer) {
+    const t = plan.territory, cells = t.cells, n = (this.n = Math.max(cells, Math.round(SKY_SITES / layer.size ** 2)));
     const cc = centresOf(cells), c = (this.centres = centresOf(n));
     const dotCell = (i: number, j: number) => c[3 * i]! * cc[3 * j]! + c[3 * i + 1]! * cc[3 * j + 1]! + c[3 * i + 2]! * cc[3 * j + 2]!;
     // each site's cell: itself on a grid as fine as the sites, else the nearest (ties: the lower cell)
@@ -179,120 +222,171 @@ export class CloudPlan {
     for (let i = 0; i < n; i++) {
       const k = (this.owner[i] = cells > 0 ? t.owner[cellOf(i)]! : -1);
       this.fromAnchor[i] = k >= 0 ? Math.acos(Math.min(1, Math.max(-1, dotCell(i, t.anchor[k]!)))) : 0;
+      this.fade[i] = hash01(`${layer.id}|fade|${k >= 0 ? plan.fileIds[k]! : ''}|${i}`);
     }
-    const idOf = (i: number) => (this.owner[i]! >= 0 ? plan.fileIds[this.owner[i]!]! : '');
-    for (let i = 0; i < n; i++) this.fade[i] = hash01(`${MIST.id}|fade|${idOf(i)}|${i}`);
-    this.gap = { storm: this.gaps(STORM, idOf), mist: this.gaps(MIST, idOf) };
-    this.clumps = { storm: this.clumpsOf(STORM), mist: this.clumpsOf(MIST) };
-  }
-
-  /**
-   * The sites each territory leaves open: the same share (1 - density, rounded) of every file's sites,
-   * those with the lowest seeded rank (fog-cloud.js), so cover is density × the covered sites exactly.
-   * Sites no file owns are one territory of their own.
-   */
-  private gaps(layer: CloudLayer, idOf: (i: number) => string): Uint8Array {
-    const gap = new Uint8Array(this.n);
+    // the weather's density (viewer.js rebuild): merged masses or east–west streaks, whichever is denser
+    const mass = makeFbm3(seed * 31 + 5), streak = makeFbm3(seed * 17 + 9);
+    const raw = Float64Array.from({ length: n }, (_, i) => {
+      const [x, y, z] = [c[3 * i]!, c[3 * i + 1]!, c[3 * i + 2]!];
+      return Math.max(mass(x * MASS_FREQ + 4, y * MASS_FREQ, z * MASS_FREQ), streak(x * 0.9, y * 6.0 + 2, z * 0.9));
+    });
+    // the weather's cut (viewer.js: a quantile of the field), here at the layer's density over the whole planet
+    const byRaw = (a: number, b: number) => raw[a]! - raw[b]! || a - b;
+    const all = Array.from({ length: n }, (_, i) => i).sort(byRaw);
+    const cut = raw[all[Math.min(n - 1, Math.round(n * (1 - layer.density)))]!]!;
+    // gaps: every site under the cut, except each file's floor, its highest sites, so every file's cloud shows (Rule 1)
+    this.gap = Uint8Array.from(raw, (r) => (r < cut ? 1 : 0));
     const byFile = new Map<number, number[]>();
-    for (let i = 0; i < this.n; i++) {
-      const k = this.owner[i]!;
-      const cells = byFile.get(k);
-      if (cells) cells.push(i); else byFile.set(k, [i]);
+    for (let i = 0; i < n; i++) {
+      const sites = byFile.get(this.owner[i]!);
+      if (sites) sites.push(i); else byFile.set(this.owner[i]!, [i]);
     }
-    for (const cells of byFile.values()) {
-      const ranked = cells.map((i): [number, number] => [hash01(`${layer.id}|gap|${idOf(i)}|${i}`), i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-      const open = Math.round(cells.length * (1 - layer.density));
-      for (let j = 0; j < open; j++) gap[ranked[j]![1]] = 1;
+    for (const sites of byFile.values()) {
+      const ranked = [...sites].sort(byRaw).reverse();
+      const floor = Math.max(1, Math.round(sites.length * layer.density * FLOOR));
+      for (let j = 0; j < Math.min(floor, ranked.length); j++) this.gap[ranked[j]!] = 0;
     }
-    return gap;
-  }
-
-  /** Each site's clump at full cover (fog-cloud.js fogClouds' items, before the cover scales them). */
-  private clumpsOf(layer: CloudLayer): Clump[] {
-    const c = this.centres;
-    return Array.from({ length: this.n }, (_, i) => {
-      const h = (tag: string) => hash01(`${layer.id}|${tag}|${this.seed}|${i}`);
-      const jit = (tag: string) => (h(tag) - 0.5) * 0.09;
-      const [dx, dy, dz] = [c[3 * i]!, c[3 * i + 1]!, c[3 * i + 2]!];
-      const size = layer.size * (LEAD_SIZE.min + h('s') * LEAD_SIZE.spread);
-      // satellites: lumpy edges and fill between neighbouring cells, round the cell in its tangent plane
-      const el = Math.hypot(dz, dx) || 1;
-      const [ex, ez] = [dz / el, -dx / el];
-      const north: Vec3 = [dy * ez, dz * ex - dx * ez, -dy * ex];
-      const [lo, hi] = layer.sats;
-      const count = lo + Math.floor(h('n') * (hi - lo + 1));
-      const sats = Array.from({ length: count }, (_, q) => {
-        const ang = h(`a${q}`) * Math.PI * 2, off = 0.11 + h(`o${q}`) * 0.06;
-        const e = Math.cos(ang) * 1.4 * layer.stretch * off, nn = Math.sin(ang) * 0.7 * off;
-        return { dir: [dx + ex * e + north[0] * nn, dy + north[1] * nn, dz + ez * e + north[2] * nn] as Vec3, size: SAT_SIZE.min + h(`z${q}`) * SAT_SIZE.spread };
-      });
-      return { dir: [dx + jit('x'), dy + jit('y'), dz + jit('z')], size, sats };
+    // core from the noise: its rise over the cut (viewer.js: min(1, density × 7))
+    this.noiseCore = raw.map((r) => Math.min(1, Math.max(0, (r - cut + 0.012) * CORE_GAIN)));
+    // mass cells: the nearest of MASS_CELLS seeded centres to each site, its direction warped by noise so the borders wander
+    const centre = Array.from({ length: MASS_CELLS }, (_, k): Vec3 => {
+      const h = (tag: string) => hash01(`sky|mass|${tag}|${seed}|${k}`) - 0.5;
+      const y = 1 - (2 * (k + 0.5)) / MASS_CELLS, r = Math.sqrt(1 - y * y), th = k * Math.PI * (3 - Math.sqrt(5));
+      return [Math.cos(th) * r + h('x') * MASS_JITTER, y + h('y') * MASS_JITTER, Math.sin(th) * r + h('z') * MASS_JITTER];
+    });
+    const wx = makeFbm3(seed * 13 + 1), wy = makeFbm3(seed * 19 + 2), wz = makeFbm3(seed * 23 + 3);
+    this.massCell = Int32Array.from({ length: n }, (_, i) => {
+      const [x, y, z] = [c[3 * i]!, c[3 * i + 1]!, c[3 * i + 2]!], f = MASS_WARP.freq;
+      const d: Vec3 = [x + (wx(x * f, y * f, z * f) - 0.5) * MASS_WARP.amp, y + (wy(x * f, y * f, z * f) - 0.5) * MASS_WARP.amp, z + (wz(x * f, y * f, z * f) - 0.5) * MASS_WARP.amp];
+      let best = 0, bestDot = -Infinity;
+      centre.forEach((m, k) => { const v = (d[0] * m[0] + d[1] * m[1] + d[2] * m[2]) / Math.hypot(m[0], m[1], m[2]); if (v > bestDot) { bestDot = v; best = k; } });
+      return best;
+    });
+    this.clumps = Array.from({ length: n }, (_, i) => {
+      const h = (tag: string) => hash01(`${layer.id}|${tag}|${seed}|${i}`);
+      const dir: Vec3 = [c[3 * i]! + (h('x') - 0.5) * JITTER, c[3 * i + 1]! + (h('y') - 0.5) * JITTER, c[3 * i + 2]! + (h('z') - 0.5) * JITTER];
+      const l = Math.hypot(dir[0], dir[1], dir[2]);
+      const [dx, dy, dz] = [dir[0] / l, dir[1] / l, dir[2] / l];
+      // the lead's tangent frame: east = y × d (at a pole, x), north = d × east
+      const el = Math.hypot(dz, dx);
+      const east: Vec3 = el > 1e-9 ? [dz / el, 0, -dx / el] : [1, 0, 0];
+      const north: Vec3 = [dy * east[2] - dz * east[1], dz * east[0] - dx * east[2], dx * east[1] - dy * east[0]];
+      const sats = [0, 1, 2].map((q) => ({ ang: h(`a${q}`) * Math.PI * 2, off: h(`o${q}`), size: h(`z${q}`) }));
+      return { dir, east, north, size: h('s'), count: h('n'), sats };
     });
   }
 
-  /** The cover over every site for the files at a moment (in plan order). */
-  covers(at: readonly FileFogAt[]): CellCover[] {
-    const t = this.plan.territory, orphan = orphanLevel(at);
+  /** The cover over every site for the files at a moment (in plan order); `orphan`, the level of sites no file owns. */
+  covers(plan: SurfacePlan, at: readonly FileFogAt[], orphan: Level): CellCover[] {
+    const t = plan.territory;
     return Array.from({ length: this.n }, (_, i) => {
       const k = this.owner[i]!;
       const f: FileFogAt = k >= 0 ? at[k]! : { level: orphan, from: orphan, kind: 0, progress: 0 };
       const cover = cellCover(f, this.fromAnchor[i]!, k >= 0 ? t.reach[k]! : 0, this.fade[i]!);
-      if (this.gap.storm[i]) cover.storm = 0;
-      if (this.gap.mist[i]) cover.mist = 0;
-      if (cover.storm <= 0) cover.teal = false;
+      if (this.gap[i]) { cover.cloud = 0; cover.mist = 0; }
+      if (cover.cloud <= 0) cover.teal = false;
       return cover;
     });
   }
 
-  /** The puffs over the planet for the files at a moment (in plan order). */
-  at(at: readonly FileFogAt[]): FogSky {
-    const cover = this.covers(at);
-    const storm: Puff[] = [], teal: Puff[] = [], mist: Puff[] = [];
-    const stormW = cover.map((x) => x.storm), mistW = cover.map((x) => x.mist);
-    this.puffs(STORM, this.clumps.storm, stormW, (i) => (cover[i]!.teal ? teal : storm));
-    this.puffs(MIST, this.clumps.mist, mistW, () => mist);
-    const share = (w: number[]) => w.filter((x) => x > 0).length / this.n;
-    return { storm, teal, mist, stormCover: share(stormW), mistCover: share(mistW) };
-  }
-
-  /** One layer's puffs: a clump per covered site, shrunk and lowered as its cover thins, each mass shaded as one dome. */
-  private puffs(layer: CloudLayer, clumps: readonly Clump[], w: readonly number[], into: (i: number) => Puff[]): void {
-    const anchors = this.anchors(layer, w);
+  /** The layer's puffs: the weather's clump per covered site, domed by its core, shrunk and lowered as its cover thins, each mass shaded as one dome. */
+  puffs(w: readonly number[], into: (i: number) => Puff[]): void {
+    const layer = this.layer, anchors = this.anchors(w), edge = this.edgeDistance(w);
+    const shape = { flat: layer.flat, stretch: layer.stretch, float: layer.float };
     for (let i = 0; i < this.n; i++) {
       const k = w[i]!;
       if (k <= 0) continue;
-      const cl = clumps[i]!, anchor = anchors[i]!;
-      const size = cl.size * (0.4 + 0.6 * k); // a thinning front shrinks the puffs before they go
+      const cl = this.clumps[i]!, anchor = anchors[i]!;
+      const core = Math.min(this.noiseCore[i]!, (edge[i]! - 1) / EDGE_SITES);
+      // a thinning front shrinks and lowers the puffs before they go
+      const size = layer.size * (LEAD.size + core * LEAD.sizeCore + cl.size * LEAD.sizeJitter) * (0.4 + 0.6 * k);
+      const lift = layer.lift * (LEAD.lift + core * LEAD.liftCore) * (0.7 + 0.3 * k);
       const out = into(i);
-      out.push({ dir: cl.dir, size, lift: layer.lift * (0.7 + 0.3 * k), flat: layer.flat, stretch: layer.stretch, float: layer.float, anchor });
-      for (const s of cl.sats) out.push({ dir: s.dir, size: size * s.size, lift: layer.lift * SAT_LIFT, flat: layer.flat, stretch: layer.stretch, float: layer.float, anchor });
+      out.push({ dir: cl.dir, size, lift, ...shape, anchor });
+      const count = core < SAT.edge ? 2 + Math.floor(cl.count * 2) : 1;
+      for (const s of cl.sats.slice(0, count)) {
+        const off = size * (SAT.off + s.off * SAT.offJitter);
+        const e = Math.cos(s.ang) * off * 1.4 * layer.stretch, nn = Math.sin(s.ang) * off * 0.7;
+        const dir: Vec3 = [cl.dir[0] + cl.east[0] * e + cl.north[0] * nn, cl.dir[1] + cl.east[1] * e + cl.north[1] * nn, cl.dir[2] + cl.east[2] * e + cl.north[2] * nn];
+        out.push({ dir, size: size * (SAT.size + s.size * SAT.sizeJitter), lift: lift * SAT.lift, ...shape, anchor });
+      }
     }
   }
 
-  /** Each covered site's mass anchor: connected covered sites form a mass, anchored below its centre by about its radius, so its dome normal tilts out to the edge. */
-  private anchors(layer: CloudLayer, w: readonly number[]): (Vec3 | null)[] {
+  /**
+   * Each site's distance in sites from the nearest one without this layer (1: on the cloud's edge), up to
+   * EDGE_SITES + 1; 0 off the layer. Mass cells only shade (anchors): two masses meeting keep their puffs
+   * full size, so the seam between them has no pinholes.
+   */
+  private edgeDistance(w: readonly number[]): Int32Array {
+    const nb = neighbours(this.n), far = EDGE_SITES + 1;
+    const dist = new Int32Array(this.n).fill(far);
+    let front: number[] = [];
+    for (let i = 0; i < this.n; i++) if (w[i]! <= 0) { dist[i] = 0; front.push(i); }
+    for (let d = 1; d < far && front.length > 0; d++) {
+      const next: number[] = [];
+      for (const j of front) for (const q of nb[j]!) if (dist[q]! > d) { dist[q] = d; next.push(q); }
+      front = next;
+    }
+    return dist;
+  }
+
+  /** Each covered site's mass anchor: connected covered sites of one mass cell form a mass, anchored below its centre by about its radius, so its dome normal tilts out to the edge. */
+  private anchors(w: readonly number[]): (Vec3 | null)[] {
     const c = this.centres, nb = neighbours(this.n);
     const mass = new Int32Array(this.n).fill(-1);
     const out: (Vec3 | null)[] = new Array<Vec3 | null>(this.n).fill(null);
     for (let i = 0; i < this.n; i++) {
       if (w[i]! <= 0 || mass[i]! >= 0) continue;
-      const cells: number[] = [], stack = [i];
+      const sites: number[] = [], stack = [i];
       mass[i] = i;
       while (stack.length) {
         const j = stack.pop()!;
-        cells.push(j);
-        for (const q of nb[j]!) if (w[q]! > 0 && mass[q]! < 0) { mass[q] = i; stack.push(q); }
+        sites.push(j);
+        for (const q of nb[j]!) if (w[q]! > 0 && mass[q]! < 0 && this.massCell[q] === this.massCell[i]) { mass[q] = i; stack.push(q); }
       }
       const s: Vec3 = [0, 0, 0];
-      for (const j of cells) { s[0] += c[3 * j]!; s[1] += c[3 * j + 1]!; s[2] += c[3 * j + 2]!; }
+      for (const j of sites) { s[0] += c[3 * j]!; s[1] += c[3 * j + 1]!; s[2] += c[3 * j + 2]!; }
       const len = Math.hypot(s[0], s[1], s[2]) || 1;
       const cen: Vec3 = [s[0] / len, s[1] / len, s[2] / len];
       let minDot = 1;
-      for (const j of cells) minDot = Math.min(minDot, cen[0] * c[3 * j]! + cen[1] * c[3 * j + 1]! + cen[2] * c[3 * j + 2]!);
-      const depth = 1 + layer.float - Math.min(0.5, Math.max(0.06, Math.acos(Math.min(1, minDot)) * 1.1));
+      for (const j of sites) minDot = Math.min(minDot, cen[0] * c[3 * j]! + cen[1] * c[3 * j + 1]! + cen[2] * c[3 * j + 2]!);
+      const depth = 1 + this.layer.float - Math.min(0.5, Math.max(0.06, Math.acos(Math.min(1, minDot)) * 1.1));
       const anchor: Vec3 = [cen[0] * depth, cen[1] * depth, cen[2] * depth];
-      for (const j of cells) out[j] = anchor;
+      for (const j of sites) out[j] = anchor;
     }
     return out;
+  }
+}
+
+/**
+ * A planet's fog sky, planned once from its surface and seed: each layer's sites, gaps and clumps
+ * (SkyGrid). `at(files)` turns the files' fog into puffs.
+ */
+export class CloudPlan {
+  private readonly grids: { cloud: SkyGrid; mist: SkyGrid };
+
+  constructor(readonly plan: SurfacePlan, readonly seed: number) {
+    this.grids = { cloud: new SkyGrid(plan, seed, CLOUD), mist: new SkyGrid(plan, seed, MIST) };
+  }
+
+  /** Each layer's site count (its sites are centresOf(n)), and each site's file (-1: none). */
+  sites(layer: 'cloud' | 'mist'): number { return this.grids[layer].n; }
+  owners(layer: 'cloud' | 'mist'): Readonly<Int32Array> { return this.grids[layer].owner; }
+
+  /** The cover over every site of a layer's grid for the files at a moment (in plan order). */
+  covers(at: readonly FileFogAt[], layer: 'cloud' | 'mist'): CellCover[] {
+    return this.grids[layer].covers(this.plan, at, orphanLevel(at));
+  }
+
+  /** The puffs over the planet for the files at a moment (in plan order). */
+  at(at: readonly FileFogAt[]): FogSky {
+    const cloudCover = this.covers(at, 'cloud'), mistW = this.covers(at, 'mist').map((x) => x.mist);
+    const cloud: Puff[] = [], teal: Puff[] = [], mist: Puff[] = [];
+    const cloudW = cloudCover.map((x) => x.cloud);
+    this.grids.cloud.puffs(cloudW, (i) => (cloudCover[i]!.teal ? teal : cloud));
+    this.grids.mist.puffs(mistW, () => mist);
+    const share = (w: number[]) => w.filter((x) => x > 0).length / w.length;
+    return { cloud, teal, mist, cloudCover: share(cloudW), mistCover: share(mistW) };
   }
 }

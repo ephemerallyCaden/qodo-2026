@@ -2,7 +2,7 @@
 // applied and runs to the new rest state. Pins the moons' direction (Qodo PR #117 r3, "moons refog in
 // reverse"): a moon going fogged rolls in towards fogged and never shows more fog than its end state, and
 // a charted moon clears towards clear and never shows less than its end state. And on a planet: a chart
-// turns the file's storm cloud [OIII] teal while it thins to mist (teal only then, under 10% of the frame),
+// turns the file's cloud [OIII] teal while it thins to mist (teal only then, under 10% of the frame),
 // and a refog rolls cloud back in with no teal.
 import { expect, test, type Page } from '@playwright/test';
 import type { FogView } from '../../src/core/contract/fog.js';
@@ -85,7 +85,7 @@ test('moons: a refog rolls in towards fogged, a chart clears towards clear, neve
   expect(view.errors).toEqual([]);
 });
 
-test('#224: a chart turns the file\'s storm cloud teal while it thins to mist; a refog rolls cloud in with no teal', async ({ page }) => {
+test('#224, #228: a chart turns the file\'s cloud teal while it thins to mist; a refog rolls cloud in with no teal', async ({ page }) => {
   const model = systemModel(MINI);
   const start = 100;
   const camera = following(model, 'src', start);

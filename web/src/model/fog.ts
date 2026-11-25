@@ -5,7 +5,7 @@
 // stateAt() and cellData() (feature/fog-lab 69be694, mockups/asset-viewer/fog-layout.js).
 //
 // Two rules hold everywhere downstream:
-// - three levels (#201): fogged (storm cloud), haze (read, not yet tested: shown as "misted", under
+// - three levels (#201): fogged (cloud), haze (read, not yet tested: shown as "misted", under
 //   mist, #224) and clear (understood: nothing over it), one number per file (Level);
 // - without evidence a file is fogged (AGENTS.md Rule 1): a file the fog view doesn't list, a state
 //   it doesn't know, or every file when there is no usable fog view.

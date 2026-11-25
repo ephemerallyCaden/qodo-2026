@@ -1,10 +1,10 @@
-// Fog of war on the GPU (#74; cloud since #224): each planet's cell texture and uniforms, its fog sky
-// (the storm cloud, the teal of a clear, the mist and the storm's shadow, as instanced puffs over the
-// ground), and the moons' per-instance fog. The GLSL is fog-glsl.ts and the cloud's placement
+// Fog of war on the GPU (#74; cloud since #224, the planets' weather since #228): each planet's cell
+// texture and uniforms, its fog sky (the cloud, the teal of a clear, the mist and the cloud's shadow, as
+// instanced puffs over the ground), and the moons' per-instance fog. The GLSL is fog-glsl.ts and the cloud's placement
 // model/fog-cloud.ts; the state is model/fog.ts. Colours come only from palette.ts (AGENTS.md Rule 5).
 import * as THREE from 'three';
 import { palette } from '../../../src/core/palette.js';
-import { CloudPlan, puffRise, SKY_SITES, type Puff } from '../model/fog-cloud.js';
+import { CloudPlan, puffRise, type Puff } from '../model/fog-cloud.js';
 import { FOG_TEX_ROWS, type FileFogAt, type Pulse, type SurfacePlan, cellRows } from '../model/fog.js';
 import { centresOf } from '../model/territory.js';
 import { tangentFrame } from './noise.js';
@@ -66,16 +66,17 @@ export class PlanetFog {
   dispose(): void { this.tex.dispose(); }
 }
 
-/** Puffs per site at most, per layer: a lead puff and its satellites (model/fog-cloud.ts STORM.sats, MIST.sats). */
-const PUFFS_PER_SITE = 4;
+/** Instances a layer starts with; it doubles as a fog needs more (a fully fogged planet's cloud is about 2,500 puffs). */
+const START_CAPACITY = 512;
 /** The sky's reach in planet radii, past the tallest puff: what culling tests (the puffs change, so it is set, not fitted). */
 const SKY_REACH = 1.6;
 
-/** The materials a fog sky draws with: the storm cloud, its teal while clearing, the mist, and the storm's shadow on the ground. */
-export interface FogSkyMaterials { storm: THREE.Material; teal: THREE.Material; mist: THREE.Material; shadow: THREE.Material }
+/** The materials a fog sky draws with: the cloud, its teal while clearing, the mist, and the cloud's shadow on the ground. */
+export interface FogSkyMaterials { cloud: THREE.Material; teal: THREE.Material; mist: THREE.Material; shadow: THREE.Material }
 
-/** Puff geometry at two levels of detail (render/planet.ts PUFF_LOD). */
-export interface PuffGeometry { near: THREE.BufferGeometry; far: THREE.BufferGeometry }
+/** Puff geometry at three levels of detail, finest first (render/planet.ts PUFF_LOD). */
+export interface PuffGeometry { near: THREE.BufferGeometry; far: THREE.BufferGeometry; tiny: THREE.BufferGeometry }
+export type PuffDetail = keyof PuffGeometry;
 
 const M4 = new THREE.Matrix4(), X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3();
 /** A puff's instance matrix: squashed along its direction and set at its rise, as the weather's puffs (render/planet.ts put()). */
@@ -88,69 +89,96 @@ function puffMatrix(p: Puff): THREE.Matrix4 {
   return M4.setPosition(d[0] * r, d[1] * r, d[2] * r);
 }
 
-/** One layer of puffs: an instanced mesh and its per-puff mass anchors (CLOUD_VERT aMass). */
+/**
+ * One layer of puffs: an instanced mesh in `group` and its per-puff mass anchors (CLOUD_VERT aMass). It
+ * starts small and is rebuilt twice the size whenever a fog needs more puffs than it holds, so a planet
+ * with little fog keeps small buffers. Its size never shows: only the first `count` instances draw.
+ */
 class Layer {
-  readonly mesh: THREE.InstancedMesh;
-  private readonly mass: THREE.InstancedBufferAttribute;
-  readonly geos: PuffGeometry;
+  mesh!: THREE.InstancedMesh;
+  private mass!: THREE.InstancedBufferAttribute;
+  private geos!: PuffGeometry;
+  private detail: PuffDetail = 'far';
 
-  constructor(geos: PuffGeometry, material: THREE.Material, capacity: number) {
+  constructor(private readonly src: PuffGeometry, private readonly material: THREE.Material, private readonly group: THREE.Group) {
+    this.build(START_CAPACITY);
+  }
+
+  private build(capacity: number): void {
     this.mass = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4);
-    this.geos = { near: geos.near.clone(), far: geos.far.clone() }; // each layer carries its own anchors
-    this.geos.near.setAttribute('aMass', this.mass);
-    this.geos.far.setAttribute('aMass', this.mass);
-    this.mesh = new THREE.InstancedMesh(this.geos.far, material, capacity);
+    this.geos = { near: this.src.near.clone(), far: this.src.far.clone(), tiny: this.src.tiny.clone() }; // each layer carries its own anchors
+    for (const g of Object.values(this.geos)) g.setAttribute('aMass', this.mass);
+    this.mesh = new THREE.InstancedMesh(this.geos[this.detail], this.material, capacity);
     this.mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(), SKY_REACH);
     this.mesh.count = 0;
     this.mesh.visible = false;
+    this.group.add(this.mesh);
   }
 
-  set(puffs: readonly Puff[]): void {
-    const n = Math.min(puffs.length, this.mass.count);
-    for (let i = 0; i < n; i++) {
+  /** Draws these puffs; true when the mesh had to be rebuilt bigger (a new mesh and instance matrix). */
+  set(puffs: readonly Puff[]): boolean {
+    let grown = false;
+    if (puffs.length > this.mass.count) {
+      let capacity = this.mass.count;
+      while (capacity < puffs.length) capacity *= 2;
+      this.dispose();
+      this.group.remove(this.mesh);
+      this.build(capacity);
+      grown = true;
+    }
+    for (let i = 0; i < puffs.length; i++) {
       const p = puffs[i]!;
       this.mesh.setMatrixAt(i, puffMatrix(p));
       if (p.anchor) this.mass.setXYZW(i, p.anchor[0], p.anchor[1], p.anchor[2], 1);
       else this.mass.setXYZW(i, 0, 0, 0, 0);
     }
-    this.mesh.count = n;
-    this.mesh.visible = n > 0;
+    this.mesh.count = puffs.length;
+    this.mesh.visible = puffs.length > 0;
     this.mesh.instanceMatrix.needsUpdate = true;
     this.mass.needsUpdate = true;
+    return grown;
   }
 
-  lod(near: boolean): void { this.mesh.geometry = near ? this.geos.near : this.geos.far; }
-  dispose(): void { this.geos.near.dispose(); this.geos.far.dispose(); this.mesh.dispose(); }
+  lod(detail: PuffDetail): void {
+    this.detail = detail;
+    this.mesh.geometry = this.geos[detail];
+  }
+  dispose(): void { for (const g of Object.values(this.geos)) g.dispose(); this.mesh.dispose(); }
 }
 
 /**
- * A planet's fog sky (#224): C6's storm cloud over every fogged file's territory, in the ground's frame
- * (add `group` to the surface's spin) so it stays over its files, with its shadow on the ground; the
- * clearing part of it in teal; and mist over every misted file, with no shadow. Rebuilt only when the
- * files' fog changes, so a frame is still a pure function of (fog, events, frame).
+ * A planet's fog sky (#224, #228): the cream weather over every fogged file's territory, in the ground's
+ * frame (add `group` to the surface's spin) so it stays over its files, with its shadow on the ground; the
+ * clearing part of it in teal; and the thin weather over every misted file, with no shadow. Rebuilt only
+ * when the files' fog changes, so a frame is still a pure function of (fog, events, frame).
  */
 export class FogClouds {
   readonly group = new THREE.Group();
   private readonly plan: CloudPlan;
-  private readonly storm: Layer;
+  private readonly cloud: Layer;
   private readonly teal: Layer;
   private readonly mist: Layer;
-  private readonly shadow: THREE.InstancedMesh;
+  private shadow: THREE.InstancedMesh;
   private shadowOn = true;
   private key = '';
 
-  constructor(plan: SurfacePlan, seed: number, geos: PuffGeometry, mats: FogSkyMaterials) {
+  constructor(plan: SurfacePlan, seed: number, private readonly geos: PuffGeometry, private readonly mats: FogSkyMaterials) {
     this.plan = new CloudPlan(plan, seed);
-    const cap = Math.max(plan.territory.cells, SKY_SITES) * PUFFS_PER_SITE;
-    this.storm = new Layer(geos, mats.storm, cap);
-    this.teal = new Layer(geos, mats.teal, cap);
-    this.mist = new Layer(geos, mats.mist, cap);
-    this.shadow = new THREE.InstancedMesh(this.storm.geos.far, mats.shadow, cap);
-    this.shadow.instanceMatrix = this.storm.mesh.instanceMatrix; // the storm's puffs, projected onto the surface
-    this.shadow.boundingSphere = this.storm.mesh.boundingSphere;
-    this.shadow.count = 0;
-    this.shadow.visible = false;
-    this.group.add(this.storm.mesh, this.shadow, this.teal.mesh, this.mist.mesh);
+    this.cloud = new Layer(geos, mats.cloud, this.group);
+    this.shadow = this.shadowMesh();
+    this.teal = new Layer(geos, mats.teal, this.group);
+    this.mist = new Layer(geos, mats.mist, this.group);
+  }
+
+  /** The cloud's shadow: the cloud's own instances (its matrix), projected onto the surface, always as the 20-face puff (a flat projection). */
+  private shadowMesh(): THREE.InstancedMesh {
+    const s = new THREE.InstancedMesh(this.geos.far, this.mats.shadow, 0);
+    s.instanceMatrix = this.cloud.mesh.instanceMatrix;
+    s.boundingSphere = this.cloud.mesh.boundingSphere;
+    s.count = 0;
+    s.visible = false;
+    this.group.add(s);
+    return s;
   }
 
   /** The files' fog at a frame (in plan order). */
@@ -159,23 +187,26 @@ export class FogClouds {
     if (key === this.key) return;
     this.key = key;
     const sky = this.plan.at(at);
-    this.storm.set(sky.storm);
+    if (this.cloud.set(sky.cloud)) {
+      this.group.remove(this.shadow);
+      this.shadow.dispose();
+      this.shadow = this.shadowMesh();
+    }
     this.teal.set(sky.teal);
     this.mist.set(sky.mist);
-    this.shadow.count = this.storm.mesh.count;
+    this.shadow.count = this.cloud.mesh.count;
     this.shadow.visible = this.shadowOn && this.shadow.count > 0;
   }
 
-  /** The level of detail for the planet's size on screen: near puffs, and whether the storm casts its shadow. */
-  lod(near: boolean, shadow: boolean): void {
-    for (const l of [this.storm, this.teal, this.mist]) l.lod(near);
-    this.shadow.geometry = this.storm.mesh.geometry;
+  /** The level of detail for the planet's size on screen: the puffs' detail, and whether the cloud casts its shadow. */
+  lod(detail: PuffDetail, shadow: boolean): void {
+    for (const l of [this.cloud, this.teal, this.mist]) l.lod(detail);
     this.shadowOn = shadow;
     this.shadow.visible = shadow && this.shadow.count > 0;
   }
 
   dispose(): void {
-    for (const l of [this.storm, this.teal, this.mist]) l.dispose();
+    for (const l of [this.cloud, this.teal, this.mist]) l.dispose();
     this.shadow.dispose();
   }
 }

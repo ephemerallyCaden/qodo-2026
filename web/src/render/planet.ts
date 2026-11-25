@@ -21,16 +21,21 @@ const PLANET_GEO = new THREE.SphereGeometry(1, 72, 48);
  * pose and pixel height, so frames stay deterministic). A puff is about 0.06–0.1 planet radii, so
  * below NEAR_PX it is a few px across and a 20-face icosahedron with smooth normals draws the same
  * pixels as the 80-face icosphere used above it. Below SHADOW_MIN_PX cloud shadows are sub-pixel
- * noise and are skipped. Keeps a system inside the 500k-triangle budget (system design §10).
+ * noise and are skipped. The fog's cloud (#228: the weather's own small puffs over whole territories,
+ * a few thousand a planet) also drops to an 8-face octahedron below TINY_PX, where a puff is under
+ * 3 px across, and casts its shadow with the 20-face puff at every size (a shadow is a flat
+ * projection). Keeps a system inside the 500k-triangle budget (system design §10).
  */
-export const PUFF_LOD = { nearPx: 48, shadowMinPx: 16 } as const;
-const PUFF_NEAR = new THREE.IcosahedronGeometry(1, 1);
-const PUFF_FAR = (() => {
-  const g = new THREE.IcosahedronGeometry(1, 0);
+export const PUFF_LOD = { nearPx: 48, shadowMinPx: 16, tinyPx: 24 } as const;
+/** A unit sphere approximation with smooth normals (normal = position), so a few faces still shade round. */
+const smooth = (g: THREE.BufferGeometry) => {
   const pos = g.getAttribute('position'), nrm = g.getAttribute('normal');
-  for (let i = 0; i < pos.count; i++) nrm.setXYZ(i, pos.getX(i), pos.getY(i), pos.getZ(i)); // unit sphere: normal = position
+  for (let i = 0; i < pos.count; i++) nrm.setXYZ(i, pos.getX(i), pos.getY(i), pos.getZ(i));
   return g;
-})();
+};
+const PUFF_NEAR = new THREE.IcosahedronGeometry(1, 1);
+const PUFF_FAR = smooth(new THREE.IcosahedronGeometry(1, 0));
+const PUFF_TINY = smooth(new THREE.OctahedronGeometry(1, 0));
 export const MOON_GEO = new THREE.SphereGeometry(1, 20, 14);
 /** Cap on cloud puffs per planet (the asset viewer's, enough for its densest weather). */
 const MAX_PUFFS = 3200;
@@ -129,12 +134,12 @@ export function makePlanet(model: PlanetModel): PlanetObject {
   const cloudMaterial = (r: readonly string[], fogSky: number, smoke = 0) => shaderMaterial(CLOUD_FRAG, {
     ...fog.uniforms, uRadius: radius, uSmoke: { value: smoke }, uRamp: { value: ramp(r, 4) }, uCenter: center, uBands: cloudBands, uFogSky: { value: fogSky },
   }, { vertexShader: CLOUD_VERT });
-  /** The cloud-shadow material: the weather's (fogSky 0) or the fog's storm (1). */
+  /** The cloud-shadow material: the weather's (fogSky 0) or the fog's cloud (1). */
   const shadowMaterial = (fogSky: number) => new THREE.ShaderMaterial({
     vertexShader: SHADOW_VERT, fragmentShader: SHADOW_FRAG, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     uniforms: { ...surfaceMat.uniforms, uCenter: center, uRadius: radius, uToSurface: toSurface, uFogSky: { value: fogSky },
-      uShadowReach: { value: fogSky ? SHADOW_REACH.storm : SHADOW_REACH.weather } },
+      uShadowReach: { value: SHADOW_REACH } },
   });
   const sky = new THREE.Group();
   body.add(sky);
@@ -164,9 +169,9 @@ export function makePlanet(model: PlanetModel): PlanetObject {
     }
   }
 
-  // The fog (#224): storm cloud over the fogged files, mist over the misted ones, on the ground's spin.
-  const fogMats = { storm: cloudMaterial(palette.world.cloud, 1), teal: cloudMaterial(palette.accent.teal, 1), mist: cloudMaterial(palette.fog.mist, 1), shadow: shadowMaterial(1) };
-  const fogSky = new FogClouds(fog.plan, model.seed, { near: PUFF_NEAR, far: PUFF_FAR }, fogMats);
+  // The fog (#224, #228): the weather's cloud over the fogged files, its thin weather over the misted ones, on the ground's spin.
+  const fogMats = { cloud: cloudMaterial(palette.world.cloud, 1), teal: cloudMaterial(palette.accent.teal, 1), mist: cloudMaterial(palette.fog.mist, 1), shadow: shadowMaterial(1) };
+  const fogSky = new FogClouds(fog.plan, model.seed, { near: PUFF_NEAR, far: PUFF_FAR, tiny: PUFF_TINY }, fogMats);
   spin.add(fogSky.group);
   fog.draw(fogSky);
   disposables.push(...Object.values(fogMats), fogSky);
@@ -190,7 +195,7 @@ export function makePlanet(model: PlanetModel): PlanetObject {
       puffs.geometry = radiusPx >= PUFF_LOD.nearPx ? puffGeos.near : puffGeos.far;
       if (shadow) { shadow.geometry = puffs.geometry; shadow.visible = radiusPx >= PUFF_LOD.shadowMinPx; }
     }
-    fogSky.lod(radiusPx >= PUFF_LOD.nearPx, radiusPx >= PUFF_LOD.shadowMinPx);
+    fogSky.lod(radiusPx >= PUFF_LOD.nearPx ? 'near' : radiusPx >= PUFF_LOD.tinyPx ? 'far' : 'tiny', radiusPx >= PUFF_LOD.shadowMinPx);
     const turn = turnAngle(frame, TURNS.surface);
     spin.rotation.y = -turn; // right to left
     sky.rotation.y = -turnAngle(frame, TURNS.clouds); // clouds drift ahead of the ground

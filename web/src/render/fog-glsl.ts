@@ -1,5 +1,5 @@
-// Fog of war's GLSL (R5, #74; #224): the fog is cloud (art-direction §9, "fog of war is cloud", C6 · the
-// white storm front), puffs over each fogged file's territory and thin mist over each misted one, drawn
+// Fog of war's GLSL (R5, #74; #224, #228): the fog is cloud (art-direction §9, "fog of war is cloud", in
+// the planets' own weather), puffs over each fogged file's territory and thin mist over each misted one, drawn
 // by render/fog.ts FogClouds from model/fog-cloud.ts. The dark veil (D2d) is gone: nothing here darkens
 // the ground. What the shaders that already run still do for the fog:
 // - the planet surface and its cloud shadows: the planet-clear pulse (F5's landing moment), the clear
@@ -71,7 +71,7 @@ export const FOG_SKY = /* glsl */ `
 
 /**
  * The haze shell's and the lava smoke's fog: none over a fogged or changing cell, so neither hints at the
- * band from over the storm. A misted cell (#201, read) shows its ground, so it keeps them.
+ * band from under the cloud. A misted cell (#201, read) shows its ground, so it keeps them.
  */
 export const FOG_HAZE = /* glsl */ `
   ${FOG_GRID}

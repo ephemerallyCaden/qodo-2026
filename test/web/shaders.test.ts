@@ -143,17 +143,16 @@ describe('fog in the GLSL three submits (#74; cloud since #224)', () => {
     expect(skies).toBe(system.model.planets.length * 4);
   });
 
-  it('lets the storm\'s shadow fall as far as its height needs, and keeps the weather\'s shadow as it was (Qodo c8a30ce7)', () => {
+  it('casts the fog cloud\'s shadow as the weather\'s, the same puffs at the same height (#228; the storm needed more, Qodo c8a30ce7)', () => {
     expect(SHADOW_FRAG).toContain('vReach > uShadowReach) discard;');
-    const reach = { weather: [] as number[], storm: [] as number[] };
+    const reach = { weather: [] as number[], fog: [] as number[] };
     system.scene.traverse((o) => {
       const m = (o as THREE.Mesh).material as THREE.ShaderMaterial | undefined;
       if (m?.fragmentShader !== SHADOW_FRAG) return;
-      (m.uniforms['uFogSky']!.value === 1 ? reach.storm : reach.weather).push(m.uniforms['uShadowReach']!.value as number);
+      (m.uniforms['uFogSky']!.value === 1 ? reach.fog : reach.weather).push(m.uniforms['uShadowReach']!.value as number);
     });
-    expect(reach.storm).toEqual(system.model.planets.map(() => SHADOW_REACH.storm));
+    expect(reach.fog).toEqual(system.model.planets.map(() => SHADOW_REACH));
     expect(reach.weather.length).toBeGreaterThan(0); // mini's toxic planet has its rust smoke
-    expect(new Set(reach.weather)).toEqual(new Set([0.1])); // the asset viewer's cut, unchanged
-    expect(SHADOW_REACH.storm).toBeGreaterThan(SHADOW_REACH.weather);
+    expect(new Set([...reach.weather, ...reach.fog])).toEqual(new Set([0.1])); // the asset viewer's cut
   });
 });

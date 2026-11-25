@@ -272,7 +272,7 @@ describe('where the ship is (C4)', () => {
   });
 
   it('keeps SHIP_MARGIN from a planet\'s drone lane where its fog sky reaches past its moons and weather (#225: the drones circle the sky)', () => {
-    // mini's docs planet (no moons: its storm cloud's top, 1.32 radii, is past its reach) moved out to orbit 1.6 past the ship's footprint
+    // mini's docs planet (no moons: its fog cloud's top, 1.20 radii since #228, is past its reach) moved out to orbit 1.6 past the ship's footprint
     const m = systemModel(miniLayout), ring = Math.hypot(shipSpot(m).centre[0], shipSpot(m).centre[2]);
     const docs = m.planets.find((p) => p.path === 'docs')!;
     expect(docs.radius * FOG_SKY_TOP).toBeGreaterThan(planetReach(docs));

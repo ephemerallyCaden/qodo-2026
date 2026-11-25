@@ -16,7 +16,7 @@ colours  30 (15 palette, 15 off-palette: 1594 px)
    438    0.76%  #38a85a  203,69-215,110   world.land[2]
    186    0.32%  #7cd65a  196,75-204,104   world.land[3]
      9    0.01%  #d0f56c  196,85-196,93    world.land[4]
-    37    0.06%  #f2d8b8  113,146-201,176  world.cloud[1], world.cloud[2], world.ring[1], world.moonBody[3], fog.mist[0], fog.mist[1], fog.mist[2]
+    37    0.06%  #f2d8b8  113,146-201,176  world.cloud[1], world.cloud[2], world.ring[1], world.moonBody[3], fog.mist[0]
     97    0.16%  #a8602c  110,150-202,179  world.sand[1], world.moonBody[0]
    110    0.19%  #d8944a  110,148-202,179  world.sand[2], world.moonBody[1]
     88    0.15%  #f0c27a  111,147-202,178  world.sand[3], world.moonBody[2]
