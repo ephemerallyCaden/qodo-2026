@@ -23,8 +23,11 @@ it('the CI render job runs in the Playwright image matching @playwright/test, pi
   expect(version).toMatch(/^\d+\.\d+\.\d+$/); // exact, so the browser build can't drift from the image's
   const body = job('render');
   expect(body).toMatch(new RegExp(`^ +image: mcr\\.microsoft\\.com/playwright:v${version.replaceAll('.', '\\.')}-noble@sha256:[0-9a-f]{64}$`, 'm'));
-  // On a failure, the same image reruns with UPDATE_GOLDEN=1 and uploads what it wrote: the gated update path.
-  expect(runs(body)).toEqual(['npm ci', 'npm run test:render', 'UPDATE_GOLDEN=1 npm run test:render']);
+  // On a failure, the same image reruns the failed tests with UPDATE_GOLDEN=1 (the root config, as
+  // test:render) and uploads what it wrote: the gated update path. Only the failures, so the rerun fits the
+  // job's time limit (#225).
+  expect(runs(body)).toEqual(['npm ci', 'npm run test:render', 'UPDATE_GOLDEN=1 npx playwright test --last-failed']);
+  expect(JSON.parse(readFileSync(join(import.meta.dirname, '../package.json'), 'utf8')).scripts['test:render']).toBe('playwright test');
   expect(body).toMatch(/if: failure\(\) && steps\.update\.outcome == 'success'\n\s+uses: actions\/upload-artifact@v4\n\s+with:\n\s+name: render-goldens\n\s+path: test\/golden\/render\//);
 });
 
