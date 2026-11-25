@@ -2,45 +2,45 @@
 name     view-mini-f0-reduced
 env      {"arch":"x64","browser":"158.0.8127.18","platform":"linux","playwright":"1.65.0","webgl":"ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"}
 size     320x180 (57600 px)
-rgba     sha256 8612a36242f6c508b2375f4d9367b8dd2062aa7895485ca10693b6316b091b7d
-stats    drawCalls 14, triangles 143218
-colours  210 (4 palette, 206 off-palette: 4672 px)
+rgba     sha256 61fe4408b430a73e0e3af972b15a372ec5c577961d5d952e0bb6805c524cc541
+stats    drawCalls 13, triangles 101278
+colours  189 (4 palette, 185 off-palette: 4741 px)
 
     px    share  colour   bbox x0,y0-x1,y1  palette entries
- 52887   91.81%  #0d0b16  0,0-319,179      world.space
-    33    0.05%  #3b3866  3,3-316,175      world.stars[0]
+ 52819   91.69%  #0d0b16  0,0-319,179      world.space
+    32    0.05%  #3b3866  3,3-316,175      world.stars[0]
      6    0.01%  #9a90e0  6,70-203,154     world.stars[1]
      2    0.00%  #fff8ff  123,161-240,168  world.stars[2]
-   144    0.25%  #151c4c  247,111-294,140  (off-palette)
-    10    0.01%  #151d4c  246,96-294,140   (off-palette)
-     3    0.00%  #162e3e  254,134-285,136  (off-palette)
-     6    0.01%  #191937  218,68-229,72    (off-palette)
-    84    0.14%  #192b6d  247,100-294,136  (off-palette)
-   106    0.18%  #192b6e  250,116-291,134  (off-palette)
-   153    0.26%  #192c6e  253,118-287,134  (off-palette)
-    23    0.03%  #192c6f  263,119-279,126  (off-palette)
-     7    0.01%  #1a2b6c  248,95-292,108   (off-palette)
-   175    0.30%  #1c1a37  212,55-230,69    (off-palette)
-     2    0.00%  #1c4a4d  249,107-290,110  (off-palette)
+   178    0.30%  #151c4c  246,118-294,140  (off-palette)
+    10    0.01%  #151d4c  246,115-294,140  (off-palette)
+     5    0.00%  #162e3e  254,134-285,137  (off-palette)
+     1    0.00%  #172e3f  246,116-246,116  (off-palette)
+     3    0.00%  #191935  225,71-229,74    (off-palette)
+   125    0.21%  #192b6d  246,100-294,137  (off-palette)
+   158    0.27%  #192b6e  250,116-291,137  (off-palette)
+   152    0.26%  #192c6e  253,121-287,134  (off-palette)
+     5    0.00%  #1a2b6c  248,99-293,110   (off-palette)
+     4    0.00%  #1c4a4d  249,107-293,114  (off-palette)
      4    0.00%  #1c4b4d  260,125-287,129  (off-palette)
-    10    0.01%  #1f1b36  214,55-229,69    (off-palette)
-     2    0.00%  #201f3c  230,71-230,72    (off-palette)
+     1    0.00%  #1e1b34  223,68-223,68    (off-palette)
+     6    0.01%  #1e1b35  211,61-231,69    (off-palette)
+     1    0.00%  #201f3c  230,71-230,71    (off-palette)
      4    0.00%  #204089  258,96-264,98    (off-palette)
-    31    0.05%  #20408a  248,97-290,111   (off-palette)
+    42    0.07%  #20408a  248,97-293,115   (off-palette)
     44    0.07%  #20408b  250,98-290,129   (off-palette)
-    65    0.11%  #20418b  250,102-289,135  (off-palette)
-   176    0.30%  #20418c  252,104-288,130  (off-palette)
-    84    0.14%  #20418d  259,114-280,128  (off-palette)
-     2    0.00%  #20428d  265,117-266,117  (off-palette)
-    46    0.07%  #222250  210,53-232,74    (off-palette)
-    40    0.06%  #232250  211,54-231,72    (off-palette)
+    85    0.14%  #20418b  250,102-290,136  (off-palette)
+   221    0.38%  #20418c  252,107-288,131  (off-palette)
+   146    0.25%  #20418d  259,115-281,128  (off-palette)
+    25    0.04%  #20428d  265,119-275,122  (off-palette)
+     5    0.00%  #222250  214,76-225,77    (off-palette)
+     2    0.00%  #241e35  217,63-225,66    (off-palette)
+     9    0.01%  #241e36  213,58-230,65    (off-palette)
      6    0.01%  #251d2d  18,136-32,142    (off-palette)
      2    0.00%  #251d2e  23,137-33,143    (off-palette)
-     4    0.00%  #252352  246,114-296,141  (off-palette)
      1    0.00%  #2a6452  256,100-256,100  (off-palette)
      1    0.00%  #2a6552  290,108-290,108  (off-palette)
      5    0.00%  #2a6752  261,123-279,126  (off-palette)
-     1    0.00%  #2d599c  255,101-255,101  (off-palette)
-     1    0.00%  #2d5a9c  289,106-289,106  (off-palette)
-     4    0.00%  #2e5a9d  252,99-264,107   (off-palette)
-… and 174 more off-palette colours, 3426 px
+     5    0.00%  #2a6852  266,121-268,122  (off-palette)
+     2    0.00%  #2a6853  267,120-270,120  (off-palette)
+     1    0.00%  #2c2137  225,53-225,53    (off-palette)
+… and 153 more off-palette colours, 3482 px
