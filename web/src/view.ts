@@ -74,6 +74,8 @@ export class View {
   private crewSeats: readonly (Rider | null)[] = [];
   private crewHead: string | null = null;
   private crewExtra = 0;
+  /** setCrew calls so far: only the latest one draws its crew. */
+  private crewCalls = 0;
   /** The selected crew member's person id, and the name shown under their porthole while selected. */
   selectedPerson: string | null = null;
   selectedName = '';
@@ -227,10 +229,11 @@ export class View {
    * Draws this crew (#207): `seats[i]` rides in seat i (seat 0 the captain's; null empty), `extra` more are
    * counted in a "+N" label; they belong to the scan `head`. The ship's shaders are compiled first, on a ship
    * that isn't in the scene. Returns false, changing nothing, when the drawn layout is of another scan or was
-   * replaced while compiling; a compile failure throws a ViewError and keeps the old crew.
+   * replaced while compiling, or a newer setCrew came meanwhile; a compile failure throws a ViewError and keeps
+   * the old crew.
    */
   async setCrew(seats: readonly (Rider | null)[], extra: number, head: string): Promise<boolean> {
-    const s = this.system;
+    const s = this.system, call = ++this.crewCalls;
     if (!s) { this.crewSeats = seats; this.crewExtra = extra; this.crewHead = head; return true; }
     if (head !== this.layoutHead) return false;
     const probe = new CrewShip();
@@ -245,7 +248,9 @@ export class View {
         const failed = this.pass.takeShaderErrors();
         if (failed.length > 0) throw new ViewError("The view could not compile the crew's ship.", failed);
       }
-      if (this.system !== s || head !== this.layoutHead) return false; // a layout reload replaced the scene meanwhile
+      // a layout reload replaced the scene meanwhile, or a newer crew came: the newest call wins, so an older
+      // one that finishes compiling later never puts its crew back over it (Qodo PR #227 24038926)
+      if (this.system !== s || head !== this.layoutHead || call !== this.crewCalls) return false;
       s.setCrew(seats);
     } finally {
       probe.dispose();
