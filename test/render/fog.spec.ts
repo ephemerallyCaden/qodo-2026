@@ -77,7 +77,8 @@ test('#224, #228: fogged is cloud, misted thin mist, clear nothing, and the fog 
       + `mean luma there, clear ${mean(clear!, storm).toFixed(1)} → fogged ${mean(fogged!, storm).toFixed(1)}; cloud px clear ${count(clear!, CLOUD, 0.3)}, misted ${count(misted!, CLOUD, 0.3)}, fogged ${count(fogged!, CLOUD, 0.3)}`);
     expect(mist.length, `${what}: mist draws something (not vacuous)`).toBeGreaterThan(0);
     expect(diffPixels(misted!.pixels, fogged!.pixels), `${what}: misted is not fogged`).toBeGreaterThan(0);
-    expect(mist.length, `${what}: mist is thin, far less than the cloud`).toBeLessThan(storm.length / 2);
+    // #228: mist covers 0.07 of the sites against the cloud's 0.35, in smaller, flatter puffs
+    expect(mist.length, `${what}: mist is thin, far less than the cloud`).toBeLessThan(storm.length / 3);
     // never dark: every pixel the mist changes is a mist colour (it has no shadow), and the cloud lightens the planet
     expect(mist.filter((p) => !MIST.has(hex(misted!.pixels.rgba, p))), `${what}: mist pixels outside the mist colours`).toEqual([]);
     expect(mean(fogged!, storm), `${what}: the cloud lightens what it covers`).toBeGreaterThan(mean(clear!, storm) + 40);
@@ -237,8 +238,8 @@ test('a fully fogged lava planet hides a share of its glow under the cloud, its 
   expect(glow(fogged!), 'fogged: over a third of it under the cloud').toBeLessThan(glow(clear!) * 0.65);
   expect(glow(fogged90!), 'fogged, a later frame').toBeLessThan(glow(clear!) * 0.65);
   expect(ash(fogged!), 'fogged: no smoke over the fogged ground').toBe(0);
-  expect(glow(misted!), 'misted: most of the glow shows through').toBeGreaterThan(glow(clear!) * 0.7);
-  expect(glow(misted!), 'misted shows clearly more than fogged').toBeGreaterThan(glow(fogged!) * 1.3);
+  expect(glow(misted!), 'misted (0.07 of the sites): most of the glow shows through').toBeGreaterThan(glow(clear!) * 0.8);
+  expect(glow(misted!), 'misted shows clearly more than fogged').toBeGreaterThan(glow(fogged!) * 1.5);
   expect(view.errors).toEqual([]);
 });
 

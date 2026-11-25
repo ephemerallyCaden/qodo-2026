@@ -60,11 +60,12 @@ export interface CloudLayer {
 export const CLOUD: CloudLayer = { id: 'cloud', density: 0.35, size: 1, lift: 1, float: 0.055, flat: 0.6, stretch: 1 };
 /**
  * Misted: "a little cloud" (#228, the human: "clearly lighter"): the viewer's thin weather (WEATHER.thin,
- * ocean's before #224), its puffs 0.7× the cloud's and lower, flatter (0.4 for its 0.6) and far sparser,
+ * ocean's before #224), its puffs 0.7× the cloud's and lower, flatter (0.4 for its 0.6) and far sparser
+ * (0.07 of the sites against the cloud's 0.35, the human's final pick, 2026-11-25),
  * so the ground shows between them. It casts no shadow and takes only the cloud ramp's light steps, white
  * wherever lit (palette.fog.mist), so it is never dark.
  */
-export const MIST: CloudLayer = { id: 'thin', density: 0.1, size: 0.7, lift: 0.5, float: 0.05, flat: 0.4, stretch: 1 };
+export const MIST: CloudLayer = { id: 'thin', density: 0.07, size: 0.7, lift: 0.5, float: 0.05, flat: 0.4, stretch: 1 };
 
 /** Where clumps can sit: the weather's site grid (viewer.js rebuild: 1500 sites at size 1, 1500 / size² for smaller puffs), on every planet. */
 export const SKY_SITES = 1500;
