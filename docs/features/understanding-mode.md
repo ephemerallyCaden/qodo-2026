@@ -25,7 +25,7 @@ Crew
 - [ ] U9. **AI summary on demand.** Click an astronaut → "Summarise": your agent reads their recent commits and diffs locally and writes a short brief. It's cached until they commit again.
 
 Views
-- [ ] U10. **Directory view.** A 2D file tree alongside the map, for people who'd rather browse folders. It shows each file's fog level, and clicking a file focuses it on the map.
+- [x] U10. **Directory view.** A 2D file tree alongside the map, for people who'd rather browse folders. It shows each file's fog level, and clicking a file focuses it on the map.
 
 Understanding quality and connections (the human, 2026-11-23, after the loop review)
 - [ ] U4a. **Trustworthy answers** (in #203): every answer cites a real file and line that Commet checks. A "this question is wrong" button discards and replaces a question. Clearing needs at least one point-at-it answer.
