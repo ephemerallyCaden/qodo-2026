@@ -9,10 +9,11 @@ import { palette } from '../../src/core/palette.js';
 import { project, startPose, startPoseAt, systemDepth } from '../../web/src/camera/pose.js';
 import { checkCrew, checkCrewDetail } from '../../web/src/crew/check.js';
 import { bodyRows, crewAnnouncement, crewDetailState, crewFileGroups, crewRows, RESCAN_NOTE } from '../../web/src/crew/detail.js';
-import { placeShip, portholes, shipCorners, SHIP_FOOTPRINT, SHIP_MARGIN, shipPoint, shipSpot } from '../../web/src/crew/place.js';
+import { belowShip, placeShip, portholes, shipCorners, SHIP_FOOTPRINT, SHIP_MARGIN, shipPoint, shipSpot } from '../../web/src/crew/place.js';
 import { crewStatus, riderOf, seatCrew } from '../../web/src/crew/select.js';
 import { DRONE_LANE_OUT, DRONE_PICK_RADIUS, homeBody } from '../../web/src/drones/place.js';
-import { FPS, ORBIT_FRAMES } from '../../web/src/model/motion.js';
+import { FONT_HEIGHT } from '../../web/src/labels/font.js';
+import { FPS, LOOP_SECONDS, loopPhase, ORBIT_FRAMES } from '../../web/src/model/motion.js';
 import { planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
 import type { Vec3 } from '../../web/src/model/vec.js';
 import { astronautLook, blinkAt, CONTRIBUTORS, figureLayout, figurePose, idleOf, type Ring } from '../../web/src/render/astronaut.js';
@@ -106,7 +107,13 @@ describe('the R2-4c hull and its seats (C2; the ship lab\'s broken cases)', () =
       const top = (i: number) => s.windows[i]!.c[1] + s.windows[i]!.n[1] * HULL.R;
       for (let i = 1; i < n; i++) expect(top(i)).toBeLessThanOrEqual(top(0) + 1e-9);
       expect(Math.abs(s.windows[0]!.n[0])).toBeLessThan(1e-9);
-      expect(s.bands.some((b) => b.part === 'body' && b.slot === 'trim')).toBe(true);
+      // R2-4's red belly band, exactly (ship lab R2-4c-final, 383cf22): trim on the body from cy − 0.3 to top + 0.12
+      const body = s.parts.find((p) => p.id === 'body')!, belly = s.bands.filter((b) => b.part === 'body');
+      if (body.kind !== 'cone') throw new Error('the body is a capsule');
+      expect(belly).toHaveLength(1);
+      expect(belly[0]!.slot).toBe('trim');
+      expect(belly[0]!.y0).toBeCloseTo(body.a[1] - 0.3, 9);
+      expect(belly[0]!.y1).toBeCloseTo(body.b[1] + 0.12, 9);
     }
   });
 
@@ -280,6 +287,29 @@ describe('where the ship is (C4)', () => {
       for (const x of [lo[0], hi[0]]) for (const z of [lo[2], hi[2]]) for (const y of [lo[1], hi[1]]) {
         const q = project(later, shipPoint(at, [x, y, z], 0))!;
         expect(Math.abs(q.x)).toBeLessThanOrEqual(0.93); expect(Math.abs(q.y)).toBeLessThanOrEqual(0.87);
+      }
+    }
+  });
+
+  it('puts the "+N" label under the ship\'s axis, below every point of it on screen (the flame and the feet too), in the start view', () => {
+    const W = 1280, H = 720, px = 2;
+    for (const m of models) {
+      const spec = buildShip(MAX_ABOARD), pose = startPose(m, shipCorners(m, spec)), { lo, hi } = shipBounds(spec, 0);
+      for (const frame of [0, 37, 9000]) {
+        const at = placeShip(m, frame), t = loopPhase(frame) * LOOP_SECONDS, view = startPoseAt(m, frame, shipCorners(m, spec));
+        for (const p of [pose, view]) {
+          const u = belowShip(m, spec, frame, p, W, H)!, axis = project(p, at.centre)!;
+          expect(u.x).toBeCloseTo(((axis.x + 1) / 2) * W, 9);
+          // the box round the hull, the flame at its longest and the feet: every corner is above the label's top
+          for (const x of [lo[0], hi[0]]) for (const y of [lo[1], hi[1]]) for (const z of [lo[2], hi[2]]) {
+            const q = project(p, shipPoint(at, [x, y, z], t))!;
+            expect(((1 - q.y) / 2) * H, `frame ${frame}`).toBeLessThanOrEqual(u.y + 1e-9);
+          }
+          // the label's backing, one font px above its top (labels/overlay.ts labelBox), to its line's bottom
+          const top = u.y + 2 * px - px, bottom = top + (FONT_HEIGHT + 2) * px;
+          expect(top).toBeGreaterThan(u.y);
+          if (p === view) expect(bottom, 'the label is in the start view').toBeLessThanOrEqual(H);
+        }
       }
     }
   });
