@@ -2,45 +2,45 @@
 name     view-mini-f180
 env      {"arch":"x64","browser":"158.0.8127.18","platform":"linux","playwright":"1.65.0","webgl":"ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"}
 size     320x180 (57600 px)
-rgba     sha256 ee4f49f1c92df7ac1f060452f58609c1dfe24d88283a7299844715946b978a95
-stats    drawCalls 13, triangles 101278
-colours  183 (4 palette, 179 off-palette: 4744 px)
+rgba     sha256 939a42aee5f86b8ce9b20553766c935458b96e769eb4531f0a6a2716b7819705
+stats    drawCalls 13, triangles 99842
+colours  212 (4 palette, 208 off-palette: 4593 px)
 
     px    share  colour   bbox x0,y0-x1,y1  palette entries
- 52815   91.69%  #0d0b16  0,0-319,179      world.space
+ 52966   91.95%  #0d0b16  0,0-319,179      world.space
     33    0.05%  #3b3866  3,3-316,175      world.stars[0]
      6    0.01%  #9a90e0  6,70-203,154     world.stars[1]
      2    0.00%  #fff8ff  123,161-240,168  world.stars[2]
    149    0.25%  #151c4c  247,119-293,138  (off-palette)
     42    0.07%  #151d4c  247,119-294,138  (off-palette)
-     2    0.00%  #191935  218,67-226,73    (off-palette)
+     6    0.01%  #191934  210,67-225,70    (off-palette)
+    12    0.02%  #191935  213,63-227,74    (off-palette)
    218    0.37%  #192b6d  247,102-293,134  (off-palette)
    144    0.25%  #192b6e  252,118-288,133  (off-palette)
     20    0.03%  #192c6e  261,125-278,128  (off-palette)
     28    0.04%  #1a2b6c  247,94-294,121   (off-palette)
     14    0.02%  #1c4a4d  253,121-286,133  (off-palette)
      8    0.01%  #1c4b4d  269,127-274,131  (off-palette)
+     1    0.00%  #1d1b35  225,69-225,69    (off-palette)
+    12    0.02%  #1e1b35  211,63-225,71    (off-palette)
+     1    0.00%  #201f3c  214,74-214,74    (off-palette)
      8    0.01%  #203f89  256,95-286,100   (off-palette)
     20    0.03%  #204089  248,96-289,110   (off-palette)
     85    0.14%  #20408a  248,95-291,114   (off-palette)
     68    0.11%  #20408b  251,101-289,133  (off-palette)
    102    0.17%  #20418b  253,105-287,131  (off-palette)
    308    0.53%  #20418c  256,110-284,129  (off-palette)
-     4    0.00%  #241e35  218,63-220,64    (off-palette)
-    10    0.01%  #241e36  209,52-221,67    (off-palette)
+     7    0.01%  #222250  220,69-227,74    (off-palette)
+     1    0.00%  #232250  219,72-219,72    (off-palette)
+    10    0.01%  #241e35  213,62-220,64    (off-palette)
+    20    0.03%  #241e36  207,53-222,69    (off-palette)
      7    0.01%  #251d2d  11,130-34,147    (off-palette)
-     2    0.00%  #261e36  220,66-227,70    (off-palette)
+    11    0.01%  #261e36  216,66-227,74    (off-palette)
      5    0.00%  #2a6652  252,108-284,132  (off-palette)
-     4    0.00%  #2c2236  210,57-212,59    (off-palette)
-     1    0.00%  #2c2237  220,54-220,54    (off-palette)
+     1    0.00%  #2b2137  208,56-208,56    (off-palette)
+     2    0.00%  #2c2137  212,53-214,54    (off-palette)
+    11    0.01%  #2c2236  210,58-218,66    (off-palette)
+     7    0.01%  #2c2237  211,54-220,56    (off-palette)
      3    0.00%  #2d589b  265,94-267,94    (off-palette)
      2    0.00%  #2d599c  287,104-289,105  (off-palette)
-     1    0.00%  #2d5a9c  288,106-288,106  (off-palette)
-    10    0.01%  #2d5a9d  251,99-288,110   (off-palette)
-     6    0.01%  #2e5a9d  258,100-264,103  (off-palette)
-    19    0.03%  #2e5a9e  253,100-285,118  (off-palette)
-    87    0.15%  #2e5b9e  254,101-284,119  (off-palette)
-   164    0.28%  #2e5b9f  259,105-281,126  (off-palette)
-    23    0.03%  #2e5c9f  267,112-273,116  (off-palette)
-     2    0.00%  #352437  208,64-214,72    (off-palette)
-… and 147 more off-palette colours, 3178 px
+… and 176 more off-palette colours, 3260 px

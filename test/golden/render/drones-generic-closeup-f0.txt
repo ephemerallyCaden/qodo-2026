@@ -2,28 +2,28 @@
 name     drones-generic-closeup-f0
 env      {"arch":"x64","browser":"158.0.8127.18","platform":"linux","playwright":"1.65.0","webgl":"ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"}
 size     320x180 (57600 px)
-rgba     sha256 f1e23aaa025eb58995626fefcf82327272d25cfb732a41c6fae3cb09603eb42e
-stats    drawCalls 11, triangles 169458
-colours  47 (27 palette, 20 off-palette: 396 px)
+rgba     sha256 2f90a3e0ac3fa85084df68ce4c2f350fa4d80f7c9a6b4cd96c6f84eb5df7bd34
+stats    drawCalls 11, triangles 221334
+colours  49 (27 palette, 22 off-palette: 292 px)
 
     px    share  colour   bbox x0,y0-x1,y1  palette entries
- 29151   50.60%  #0d0b16  0,0-319,179      world.space
-     9    0.01%  #3b3866  68,1-319,117     world.stars[0]
-     2    0.00%  #9a90e0  9,28-243,135     world.stars[1]
+ 35960   62.43%  #0d0b16  0,0-319,179      world.space
+    14    0.02%  #3b3866  68,1-319,158     world.stars[0]
+     3    0.00%  #9a90e0  9,21-243,135     world.stars[1]
      2    0.00%  #fff8ff  254,19-266,30    world.stars[2]
-   623    1.08%  #ffffff  91,56-145,131    world.cap[3], world.ice[4], world.haze.ice, crew.suit[3], crew.glint, drone.generic.trim[3], drone.generic.smoke[2], drone.claude.smoke[2], ship.hull.shell[3], ship.hull.flame[3]
-    39    0.06%  #30285a  57,132-232,171   world.cloud[0], world.halo
-  1993    3.46%  #f2d8b8  47,37-258,179    world.cloud[1], world.cloud[2], world.ring[1], world.moonBody[3], fog.mist[0]
- 21861   37.95%  #fffaf0  47,6-252,179     world.cloud[3], world.starDisc[4], fog.mist[1], fog.mist[2], fog.mist[3]
-    16    0.02%  #0f1a4e  98,30-222,133    world.water[0]
-   325    0.56%  #18378f  98,31-223,150    world.water[1]
-    28    0.04%  #2560c8  99,40-159,125    world.water[2]
-    41    0.07%  #93b6dc  112,32-219,171   world.ice[1]
-   242    0.42%  #c6e0f4  94,29-232,156    world.ice[2]
-   154    0.26%  #e6f4ff  98,28-219,155    world.ice[3]
-    25    0.04%  #16234e  166,72-222,85    world.crevasse[0]
-    32    0.05%  #24407e  166,72-222,85    world.crevasse[1]
-    10    0.01%  #3a64b0  165,77-170,85    world.crevasse[2]
+   884    1.53%  #ffffff  88,56-192,131    world.cap[3], world.ice[4], world.haze.ice, crew.suit[3], crew.glint, drone.generic.trim[3], drone.generic.smoke[2], drone.claude.smoke[2], ship.hull.shell[3], ship.hull.flame[3]
+    63    0.10%  #30285a  57,89-232,179    world.cloud[0], world.halo
+  4164    7.22%  #f2d8b8  47,26-242,179    world.cloud[1], world.cloud[2], world.ring[1], world.moonBody[3], fog.mist[0]
+ 10863   18.85%  #fffaf0  47,15-237,178    world.cloud[3], world.starDisc[4], fog.mist[1], fog.mist[2], fog.mist[3]
+   531    0.92%  #0f1a4e  87,30-228,170    world.water[0]
+   316    0.54%  #18378f  87,32-221,163    world.water[1]
+   270    0.46%  #2560c8  87,39-199,121    world.water[2]
+   352    0.61%  #93b6dc  86,82-233,175    world.ice[1]
+   565    0.98%  #c6e0f4  86,34-232,168    world.ice[2]
+   426    0.73%  #e6f4ff  87,28-225,163    world.ice[3]
+    97    0.16%  #16234e  91,82-231,174    world.crevasse[0]
+   100    0.17%  #24407e  91,66-229,112    world.crevasse[1]
+    47    0.08%  #3a64b0  91,66-203,110    world.crevasse[2]
    420    0.72%  #c1d9f2  91,55-159,133    crew.suit[2], drone.generic.trim[2], drone.generic.smoke[1], ship.hull.shell[2]
     16    0.02%  #293268  157,84-161,90    crew.gear[0], drone.generic.shell[0], ship.hull.metal[0], ship.cap.shell[1]
     71    0.12%  #464b8c  95,69-161,91     crew.gear[1], drone.generic.shell[1], ship.hull.shell[0], ship.hull.metal[1]
@@ -34,23 +34,25 @@ colours  47 (27 palette, 20 off-palette: 396 px)
     47    0.08%  #007c66  116,78-134,88    accent.teal[1]
    151    0.26%  #00bc9c  103,47-148,114   accent.teal[2]
    122    0.21%  #00ffd5  117,48-148,112   accent.teal[3]
-     2    0.00%  #172c40  16,55-21,58      (off-palette)
-     9    0.01%  #181e52  22,49-29,56      (off-palette)
-     6    0.01%  #1c2d72  19,49-26,54      (off-palette)
-     1    0.00%  #1c444d  28,54-28,54      (off-palette)
-     3    0.00%  #22428c  22,45-23,51      (off-palette)
-    49    0.08%  #242351  16,50-32,61      (off-palette)
-     5    0.00%  #285b51  21,45-24,51      (off-palette)
-     1    0.00%  #2b3069  23,59-23,59      (off-palette)
-     3    0.00%  #315996  15,47-20,47      (off-palette)
-     1    0.00%  #456f51  14,47-14,47      (off-palette)
-     2    0.00%  #466f51  15,46-20,53      (off-palette)
-     1    0.00%  #786f7a  30,50-30,50      (off-palette)
-   104    0.18%  #79707a  8,41-35,60       (off-palette)
-    68    0.11%  #7a707a  7,46-28,58       (off-palette)
-    14    0.02%  #7a717a  19,49-24,54      (off-palette)
-     6    0.01%  #7e7e92  9,41-17,53       (off-palette)
-     4    0.00%  #7e7f92  7,44-12,53       (off-palette)
-     9    0.01%  #7f7f92  10,41-22,54      (off-palette)
-   104    0.18%  #7f7f93  10,41-34,54      (off-palette)
-     4    0.00%  #7f8093  18,49-20,51      (off-palette)
+    15    0.02%  #172c40  16,47-29,59      (off-palette)
+    20    0.03%  #181e52  18,48-29,58      (off-palette)
+    27    0.04%  #1c2d72  12,45-29,57      (off-palette)
+    17    0.02%  #1c444d  15,46-28,58      (off-palette)
+    17    0.02%  #22428c  12,46-24,56      (off-palette)
+    12    0.02%  #242351  25,52-30,59      (off-palette)
+    13    0.02%  #285b51  12,47-24,54      (off-palette)
+     2    0.00%  #2b3069  19,59-20,59      (off-palette)
+     1    0.00%  #315995  14,45-14,45      (off-palette)
+    13    0.02%  #315996  14,46-20,53      (off-palette)
+     6    0.01%  #456f51  13,46-14,49      (off-palette)
+     4    0.00%  #466f51  14,46-20,51      (off-palette)
+     3    0.00%  #507299  14,45-17,49      (off-palette)
+     1    0.00%  #6a7d59  19,46-19,46      (off-palette)
+     3    0.00%  #786f7a  11,52-28,57      (off-palette)
+     1    0.00%  #796f7a  15,58-15,58      (off-palette)
+    56    0.09%  #79707a  8,43-35,59       (off-palette)
+    11    0.01%  #7a707a  7,48-25,55       (off-palette)
+     3    0.00%  #7e7e92  11,46-12,53      (off-palette)
+     2    0.00%  #7e7f92  7,44-14,53       (off-palette)
+     3    0.00%  #7f7f92  11,42-22,48      (off-palette)
+    62    0.10%  #7f7f93  11,42-34,55      (off-palette)
