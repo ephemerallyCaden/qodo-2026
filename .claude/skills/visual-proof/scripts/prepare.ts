@@ -9,6 +9,7 @@ import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readF
 import { dirname, join, relative } from 'node:path';
 import { deniedReads, type Denied } from '../../../../factory/sandbox.js';
 import { Stop, type Bundle } from './rules.js';
+import type { FixtureCommit } from './scene.js';
 
 const byCodepoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -134,20 +135,25 @@ export function makeClone(main: string, sha: string, dest: string): string[] {
 }
 
 /**
- * A scene's own repo: these files in one commit at `at`, by a fixed author, so the same files always give
- * the same SHA. Its git dir is its own, like the clone's.
+ * A scene's own repo: the `earlier` commits, oldest first, then these files in one commit at `at`, each
+ * commit by a fixed author at its own date, so the same files always give the same SHA. Its git dir is
+ * its own, like the clone's.
  */
-export function makeFixtureRepo(files: Readonly<Record<string, string>>, at: string, dest: string): string[] {
+export function makeFixtureRepo(files: Readonly<Record<string, string>>, at: string, dest: string, earlier: readonly FixtureCommit[] = []): string[] {
   mkdirSync(dest, { recursive: true });
   git(dest, 'init', '-q', '-b', 'main');
   for (const [k, v] of [['user.name', 'Mate'], ['user.email', 'mate@example.com'], ['commit.gpgsign', 'false']] as const) git(dest, 'config', k, v);
-  for (const path of Object.keys(files).sort(byCodepoint)) {
-    mkdirSync(dirname(join(dest, path)), { recursive: true });
-    writeFileSync(join(dest, path), files[path]!);
+  const commits = [...earlier, { files, at }];
+  for (const c of commits) {
+    for (const path of Object.keys(c.files).sort(byCodepoint)) {
+      mkdirSync(dirname(join(dest, path)), { recursive: true });
+      writeFileSync(join(dest, path), c.files[path]!);
+    }
+    git(dest, 'add', '-A');
+    execFileSync('git', ['commit', '-q', '-m', c.at], { cwd: dest, env: { ...process.env, GIT_AUTHOR_DATE: c.at, GIT_COMMITTER_DATE: c.at } });
   }
-  git(dest, 'add', '-A');
-  execFileSync('git', ['commit', '-q', '-m', at], { cwd: dest, env: { ...process.env, GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } });
-  return [`git init in ${dest}; ${Object.keys(files).length} files (${Object.keys(files).sort(byCodepoint).join(', ')}); one commit at ${at} by Mate <mate@example.com>`];
+  const each = commits.map((c) => `${Object.keys(c.files).length} files at ${c.at} (${Object.keys(c.files).sort(byCodepoint).join(', ')})`);
+  return [`git init in ${dest}; ${commits.length === 1 ? `one commit: ${each[0]}` : `${commits.length} commits, oldest first: ${each.join('; ')}`}; by Mate <mate@example.com>`];
 }
 
 /** `commet scan --no-ingest` in the clone with the base build's CLI and an empty CLAUDE_CONFIG_DIR. */

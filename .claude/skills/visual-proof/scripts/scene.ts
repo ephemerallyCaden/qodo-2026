@@ -10,6 +10,9 @@ import type { LayoutV1 } from '../../../../src/core/contract/layout.js';
 import type { SystemModel } from '../../../../web/src/model/system.js';
 import type { Box } from './frames.js';
 
+/** One commit of a scene's own repo: these files written (added or changed) at `at`. */
+export interface FixtureCommit { files: Readonly<Record<string, string>>; at: string }
+
 /** What every take of a run sees: the clone's layout and its files at the pinned commit. */
 export interface SceneData { layout: LayoutV1; files: readonly string[] }
 
@@ -28,8 +31,10 @@ export interface Scene {
   /**
    * Instead of a clone of this repo, the scene's own repo: these files in one commit at `at` (author and
    * committer fixed, so its SHA is the same every run). For a scene that needs a small, exact layout.
+   * `earlier`: commits made before that one, oldest first, each writing its own files (e.g. a file whose
+   * last change is older than the scan's 24-month window, counted back from the last commit).
    */
-  fixture?: { files: Readonly<Record<string, string>>; at: string };
+  fixture?: { files: Readonly<Record<string, string>>; at: string; earlier?: readonly FixtureCommit[] };
   /** CSS px (= frame px). Default: the render tests' 1280x720. */
   viewport?: { width: number; height: number };
   /** The GIF at 1/n size (nearest, a whole n), for a large viewport with motion; stills stay full size. Default 1. */
@@ -117,6 +122,15 @@ export interface SceneContext {
    * is running, wherever that build draws it; null when none is visible.
    */
   locateDrone(): Promise<{ visible: number; centre: { x: number; y: number } | null; box: Box | null }>;
+  /**
+   * Measures the fog on the last recorded frame from the page's own pixels, the way measureDrones does:
+   * the same frame is drawn again on the bare canvas (overlays hidden) with and without the fog (a seam
+   * holds every program's `uFogOn` at 0, which draws a body as if nothing on it were fogged), and the
+   * pixels that differ are the fog. `regionOf` names the region a frame pixel (CSS px) is in, or null.
+   * Adds `fog px` and, per region, `fog px on <region>` and `px of <region>` to that frame's probes.
+   * Moons carry their fog per instance, not in `uFogOn`, so a moon's fog isn't counted.
+   */
+  measureFog(regionOf: (x: number, y: number) => string | null): Promise<{ total: number; regions: Record<string, { fog: number; px: number }> }>;
   /** The build's own CLI in the data clone, mid-take (a state change the view hears about): wait for its effect after. */
   cli(...args: string[]): string;
   /** A line for the take log and the record (where a click landed, which seed). */
@@ -136,10 +150,13 @@ export interface SceneContext {
 /** The drone shader's own uniform: the seam knows a drone program by it (web/src/render/drone-shader.ts). */
 export const DRONE_MARK = 'uHeadB';
 
+/** The fog shaders' switch (web/src/render/fog-glsl.ts FOG_GRID): at 0 a body draws as if nothing on it were fogged. The fog seam knows it by name. */
+export const FOG_ON = 'uFogOn';
+
 /** Loop time per tick: 20 frames a second. */
 export const TICK_MS = 50;
 /** The DOM parts a frame's pixels are attributed to, first match first (the rest is the 3D view and its labels). */
-export const REGIONS = ['drone-panel', 'panel', 'hud', 'error'] as const;
+export const REGIONS = ['drone-panel', 'panel', 'tree', 'hud', 'error'] as const;
 
 /** `part`: which of the scene's parts recorded it (0 for a scene without parts). */
 export interface FrameLog { k: number; part?: number; ts: number; frame: number; boxes: Boxes; probes: Record<string, number>; heading: string | null }

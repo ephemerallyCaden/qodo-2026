@@ -157,7 +157,7 @@ async function run(a: RunArgs): Promise<number> {
     const clone = join(scratch, 'repo'), claudeDir = join(scratch, 'claude-empty'), stateStart = join(scratch, 'state-start');
     mkdirSync(claudeDir);
     const cli = join(cliTree, 'dist', 'cli.js');
-    const made = scene.fixture ? makeFixtureRepo(scene.fixture.files, scene.fixture.at, clone) : makeClone(main, resolveRev(top, scene.repoAt ?? base.sha).sha, clone);
+    const made = scene.fixture ? makeFixtureRepo(scene.fixture.files, scene.fixture.at, clone, scene.fixture.earlier) : makeClone(main, resolveRev(top, scene.repoAt ?? base.sha).sha, clone);
     const repoAt = resolveRev(clone, 'HEAD');
     const dataCmds = [...made, ...scanClone(cli, clone, scene.roots ?? ['src'], claudeDir, profile)];
     const state = join(clone, '.git', 'commet');
@@ -274,7 +274,7 @@ async function run(a: RunArgs): Promise<number> {
     const sideOf = (rev: Rev, side: 'before' | 'after'): RunSummary['before'] => ({ sha: rev.sha, subject: rev.subject, bundle: bundles[side].files.find((f) => f.endsWith('.js')) ?? bundles[side].files[0]! });
     const summary = summaryText({
       scene: { name: scene.name, summary: scene.summary }, before: sideOf(base, 'before'), after: sideOf(head, 'after'),
-      data: { ...viewAndMotion(scene, parts), source: scene.fixture ? `the scene's own ${files.length}-file repo (one commit, \`${repoAt.short}\`)` : `one clone of this repo at \`${repoAt.short}\``, sessions, drones },
+      data: { ...viewAndMotion(scene, parts), source: scene.fixture ? `the scene's own ${files.length}-file repo (${scene.fixture.earlier?.length ? `${scene.fixture.earlier.length + 1} commits, head` : 'one commit,'} \`${repoAt.short}\`)` : `one clone of this repo at \`${repoAt.short}\``, sessions, drones },
       frames: takes['before-1']!.log.frames.length, determinism: { takes: 4, framesCompared: compared, differing: 0 },
       privacy: { texts, responses, files: stateFiles, hits: 0 }, shots: c.shots, images: c.images.filter((im) => !/-(before|after)\.png$/.test(im.file)), command,
     });

@@ -2,7 +2,7 @@
 // node_modules: the run stops and asks (npm ci needs the network). A scene's own repo is the same commit
 // every run, so both builds, and every run, see the same data (R12).
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { addNodeModules, contained, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, revisionEnv, SANDBOX_EXEC, sandboxProfile, sandboxState, worktreeRev } from '../../.claude/skills/visual-proof/scripts/prepare.js';
@@ -52,6 +52,20 @@ describe('makeFixtureRepo', () => {
     expect(sha(join(root, 'a'))).toBe(sha(join(root, 'b')));
     expect(execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: join(root, 'a'), encoding: 'utf8' }).trim()).toBe('.git');
     expect(execFileSync('git', ['ls-files'], { cwd: join(root, 'a'), encoding: 'utf8' }).trim().split('\n')).toEqual(['README.md', 'aa/one.ts', 'bb/three.ts']);
+  });
+  it('makes the earlier commits first, oldest first, each at its own date, and gives them the same SHA every time', () => {
+    const root = tempDir('commet-vp-prep-');
+    const earlier = [{ at: '2024-03-01T09:00:00Z', files: { 'aa/old.ts': 'old\n', 'aa/new.ts': 'new\n' } }];
+    const git = (d: string, ...args: string[]) => execFileSync('git', args, { cwd: d, encoding: 'utf8' }).trim();
+    const lines = makeFixtureRepo({ 'aa/new.ts': 'new\nagain\n' }, '2026-10-10T09:00:00Z', join(root, 'a'), earlier);
+    makeFixtureRepo({ 'aa/new.ts': 'new\nagain\n' }, '2026-10-10T09:00:00Z', join(root, 'b'), earlier);
+    expect(git(join(root, 'a'), 'rev-parse', 'HEAD')).toBe(git(join(root, 'b'), 'rev-parse', 'HEAD'));
+    // newest first: the last commit changed new.ts only, the earlier one added both
+    expect(git(join(root, 'a'), 'log', '--format=%aI %cI', '--name-only').split('\n').filter(Boolean)).toEqual([
+      '2026-10-10T09:00:00Z 2026-10-10T09:00:00Z', 'aa/new.ts', '2024-03-01T09:00:00Z 2024-03-01T09:00:00Z', 'aa/new.ts', 'aa/old.ts',
+    ]);
+    expect(readFileSync(join(root, 'a', 'aa', 'new.ts'), 'utf8')).toBe('new\nagain\n');
+    expect(lines.join('\n')).toContain('2 commits, oldest first: 2 files at 2024-03-01T09:00:00Z (aa/new.ts, aa/old.ts); 1 files at 2026-10-10T09:00:00Z (aa/new.ts)');
   });
 });
 

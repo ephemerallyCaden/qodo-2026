@@ -83,7 +83,8 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
 4. **View change?** The same `dist/web` on both sides → `no-view-change` (R11), before any capture.
    A diff touching the data paths → `data-change` (R12).
 5. **The data**: one clone of this repo at the scene's pinned commit (default: the base), or the
-   scene's own small repo (`fixture`: its files in one commit at a fixed date, the same SHA every run),
+   scene's own small repo (`fixture`: its files in one commit at a fixed date, after any `earlier`
+   commits at theirs, the same SHA every run),
    scanned once with `--no-ingest` and an empty `CLAUDE_CONFIG_DIR` (0 sessions, or `data-change`), then
    the scene's setup (a beacon, a chart). Every take starts from a copy of that state. Drones come only from the
    scene's script, through the server's hooks: no agent log is read (R12).
@@ -169,7 +170,8 @@ worktree or this repo's `.git/commet`; `git status` is as it was.
 ## Adding a scene
 
 A scene is one TypeScript module in `scenes/`, listed in `scenes/index.ts`; `scripts/scene.ts` says
-what it may do. It declares its data (`repoAt`, or its own `fixture` repo; `roots`; `setup` CLI steps;
+what it may do. It declares its data (`repoAt`, or its own `fixture` repo, with `earlier` commits for history such as a
+file last changed before the scan's 24-month window; `roots`; `setup` CLI steps;
 scripted `drones`), its `viewport`, whether it runs under reduced motion, `gifScale` (a whole-number
 shrink for a big viewport's GIF), and a `run(s)` that drives the view with real input and records.
 A scene that needs shots in different pages (another viewport, motion on or off, other drones) lists
@@ -186,13 +188,18 @@ of the GIF. In a `run`:
   The summary reads them as "drone visible: 0 of 2320 px before, N of M after".
 - `s.locateDrone()` finds where this build draws the drones now, by the same seam: click its `centre` to
   select a scene's one drone in either build, wherever that build puts it (none visible: `s.fail`).
+- `s.measureFog(regionOf)`, after a still, measures the fog the same way: a seam draws the frame again,
+  overlays hidden, with every program's `uFogOn` at 0 (a body drawn as if nothing on it were fogged), and
+  the pixels that differ are the fog: `fog px`, and per region `regionOf(x, y)` names, `fog px on <region>`
+  and `px of <region>`. Moons carry their fog per instance, so theirs isn't counted.
 - Recording every other tick (`s.advance(1); s.record(1)`) halves the frames; the GIF still plays in
   loop time (each frame is shown until the next one's time).
 - `s.focusPlanet(path)`, `s.click(x, y)`, `s.press(key)`, `s.dismissOffer()`, `s.cli(…)` (the build's
   CLI in the clone, mid-take; then `s.waitFor` its effect), `s.waitFor(what, check)`, `s.fail(why)`.
 - Where things are on screen comes from this checkout's own camera and drone code: `scenes/helpers.ts`
   (`homePose`, `bracketPose` for the camera after `]` presses under reduced motion, `droneAt`,
-  `findDrone`, `scriptedDrone`, `scriptedDetail`). Check the click landed (the panel opened), since the
+  `findDrone`, `scriptedDrone`, `scriptedDetail`) and `scenes/parcels.ts` (`parcelsOnScreen`: which
+  file's fog parcel each pixel shows, by the fog shader's nearest-cell rule, for `measureFog`). Check the click landed (the panel opened), since the
   build under test may place things differently.
 - A scene must be a function of the layout and the frame clock: no wall clock, no randomness. Then run
   `vp.sh try --head <ref> --scene <name>`: it prints each still's boxes and probes and saves its frame.
@@ -200,4 +207,6 @@ of the GIF. In a `run`:
 Worked examples: `panel-labels` (#169: this repo's system, reduced motion, a note and a scripted drone,
 two shots); `drone-panel` (#189: its own four-file repo and three parts: seed 28 held still at the
 bottom left of its planet at 1280x720 and 1920x1080, then seed 78 orbiting into its open panel for 12 s
-at 1920x1080 with motion, the GIF at half size).
+at 1920x1080 with motion, the GIF at half size); `fog-levels` (#201: its own two-commit repo, one planet
+whose three files are untouched in the window, changed with no session, and changed then charted, opened
+at its pole from the directory view so all three parcels show; their fog measured per parcel).

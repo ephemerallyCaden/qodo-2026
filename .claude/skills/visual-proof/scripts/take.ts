@@ -16,20 +16,21 @@ import { systemModel } from '../../../../web/src/model/system.js';
 import { Stop } from './rules.js';
 import { diffByRegion, diffPixels } from './frames.js';
 import { readPng } from './png.js';
-import { DRONE_MARK, partsOf, REGIONS, TICK_MS, type Boxes, type Scene, type ScenePart, type SceneContext, type TakeLog } from './scene.js';
+import { DRONE_MARK, FOG_ON, partsOf, REGIONS, TICK_MS, type Boxes, type Scene, type ScenePart, type SceneContext, type TakeLog } from './scene.js';
 
 /** dt is clamped like this in web/src/loop.ts (MAX_TICK_MS). */
 const MAX_TICK_MS = 100;
 
 declare global {
-  interface Window { __vpStep?: (ts: number) => number; __vpEvents?: string[]; __vpKept?: Uint8ClampedArray; __vpHideDrones?: boolean }
+  interface Window { __vpStep?: (ts: number) => number; __vpEvents?: string[]; __vpKept?: Uint8ClampedArray; __vpHideDrones?: boolean; __vpHideFog?: boolean }
 }
 
 /**
- * Installed before the view's own script: the stepped clock, the event-stream tee, and a seam that skips
- * the draws of any WebGL program whose shaders hold `mark` while `__vpHideDrones` is set (measureDrones).
+ * Installed before the view's own script: the stepped clock, the event-stream tee, a seam that skips
+ * the draws of any WebGL program whose shaders hold `mark` while `__vpHideDrones` is set (measureDrones),
+ * and one that draws with every program's `fogOn` uniform at 0 while `__vpHideFog` is set (measureFog).
  */
-function instrument(mark: string): void {
+function instrument({ mark, fogOn }: { mark: string; fogOn: string }): void {
   const q = new Map<number, FrameRequestCallback>();
   let id = 0;
   window.requestAnimationFrame = (cb) => { const h = ++id; q.set(h, cb); return h; };
@@ -60,8 +61,30 @@ function instrument(mark: string): void {
   around('shaderSource', (a) => { source.set(a[0] as object, String(a[1])); return true; });
   around('attachShader', (a) => { if ((source.get(a[1] as object) ?? '').includes(mark)) marked.add(a[0] as object); return true; });
   around('useProgram', (a) => { program = (a[0] as object | null) ?? null; return true; });
+  // The fog seam: each program's `fogOn` location, and the value the view last gave it there, so a draw can
+  // run with fog off and leave the uniform as the view set it (three.js skips uploads its cache already holds)
+  window.__vpHideFog = false;
+  const fogAt = new WeakMap<object, object>(), fogSet = new WeakMap<object, unknown>(), fogLocs = new WeakSet<object>();
+  const getLoc = gl['getUniformLocation']!, set1i = gl['uniform1i']!;
+  gl['getUniformLocation'] = function (this: unknown, ...args: unknown[]) {
+    const loc = getLoc.apply(this, args) as object | null;
+    if (loc && args[1] === fogOn) { fogAt.set(args[0] as object, loc); fogLocs.add(loc); }
+    return loc;
+  };
+  gl['uniform1i'] = function (this: unknown, ...args: unknown[]) {
+    if (args[0] && fogLocs.has(args[0] as object)) fogSet.set(args[0] as object, args[1]);
+    return set1i.apply(this, args);
+  };
   for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
-    around(name, () => !(window.__vpHideDrones && program !== null && marked.has(program)));
+    const real = gl[name];
+    if (!real) continue;
+    gl[name] = function (this: unknown, ...args: unknown[]) {
+      if (window.__vpHideDrones && program !== null && marked.has(program)) return undefined;
+      const loc = window.__vpHideFog && program !== null ? fogAt.get(program) : undefined;
+      if (!loc) return real.apply(this, args);
+      set1i.call(this, loc, 0);
+      try { return real.apply(this, args); } finally { set1i.call(this, loc, fogSet.get(loc) ?? 0); }
+    };
   }
 }
 
@@ -182,8 +205,9 @@ export async function runTake(page: Page, url: string, deps: TakeDeps & { run?: 
     for (let i = 0; i < 2; i++) await page.evaluate((t) => window.__vpStep!(t), ts - TICK_MS);
     await settle(60);
   };
-  const overlays = (v: string) => page.evaluate((v) => { for (const id of ['labels', 'hud', 'panel', 'drone-panel']) document.getElementById(id)?.style.setProperty('visibility', v, 'important'); }, v);
+  const overlays = (v: string) => page.evaluate((v) => { for (const id of ['labels', 'hud', 'panel', 'drone-panel', 'tree']) document.getElementById(id)?.style.setProperty('visibility', v, 'important'); }, v);
   const hide = (on: boolean) => page.evaluate((on) => { window.__vpHideDrones = on; }, on);
+  const hideFog = (on: boolean) => page.evaluate((on) => { window.__vpHideFog = on; }, on);
 
   const model = systemModel(layout);
   let recorded = 0;
@@ -245,6 +269,34 @@ export async function runTake(page: Page, url: string, deps: TakeDeps & { run?: 
       f.probes['drone px visible'] = got.visible;
       if (panel) f.probes['drone px drawn under #drone-panel'] = got.underPanel;
       return got;
+    },
+    async measureFog(regionOf) {
+      if (!recorded) ctx.fail('measureFog before any recorded frame');
+      await overlays('hidden');
+      await redraw();
+      const bare = await shot();
+      await hideFog(true); await redraw();
+      const clear = await shot();
+      await hideFog(false); await redraw();
+      await overlays('');
+      const regions: Record<string, { fog: number; px: number }> = {};
+      let total = 0;
+      for (let p = 0; p < bare.width * bare.height; p++) {
+        const name = regionOf(p % bare.width, Math.floor(p / bare.width));
+        const r = name === null ? null : (regions[name] ??= { fog: 0, px: 0 });
+        if (r) r.px++;
+        const i = p * 4;
+        if (bare.rgba[i] === clear.rgba[i] && bare.rgba[i + 1] === clear.rgba[i + 1] && bare.rgba[i + 2] === clear.rgba[i + 2]) continue;
+        total++;
+        if (r) r.fog++;
+      }
+      const f = log.frames[recorded - 1]!;
+      f.probes['fog px'] = total;
+      for (const [name, r] of Object.entries(regions)) {
+        f.probes[`fog px on ${name}`] = r.fog;
+        f.probes[`px of ${name}`] = r.px;
+      }
+      return { total, regions };
     },
     async keepLabels() {
       await page.evaluate(() => { const c = document.getElementById('labels') as HTMLCanvasElement; window.__vpKept = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data; });
@@ -318,7 +370,7 @@ export async function runTake(page: Page, url: string, deps: TakeDeps & { run?: 
 }
 
 /** Adds the stepped clock and the event tee to every page of a context, before the view's script runs. */
-export const instrumentPage = async (page: Page): Promise<void> => { await page.addInitScript(instrument, DRONE_MARK); };
+export const instrumentPage = async (page: Page): Promise<void> => { await page.addInitScript(instrument, { mark: DRONE_MARK, fogOn: FOG_ON }); };
 
 export interface TakeConfig {
   /** The built tree (its dist/ serves this take). */
