@@ -95,7 +95,7 @@ const BANDS = /* glsl */ `
 // strength, the star at STAR.fade). uEye, not cameraPosition, so an ortho rig can share it. uDepthOn = 0 turns it off
 // (RenderInput.depthFade), leaving only palette colours. uDepthStretch (squeeze, shift) moves the
 // later steps out to the system's size (model/depth.ts depthStretch, #59); (1, 0) is the tuned fade.
-const DEPTH = /* glsl */ `
+export const DEPTH = /* glsl */ `
   uniform vec3 uEye;
   uniform vec4 uDepthTint[4];
   uniform bool uDepthOn;

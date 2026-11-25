@@ -17,6 +17,11 @@ const CLEARANCE = 0.35;
 const LANE = 0.15;
 /** The most an orbit plane tilts from the system's plane (radians). */
 const MAX_TILT = 0.35;
+/**
+ * How far past its home body's reach a drone's orbit can go (its outermost lane, at any tilt); a drone's
+ * own size, drift and bob add DRONE_PICK_RADIUS. The crew's ship (crew/place.ts) keeps clear of both.
+ */
+export const DRONE_LANE_OUT = CLEARANCE + LANE;
 /** A drone's picking radius: its body (about 0.2 lab units across) plus the drift and bob that move it off its orbit's centre. */
 export const DRONE_PICK_RADIUS = 0.35 * DRONE_SCALE;
 
