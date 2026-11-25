@@ -6,10 +6,10 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { CrewDetail, CrewMember, CrewView } from '../../src/core/contract/crew.js';
 import { palette } from '../../src/core/palette.js';
-import { project, startPose, startPoseAt, systemDepth } from '../../web/src/camera/pose.js';
+import { pick, project, startPose, startPoseAt, systemDepth } from '../../web/src/camera/pose.js';
 import { checkCrew, checkCrewDetail } from '../../web/src/crew/check.js';
 import { bodyRows, crewAnnouncement, crewDetailState, crewFileGroups, crewRows, RESCAN_NOTE } from '../../web/src/crew/detail.js';
-import { belowShip, placeShip, portholes, shipCorners, SHIP_FOOTPRINT, SHIP_MARGIN, shipPoint, shipSpot } from '../../web/src/crew/place.js';
+import { belowShip, hullOccluders, placeShip, portholes, seatTrack, shipCorners, SHIP_FOOTPRINT, SHIP_MARGIN, shipPoint, shipSpot } from '../../web/src/crew/place.js';
 import { crewStatus, riderOf, seatCrew } from '../../web/src/crew/select.js';
 import { DRONE_LANE_OUT, DRONE_PICK_RADIUS, homeBody } from '../../web/src/drones/place.js';
 import { FONT_HEIGHT } from '../../web/src/labels/font.js';
@@ -332,6 +332,39 @@ describe('where the ship is (C4)', () => {
     }
   });
 
+  it('tracks the selected porthole over the next idle cycle with the ship\'s orbit, not just its idle (Qodo PR #227 aa8bd7a5)', () => {
+    const m = models[0]!, spec = buildShip(6), pose = startPose(m, shipCorners(m, spec)), W = 1280, H = 720, frame = 100;
+    const track = seatTrack(m, spec, 0, frame, pose, { x: 0, y: 0, w: W, h: H });
+    expect(track.length).toBeGreaterThan(1);
+    const step = (CYCLE * FPS) / track.length;
+    track.forEach((box, k) => {
+      const f = frame + k * step, hole = portholes(spec, placeShip(m, f), loopPhase(f) * LOOP_SECONDS)[0]!, q = project(pose, hole.centre)!;
+      expect(box.x + box.w / 2, `sample ${k}`).toBeCloseTo(((q.x + 1) / 2) * W, 6);
+      expect(box.y + box.h / 2, `sample ${k}`).toBeCloseTo(((1 - q.y) / 2) * H, 6);
+    });
+  });
+
+  it('hides what is behind its hull from a click: a planet seen through the ship can\'t be picked (Qodo PR #227)', () => {
+    for (const m of models) {
+      const spec = buildShip(6), at = placeShip(m, 0), body = spec.parts.find((p) => p.id === 'body')!;
+      if (body.kind !== 'cone') throw new Error('the body is a capsule');
+      const mid = shipPoint(at, [0, (body.a[1] + body.b[1]) / 2, 0], 0);
+      const planet = m.planets[0]!, c = planetCentre(planet, 0), sphere = { centre: c, radius: planet.radius };
+      /** A pose looking at the planet from `eye`. */
+      const from = (eye: Vec3) => {
+        const d = [eye[0] - c[0], eye[1] - c[1], eye[2] - c[2]] as const, dist = Math.hypot(...d);
+        return { target: c, yaw: Math.atan2(d[0], d[2]), pitch: Math.asin(d[1] / dist), dist };
+      };
+      const away = [mid[0] - c[0], mid[1] - c[1], mid[2] - c[2]], n = Math.hypot(...away);
+      const behindShip = from([mid[0] + (away[0]! / n) * 6, mid[1] + (away[1]! / n) * 6, mid[2] + (away[2]! / n) * 6]);
+      const clear = from([c[0] - (away[0]! / n) * 6, c[1] - (away[1]! / n) * 6, c[2] - (away[2]! / n) * 6]);
+      const hull = hullOccluders(m, spec, 0);
+      expect(pick(behindShip, { x: 0, y: 0 }, [sphere])).toBe(0); // not vacuous: without the hull the planet is hit
+      expect(pick(behindShip, { x: 0, y: 0 }, [sphere], hull)).toBeNull();
+      expect(pick(clear, { x: 0, y: 0 }, [sphere], hull)).toBe(0); // the ship behind the planet hides nothing
+    }
+  });
+
   it('places the same ship however many ride, so nobody joining moves it', () => {
     expect(shipSpot(models[0]!)).toEqual(shipSpot(models[0]!));
     expect(placeShip(models[0]!, 0)).toEqual(placeShip(models[0]!, 0, shipSpot(models[0]!)));
@@ -342,6 +375,22 @@ describe('the crew checks (C7, Rule 6)', () => {
   it('accepts the crew fixture\'s crew view and every member\'s panel', () => {
     expect(checkCrew(GOLDEN.crew)).toEqual({ ok: true, value: GOLDEN.crew });
     for (const p of GOLDEN.panels) expect(checkCrewDetail(p).ok, p.person).toBe(true);
+  });
+
+  it('accepts any author name, path or number of files the server sends, so none hides the crew or a panel (Qodo PR #227 2392a9d2)', () => {
+    const long = 'Nova '.repeat(1000); // 5000 characters: git sets no limit, and neither does the server
+    const view = { ...GOLDEN.crew, members: GOLDEN.crew.members.map((m, i) => (i === 0 ? { ...m, displayName: long } : m)) };
+    expect(checkCrew(view)).toEqual({ ok: true, value: view });
+    const p = GOLDEN.panels.find((x) => x.files.length > 0)!, home = p.files[0]!.home;
+    const file = (id: string, path: string): CrewDetail['files'][number] => ({ fileId: id as CrewDetail['files'][number]['fileId'], path, home, touches: 1 });
+    const files = Array.from({ length: 20_001 }, (_, i) => file(`f_${i.toString(16).padStart(12, '0')}`, `big/f${String(i).padStart(6, '0')}.ts`));
+    files.push(file('f_ffffffffffff', `big/${'z'.repeat(5000)}.ts`));
+    const big: CrewDetail = { ...p, displayName: long, files };
+    expect(checkCrewDetail(big).ok).toBe(true);
+    // what the view prints stays bounded: the panel's name row, the HUD's selected name, the announcement
+    const m = view.members[0]!;
+    expect(crewRows(m, null)[0]![1].length).toBeLessThanOrEqual(120);
+    expect(crewAnnouncement({ kind: 'ready', detail: big }, { ...m, captain: false })!.length).toBeLessThan(200);
   });
 
   it('refuses a member with any count (a ranking waiting to happen), members out of person-id order, or two captains', () => {

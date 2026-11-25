@@ -17,8 +17,6 @@ const PERSON = /^p_[0-9a-f]{12,64}$/;
 const FILE_ID = /^f_[0-9a-f]{12,64}$/;
 const DIR_ID = /^d_[0-9a-f]{12,64}$/;
 const MAX_ERRORS = 8;
-/** A name the view prints: bounded, so a hostile document can't flood the panel. */
-export const CREW_LIMITS = { text: 200, path: 4096, files: 20_000, members: 100_000 } as const;
 const MEMBER_KEYS = ['captain', 'displayName', 'person', 'seed'];
 
 function refused<T>(errors: string[]): Checked<T> {
@@ -27,7 +25,10 @@ function refused<T>(errors: string[]): Checked<T> {
   return { ok: false, errors: shown };
 }
 
-const isName = (v: unknown): v is string => typeof v === 'string' && v.length <= CREW_LIMITS.text;
+// No length or count limits: the server sends git's author names and every touched file as they are, so a
+// limit here would hide a whole crew or panel over one long name or a big import (Qodo PR #227 2392a9d2).
+// What the view prints is bounded where it prints it (select.ts crewName, drones/select.ts plain).
+const isName = (v: unknown): v is string => typeof v === 'string';
 const isHome = (v: unknown): boolean => v === 'star' || (typeof v === 'string' && DIR_ID.test(v));
 
 export function checkCrew(v: unknown): Checked<CrewView> {
@@ -36,7 +37,6 @@ export function checkCrew(v: unknown): Checked<CrewView> {
   if (v['schemaVersion'] !== 'crew.1') errors.push('schemaVersion must be "crew.1"');
   if (typeof v['head'] !== 'string' || !HEX.test(v['head'])) errors.push('head must be a full commit SHA');
   const members = Array.isArray(v['members']) ? v['members'] : (errors.push('members must be an array'), []);
-  if (members.length > CREW_LIMITS.members) errors.push(`members must be at most ${CREW_LIMITS.members}`);
   members.forEach((m, i) => {
     const at = `members[${i}]`;
     if (!isObj(m)) { errors.push(`${at} must be an object`); return; }
@@ -44,7 +44,7 @@ export function checkCrew(v: unknown): Checked<CrewView> {
     const keys = Object.keys(m).sort(byCodepoint);
     if (keys.join() !== MEMBER_KEYS.join()) errors.push(`${at} must have exactly ${MEMBER_KEYS.join(', ')}`);
     if (typeof m['person'] !== 'string' || !PERSON.test(m['person'])) errors.push(`${at}.person must be a person id (p_…)`);
-    if (!isName(m['displayName'])) errors.push(`${at}.displayName must be a string of at most ${CREW_LIMITS.text} characters`);
+    if (!isName(m['displayName'])) errors.push(`${at}.displayName must be a string`);
     if (!isCount(m['seed']) || (m['seed'] as number) > 0xffffffff) errors.push(`${at}.seed must be a uint32`);
     if (typeof m['captain'] !== 'boolean') errors.push(`${at}.captain must be a boolean`);
   });
@@ -71,7 +71,7 @@ export function checkCrewDetail(v: unknown): Checked<CrewDetailResult> {
   if (v['schemaVersion'] !== 'crew-detail.1') errors.push('schemaVersion must be "crew-detail.1"');
   if (typeof v['head'] !== 'string' || !HEX.test(v['head'])) errors.push('head must be a full commit SHA');
   if (typeof v['person'] !== 'string' || !PERSON.test(v['person'])) errors.push('person must be a person id (p_…)');
-  if (!isName(v['displayName'])) errors.push(`displayName must be a string of at most ${CREW_LIMITS.text} characters`);
+  if (!isName(v['displayName'])) errors.push('displayName must be a string');
   if (typeof v['captain'] !== 'boolean') errors.push('captain must be a boolean');
   const last = v['lastActive'];
   if (last !== null && (typeof last !== 'string' || !ISO.test(last) || !Number.isFinite(Date.parse(last)))) errors.push('lastActive must be a UTC time or null');
@@ -82,12 +82,11 @@ export function checkCrewDetail(v: unknown): Checked<CrewDetailResult> {
   const homes = planets.flatMap((p) => (isObj(p) && typeof p['home'] === 'string' ? [p['home']] : []));
   if (new Set(homes).size !== homes.length || homes.some((h, i) => i > 0 && byCodepoint(homes[i - 1]!, h) > 0)) errors.push('planets must be unique and sorted by home');
   const files = Array.isArray(v['files']) ? v['files'] : (errors.push('files must be an array'), []);
-  if (files.length > CREW_LIMITS.files) errors.push(`files must be at most ${CREW_LIMITS.files}`);
   files.forEach((f, i) => {
     const at = `files[${i}]`;
     if (!isObj(f)) { errors.push(`${at} must be an object`); return; }
     if (typeof f['fileId'] !== 'string' || !FILE_ID.test(f['fileId'])) errors.push(`${at}.fileId must be a file id`);
-    if (typeof f['path'] !== 'string' || f['path'].length === 0 || f['path'].length > CREW_LIMITS.path) errors.push(`${at}.path must be a non-empty string of at most ${CREW_LIMITS.path} characters`);
+    if (typeof f['path'] !== 'string' || f['path'].length === 0) errors.push(`${at}.path must be a non-empty string`);
     if (!isHome(f['home'])) errors.push(`${at}.home must be a DirId or "star"`);
     if (!isCount(f['touches'], 1)) errors.push(`${at}.touches must be at least 1`);
   });

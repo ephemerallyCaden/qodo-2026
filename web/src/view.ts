@@ -23,7 +23,7 @@ import { PixelPass } from './render/pixel.js';
 import { DroneFleet, type FleetEntry } from './render/drone-fleet.js';
 import { CrewShip, type Rider } from './render/ship.js';
 import type { ShipSpec } from './render/ship-spec.js';
-import { belowShip, placeShip, portholes, shipCorners } from './crew/place.js';
+import { belowShip, hullOccluders, placeShip, portholes, shipCorners } from './crew/place.js';
 import { capLabels } from './drones/select.js';
 import { SystemScene } from './render/scene.js';
 import { starOccluders } from './render/corona.js';
@@ -51,6 +51,8 @@ const CREW_MIN_NDC = 0.015;
 
 /** The star's disc and corona at a frame: they hide the planets and drones behind them from picking and labels. */
 const starBlockers = (s: SystemScene, frame: number): Occluder[] => starOccluders(s.model.star.radius, frame);
+/** The crew's ship hides the planets and drones behind it from picking (#207, Qodo PR #227). */
+const hullBlockers = (s: SystemScene, frame: number): Occluder[] => hullOccluders(s.model, s.crew.spec, frame);
 
 export class View {
   readonly pass: PixelPass;
@@ -554,7 +556,7 @@ export class View {
     if (!s) return null;
     const c = this.pass.canvas.getBoundingClientRect();
     const ndc = { x: (cssX / c.width) * 2 - 1, y: 1 - (cssY / c.height) * 2 };
-    return pick(pose, ndc, s.spheres(frame), starBlockers(s, frame)); // the star and its corona hide what is behind them
+    return pick(pose, ndc, s.spheres(frame), [...starBlockers(s, frame), ...hullBlockers(s, frame)]); // the star and its corona, and the crew's ship, hide what is behind them
   }
 
   /**
@@ -569,7 +571,7 @@ export class View {
     const ndc = { x: (cssX / c.width) * 2 - 1, y: 1 - (cssY / c.height) * 2 };
     const at = s.fleet.spheres(s.model, frame);
     const drawn = at.flatMap((d, i) => (d ? [i] : []));
-    const hit = pick(pose, ndc, drawn.map((i) => at[i]!), [...starBlockers(s, frame), ...s.spheres(frame), ...s.smallBodies(frame)], DRONE_MIN_NDC);
+    const hit = pick(pose, ndc, drawn.map((i) => at[i]!), [...starBlockers(s, frame), ...s.spheres(frame), ...s.smallBodies(frame), ...hullBlockers(s, frame)], DRONE_MIN_NDC);
     return hit === null ? null : s.fleet.entries[drawn[hit]!]!.key;
   }
 

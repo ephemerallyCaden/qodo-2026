@@ -15,7 +15,7 @@ import { DRONE_LANE_OUT, DRONE_PICK_RADIUS, homeBody } from '../drones/place.js'
 import type { Rect } from '../labels/place.js';
 import { FPS, LOOP_SECONDS, loopPhase, orbitAngle } from '../model/motion.js';
 import type { SystemModel } from '../model/system.js';
-import type { Vec3 } from '../model/vec.js';
+import type { Sphere, Vec3 } from '../model/vec.js';
 import { shipBounds } from '../render/ship-glsl.js';
 import { buildShip, CYCLE, idleAt, MAX_ABOARD, SHIP_SCALE, type ShipSpec, type Vec } from '../render/ship-spec.js';
 
@@ -84,6 +84,23 @@ export function belowShip(model: SystemModel, spec: ShipSpec, frame: number, pos
   return { x: ((axis.x + 1) / 2) * W, y: ((1 - Math.min(...ps.map((p) => p!.y))) / 2) * H };
 }
 
+/**
+ * The hull as spheres that hide what is behind it from a click (camera/pose.ts pick's blockers): the body, a
+ * capsule, as spheres a quarter of its diameter apart along its axis (their union is the capsule but for
+ * shallow dimples), and the dome nose's two ends. Fins, feet, mast and flame are left out: thin, a click
+ * beside them goes through. At a frame and its loop time, as drawn (its small roll and pitch not). Empty
+ * without a ship.
+ */
+export function hullOccluders(model: SystemModel, spec: ShipSpec | null, frame: number): Sphere[] {
+  const body = spec?.parts.find((p) => p.id === 'body'), nose = spec?.parts.find((p) => p.id === 'nose');
+  if (!spec || body?.kind !== 'cone') return [];
+  const at = placeShip(model, frame), t = loopPhase(frame) * LOOP_SECONDS;
+  const [y0, y1, r] = [body.a[1], body.b[1], body.r1], n = Math.max(1, Math.ceil((y1 - y0) / (r / 2)));
+  const out: Sphere[] = Array.from({ length: n + 1 }, (_, k) => ({ centre: shipPoint(at, [0, y0 + ((y1 - y0) * k) / n, 0], t), radius: r * SHIP_SCALE }));
+  if (nose?.kind === 'cone') for (const [c, rr] of [[nose.a, nose.r1], [nose.b, nose.r2]] as const) out.push({ centre: shipPoint(at, c, t), radius: rr * SHIP_SCALE });
+  return out;
+}
+
 /** The ship at a frame: its frame-0 spot turned round the star with the planets (the turn startPoseAt makes). */
 export function placeShip(model: SystemModel, frame: number, spot: ShipPlacement = shipSpot(model)): ShipPlacement {
   const a = orbitAngle(frame), c = Math.cos(a), s = Math.sin(a), [x, y, z] = spot.centre;
@@ -109,15 +126,15 @@ export function portholes(spec: ShipSpec, at: ShipPlacement, t: number): { centr
 }
 
 /**
- * The selected crew member's porthole as screen boxes over one idle cycle from `frame` (its bob), in window
+ * The selected crew member's porthole as screen boxes over one idle cycle from `frame` (its bob, and the ship's orbit), in window
  * CSS px, for the panel's dock (drones/dock.ts): the panel docks where it keeps the person you clicked in
  * view. `screen` is the view canvas's box in the window. Empty when the seat has no porthole or is behind the eye.
  */
 export function seatTrack(model: SystemModel, spec: ShipSpec, seat: number, frame: number, pose: OrbitPose, screen: Rect): Rect[] {
-  const at = placeShip(model, frame);
-  const step = (CYCLE * FPS) / TRACK_SAMPLES;
+  const spot = shipSpot(model), step = (CYCLE * FPS) / TRACK_SAMPLES;
   return Array.from({ length: TRACK_SAMPLES }, (_, k) => frame + k * step).flatMap((f) => {
-    const hole = portholes(spec, at, loopPhase(f) * LOOP_SECONDS)[seat];
+    // the ship where it is at f: it orbits on with the planets while it idles (Qodo PR #227 aa8bd7a5)
+    const hole = portholes(spec, placeShip(model, f, spot), loopPhase(f) * LOOP_SECONDS)[seat];
     const p = hole ? project(pose, hole.centre) : null;
     if (!hole || !p) return [];
     const r = projectedRadius(hole.radius, p.depth, fovOf(pose)) * (screen.h / 2);
