@@ -60,11 +60,27 @@ export function shipSpot(model: SystemModel): ShipPlacement {
  * start pose fits in when a crew is drawn (camera/pose.ts startPose `extra`). Empty without a ship.
  */
 export function shipCorners(model: SystemModel, spec: ShipSpec | null): Vec3[] {
-  if (!spec) return [];
-  const at = placeShip(model, 0), { lo, hi } = shipBounds(spec, 0), bob = 0.07;
-  const out: Vec3[] = [];
-  for (const x of [lo[0], hi[0]]) for (const y of [lo[1] - bob, hi[1] + bob]) for (const z of [lo[2], hi[2]]) out.push(shipPoint(at, [x, y, z], 0));
+  return spec ? boxCorners(placeShip(model, 0), spec, 0, 0.07) : [];
+}
+
+/** The corners of the box round `spec` at a placement and loop time, `bob` design units taller each way. */
+function boxCorners(at: ShipPlacement, spec: ShipSpec, t: number, bob: number): Vec3[] {
+  const { lo, hi } = shipBounds(spec, 0), out: Vec3[] = [];
+  for (const x of [lo[0], hi[0]]) for (const y of [lo[1] - bob, hi[1] + bob]) for (const z of [lo[2], hi[2]]) out.push(shipPoint(at, [x, y, z], t));
   return out;
+}
+
+/**
+ * Where the "+N" label goes (#207): under the ship's axis, at the bottom of its box as seen at this frame (its
+ * flame at the longest, its feet), so the label never covers the ship. In device px of a W×H view; null when
+ * any of the box is behind the eye.
+ */
+export function belowShip(model: SystemModel, spec: ShipSpec, frame: number, pose: OrbitPose, W: number, H: number): { x: number; y: number } | null {
+  const at = placeShip(model, frame);
+  const ps = [...boxCorners(at, spec, loopPhase(frame) * LOOP_SECONDS, 0), at.centre].map((c) => project(pose, c));
+  if (ps.some((p) => p === null)) return null;
+  const axis = ps.at(-1)!;
+  return { x: ((axis.x + 1) / 2) * W, y: ((1 - Math.min(...ps.map((p) => p!.y))) / 2) * H };
 }
 
 /** The ship at a frame: its frame-0 spot turned round the star with the planets (the turn startPoseAt makes). */

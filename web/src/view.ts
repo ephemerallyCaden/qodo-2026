@@ -23,7 +23,7 @@ import { PixelPass } from './render/pixel.js';
 import { DroneFleet, type FleetEntry } from './render/drone-fleet.js';
 import { CrewShip, type Rider } from './render/ship.js';
 import type { ShipSpec } from './render/ship-spec.js';
-import { placeShip, portholes, shipCorners } from './crew/place.js';
+import { belowShip, placeShip, portholes, shipCorners } from './crew/place.js';
 import { capLabels } from './drones/select.js';
 import { SystemScene } from './render/scene.js';
 import { starOccluders } from './render/corona.js';
@@ -506,7 +506,8 @@ export class View {
       const hole = portholes(spec, at, t)[sel.seat];
       if (hole) below(hole.centre, hole.radius, this.selectedName, UI_COLOURS.accent);
     }
-    if (this.crewExtra > 0) below(at.centre, 0, `+${this.crewExtra} crew`, UI_COLOURS.ink);
+    const under = this.crewExtra > 0 ? belowShip(s.model, spec, frame, pose, W, H) : null;
+    if (under) out.push({ text: `+${this.crewExtra} crew`, x: under.x, y: under.y + 2 * px, align: 'centre', colour: UI_COLOURS.ink });
     return out;
   }
 
