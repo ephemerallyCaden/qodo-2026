@@ -330,7 +330,7 @@ test.describe('#201 opening a file in the review panel', () => {
     await page.waitForSelector('#panel pre.diff');
     await expect.poll(async () => (await readFog(f.dir)).files.find((x) => x.fileId === fileIdOf('aa/one.ts'))!.state, { timeout: 10_000 }).toBe('haze');
     expect(await chartsOnDisk(f)).toEqual(await openedOnly(f, 'aa/one.ts'));
-    await expect.poll(() => panelText(page), { timeout: 10_000 }).toContain('Seen: opening this diff charted it, so it is haze now');
+    await expect.poll(() => panelText(page), { timeout: 10_000 }).toContain('Read: opening this diff charted it, so it is misted now');
     // The diff stays open and chartable (a note can still be left), never marked out of date by its own chart.
     expect(await panelText(page)).not.toContain('out of date');
     expect(await has(page, 'chart')).toBe(true);

@@ -1,6 +1,6 @@
 // The directory view (#209, understanding mode U10): a 2D file tree of the snapshot beside the map, for
-// people who'd rather browse folders than planets. Each file says its fog level (fogged, haze or clear,
-// #201) and each folder its mastery and how many of its files are haze and fogged. Opening a row (a
+// people who'd rather browse folders than planets. Each file says its fog level (fogged, misted or clear,
+// #201, #224: the stored haze is said misted) and each folder its mastery and how many of its files are misted and fogged. Opening a row (a
 // click, or Enter) focuses it on the map: a file's planet turned to its settlement, a folder's planet or
 // continent, else the star. A WAI-ARIA tree (arrows move, Right and Left open and close folders, Home and
 // End, Enter opens, Escape closes), crisp DOM outside the pixel pass, text only through textContent and

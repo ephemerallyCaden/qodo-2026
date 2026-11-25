@@ -266,8 +266,8 @@ describe('info text', () => {
   });
 
   it('counts uncharted files from the fog view, unplaced files and moons included, and says when it is unknown (F2, Rule 1)', () => {
-    expect(planetLines(m.planets[1]!, miniFog)).toContain('uncharted: 1 of 25 files; 0 haze (seen), 24 clear (understood)');
-    expect(systemLines(m, miniFog)).toContain('uncharted: 2 of 37 files; 2 haze (seen), 33 clear (understood)');
+    expect(planetLines(m.planets[1]!, miniFog)).toContain('uncharted: 1 of 25 files; 0 misted (read), 24 clear (understood)');
+    expect(systemLines(m, miniFog)).toContain('uncharted: 2 of 37 files; 2 misted (read), 33 clear (understood)');
     expect(planetLines(m.planets[1]!)).toContain('uncharted: unknown, so every file is drawn uncharted');
     expect(infoLines(m, 1, miniFog)).toEqual(planetLines(m.planets[1]!, miniFog));
     expect(summaryText(m, null, miniFog)).toContain('uncharted: 2 of 37 files');

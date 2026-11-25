@@ -69,7 +69,8 @@ function tally(src: FogSource, fog: FogView) {
   return { planets: [...planets.values()].sort((a, b) => byCodepoint(a.name, b.name)), star, total, rowOf };
 }
 
-const summary = (r: Row) => `${r.fogged} fogged, ${r.haze} haze, ${r.clear} clear (${r.files} files)`;
+// The stored `haze` (read, not yet tested) is said "misted" (#224), as the view says it.
+const summary = (r: Row) => `${r.fogged} fogged, ${r.haze} misted, ${r.clear} clear (${r.files} files)`;
 
 async function notes(src: FogSource, cwd: string): Promise<string> {
   let out = '';
@@ -90,9 +91,9 @@ async function status(src: FogSource, io: Io): Promise<number> {
   const line = ([name, ...rest]: (string | number)[]) => `${String(name).padEnd(width)}  ${rest.map((v) => String(v).padStart(8)).join('')}\n`;
   const unfogged = planets.filter((p) => p.fogged === 0).length;
   io.stdout(`fog at ${short(fog.head)}, baseline ${fog.baseline ? short(fog.baseline) : 'none'}\n`
-    + line(['planet', 'files', 'fogged', 'haze', 'clear', 'mastery'])
+    + line(['planet', 'files', 'fogged', 'misted', 'clear', 'mastery'])
     + [...planets, star, total].map((r) => line(cells(r))).join('')
-    + `${unfogged} of ${planets.length} planets with nothing fogged. Haze is seen, clear is understood (a quiz passed); `
+    + `${unfogged} of ${planets.length} planets with nothing fogged. Misted is read, clear is understood (a quiz passed); `
     + 'the star holds root files, unmatched tests and test data\n');
   return 0;
 }
@@ -179,10 +180,10 @@ async function chartFile(src: FogSource, io: Io, arg: string, note: string | nul
   const now = after.files.find((f) => f.fileId === id);
   if (!was || !now) throw new CommetError('charted file is missing from the fog view', EXIT.internal);
   const before = was.state === 'fogged' ? `It was fogged (${was.reasons.join(', ')}) since ${short(was.since!)}.`
-    : was.state === 'clear' ? 'It was already clear (understood).' : 'It was already haze (seen).';
+    : was.state === 'clear' ? 'It was already clear (understood).' : 'It was already misted (read).';
   // #201: a chart moves fogged to haze, never to clear; only a passed quiz clears.
   const still = now.state === 'fogged' ? ` It is still fogged (${now.reasons.join(', ')}) since ${short(now.since!)}.`
-    : was.state === 'fogged' && now.state === 'haze' ? ' It is haze now: seen, not yet understood.' : '';
+    : was.state === 'fogged' && now.state === 'haze' ? ' It is misted now: read, not yet understood.' : '';
   io.stdout(`Charted ${label(path)} at ${short(at)}. ${before}${still}\n`);
   const where = tally({ ...src, base: r.base }, after).rowOf.get(id)!;
   io.stdout(`${where.name}: ${where.fogged} of ${where.files} files fogged\n`);

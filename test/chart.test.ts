@@ -68,7 +68,7 @@ describe('commet chart on a real repo', () => {
   it('status prints the files at each fog level and the mastery per planet (#201)', async () => {
     const out = await status();
     expect(out).toContain('baseline none');
-    expect(out).toMatch(/planet +files +fogged +haze +clear +mastery\n/);
+    expect(out).toMatch(/planet +files +fogged +misted +clear +mastery\n/);
     expect(row(out, 'src')).toEqual([2, 1, 1, 0, 0]);
     expect(row(out, 'star')).toEqual([1, 0, 1, 0, 0]);
     expect(out).toContain('0 of 1 planets with nothing fogged');
@@ -77,7 +77,7 @@ describe('commet chart on a real repo', () => {
   it('charting a file records its id and commit (ids and SHAs only, 0600) and moves it to haze, never clear', async () => {
     const res = await r.run('chart', 'src/a.ts');
     expect(res.code).toBe(0);
-    expect(res.out).toMatch(/^Charted src\/a\.ts at [0-9a-f]{7}\. It was fogged \(unknown\) since [0-9a-f]{7}\. It is haze now: seen, not yet understood\.\nsrc: 0 of 2 files fogged\n$/);
+    expect(res.out).toMatch(/^Charted src\/a\.ts at [0-9a-f]{7}\. It was fogged \(unknown\) since [0-9a-f]{7}\. It is misted now: read, not yet understood\.\nsrc: 0 of 2 files fogged\n$/);
     const text = readFileSync(r.chartJson(), 'utf8');
     expect(JSON.parse(text)).toEqual({ schemaVersion: 'chart.2', charts: [{ fileId: fileIdOf('src/a.ts'), at: r.git(['rev-parse', 'HEAD']) }], clears: [], baselines: [] });
     expect(text).not.toMatch(/src|\//);
@@ -103,7 +103,7 @@ describe('commet chart on a real repo', () => {
     const set = await r.run('chart', 'baseline');
     expect(set.code).toBe(0);
     expect(set.out).toContain('charting 1 fogged files, every change up to this commit');
-    expect(set.out).toContain('Now: 0 fogged, 3 haze, 0 clear (3 files)');
+    expect(set.out).toContain('Now: 0 fogged, 3 misted, 0 clear (3 files)');
     expect(row(await status(), 'src')).toEqual([2, 0, 2, 0, 0]);
     const undo = await r.run('chart', 'baseline', '--undo');
     expect(undo.code).toBe(0);

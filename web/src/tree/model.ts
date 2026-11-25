@@ -194,26 +194,28 @@ export function visibleRows(root: TreeDir, expanded: ReadonlySet<string>, shown:
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
+/** A file's level as its tag says it: the stored `haze` (read, not yet tested) is shown as "misted" (#224). */
+const LEVEL_TAG: Readonly<Record<FogLevel, string>> = { fogged: 'fogged', haze: 'misted', clear: 'clear' };
 /** A file's level in words, as the info panel says them. */
-const LEVEL_WORDS: Readonly<Record<FogLevel, string>> = { fogged: 'fogged', haze: 'haze (seen)', clear: 'clear (understood)' };
+const LEVEL_WORDS: Readonly<Record<FogLevel, string>> = { fogged: 'fogged', haze: 'misted (read)', clear: 'clear (understood)' };
 
-/** A folder's tag: its mastery, then how many of its files are haze and fogged (none: not said), e.g. "66% · 1 haze". */
+/** A folder's tag: its mastery, then how many of its files are misted and fogged (none: not said), e.g. "66% · 1 misted". */
 function dirTag(t: FogTally): string {
-  const rest = [t.haze > 0 ? `${t.haze} haze` : '', t.fogged > 0 ? `${t.fogged} fogged` : ''].filter(Boolean);
+  const rest = [t.haze > 0 ? `${t.haze} misted` : '', t.fogged > 0 ? `${t.fogged} fogged` : ''].filter(Boolean);
   return [`${masteryPercent(t.clear, t.total)}%`, ...rest].join(' · ');
 }
 
 /** What a row shows after its name: a file's fog level, a folder's mastery and the rest of its counts, or how many more a "more" row shows. */
 export function rowTag(n: TreeNode | TreeMore, fog: TreeFog): string {
   if (n.kind === 'more') return `show ${n.next}`;
-  return n.kind === 'file' ? fog.level(n) : dirTag(fog.dir(n));
+  return n.kind === 'file' ? LEVEL_TAG[fog.level(n)] : dirTag(fog.dir(n));
 }
 
-/** A row's fog in words, e.g. "haze (seen)", or "mastery 66%, 2 of 3 files clear (understood), 1 haze (seen), 0 fogged". */
+/** A row's fog in words, e.g. "misted (read)", or "mastery 66%, 2 of 3 files clear (understood), 1 misted (read), 0 fogged". */
 export function fogWords(n: TreeNode, fog: TreeFog): string {
   if (n.kind === 'file') return LEVEL_WORDS[fog.level(n)];
   const t = fog.dir(n);
-  return `mastery ${masteryPercent(t.clear, t.total)}%, ${t.clear} of ${plural(t.total, 'file')} clear (understood), ${t.haze} haze (seen), ${t.fogged} fogged${n.planet === null ? '' : ', counted as its planet'}`;
+  return `mastery ${masteryPercent(t.clear, t.total)}%, ${t.clear} of ${plural(t.total, 'file')} clear (understood), ${t.haze} misted (read), ${t.fogged} fogged${n.planet === null ? '' : ', counted as its planet'}`;
 }
 
 /** A row's accessible name: its name, whether it's a file or folder, and its fog; or what a "more" row holds back and shows. */

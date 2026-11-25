@@ -70,21 +70,21 @@ describe('the directory view\'s tree (#209)', () => {
 });
 
 describe('fog in the tree (#201: three levels)', () => {
-  it('shows each file\'s level, fogged, haze (seen) or clear (understood), and each folder its mastery and the rest of its counts', () => {
+  it('shows each file\'s level, fogged, misted (read) or clear (understood), and each folder its mastery and the rest of its counts', () => {
     const t = tree();
     const fog = treeFog(t, miniFog);
     const tag = (p: string) => rowTag(at(t, p), fog);
     expect(tag('web/main.ts')).toBe('fogged');
     expect(tag('test/misc.test.ts')).toBe('fogged');
-    expect(tag('docs/z.md')).toBe('haze'); // seen, not yet understood
-    expect(tag('test/fixtures/a.json')).toBe('haze');
+    expect(tag('docs/z.md')).toBe('misted'); // stored haze: read, not yet understood (#224)
+    expect(tag('test/fixtures/a.json')).toBe('misted');
     expect(tag('src/a.ts')).toBe('clear');
     expect(tag('src/core/c.ts')).toBe('clear');
     expect(tag('src')).toBe('100%');
     expect(tag('src/core')).toBe('100%');
-    expect(tag('docs')).toBe('66% · 1 haze'); // 2 of 3 clear, rounded down
-    expect(tag('test/fixtures')).toBe('50% · 1 haze');
-    expect(tag('test')).toBe('92% · 1 haze · 1 fogged'); // 26 of 28 clear: haze isn't understood
+    expect(tag('docs')).toBe('66% · 1 misted'); // 2 of 3 clear, rounded down
+    expect(tag('test/fixtures')).toBe('50% · 1 misted');
+    expect(tag('test')).toBe('92% · 1 misted · 1 fogged'); // 26 of 28 clear: haze isn't understood
     expect(fog.dir(at(t, 'test') as TreeDir)).toEqual({ fogged: 1, haze: 1, clear: 26, total: 28 });
     expect(fog.all).toEqual({ fogged: 2, haze: 2, clear: miniTree.files.length - 4, total: miniTree.files.length });
   });
@@ -123,7 +123,7 @@ describe('fog in the tree (#201: three levels)', () => {
     const view: FogView = { ...miniFog, planets: miniFog.planets.map((p) => (p.dirId === 'd_00000000000a' ? { ...p, total: 2, haze: 1, clear: 1 } : p)) };
     const fog = treeFog(t, view);
     expect(fog.dir(at(t, 'src/core') as TreeDir)).toEqual({ total: 2, fogged: 0, haze: 1, clear: 1 });
-    expect(rowTag(at(t, 'src/core'), fog)).toBe('50% · 1 haze');
+    expect(rowTag(at(t, 'src/core'), fog)).toBe('50% · 1 misted');
     expect(rowTag(at(t, 'src'), fog)).toBe('100%'); // the star's folder: its own three files, all clear
   });
 
@@ -134,7 +134,7 @@ describe('fog in the tree (#201: three levels)', () => {
     // a planet's folder counts every file the layout puts on its planet, test moons from test/ and the moons not drawn
     // too (Qodo e6973183): web is 1 settlement, 24 drawn moons and 2 more, as its info panel lists them
     expect(t.children.filter((c) => c.kind === 'dir').map((c) => rowTag(c, none))).toEqual(['0% · 3 fogged', '0% · 4 fogged', '0% · 28 fogged', '0% · 27 fogged']);
-    expect(rowLabel(at(t, 'web'), none)).toBe('web, folder, mastery 0%, 0 of 27 files clear (understood), 0 haze (seen), 27 fogged, counted as its planet');
+    expect(rowLabel(at(t, 'web'), none)).toBe('web, folder, mastery 0%, 0 of 27 files clear (understood), 0 misted (read), 27 fogged, counted as its planet');
     expect(none.all).toEqual({ fogged: miniTree.files.length, haze: 0, clear: 0, total: miniTree.files.length });
     const partial: FogView = { ...miniFog, files: miniFog.files.filter((x) => x.fileId !== 'f_00000000000b') };
     expect(rowTag(at(t, 'src/b.ts'), treeFog(t, partial))).toBe('fogged');
@@ -147,7 +147,7 @@ describe('fog in the tree (#201: three levels)', () => {
     const t = buildTree({ ...miniTree, files: Array.from({ length: 200 }, (_, i) => ({ id: `f_${(0x100 + i).toString(16).padStart(12, '0')}` as FileId, path: `flat/f${i}.ts` })) }, miniLayout);
     const ids = files(t).map((f) => f.id);
     const view = (clear: number): FogView => ({ ...miniFog, files: ids.map((fileId, i) => ({ fileId, state: i < clear ? 'clear' : 'haze', reasons: [], since: null })) });
-    expect(rowTag(at(t, 'flat'), treeFog(t, view(199)))).toBe('99% · 1 haze');
+    expect(rowTag(at(t, 'flat'), treeFog(t, view(199)))).toBe('99% · 1 misted');
     expect(rowTag(at(t, 'flat'), treeFog(t, view(200)))).toBe('100%');
   });
 
@@ -167,14 +167,14 @@ describe('fog in the tree (#201: three levels)', () => {
     const t = tree();
     const fog = treeFog(t, miniFog);
     expect(rowLabel(at(t, 'web/main.ts'), fog)).toBe('main.ts, file, fogged');
-    expect(rowLabel(at(t, 'docs/z.md'), fog)).toBe('z.md, file, haze (seen)');
+    expect(rowLabel(at(t, 'docs/z.md'), fog)).toBe('z.md, file, misted (read)');
     expect(rowLabel(at(t, 'src/a.ts'), fog)).toBe('a.ts, file, clear (understood)');
-    expect(rowLabel(at(t, 'test'), fog)).toBe('test, folder, mastery 92%, 26 of 28 files clear (understood), 1 haze (seen), 1 fogged');
-    expect(rowLabel(at(t, 'src/core'), fog)).toBe('core, folder, mastery 100%, 1 of 1 file clear (understood), 0 haze (seen), 0 fogged');
-    expect(rowLabel(at(t, 'web'), fog)).toBe('web, folder, mastery 96%, 24 of 25 files clear (understood), 0 haze (seen), 1 fogged, counted as its planet');
+    expect(rowLabel(at(t, 'test'), fog)).toBe('test, folder, mastery 92%, 26 of 28 files clear (understood), 1 misted (read), 1 fogged');
+    expect(rowLabel(at(t, 'src/core'), fog)).toBe('core, folder, mastery 100%, 1 of 1 file clear (understood), 0 misted (read), 0 fogged');
+    expect(rowLabel(at(t, 'web'), fog)).toBe('web, folder, mastery 96%, 24 of 25 files clear (understood), 0 misted (read), 1 fogged, counted as its planet');
     expect(openText(at(t, 'src/core/c.ts'), fog, miniLayout)).toBe('focused src/core/c.ts: a settlement on the planet src; clear (understood)');
-    expect(openText(at(t, 'docs/z.md'), fog, miniLayout)).toBe('focused docs/z.md: not drawn on the map, so showing its folder\'s planet, docs; haze (seen)');
-    expect(openText(at(t, 'web'), fog, miniLayout)).toBe('focused web/: the planet web; mastery 96%, 24 of 25 files clear (understood), 0 haze (seen), 1 fogged, counted as its planet');
+    expect(openText(at(t, 'docs/z.md'), fog, miniLayout)).toBe('focused docs/z.md: not drawn on the map, so showing its folder\'s planet, docs; misted (read)');
+    expect(openText(at(t, 'web'), fog, miniLayout)).toBe('focused web/: the planet web; mastery 96%, 24 of 25 files clear (understood), 0 misted (read), 1 fogged, counted as its planet');
     expect(placeText({ kind: 'continent', planet: 'd_00000000000a', cell: 21 }, miniLayout)).toBe('a continent of the planet src');
     expect(placeText({ kind: 'moon', planet: 'd_00000000000c' }, miniLayout)).toBe('a test moon of the planet web');
     expect(placeText({ kind: 'unplaced', planet: 'd_00000000000d' }, miniLayout)).toBe('not drawn on the map, so showing its folder\'s planet, docs');

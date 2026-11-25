@@ -210,7 +210,7 @@ describe('the directory view\'s toggle and tree (#209 AC 1)', () => {
     expect(more.className).toBe('row more');
     expect([nameOf(more), tagOf(more)]).toEqual([`${n - TREE_PAGE} more`, `show ${TREE_PAGE}`]);
     expect(more.attrs).toMatchObject({ 'aria-label': `${n - TREE_PAGE} more not shown, open to show ${TREE_PAGE}`, 'aria-level': '1', 'aria-setsize': String(n), 'aria-posinset': String(TREE_PAGE + 1) });
-    expect(note()).toBe(`uncharted: ${n} of ${n} files; 0 haze (seen), 0 clear (understood)`); // the fog still counts every file
+    expect(note()).toBe(`uncharted: ${n} of ${n} files; 0 misted (read), 0 clear (understood)`); // the fog still counts every file
     press('End');
     expect(page.activeElement).toBe(more);
     press('Enter'); // the next page, and the keyboard on its first row
@@ -236,22 +236,22 @@ describe('fog level per file and mastery per folder (#209 AC 2, #201)', () => {
     panel();
     toggle().fire('click');
     await flush();
-    expect(rows().slice(0, 4).map(tagOf)).toEqual(['66% · 1 haze', '100%', '92% · 1 haze · 1 fogged', '96% · 1 fogged']);
+    expect(rows().slice(0, 4).map(tagOf)).toEqual(['66% · 1 misted', '100%', '92% · 1 misted · 1 fogged', '96% · 1 fogged']);
     row('web/').fire('click');
     expect(tagOf(row('main.ts'))).toBe('fogged');
     expect(row('main.ts').className).toBe('row file fogged');
     expect(row('main.ts').attrs['aria-label']).toBe('main.ts, file, fogged');
-    expect(row('web/').attrs['aria-label']).toBe('web, folder, mastery 96%, 24 of 25 files clear (understood), 0 haze (seen), 1 fogged, counted as its planet');
-    expect(row('test/').attrs['aria-label']).toBe('test, folder, mastery 92%, 26 of 28 files clear (understood), 1 haze (seen), 1 fogged');
+    expect(row('web/').attrs['aria-label']).toBe('web, folder, mastery 96%, 24 of 25 files clear (understood), 0 misted (read), 1 fogged, counted as its planet');
+    expect(row('test/').attrs['aria-label']).toBe('test, folder, mastery 92%, 26 of 28 files clear (understood), 1 misted (read), 1 fogged');
     row('docs/').fire('click');
-    expect(tagOf(row('z.md'))).toBe('haze'); // seen, not yet understood
+    expect(tagOf(row('z.md'))).toBe('misted'); // stored haze: read, not yet understood (#224)
     expect(row('z.md').className).toBe('row file haze');
-    expect(row('z.md').attrs['aria-label']).toBe('z.md, file, haze (seen)');
+    expect(row('z.md').attrs['aria-label']).toBe('z.md, file, misted (read)');
     row('src/').fire('click');
     expect(tagOf(row('a.ts'))).toBe('clear');
     expect(row('a.ts').className).toBe('row file clear');
     expect(row('a.ts').attrs['aria-label']).toBe('a.ts, file, clear (understood)');
-    expect(note()).toBe(`uncharted: 2 of ${miniTree.files.length} files; 2 haze (seen), ${miniTree.files.length - 4} clear (understood)`);
+    expect(note()).toBe(`uncharted: 2 of ${miniTree.files.length} files; 2 misted (read), ${miniTree.files.length - 4} clear (understood)`);
   });
 
   it('follows every fog the view takes: charting makes a file haze, a passed quiz clear; with none usable, or one of another scan, every file is fogged (Rule 1)', async () => {
@@ -263,7 +263,7 @@ describe('fog level per file and mastery per folder (#209 AC 2, #201)', () => {
       files: miniFog.files.map((f) => (f.fileId === 'f_00000000000d' ? { ...f, state, reasons: [], since: null } : f)),
       planets: miniFog.planets.map((p) => (p.dirId === 'd_00000000000c' ? { ...p, fogged: 0, [state]: p[state] + 1 } : p)) });
     t.p.setFog(fogWith('haze')); // charted: seen
-    expect([tagOf(row('web/')), tagOf(row('main.ts')), row('main.ts').className]).toEqual(['96% · 1 haze', 'haze', 'row file haze']);
+    expect([tagOf(row('web/')), tagOf(row('main.ts')), row('main.ts').className]).toEqual(['96% · 1 misted', 'misted', 'row file haze']);
     t.p.setFog(fogWith('clear')); // a quiz passed on this version: understood
     expect([tagOf(row('web/')), tagOf(row('main.ts')), row('main.ts').className]).toEqual(['100%', 'clear', 'row file clear']);
     row('src/').fire('click');
@@ -386,7 +386,7 @@ describe('opening a row hands it to the map (#209 AC 3)', () => {
     toggle().fire('click');
     await flush();
     row('src/').fire('click');
-    expect(t.opened.at(-1)).toEqual({ place: { kind: 'planet', planet: 'd_00000000000a' }, said: 'focused src/: the planet src; mastery 100%, 4 of 4 files clear (understood), 0 haze (seen), 0 fogged, counted as its planet' });
+    expect(t.opened.at(-1)).toEqual({ place: { kind: 'planet', planet: 'd_00000000000a' }, said: 'focused src/: the planet src; mastery 100%, 4 of 4 files clear (understood), 0 misted (read), 0 fogged, counted as its planet' });
     expect(row('src/').attrs['aria-expanded']).toBe('true');
     row('core/').fire('click');
     expect(t.opened.at(-1)!.place).toEqual({ kind: 'continent', planet: 'd_00000000000a', cell: 21 });
@@ -495,7 +495,7 @@ describe('the focus hand-off to the map (#209 AC 3, AC 4 reduced motion)', () =>
     row('web/').fire('click');
     l.tick();
     expect(l.last().focus).toBe(1);
-    expect(l.status.at(-1)).toBe('focused web/: the planet web; mastery 96%, 24 of 25 files clear (understood), 0 haze (seen), 1 fogged, counted as its planet');
+    expect(l.status.at(-1)).toBe('focused web/: the planet web; mastery 96%, 24 of 25 files clear (understood), 0 misted (read), 1 fogged, counted as its planet');
     row('src/').fire('click');
     row('core/').fire('click');
     l.tick();
@@ -518,7 +518,7 @@ describe('the focus hand-off to the map (#209 AC 3, AC 4 reduced motion)', () =>
     row('test/').fire('click');
     l.tick();
     expect(l.last().focus).toBeNull();
-    expect(l.status.at(-1)).toBe('focused test/: no planet of its own, so showing the star; mastery 92%, 26 of 28 files clear (understood), 1 haze (seen), 1 fogged');
+    expect(l.status.at(-1)).toBe('focused test/: no planet of its own, so showing the star; mastery 92%, 26 of 28 files clear (understood), 1 misted (read), 1 fogged');
   });
 
   it('with motion, the camera glides and lands turned to where the settlement is when the glide ends', async () => {

@@ -19,17 +19,17 @@ export function bandLine(p: PlanetModel): string {
 }
 
 /**
- * Fog of war in words (F2: coverage, exact): the view's own counts by level (#201), unplaced files
- * and moons included. Private map coverage, never a score. Without a usable fog view nothing is
+ * Fog of war in words (F2: coverage, exact): the view's own counts by level (#201; the stored `haze`
+ * is said "misted", #224), unplaced files and moons included. Private map coverage, never a score. Without a usable fog view nothing is
  * known, and every file is drawn uncharted (Rule 1).
  */
 export const fogLine = (t: FogTally | null): string => (t
-  ? `uncharted: ${t.fogged} of ${plural(t.total, 'file')}; ${t.haze} haze (seen), ${t.clear} clear (understood)`
+  ? `uncharted: ${t.fogged} of ${plural(t.total, 'file')}; ${t.haze} misted (read), ${t.clear} clear (understood)`
   : 'uncharted: unknown, so every file is drawn uncharted');
 
 /**
  * Mastery (#201, U3): the planet's cleared files over all its files, by count, as its fog draws them
- * (clear files carry no cloud). Rounded down, so it never says 100% while a file isn't clear.
+ * (clear files have nothing over them). Rounded down, so it never says 100% while a file isn't clear.
  */
 export const masteryLine = (t: FogTally | null): string => (t
   ? `mastery: ${masteryPercent(t.clear, t.total)}% (${t.clear} of ${plural(t.total, 'file')} understood)`

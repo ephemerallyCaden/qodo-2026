@@ -466,7 +466,7 @@ export class Panel {
       ? 'Nothing here is unseen any more.'
       : `Unseen since ${shortSha(v.since)}, shown up to ${shortSha(v.at)}.`, 'note dim'));
     const now = fog.files.find((f) => f.fileId === v.fileId)?.state;
-    if (o.seen && now === 'haze') box.append(this.text('Seen: opening this diff charted it, so it is haze now (seen, not yet understood).', 'note dim'));
+    if (o.seen && now === 'haze') box.append(this.text('Read: opening this diff charted it, so it is misted now (read, not yet understood).', 'note dim'));
     for (const n of diffNotes(v)) box.append(this.text(n));
     const cmd = v.truncated ? gitDiffCommand(v) : null;
     if (cmd) {
