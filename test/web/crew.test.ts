@@ -14,7 +14,8 @@ import { crewStatus, riderOf, seatCrew } from '../../web/src/crew/select.js';
 import { DRONE_LANE_OUT, DRONE_PICK_RADIUS, homeBody } from '../../web/src/drones/place.js';
 import { FONT_HEIGHT } from '../../web/src/labels/font.js';
 import { FPS, LOOP_SECONDS, loopPhase, ORBIT_FRAMES } from '../../web/src/model/motion.js';
-import { planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
+import { FOG_SKY_TOP } from '../../web/src/model/fog-cloud.js';
+import { planetCentre, planetReach, systemModel, type SystemModel } from '../../web/src/model/system.js';
 import type { Vec3 } from '../../web/src/model/vec.js';
 import { astronautLook, blinkAt, CONTRIBUTORS, figureLayout, figurePose, idleOf, type Ring } from '../../web/src/render/astronaut.js';
 import { EYE_DESIGNS } from '../../web/src/render/faces.js';
@@ -255,7 +256,11 @@ describe('where the ship is (C4)', () => {
       expect(ring - SHIP_FOOTPRINT).toBeGreaterThanOrEqual(star.reach + DRONE_LANE_OUT + DRONE_PICK_RADIUS + SHIP_MARGIN - 1e-9);
       const bottom = at.centre[1] + lo[1] * SHIP_SCALE - 0.07 * SHIP_SCALE; // the flame's tip at the bob's lowest
       for (const p of m.planets) {
-        const clear = planetReach(p) + DRONE_LANE_OUT + DRONE_PICK_RADIUS;
+        // the drones' own circle round the planet (drones/place.ts homeBody: its reach or its fog sky's top, #225)
+        const clear = homeBody(m, p.dirId, 0)!.reach + DRONE_LANE_OUT + DRONE_PICK_RADIUS;
+        // the ship's footprint at its lowest point keeps SHIP_MARGIN from that tube (shipSpot's floor)
+        const gap = Math.max(0, p.orbit - (ring + SHIP_FOOTPRINT), ring - SHIP_FOOTPRINT - p.orbit);
+        expect(Math.hypot(gap, bottom), `${p.path}: the margin from its drones' lane`).toBeGreaterThanOrEqual(clear + SHIP_MARGIN - 1e-9);
         // the nearest a planet's swept tube (its orbit circle, radius `clear`) comes to the ship's lowest ring of points
         for (const c of corners) {
           const w = shipPoint(at, c, 0), rho = Math.hypot(w[0], w[2]);
@@ -263,6 +268,19 @@ describe('where the ship is (C4)', () => {
           expect(Math.hypot(rho - p.orbit, y), `${p.path}`).toBeGreaterThan(clear);
         }
       }
+    }
+  });
+
+  it('keeps SHIP_MARGIN from a planet\'s drone lane where its fog sky reaches past its moons and weather (#225: the drones circle the sky)', () => {
+    // mini's docs planet (no moons: its storm cloud's top, 1.32 radii, is past its reach) moved out to orbit 1.6 past the ship's footprint
+    const m = systemModel(miniLayout), ring = Math.hypot(shipSpot(m).centre[0], shipSpot(m).centre[2]);
+    const docs = m.planets.find((p) => p.path === 'docs')!;
+    expect(docs.radius * FOG_SKY_TOP).toBeGreaterThan(planetReach(docs));
+    for (const gap of [0, 0.4, 0.8, 1.2, 1.6, 2]) {
+      const moved: SystemModel = { ...m, planets: [{ ...docs, orbit: ring + SHIP_FOOTPRINT + gap }] };
+      const bottom = placeShip(moved, 0).centre[1] + shipBounds(buildShip(16), 0).lo[1] * SHIP_SCALE - 0.07 * SHIP_SCALE;
+      const lane = homeBody(moved, docs.dirId, 0)!.reach + DRONE_LANE_OUT + DRONE_PICK_RADIUS;
+      expect(Math.hypot(gap, bottom), `gap ${gap}`).toBeGreaterThanOrEqual(lane + SHIP_MARGIN - 1e-9);
     }
   });
 

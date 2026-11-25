@@ -14,7 +14,7 @@ import { fovOf, project, projectedRadius, START_ANGLES, type OrbitPose } from '.
 import { DRONE_LANE_OUT, DRONE_PICK_RADIUS, homeBody } from '../drones/place.js';
 import type { Rect } from '../labels/place.js';
 import { FPS, LOOP_SECONDS, loopPhase, orbitAngle } from '../model/motion.js';
-import { planetReach, type SystemModel } from '../model/system.js';
+import type { SystemModel } from '../model/system.js';
 import type { Vec3 } from '../model/vec.js';
 import { shipBounds } from '../render/ship-glsl.js';
 import { buildShip, CYCLE, idleAt, MAX_ABOARD, SHIP_SCALE, type ShipSpec, type Vec } from '../render/ship-spec.js';
@@ -37,8 +37,8 @@ export interface ShipPlacement {
 
 /**
  * The ship at frame 0: its horizontal distance from the star puts its footprint just past the star's drone
- * lane, on the start pose's left; its height lifts its lowest point clear of every planet's reach plus its
- * drones' lane wherever the footprint crosses that planet's orbit.
+ * lane, on the start pose's left; its height lifts its lowest point clear of every planet's drones' lane (round
+ * its reach or its fog sky, drones/place.ts homeBody) wherever the footprint crosses that planet's orbit.
  */
 export function shipSpot(model: SystemModel): ShipPlacement {
   const left: Vec3 = [-Math.cos(START_ANGLES.yaw), 0, Math.sin(START_ANGLES.yaw)];
@@ -47,7 +47,8 @@ export function shipSpot(model: SystemModel): ShipPlacement {
   const inner = d - SHIP_FOOTPRINT, outer = d + SHIP_FOOTPRINT;
   let floor = SHIP_MARGIN;
   for (const p of model.planets) {
-    const clear = planetReach(p) + DRONE_LANE_OUT + DRONE_PICK_RADIUS + SHIP_MARGIN;
+    // the drones' own circle round the planet (homeBody: its reach or its fog sky's top, #225), so the two never drift apart
+    const clear = homeBody(model, p.dirId, 0)!.reach + DRONE_LANE_OUT + DRONE_PICK_RADIUS + SHIP_MARGIN;
     const gap = Math.max(0, p.orbit - outer, inner - p.orbit);
     if (gap < clear) floor = Math.max(floor, Math.sqrt(clear * clear - gap * gap) + SHIP_MARGIN);
   }
