@@ -23,18 +23,29 @@ export function centresOf(n: number): Float64Array {
 
 const dotOf = (c: Float64Array, a: number, b: number) => c[3 * a]! * c[3 * b]! + c[3 * a + 1]! * c[3 * b + 1]! + c[3 * a + 2]! * c[3 * b + 2]!;
 
-/** Each cell's neighbours: its 6 nearest cells (fewer on a tiny grid), made symmetric, sorted. */
+/**
+ * Each cell's neighbours: its 6 nearest cells (fewer on a tiny grid), made symmetric, sorted. A cell's
+ * height is y = 1 - 2i/(n - 1) (fibonacciCell), and no two points are closer than their heights differ,
+ * so a cell more than w indices from i is more than 2w/(n - 1) rad from it: the 6 nearest within that
+ * window are the 6 nearest of all once the 6th is closer than that (else the window doubles). The same
+ * answer as sorting every cell, at the fog sky's 1500 sites too (model/fog-cloud.ts SKY_SITES, #228).
+ */
 const neighbourCache = new Map<number, number[][]>();
 export function neighbours(n: number): number[][] {
   let out = neighbourCache.get(n);
   if (out) return out;
   const c = centresOf(n);
   const sets = Array.from({ length: n }, () => new Set<number>());
-  for (let i = 0; i < n; i++) {
-    const near = Array.from({ length: n }, (_, j) => j).filter((j) => j !== i)
-      .sort((a, b) => dotOf(c, i, b) - dotOf(c, i, a) || a - b).slice(0, 6);
-    for (const j of near) { sets[i]!.add(j); sets[j]!.add(i); }
-  }
+  const nearest = (i: number): number[] => {
+    for (let w = Math.ceil(Math.sqrt(4 * Math.PI * n)); ; w *= 2) {
+      const lo = Math.max(0, i - w), hi = Math.min(n - 1, i + w);
+      const near = Array.from({ length: hi - lo + 1 }, (_, j) => lo + j).filter((j) => j !== i)
+        .sort((a, b) => dotOf(c, i, b) - dotOf(c, i, a) || a - b).slice(0, 6);
+      const sixth = near.length === 6 ? Math.acos(Math.min(1, dotOf(c, i, near[5]!))) : Infinity;
+      if ((lo === 0 && hi === n - 1) || sixth < (2 * w) / (n - 1) - 1e-9) return near;
+    }
+  };
+  for (let i = 0; i < n; i++) for (const j of nearest(i)) { sets[i]!.add(j); sets[j]!.add(i); }
   out = sets.map((s) => [...s].sort((a, b) => a - b));
   neighbourCache.set(n, out);
   return out;

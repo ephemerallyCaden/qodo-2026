@@ -8,7 +8,7 @@ import {
   cellRows, FOG_EVENT_FRAMES, FOG_TEX_ROWS, FogLedger, eventLife, fileFogAt, fogChanges, levelBy, mergeEvents,
   planetPulse, planetTally, surfacePlan, systemTally, type FogEvent,
 } from '../../web/src/model/fog.js';
-import { coverRadius, searchWindow, territories } from '../../web/src/model/territory.js';
+import { centresOf, coverRadius, neighbours, searchWindow, territories } from '../../web/src/model/territory.js';
 import { miniFog, miniLayout } from '../fixtures/contract/mini.js';
 
 const HEAD = miniLayout.source.head;
@@ -75,6 +75,22 @@ describe('territories (F1, F2: a parcel per file, sharing every cell)', () => {
       }
     }
     expect(coverRadius(256)).toBeCloseTo(0.168, 3);
+  });
+});
+
+describe('neighbours (the 6 nearest cells, made symmetric)', () => {
+  // The windowed search (#228, for the fog sky's 1500 and 3061 sites) against sorting every cell, as before.
+  const sorted = (n: number) => {
+    const c = centresOf(n), dot = (a: number, b: number) => c[3 * a]! * c[3 * b]! + c[3 * a + 1]! * c[3 * b + 1]! + c[3 * a + 2]! * c[3 * b + 2]!;
+    const sets = Array.from({ length: n }, () => new Set<number>());
+    for (let i = 0; i < n; i++) {
+      const near = Array.from({ length: n }, (_, j) => j).filter((j) => j !== i).sort((a, b) => dot(i, b) - dot(i, a) || a - b).slice(0, 6);
+      for (const j of near) { sets[i]!.add(j); sets[j]!.add(i); }
+    }
+    return sets.map((x) => [...x].sort((a, b) => a - b));
+  };
+  it.each([1, 2, 3, 7, 16, 64, 256, 1500])('finds the same neighbours as sorting every cell, on %i cells', (n) => {
+    expect(neighbours(n)).toEqual(sorted(n));
   });
 });
 
