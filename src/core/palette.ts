@@ -23,6 +23,7 @@ interface PaletteShape {
   readonly crew: { readonly [role: string]: Hex | Ramp | { readonly [key: string]: Ramp } };
   readonly accent: { readonly teal: Ramp };
   readonly drone: { readonly [look: string]: { readonly [role: string]: Ramp } };
+  readonly ship: { readonly [part: string]: { readonly [role: string]: Ramp } };
 }
 
 const PALETTE = {
@@ -111,6 +112,29 @@ const PALETTE = {
       // Seeded per-session trims (the lab's brands.js `trims`): `trim`, then these two.
       trimB: ['#3f233c', '#872a38', '#cc5250', '#ff965f'],
       trimC: ['#872a38', '#cc5250', '#ff965f', '#ffe091'],
+    },
+  },
+  /**
+   * The crew's ship (#207 C2, R2-4 "Round lander", feature/ship-lab), BLK 36 only, as the ship lab's
+   * palette.js has it: four-band ramps (dark → light) per paint slot of the hull, and of the captain's cap.
+   * The metal and the teammates' window rims are the crew's gear greys; window insides are a lighter
+   * indigo than the visors, so the crew's dark visors read in them. The flame and the beacon are unlit.
+   */
+  ship: {
+    hull: {
+      shell: ['#464b8c', '#6b74b2', '#c1d9f2', '#ffffff'],
+      trim: ['#3f233c', '#872a38', '#d83843', '#ff6866'],
+      metal: ['#293268', '#464b8c', '#6b74b2', '#909edd'],
+      gold: ['#872a38', '#cc5250', '#ff965f', '#ffe091'],
+      interior: ['#36277f'],
+      flame: ['#d83843', '#ff965f', '#ffe091', '#ffffff'],
+      /** The beacon off, then on. */
+      lights: ['#66334b', '#ff6866'],
+    },
+    /** The captain's cap: a gold crown over a navy band and peak. */
+    cap: {
+      shell: ['#12173d', '#293268', '#354ab2', '#4185d8'],
+      gold: ['#872a38', '#cc5250', '#ff965f', '#ffe091'],
     },
   },
   /** [OIII] teal: code-layer events only (reveals, HUD marks), under ~10% of the frame. */

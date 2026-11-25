@@ -205,6 +205,13 @@ describe('palette', () => {
     expect(notBlk36(b)).toEqual(['crew.suit[0]']);
   });
 
+  it('takes every ship and captain-cap colour from published BLK 36, with no teal (#207 C2)', () => {
+    const ship = strings(palette.ship);
+    expect(ship.length).toBeGreaterThan(20);
+    expect(ship.filter(([, h]) => !BLK_36.includes(h)).map(([at]) => at)).toEqual([]);
+    expect(ship.filter(([, h]) => TEAL.includes(h))).toEqual([]);
+  });
+
   it('has exactly the four [OIII] teal accent values', () => {
     expect(tealMismatch(palette)).toEqual([]);
     const extra = broken();
