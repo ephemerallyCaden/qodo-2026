@@ -11,21 +11,34 @@ import { personId, u32 } from './hash.js';
 import type { Person, PersonId, SnapshotV02 } from './snapshot/types.js';
 
 /**
- * Agent author emails with neither `[bot]` nor a no-reply local part (docs/research/agent-providers.md: the git-ai
- * seed table and the provider table), compared lowercased. Claude Code on the web (`noreply@anthropic.com`),
- * Codex cloud (`noreply@openai.com`), Antigravity (`noreply@google.com`) and GitHub's own `noreply@github.com`
- * are no-reply addresses, caught by that rule.
+ * Agent author emails with neither `[bot]` nor a no-reply local part: every git-only agent identity in
+ * docs/research/agent-providers.md (the git-ai seed table and the provider table, as author or co-author),
+ * compared lowercased. Claude Code (`noreply@anthropic.com`), Codex (`noreply@openai.com`), Antigravity
+ * (`noreply@google.com`), Continue (`noreply@continue.dev`) and GitHub's own `noreply@github.com` are
+ * no-reply addresses, caught by that rule. A new agent identity in that doc gets a row here and in
+ * test/crew.test.ts.
  */
 const AGENT_EMAILS: ReadonlySet<string> = new Set([
-  'cursoragent@cursor.com', // Cursor cloud agent
+  'cursoragent@cursor.com', // Cursor cloud agent and IDE trailer
   'roomote@roocode.com', // Roo Code's background agent
   'agent@replit.com', // Replit Agent
   'traecli@bytedance.com', // TRAE CLI
   'copilot@github.com', // Copilot in VS Code
+  'amp@ampcode.com', // Amp (orbs author and trailer)
+  'agent@warp.dev', // Warp (cloud identity and trailer)
+  'openhands@all-hands.dev', // OpenHands cloud author
+  'junie@jetbrains.com', // Junie trailer
+  'aider@aider.chat', // Aider trailer
+  'qwen-coder@alibabacloud.com', // Qwen Code trailer
+  'crush@charm.land', // Crush trailer
+  'vibe@mistral.ai', // Mistral Vibe trailer
 ]);
 
-/** Agent logins with a plain GitHub noreply address (`[<id>+]<login>@users.noreply.github.com`) and no `[bot]`. */
-const AGENT_LOGINS: ReadonlySet<string> = new Set(['copilot', 'kiro-agent']);
+/**
+ * Agent logins with a plain GitHub noreply address (`[<id>+]<login>@users.noreply.github.com`) and no `[bot]`:
+ * Copilot (cloud and CLI), Kiro's cloud agent, OpenHands and Junie's GitHub Action.
+ */
+const AGENT_LOGINS: ReadonlySet<string> = new Set(['copilot', 'kiro-agent', 'openhands-agent', 'junie-agent']);
 const GITHUB_NOREPLY = /^(?:\d+\+)?([^@]+)@users\.noreply\.github\.com$/;
 /** A local part no person answers to (`noreply@`, `no-reply@`, `donotreply@`, …): a CI system or an agent. */
 const NO_REPLY = /^(?:no[-_.]?reply|do[-_.]?not[-_.]?reply)$/;

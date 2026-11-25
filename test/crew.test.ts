@@ -28,6 +28,18 @@ describe('isBotAuthor (#207 C1: bots and agent authors are never crew)', () => {
     ['GitHub Copilot', 'copilot@github.com'],
     ['Copilot', '198982749+Copilot@users.noreply.github.com'],
     ['Kiro Agent', '244629292+kiro-agent@users.noreply.github.com'],
+    // Qodo PR #226 02a7b621: every other git-only agent identity in docs/research/agent-providers.md.
+    ['Amp', 'amp@ampcode.com'],
+    ['Warp', 'agent@warp.dev'],
+    ['openhands', 'openhands@all-hands.dev'],
+    ['openhands-agent', '123456+openhands-agent@users.noreply.github.com'],
+    ['Junie', 'junie@jetbrains.com'],
+    ['junie-agent', '247260674+junie-agent@users.noreply.github.com'],
+    ['aider (gpt-5)', 'aider@aider.chat'],
+    ['Qwen-Coder', 'qwen-coder@alibabacloud.com'],
+    ['Crush', 'crush@charm.land'],
+    ['Mistral Vibe', 'vibe@mistral.ai'],
+    ['Continue', 'noreply@continue.dev'],
   ];
   for (const [name, email] of bots) it(`${name} <${email}> is a bot`, () => expect(isBotAuthor(name, email)).toBe(true));
 
