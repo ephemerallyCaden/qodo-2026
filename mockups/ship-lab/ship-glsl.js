@@ -14,14 +14,19 @@ const v3 = (a) => `vec3(${f(a[0])}, ${f(a[1])}, ${f(a[2])})`;
 const v4 = (a) => `vec4(${a.map(f).join(', ')})`;
 const arr = (type, items) => `${type}[${items.length}](${items.join(', ')})`;
 
-/** GLSL for one part's distance at p. */
+/** GLSL for one part's distance at p: its primitive, cut flat above cutY when it has one. */
 function partExpr(q) {
+  const e = primExpr(q);
+  return q.cutY === undefined ? e : `max(${e}, p.y - ${f(q.cutY)})`;
+}
+function primExpr(q) {
   switch (q.kind) {
     case 'cone': return `sdRoundCone(p, ${v3(q.a)}, ${v3(q.b)}, ${f(q.r1)}, ${f(q.r2)})`;
     case 'capcone': return `(sdCappedCone(p - ${v3(q.c)}, ${f(q.h)}, ${f(q.r1 - q.round)}, ${f(q.r2 - q.round)}) - ${f(q.round)})`;
     case 'sphere': return `(length(p - ${v3(q.c)}) - ${f(q.r)})`;
     case 'ellipsoid': return `sdEllipsoid(p - ${v3(q.c)}, ${v3(q.r)})`;
     case 'torus': return `sdTorusY(p - ${v3(q.c)}, ${f(q.R)}, ${f(q.r)})`;
+    case 'ring': return `sdRing(p - ${v3(q.c)}, ${v3(q.n)}, ${f(q.R)}, ${f(q.r)})`;
     case 'disc': return `sdDisc(p - ${v3(q.c)}, ${f(q.r0)}, ${f(q.r1)}, ${f(q.h)}, ${f(q.round)})`;
     case 'box': return `sdRoundBox(p - ${v3(q.c)}, ${v3(q.b)}, ${f(q.round)})`;
     case 'fin': {
@@ -41,6 +46,7 @@ export function partBounds(q) {
     case 'sphere': return pad(q.c, [q.r, q.r, q.r]);
     case 'ellipsoid': return pad(q.c, q.r);
     case 'torus': return pad(q.c, [q.R + q.r, q.r, q.R + q.r]);
+    case 'ring': return pad(q.c, [q.R + q.r, q.R + q.r, q.R + q.r]);
     case 'disc': return pad(q.c, [q.r1, q.h, q.r1]);
     case 'box': return pad(q.c, q.b);
     case 'fin': { const rho = Math.max(...q.pts.map((v) => v[0])) + q.t + q.round, ys = q.pts.map((v) => v[1]); return [[-rho, Math.min(...ys) - q.round, -rho], [rho, Math.max(...ys) + q.round, rho]]; }
@@ -80,6 +86,8 @@ const HELPERS = /* glsl */ `
   }
   float sdEllipsoid(vec3 p, vec3 r) { float k0 = length(p / r); float k1 = length(p / (r * r)); return k0 * (k0 - 1.0) / k1; }
   float sdTorusY(vec3 p, float R, float r) { return length(vec2(length(p.xz) - R, p.y)) - r; }
+  // A torus about any unit axis n: a raised window rim.
+  float sdRing(vec3 p, vec3 n, float R, float r) { float a = dot(p, n); return length(vec2(length(p - n * a) - R, a)) - r; }
   // A flat disc about +y (r0 = 0) or a flat ring from r0 to r1, half-thickness h, rounded edges.
   float sdDisc(vec3 p, float r0, float r1, float h, float round) {
     vec2 q = vec2(length(p.xz), p.y);
@@ -126,7 +134,9 @@ export function shipGlsl(spec) {
   const slotOf = P.map((q) => SLOTS.indexOf(q.slot));
   if (slotOf.some((s) => s < 0)) throw new Error('a part has an unknown slot');
   if (spec.windows.some((w) => w.frameSlot && !SLOTS.includes(w.frameSlot))) throw new Error('a window frame has an unknown slot');
-  const W = spec.windows, B = spec.bands, L = spec.lights, G = spec.glass, F = spec.flames;
+  const W = spec.windows.filter((w) => w.kind !== 'cap'), CW = spec.windows.filter((w) => w.kind === 'cap'), B = spec.bands, L = spec.lights, G = spec.glass, F = spec.flames;
+  const maskOf = (hosts) => hosts.reduce((m, id) => m | (1 << idx(id)), 0);
+  if (P.length > 31) throw new Error('too many parts for a window host mask');
   if (F.length > MAX_FLAMES) throw new Error('too many flames');
   if (L.length > MAX_LIGHTS) throw new Error('too many lights');
   const lightBall = L.map((l) => (l.ball ? 1 : 0));
@@ -170,6 +180,11 @@ export function shipGlsl(spec) {
   const vec4 WIN_A[${W.length}] = ${arr('vec4', W.map((w) => v4([w.yaw, w.y, w.w, w.h])))}; // yaw, centre y, half-width (arc), half-height
   const vec3 WIN_B[${W.length}] = ${arr('vec3', W.map((w) => v3([w.n, w.frame, SLOTS.indexOf(w.frameSlot ?? 'metal')])))}; // superellipse power, frame width, frame slot
   const int WIN_HOST[${W.length}] = ${arr('int', W.map((w) => String(idx(w.host))))};` : ''}
+  ${CW.length ? `
+  const vec4 CW_C[${CW.length}] = ${arr('vec4', CW.map((w) => v4([...w.c, Math.cos(w.angle)])))}; // a round window on a sphere: centre, cos of its angular radius
+  const vec4 CW_N[${CW.length}] = ${arr('vec4', CW.map((w) => v4([...w.n, Math.cos(w.angle + (w.frame ?? 0))])))}; // its axis, cos of the frame's outer edge
+  const int CW_MASK[${CW.length}] = ${arr('int', CW.map((w) => String(maskOf(w.hosts))))}; // the parts it may cut (never its rim)
+  const int CW_SLOT[${CW.length}] = ${arr('int', CW.map((w) => String(SLOTS.indexOf(w.frameSlot ?? 'metal'))))};` : ''}
   ${B.length ? `
   const vec3 BAND[${B.length}] = ${arr('vec3', B.map((b) => v3([b.part === '*' ? -1 : idx(b.part), b.y0, b.y1])))};
   const int BAND_SLOT[${B.length}] = ${arr('int', B.map((b) => String(SLOTS.indexOf(b.slot))))};` : ''}
@@ -192,6 +207,12 @@ export function shipGlsl(spec) {
       if (WIN_HOST[i] != part) continue;
       if (winE(p, i, 0.0) < 1.0) { win = i; return ${PAINT_WINDOW}; }
       if (winE(p, i, WIN_B[i].y) < 1.0) return int(WIN_B[i].z); // the frame
+    }` : ''}
+    ${CW.length ? `for (int i = 0; i < ${CW.length}; i++) {
+      if (((CW_MASK[i] >> part) & 1) == 0) continue;
+      float ca = dot(normalize(p - CW_C[i].xyz), CW_N[i].xyz);
+      if (ca > CW_C[i].w) { win = ${W.length} + i; return ${PAINT_WINDOW}; }
+      if (ca > CW_N[i].w) return CW_SLOT[i];
     }` : ''}
     ${B.length ? `for (int i = 0; i < ${B.length}; i++) if ((int(BAND[i].x) == part || BAND[i].x < 0.0) && p.y > BAND[i].y && p.y < BAND[i].z) return BAND_SLOT[i];` : ''}
     return SLOT_OF[part];

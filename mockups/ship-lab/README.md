@@ -15,7 +15,7 @@ npm run lab   # regenerates out/ (about 2 min; needs ffmpeg) and copies it to th
 npm run dev   # live page at http://127.0.0.1:5195/ship-lab/ (loopback only; PORT=... to change)
 ```
 
-`node lab.mjs contact crew captain teal gifs distinct` renders only the named outputs. Add `evidence` to copy `out/` to `<main-checkout>/.archive/docs/hackathon/evidence/ship-lab/`. No names renders everything and copies.
+`node lab.mjs contact crew captain teal gifs distinct` renders only the named outputs; add `round=2` for the round-2 variations (into `out/round2/`, copied to `.../evidence/ship-lab/round2/`). Add `evidence` to copy `out/` to `<main-checkout>/.archive/docs/hackathon/evidence/ship-lab/`. No names renders everything and copies.
 
 ## The directions
 
@@ -41,6 +41,33 @@ Shared by all four:
 - **Flame:** unlit red → orange → yellow → white.
 
 So every ship reads as the crew's kit.
+
+## Round 2: shorter, fatter, rounder (R2-1..R2-5)
+
+The human, 2026-11-25: "I imagined one like the finned classic but shorter, fatter and rounder, and the window has a chunkier rim and is a bit chunkier in general". All five round-2 variations are A made over (`ship-r2.js`, `node lab.mjs round=2` into `out/round2/`). They keep A's colours (white body, red nose and fins) and the captain rule (the cap plus a seat of their own).
+
+**What they share:**
+- **Body:** round and fat (radius 1.12–1.28 against A's 0.8), a short capsule of two spheres.
+- **Chunky parts:** fins 0.34 thick, a fat bell nozzle tucked into the round bottom, and a short bullet nose with a round tip.
+- **Windows:** exact circles on the body, each with a raised torus rim that is lit like the hull. The rims are the crew's gear greys; the captain's is gold.
+- **Rim placement:** each rim sits just outside its opening, so a chunky rim doesn't shrink the window.
+- **Window insides:** a lighter BLK 36 indigo (`#36277f`), so the crew's dark visors read in them. Round 1 keeps the visor near-black there.
+- **Fit:** all five fit the near frame (5.98) without pulling back with up to 8 aboard. A pulled back to 8.7.
+
+| | Variation | Crew seen as | Captain |
+|---|---|---|---|
+| R2-1 | **A porthole each** | a round porthole each, in honeycomb rows (2, 3, 2) | the big gold-rimmed porthole at the top |
+| R2-2 | **One big window** | upper bodies together behind one big round window | front and centre, low in the window |
+| R2-3 | **Glass nose** | full figures in a clear nose dome on a chunky red collar | front and centre on a gold pedestal |
+| R2-4 | **Round lander** | the honeycomb in a red belly band, on four splayed fins with ball feet, dome nose and antenna | the big gold-rimmed porthole above the band |
+| R2-5 | **Bridge window** | the captain and two teammates in a big gold-rimmed bridge window, the rest in small portholes beneath | front and centre in the bridge |
+
+**Rules round 2 adds, each found by the checks:**
+- **No side portholes:** no porthole turns more than 0.62 rad (36°) from the front. Past that, from the front, a helmet behind its window hides in the hull's depth.
+- **No low rows:** the lowest row sits just above the lower sphere's equator. A standing astronaut behind a lower window would hang out of the round bottom. A pure test checks that every boot stays inside the hull.
+- **Second deck:** it stretches the capsule with three more honeycomb rows. R2-2 becomes a double bubble with a second big window.
+
+**Distinctness:** pairs are reported, not gated, because round 2's are variations of one brief. R2-1 and R2-5 share a silhouette on purpose; their closest score is 0.22–0.28.
 
 ## Crew count and overflow
 

@@ -31,6 +31,7 @@ const frag = (spec) => /* glsl */ `
   uniform vec3 uRing[4];
   uniform vec3 uGold[4];
   uniform vec3 uGlass[3];
+  uniform vec3 uInterior; // a window's inside (round 1: the visor's near-black; round 2: a lighter indigo, so visors read)
   uniform vec3 uGlint[2];
   uniform vec3 uFlame[4];
   uniform vec3 uLights[2];
@@ -94,7 +95,7 @@ const frag = (spec) => /* glsl */ `
         q += rd * max(-h, 0.006);
       }
       pd = q;
-      return uGlass[0];
+      return uInterior;
     }
     vec3 L = normalize(uLightLocal);
     float lit = dot(n, L);
@@ -188,7 +189,7 @@ function sdfObject(spec, palette) {
     vertexShader: VERT, fragmentShader: frag(spec), side: THREE.BackSide,
     uniforms: {
       uInvModel: { value: new THREE.Matrix4() }, uModel: { value: new THREE.Matrix4() }, uProj: { value: null }, uLightLocal: { value: new THREE.Vector3() },
-      uShell: { value: [] }, uTrim: { value: [] }, uMetal: { value: [] }, uRing: { value: [] }, uGold: { value: [] }, uGlass: { value: [] }, uGlint: { value: [] }, uFlame: { value: [] }, uLights: { value: [] },
+      uShell: { value: [] }, uTrim: { value: [] }, uMetal: { value: [] }, uRing: { value: [] }, uGold: { value: [] }, uGlass: { value: [] }, uInterior: { value: new THREE.Color() }, uGlint: { value: [] }, uFlame: { value: [] }, uLights: { value: [] },
       uFlameL: { value: new Array(MAX_FLAMES).fill(0) }, uFlameW: { value: Array.from({ length: MAX_FLAMES }, () => new THREE.Vector2()) },
       uLightOn: { value: new Array(MAX_LIGHTS).fill(0) }, uFlameOn: { value: 1 },
     },
@@ -197,6 +198,7 @@ function sdfObject(spec, palette) {
   const U = mesh.material.uniforms;
   const q = new THREE.Quaternion();
   function setPalette(pal) {
+    U.uInterior.value = new THREE.Color((pal.interior ?? pal.glass)[0]);
     for (const [u, k] of [['uShell', 'shell'], ['uTrim', 'trim'], ['uMetal', 'metal'], ['uRing', 'ring'], ['uGold', 'gold'], ['uGlass', 'glass'], ['uGlint', 'glint'], ['uFlame', 'flame'], ['uLights', 'lights']]) U[u].value = colors(pal[k] ?? pal.trim);
   }
   function sync(t, camera, flameOn = true) {

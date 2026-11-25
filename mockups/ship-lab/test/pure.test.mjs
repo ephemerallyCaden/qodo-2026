@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { mapPalette } from '../../asset-viewer/palette-map.js';
 import { LOSPEC } from '../../asset-viewer/palettes.js';
-import { VARIANTS, specOf } from '../variants.js';
+import { VARIANTS, R2_VARIANTS, ALL_VARIANTS, specOf } from '../variants.js';
+import { shipBounds } from '../ship-glsl.js';
 import { RAMPS, TEAL, BLK36, CAP_PALETTE, paletteHexes, tealThrust } from '../palette.js';
 import { BUILDERS, CAP, SHIP_SCALE, CYCLE, CYCLES, SEATS_PER_DECK, MAX_DECKS, HELMET_Y, crewPlan, idleAt, flameAt, lightOn, hash01 } from '../ship-spec.js';
 import { shipGlsl, SLOTS, MAX_LIGHTS } from '../ship-glsl.js';
@@ -20,7 +21,7 @@ test('BLK 36 here is the published palette', () => {
 });
 
 test('every ship colour is BLK 36 (art direction §4), and the teal is only in the option', () => {
-  for (const v of VARIANTS) {
+  for (const v of ALL_VARIANTS) {
     for (const h of paletteHexes(v.palette)) assert.ok(BLK36.includes(h), `${v.id}: ${h} is not BLK 36`);
     for (const t of TEAL) assert.ok(!paletteHexes(v.palette).includes(t), `${v.id}: teal ${t} at rest`);
     const opt = tealThrust(v.palette);
@@ -52,21 +53,21 @@ test('overflow rule: 8 seats a deck, at most 2 decks, then +N', () => {
   assert.deepEqual(crewPlan(16), { n: 16, drawn: 16, decks: 2, extra: 0, perDeck: [8, 8] });
   assert.deepEqual(crewPlan(20), { n: 20, drawn: 16, decks: 2, extra: 4, perDeck: [8, 8] });
   assert.equal(SEATS_PER_DECK * MAX_DECKS, 16);
-  for (const v of VARIANTS) for (let n = 1; n <= 24; n++) {
+  for (const v of ALL_VARIANTS) for (let n = 1; n <= 24; n++) {
     const s = specOf(v.id, n);
     assert.equal(s.crew.length, Math.min(n, 16), `${v.id} n=${n}: seats`);
     assert.equal(s.plan.decks, n > 8 ? 2 : 1);
     assert.ok(s.lights.length <= MAX_LIGHTS);
   }
   // a second deck changes the ship (every direction grows one), a ninth crew member doesn't add a third
-  for (const v of VARIANTS) {
+  for (const v of ALL_VARIANTS) {
     assert.notEqual(shipGlsl(specOf(v.id, 8)), shipGlsl(specOf(v.id, 9)), `${v.id}: no second deck`);
     assert.equal(shipGlsl(specOf(v.id, 16)), shipGlsl(specOf(v.id, 24)), `${v.id}: past 16 the ship stays the same`);
   }
 });
 
 test('the captain (the repo owner) is seat 0 of every ship, alone, in a seat of their own', () => {
-  for (const v of VARIANTS) {
+  for (const v of ALL_VARIANTS) {
     assert.ok(v.captain && v.captain.length > 10, `${v.id}: no captain description`);
     for (let n = 1; n <= 24; n++) {
       const crew = specOf(v.id, n).crew;
@@ -74,10 +75,15 @@ test('the captain (the repo owner) is seat 0 of every ship, alone, in a seat of 
       assert.equal(crew.filter((c) => c.captain).length, 1, `${v.id} n=${n}: one captain`);
     }
     const s = specOf(v.id, 8), cap = s.crew[0], helmet = (c) => [c.p[0], c.p[1] + HELMET_Y, c.p[2]];
+    const [w0, ...rest] = s.windows;
     if (v.id === 'A') {
       // the biggest porthole, gold-framed, above every teammate's
-      const [w0, ...rest] = s.windows;
       assert.ok(rest.every((w) => w0.w > w.w && w0.y > w.y) && w0.frameSlot === 'gold', 'A: the captain\'s porthole');
+    } else if (w0?.kind === 'cap' && w0.frameSlot === 'gold') {
+      // round 2's captain's porthole or bridge window: gold-rimmed, the biggest, above every teammate's porthole, with the captain behind it
+      assert.ok(rest.every((w) => w0.angle > w.angle && w0.n[1] > w.n[1]), `${v.id}: the captain's window isn't the biggest and highest`);
+      const h = helmet(cap), to = h.map((x, i) => x - w0.c[i]), len = Math.hypot(...to);
+      assert.ok(to.reduce((d, x, i) => d + x * w0.n[i], 0) / len > Math.cos(w0.angle + 0.25), `${v.id}: the captain isn't behind the gold window`);
     } else {
       // front and centre: on the ship's axis and nearer the front than any teammate
       assert.ok(Math.abs(cap.p[0]) < 1e-9, `${v.id}: the captain is off centre`);
@@ -96,7 +102,7 @@ test('the captain\'s cap: BLK 36, a gold crown over a navy band and peak', () =>
 });
 
 test('seats: helmets never stack on one another', () => {
-  for (const v of VARIANTS) for (const n of [3, 8, 16]) {
+  for (const v of ALL_VARIANTS) for (const n of [3, 8, 16]) {
     const helmets = specOf(v.id, n).crew.map((s) => [s.p[0], s.p[1] + HELMET_Y, s.p[2]]);
     for (let i = 0; i < helmets.length; i++) for (let j = i + 1; j < helmets.length; j++) {
       const d = Math.hypot(...helmets[i].map((x, k) => x - helmets[j][k]));
@@ -112,7 +118,7 @@ const thinnest = (p) => {
     case 'cone': case 'capcone': return 2 * Math.min(p.r1, p.r2);
     case 'sphere': return 2 * p.r;
     case 'ellipsoid': return 2 * Math.min(...p.r);
-    case 'torus': return 2 * p.r;
+    case 'torus': case 'ring': return 2 * p.r;
     case 'disc': return 2 * p.h;
     case 'box': return 2 * Math.min(...p.b);
     case 'fin': return 2 * (p.t + p.round);
@@ -120,17 +126,53 @@ const thinnest = (p) => {
   }
 };
 test('every part, frame and light is at least 2 px across at the near distance (art direction §1)', () => {
-  for (const v of VARIANTS) for (const n of [3, 12]) {
+  for (const v of ALL_VARIANTS) for (const n of [3, 12]) {
     const s = specOf(v.id, n);
     for (const p of s.parts) assert.ok(thinnest(p) * NEAR_PX_PER_UNIT >= 2, `${v.id} ${p.id}: ${(thinnest(p) * NEAR_PX_PER_UNIT).toFixed(2)} px`);
-    for (const w of s.windows) assert.ok(w.frame * NEAR_PX_PER_UNIT >= 2, `${v.id}: a window frame is ${(w.frame * NEAR_PX_PER_UNIT).toFixed(2)} px`);
+    // a round window's frame is its rim, a part (checked above)
+    for (const w of s.windows.filter((x) => x.kind !== 'cap')) assert.ok(w.frame * NEAR_PX_PER_UNIT >= 2, `${v.id}: a window frame is ${(w.frame * NEAR_PX_PER_UNIT).toFixed(2)} px`);
     for (const l of s.lights) assert.ok(2 * l.r * NEAR_PX_PER_UNIT >= 2, `${v.id}: a light is ${(2 * l.r * NEAR_PX_PER_UNIT).toFixed(2)} px`);
     for (const p of s.parts) assert.ok(SLOTS.includes(p.slot), `${v.id} ${p.id}: slot ${p.slot}`);
   }
 });
 
+// Inigo Quilez's round cone and a sphere, for the hull checks below.
+function roundCone(p, a, b, r1, r2) {
+  const ba = b.map((x, i) => x - a[i]), pa = p.map((x, i) => x - a[i]);
+  const dot = (u, v) => u.reduce((d, x, i) => d + x * v[i], 0);
+  const l2 = dot(ba, ba), rr = r1 - r2, a2 = l2 - rr * rr, il2 = 1 / l2;
+  const y = dot(pa, ba), z = y - l2;
+  const xv = pa.map((x, i) => x * l2 - ba[i] * y), x2 = dot(xv, xv), y2 = y * y * l2, z2 = z * z * l2;
+  const k = Math.sign(rr) * rr * rr * x2;
+  if (Math.sign(z) * a2 * z2 > k) return Math.sqrt(x2 + z2) * il2 - r2;
+  if (Math.sign(y) * a2 * y2 < k) return Math.sqrt(x2 + y2) * il2 - r1;
+  return (Math.sqrt(x2 * a2 * il2) + y * rr) * il2 - r1;
+}
+const bodyDist = (s, p) => Math.min(...s.parts.filter((q) => q.id === 'body' || q.id === 'bulb').map((q) => (q.kind === 'sphere' ? Math.hypot(...p.map((x, i) => x - q.c[i])) - q.r : roundCone(p, q.a, q.b, q.r1, q.r2))));
+test('crew behind windows stays inside the hull, boots included (nothing pokes out below a window)', () => {
+  for (const id of ['A', 'B', 'R2-1', 'R2-2', 'R2-4', 'R2-5']) for (const n of [1, 3, 8, 12, 16]) {
+    const s = specOf(id, n);
+    s.crew.forEach((c, i) => {
+      // the boot sole (lifted 0.03), its toe (0.09 forward) and the helmet top, with room for the bob (0.05)
+      const fwd = [Math.sin(c.yaw), 0, Math.cos(c.yaw)];
+      const sole = [c.p[0], c.p[1] + 0.03 - 0.05, c.p[2]], toe = sole.map((x, k) => x + 0.09 * fwd[k]);
+      for (const [what, p] of [['boot', sole], ['toe', toe]]) assert.ok(bodyDist(s, p) < -0.02, `${id} n=${n}: astronaut ${i + 1}'s ${what} pokes out (${bodyDist(s, p).toFixed(3)})`);
+    });
+  }
+});
+
+test('round 2: one-deck ships fit the near frame without pulling back; portholes turn at most 0.62 rad', () => {
+  // lab.js: the near distance is 5.98 (DIST.near) unless the ship's height passes 86% (NEAR_FILL) of the frame there
+  const fits = 0.86 * 2 * Math.tan((17.5 * Math.PI) / 180) * Math.hypot(0.1 + 1.35, 1.3 + 0.2, 10.2 - 4.6);
+  for (const v of R2_VARIANTS) for (const n of [1, 3, 8]) {
+    const s = specOf(v.id, n), { lo, hi } = shipBounds(s, 0);
+    assert.ok((hi[1] - lo[1]) * SHIP_SCALE <= fits, `${v.id} n=${n}: ${((hi[1] - lo[1]) * SHIP_SCALE).toFixed(2)} tall, the near frame holds ${fits.toFixed(2)}`);
+  }
+  for (const v of R2_VARIANTS) for (const n of [8, 16]) for (const w of specOf(v.id, n).windows) assert.ok(Math.abs(Math.atan2(w.n[0], w.n[2])) <= 0.62 + 1e-9, `${v.id}: a porthole turns ${Math.atan2(w.n[0], w.n[2]).toFixed(2)} rad`);
+});
+
 test('deterministic: the same crew count gives the same ship, byte for byte', () => {
-  for (const v of VARIANTS) for (const n of [1, 3, 8, 12, 20]) {
+  for (const v of ALL_VARIANTS) for (const n of [1, 3, 8, 12, 20]) {
     assert.equal(JSON.stringify(specOf(v.id, n)), JSON.stringify(specOf(v.id, n)));
     assert.equal(shipGlsl(specOf(v.id, n)), shipGlsl(specOf(v.id, n)));
   }

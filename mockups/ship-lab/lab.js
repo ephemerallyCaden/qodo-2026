@@ -8,8 +8,8 @@ import { makeDrone } from '../drone-lab/drone.js';
 import { sessionLook } from '../drone-lab/brands.js';
 import { DEFAULTS as DRONE_DEFAULTS } from '../drone-lab/params.js';
 import { makeShip } from './ship.js';
-import { VARIANTS, VARIANT_BY_ID } from './variants.js';
-import { BUILDERS, SHIP_SCALE, CYCLE, crewPlan } from './ship-spec.js';
+import { ALL_VARIANTS, VARIANT_BY_ID, ALL_BUILDERS } from './variants.js';
+import { SHIP_SCALE, CYCLE, crewPlan } from './ship-spec.js';
 import { shipBounds } from './ship-glsl.js';
 import { paletteHexes, tealThrust, CREW_HEXES, TEAL, CAP_PALETTE } from './palette.js';
 
@@ -45,8 +45,8 @@ const DRONES = [['claude', 's1'], ['codex', 's2'], ['generic', 's3']].map(([bran
   scene.add(d.group);
   return d;
 });
-const ships = Object.fromEntries(VARIANTS.map((v) => {
-  const s = makeShip(BUILDERS[v.id], v.palette);
+const ships = Object.fromEntries(ALL_VARIANTS.map((v) => {
+  const s = makeShip(ALL_BUILDERS[v.id], v.palette);
   s.n = null;
   scene.add(s.group);
   return [v.id, s];
@@ -371,13 +371,13 @@ function tile(cell, { stats = true, mode = 'final', t = null } = {}) {
 
 const viewerCycle = () => VIEWER_LOOP.period / VIEWER_LOOP.surfaceTurns;
 
-window.lab = { ready: true, cycle: CYCLE, viewerCycle: viewerCycle(), starSize: STAR_DEFAULTS.size, variants: VARIANTS.map(({ id, name, pitch, crewSeen, captain }) => ({ id, name, pitch, crewSeen, captain })), tile, sheet, loop, tileStats: (c) => tileStats(c) };
+window.lab = { ready: true, cycle: CYCLE, viewerCycle: viewerCycle(), starSize: STAR_DEFAULTS.size, variants: ALL_VARIANTS.map(({ id, name, pitch, crewSeen, captain }) => ({ id, name, pitch, crewSeen, captain })), tile, sheet, loop, tileStats: (c) => tileStats(c) };
 
 // ---------------------------------------------------------------- live page
 if (!document.documentElement.classList.contains('capture')) {
   const $ = (id) => document.getElementById(id);
   const live = { v: 'A', n: 3, view: '3/4', framing: 'close', teal: false, play: true };
-  $('v').innerHTML = VARIANTS.map((v) => `<option value="${v.id}">${v.id} · ${v.name}</option>`).join('');
+  $('v').innerHTML = ALL_VARIANTS.map((v) => `<option value="${v.id}">${v.id} · ${v.name}</option>`).join('');
   $('framing').innerHTML = FRAMINGS.map((f) => `<option>${f}</option>`).join('');
   $('yaw').innerHTML = Object.keys(VIEW_YAW).map((f) => `<option${f === '3/4' ? ' selected' : ''}>${f}</option>`).join('');
   const read = () => {

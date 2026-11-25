@@ -62,22 +62,22 @@ export function lightOn(light, i, t) {
 }
 
 // ---------------------------------------------------------------- parts
-const cone = (id, a, b, r1, r2, slot, k = 0) => ({ id, kind: 'cone', a, b, r1, r2, slot, k });
-const capcone = (id, c, h, r1, r2, slot, k = 0, round = 0.02) => ({ id, kind: 'capcone', c, h, r1, r2, round, slot, k });
-const sphere = (id, c, r, slot, k = 0) => ({ id, kind: 'sphere', c, r, slot, k });
-const ellipsoid = (id, c, r, slot, k = 0) => ({ id, kind: 'ellipsoid', c, r, slot, k });
-const torus = (id, c, R, r, slot, k = 0) => ({ id, kind: 'torus', c, R, r, slot, k });
-const disc = (id, c, r0, r1, h, slot, k = 0, round = 0.03) => ({ id, kind: 'disc', c, r0, r1, h, round, slot, k });
-const box = (id, c, b, slot, k = 0, round = 0.04) => ({ id, kind: 'box', c, b, round, slot, k });
+export const cone = (id, a, b, r1, r2, slot, k = 0) => ({ id, kind: 'cone', a, b, r1, r2, slot, k });
+export const capcone = (id, c, h, r1, r2, slot, k = 0, round = 0.02) => ({ id, kind: 'capcone', c, h, r1, r2, round, slot, k });
+export const sphere = (id, c, r, slot, k = 0) => ({ id, kind: 'sphere', c, r, slot, k });
+export const ellipsoid = (id, c, r, slot, k = 0) => ({ id, kind: 'ellipsoid', c, r, slot, k });
+export const torus = (id, c, R, r, slot, k = 0) => ({ id, kind: 'torus', c, R, r, slot, k });
+export const disc = (id, c, r0, r1, h, slot, k = 0, round = 0.03) => ({ id, kind: 'disc', c, r0, r1, h, round, slot, k });
+export const box = (id, c, b, slot, k = 0, round = 0.04) => ({ id, kind: 'box', c, b, round, slot, k });
 // n fins evenly spaced from yaw0, each a quad in its (radial, y) plane: [root top, root bottom, tip bottom, tip top].
-const fins = (id, n, yaw0, pts, t, slot, k = 0, round = 0.035) => ({ id, kind: 'fin', n, yaw0, pts, t, round, slot, k });
-const polar = (rho, yaw, y) => [rho * Math.sin(yaw), y, rho * Math.cos(yaw)];
+export const fins = (id, n, yaw0, pts, t, slot, k = 0, round = 0.035) => ({ id, kind: 'fin', n, yaw0, pts, t, round, slot, k });
+export const polar = (rho, yaw, y) => [rho * Math.sin(yaw), y, rho * Math.cos(yaw)];
 
 /** Spread k seats over [-span, span], centred (k = 1 sits in the middle). */
-const spread = (k, span) => Array.from({ length: k }, (_, i) => (k === 1 ? 0 : -span + (2 * span * i) / (k - 1)));
-const seat = (x, y, z, yaw = 0) => ({ p: [x, y, z], yaw });
+export const spread = (k, span) => Array.from({ length: k }, (_, i) => (k === 1 ? 0 : -span + (2 * span * i) / (k - 1)));
+export const seat = (x, y, z, yaw = 0) => ({ p: [x, y, z], yaw });
 /** A seat whose helmet sits at (x, hy, z), facing yaw. */
-const helmetSeat = (x, hy, z, yaw = 0) => seat(x, hy - HELMET_Y, z, yaw);
+export const helmetSeat = (x, hy, z, yaw = 0) => seat(x, hy - HELMET_Y, z, yaw);
 
 /**
  * How a crew of n rides: decks used, astronauts drawn, and the "+N" left over. The crew is the repo
@@ -88,7 +88,7 @@ export function crewPlan(n) {
   const drawn = Math.min(n, SEATS_PER_DECK * MAX_DECKS);
   return { n, drawn, decks: drawn > SEATS_PER_DECK ? 2 : 1, extra: n - drawn, perDeck: [Math.min(drawn, SEATS_PER_DECK), Math.max(0, drawn - SEATS_PER_DECK)] };
 }
-const captainSeat = (s) => ({ ...s, captain: true });
+export const captainSeat = (s) => ({ ...s, captain: true });
 
 // The captain's cap (worn by seat 0 in every ship): a gold crown over a navy hat band, with a navy peak
 // over the visor, sized up from life so it reads at 320x180. In the astronaut's own body frame (figure

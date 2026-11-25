@@ -10,6 +10,7 @@ import { tileProblems } from '../checks.mjs';
 import { CYCLE } from '../ship-spec.js';
 
 const IDS = ['A', 'B', 'C', 'D'];
+const R2 = ['R2-1', 'R2-2', 'R2-3', 'R2-4', 'R2-5']; // round 2: A, shorter, fatter and rounder
 let browser, page;
 before(async () => {
   browser = await launch();
@@ -24,9 +25,9 @@ test('the ship\'s idle cycle is the viewer\'s crew cycle', async () => {
   assert.equal(await page.evaluate(() => window.lab.viewerCycle), CYCLE);
 });
 
-test('every direction, 1, 3 and 8 aboard, close-up and near: the tile checks pass', { timeout: 900000 }, async () => {
+test('every direction and round-2 variation, 1, 3 and 8 aboard, close-up and near: the tile checks pass', { timeout: 1200000 }, async () => {
   const problems = [];
-  for (const v of IDS) for (const n of [1, 3, 8]) for (const framing of ['close', 'near']) {
+  for (const v of [...IDS, ...R2]) for (const n of [1, 3, 8]) for (const framing of ['close', 'near']) {
     const s = await stats({ v, n, framing, view: 'front' });
     assert.ok(s.shipPx > 500, `${v} ${framing} n=${n}: empty or tiny (${s.shipPx} px)`);
     assert.equal(s.crew.length, n);
@@ -37,7 +38,7 @@ test('every direction, 1, 3 and 8 aboard, close-up and near: the tile checks pas
 
 test('the captain reads apart: the cap shows on seat 0 in each ship\'s captain close-up', { timeout: 600000 }, async () => {
   const problems = [];
-  for (const v of IDS) {
+  for (const v of [...IDS, ...R2]) {
     const s = await stats({ v, n: 3, framing: 'crew', view: 'front', focus: 'captain' });
     assert.ok(s.cap.px >= 40, `${v}: the cap shows only ${s.cap.px} px`);
     problems.push(...tileProblems(s, `${v} captain close-up`));
@@ -45,9 +46,9 @@ test('the captain reads apart: the cap shows on seat 0 in each ship\'s captain c
   assert.deepEqual(problems, []);
 });
 
-test('two decks (12 aboard) and the +N overflow (20) pass at the near distance', { timeout: 900000 }, async () => {
+test('two decks (12 aboard) and the +N overflow (20) pass at the near distance', { timeout: 1200000 }, async () => {
   const problems = [];
-  for (const v of IDS) for (const n of [12, 20]) {
+  for (const v of [...IDS, 'R2-1', 'R2-2']) for (const n of [12, 20]) {
     const s = await stats({ v, n, framing: 'near', view: 'front' });
     assert.equal(s.plan.decks, 2);
     assert.equal(s.plan.extra, Math.max(0, n - 16));
@@ -58,7 +59,7 @@ test('two decks (12 aboard) and the +N overflow (20) pass at the near distance',
 
 test('beside the star (system) and turned (3/4): BLK 36 only, one connected ship, not clipped', { timeout: 600000 }, async () => {
   const problems = [];
-  for (const v of IDS) for (const [framing, view] of [['system', '3/4'], ['close', '3/4']]) problems.push(...tileProblems(await stats({ v, n: 3, framing, view }), `${v} ${framing} ${view}`));
+  for (const v of [...IDS, ...R2]) for (const [framing, view] of [['system', '3/4'], ['close', '3/4']]) problems.push(...tileProblems(await stats({ v, n: 3, framing, view }), `${v} ${framing} ${view}`));
   assert.deepEqual(problems, []);
 });
 
@@ -71,7 +72,7 @@ test('the teal thrust option shows teal; it is never the default', { timeout: 30
 });
 
 test('deterministic and loop-locked: the same cell twice, and one cycle later, are the same pixels', { timeout: 600000 }, async () => {
-  for (const v of IDS) for (const t of [0.7, 5.3]) {
+  for (const v of [...IDS, ...R2]) for (const t of [0.7, 5.3]) {
     const cell = { v, n: 3, framing: 'close', view: 'hero' };
     const a = await pixels(cell, t);
     assert.equal(await pixels(cell, t), a, `${v} t=${t}: two renders differ`);
