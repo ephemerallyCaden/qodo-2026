@@ -87,6 +87,30 @@ test('#224: fogged is storm cloud, misted thin mist, clear nothing, and the fog 
   expect(view.errors).toEqual([]);
 });
 
+// The storm's offset shadow (§6 Clouds; Qodo c8a30ce7, PR #225): its lead puffs float higher than the
+// weather's, so with the weather's reach (0.1 R) only their satellites cast a shadow. One of src's three
+// files fogged, so its storm front faces discovered ground; the shadow is the ground the fog darkens
+// without covering it (darker than clear, and no cloud colour), over four turns of the surface.
+test('the storm casts its offset shadow on the discovered ground beside it', async ({ page }) => {
+  const view = await openView(page, systemView());
+  const ids = MINI.planets.find((p) => p.path === 'src')!.surface.settlements.map((s) => s.fileId as string);
+  let shadow = 0, storm = 0;
+  for (const n of [0, 90, 180, 270]) {
+    const base = { layout: MINI, ...focus('src', n), depthFade: false };
+    const [clear] = await render(view, { ...base, fog: fogFor(MINI) }, [n]);
+    const [one] = await render(view, { ...base, fog: fogFor(MINI, (id) => id === ids[0]) }, [n]);
+    for (const r of [clear, one]) assertRendered(r!.pixels, r!.stats);
+    for (const p of changed(clear!, one!)) {
+      if (CLOUD.includes(hex(one!.pixels.rgba, p) as never)) storm++;
+      else if (luma(one!.pixels.rgba, p) < luma(clear!.pixels.rgba, p)) shadow++;
+    }
+  }
+  console.log(`src, one file fogged, four turns: ${storm} storm px, ${shadow} shadow px`);
+  expect(storm, 'not vacuous: the storm draws').toBeGreaterThan(10_000);
+  expect(shadow, 'the storm\'s main masses cast their shadow, not only its satellites').toBeGreaterThan(storm * 0.06);
+  expect(view.errors).toEqual([]);
+});
+
 test('#224: misted and fogged hold still under reduced motion', async ({ page }) => {
   const view = await openView(page, systemView());
   for (const fog of [allMisted(), allFogged()]) {

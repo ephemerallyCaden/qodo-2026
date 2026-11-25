@@ -13,7 +13,7 @@ import { systemModel } from '../../web/src/model/system.js';
 import { SystemScene } from '../../web/src/render/scene.js';
 import { CORONA } from '../../web/src/model/star.js';
 import { FOG_MOON, FOG_SKY, FOG_SURFACE } from '../../web/src/render/fog-glsl.js';
-import { CLOUD_FRAG, HAZE_FRAG, PLANET_FRAG, SHADOW_FRAG, STAR, STAR_FRAG } from '../../web/src/render/shaders.js';
+import { CLOUD_FRAG, HAZE_FRAG, PLANET_FRAG, SHADOW_FRAG, SHADOW_REACH, STAR, STAR_FRAG } from '../../web/src/render/shaders.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
 
 const VERTEX = 35633, FRAGMENT = 35632;
@@ -110,7 +110,7 @@ describe('fog in the GLSL three submits (#74; cloud since #224)', () => {
     for (const f of [...fragments, FOG_SURFACE, FOG_MOON]) expect(f).not.toMatch(/uFogVeil|uRampFog|fogVeil|fogHatch|FOG_QMARK|uFogLimb/); // the D2d veil is gone
     // the fog's own puffs and their shadow draw only while the planet has fog (the visual-proof fog seam holds uFogOn at 0)
     expect(CLOUD_FRAG).toContain('if (fogSkyOff()) discard;');
-    expect(SHADOW_FRAG).toContain('if (fogSkyOff() || vReach < 0.0 || vReach > 0.1) discard;');
+    expect(SHADOW_FRAG).toContain('if (fogSkyOff() || vReach < 0.0 || vReach > uShadowReach) discard;');
     expect(FOG_SKY).toContain('return uFogSky > 0.5 && uFogOn == 0;');
     expect(HAZE_FRAG).toContain('if (fogHidesHaze(vPosW)) discard;'); // mini may draw no hazy look
     expect(fragments.filter((f) => f.includes('uniform vec3 uHaze')).every((f) => f.includes('if (fogHidesHaze(vPosW)) discard;'))).toBe(true);
@@ -141,5 +141,19 @@ describe('fog in the GLSL three submits (#74; cloud since #224)', () => {
       expect(spin.children.some((c) => c instanceof THREE.Mesh && (c.material as THREE.ShaderMaterial).fragmentShader === PLANET_FRAG)).toBe(true);
     });
     expect(skies).toBe(system.model.planets.length * 4);
+  });
+
+  it('lets the storm\'s shadow fall as far as its height needs, and keeps the weather\'s shadow as it was (Qodo c8a30ce7)', () => {
+    expect(SHADOW_FRAG).toContain('vReach > uShadowReach) discard;');
+    const reach = { weather: [] as number[], storm: [] as number[] };
+    system.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.ShaderMaterial | undefined;
+      if (m?.fragmentShader !== SHADOW_FRAG) return;
+      (m.uniforms['uFogSky']!.value === 1 ? reach.storm : reach.weather).push(m.uniforms['uShadowReach']!.value as number);
+    });
+    expect(reach.storm).toEqual(system.model.planets.map(() => SHADOW_REACH.storm));
+    expect(reach.weather.length).toBeGreaterThan(0); // mini's toxic planet has its rust smoke
+    expect(new Set(reach.weather)).toEqual(new Set([0.1])); // the asset viewer's cut, unchanged
+    expect(SHADOW_REACH.storm).toBeGreaterThan(SHADOW_REACH.weather);
   });
 });

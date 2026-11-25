@@ -13,7 +13,7 @@ import { FogClouds, moonFogAttribute, PlanetFog } from './fog.js';
 import { LOOKS, type Weather } from './looks.js';
 import { orbitingSpheres, placeSpheres, ramp, shaderMaterial, toonMaterial } from './materials.js';
 import { crackMask, crackShare, makeFbm3, nearestCell, poolField, tangentFrame, voronoiCells } from './noise.js';
-import { CLOUD_FRAG, CLOUD_VERT, CRACKS, HAZE_FRAG, PLANET_FRAG, SHADOW_FRAG, SHADOW_VERT, type CrackSpec } from './shaders.js';
+import { CLOUD_FRAG, CLOUD_VERT, CRACKS, HAZE_FRAG, PLANET_FRAG, SHADOW_FRAG, SHADOW_REACH, SHADOW_VERT, type CrackSpec } from './shaders.js';
 
 const PLANET_GEO = new THREE.SphereGeometry(1, 72, 48);
 /**
@@ -133,7 +133,8 @@ export function makePlanet(model: PlanetModel): PlanetObject {
   const shadowMaterial = (fogSky: number) => new THREE.ShaderMaterial({
     vertexShader: SHADOW_VERT, fragmentShader: SHADOW_FRAG, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-    uniforms: { ...surfaceMat.uniforms, uCenter: center, uRadius: radius, uToSurface: toSurface, uFogSky: { value: fogSky } },
+    uniforms: { ...surfaceMat.uniforms, uCenter: center, uRadius: radius, uToSurface: toSurface, uFogSky: { value: fogSky },
+      uShadowReach: { value: fogSky ? SHADOW_REACH.storm : SHADOW_REACH.weather } },
   });
   const sky = new THREE.Group();
   body.add(sky);

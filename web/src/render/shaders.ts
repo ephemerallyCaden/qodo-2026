@@ -447,6 +447,14 @@ export const PLANET_FRAG = /* glsl */ `${SURFACE}
 // Cloud shadow: the puffs projected along the light onto the surface (r = 1.003), drawn as the
 // terrain one light band darker. It shares the surface material's uniforms. The fog's storm cloud casts
 // one too (uFogSky 1, #224).
+/**
+ * How far a shadow may fall from its cloud along the light, in planet radii (uShadowReach): past it,
+ * near the terminator, a shadow would smear across the disc (the asset viewer's 0.1, for the weather,
+ * whose puffs' bases float about 0.06 R up). The fog's storm floats higher, its lead puffs' bases about
+ * 0.106 R up (model/fog-cloud.ts STORM), so the same cut, light within about 54° of the vertical at the
+ * base, is 0.18; with the weather's 0.1 the storm's main masses cast no shadow (Qodo c8a30ce7, PR #225).
+ */
+export const SHADOW_REACH = { weather: 0.1, storm: 0.18 } as const;
 export const SHADOW_VERT = /* glsl */ `
   uniform vec3 uLight;
   uniform vec3 uCenter;
@@ -474,10 +482,11 @@ export const SHADOW_VERT = /* glsl */ `
 export const SHADOW_FRAG = /* glsl */ `${SURFACE}
   ${FOG_SURFACE}
   ${FOG_SKY}
+  uniform float uShadowReach; // SHADOW_REACH: the weather's or the storm's
   in vec3 vHitW;
   in float vReach;
   void main() {
-    if (fogSkyOff() || vReach < 0.0 || vReach > 0.1) discard;
+    if (fogSkyOff() || vReach < 0.0 || vReach > uShadowReach) discard;
     vec3 p = normalize(vLocal);
     setScreenScale(p);
     int b = band(normalize(vHitW));
