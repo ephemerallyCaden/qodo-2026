@@ -25,6 +25,8 @@ vi.mock('../../../web/src/ui/panel.js', () => ({ Panel: class { setFog() {} sele
 // The drone panel stub records what its session-detail section is told to show (#148).
 const detailShown = vi.hoisted(() => [] as { kind: string; text?: string; detail?: unknown }[]);
 vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} showDetail(s: { kind: string }) { detailShown.push(s); } } }));
+// The crew panel (#207) has its own DOM test (crew-panel.test.ts).
+vi.mock('../../../web/src/crew/panel.js', () => ({ CrewPanel: class { onClose = () => {}; open = false; show() {} hide() {} showDetail() {} } }));
 // The directory view (#209) has its own DOM test (tree.test.ts).
 vi.mock('../../../web/src/tree/panel.js', () => ({ TreePanel: class { scale() {} setLayout() {} setFog() {} } }));
 
@@ -94,6 +96,8 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     follow: (e, st) => { onEvent = e; onStatus = st; return () => {}; },
     drones: () => { droneCalls++; return (droneAnswers.shift() ?? (async () => droneView(head, [])))(); },
     droneDetail: (key, at) => { detailAsked.push({ key, at }); return (detailAnswers.shift() ?? (async () => emptyDetail(key, at)))(); },
+    crew: async () => ({ schemaVersion: 'crew.1', head, members: [], total: 0, bots: 0, needsRescan: false }), // #207: nobody aboard
+    crewDetail: async () => ({ ok: false, error: 'no-such-person' }),
     unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }),
     chart: async () => ({ ok: false, error: 'not used' }),
@@ -124,6 +128,12 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     selectedDrone: null as string | null,
     drawn: [] as readonly FleetEntry[],
     setDrones: async (e: readonly FleetEntry[]) => { view.drawn = e; return true; },
+    selectedPerson: null as string | null,
+    selectedName: '',
+    setCrew: async () => true,
+    pickCrewAt: () => null,
+    crewSpec: null,
+    crewSeat: () => null,
     beaconsDrawn: null as BeaconView | null,
     setBeacons: (v: BeaconView | null) => { view.beaconsDrawn = v; return true; },
     coDrawn: null as CoChangeView | null,

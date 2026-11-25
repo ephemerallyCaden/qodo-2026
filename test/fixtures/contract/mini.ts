@@ -2,6 +2,7 @@
 // JSON twins next to this file; test/contract.test.ts keeps them byte-equal to these values.
 // Three planets: src (healthy, no partner), web (toxic, partner src, moon overflow), docs
 // (ash, debt partly unknown, surface overflow). Root files and an unmatched test are moonlets.
+import type { CrewView } from '../../../src/core/contract/crew.js';
 import type { DroneView } from '../../../src/core/contract/drones.js';
 import type { FogView } from '../../../src/core/contract/fog.js';
 import type { Health, LayoutV1 } from '../../../src/core/contract/layout.js';
@@ -133,5 +134,26 @@ export const miniDrones: DroneView = {
   ],
   total: 4,
   placed: 3,
+  needsRescan: false,
+};
+
+/**
+ * The crew view (#207) of the invented crew fixture (test/fixtures/crew, its twin test/golden/crew.json), on
+ * this layout's head, so the dev fixture and the render tests draw the ship and its six riders over mini.
+ * test/web/crew.test.ts keeps the members equal to the crew fixture's.
+ */
+export const miniCrew: CrewView = {
+  schemaVersion: 'crew.1',
+  head: HEAD,
+  members: [
+    { person: 'p_206cbb7a81b9', displayName: 'Bram Tiller', seed: 3710258663, captain: false },
+    { person: 'p_33da7d178551', displayName: 'Esme Holt', seed: 2393886847, captain: false },
+    { person: 'p_41500534dee9', displayName: 'Nova Reyes', seed: 4239677801, captain: true },
+    { person: 'p_4314cfdff962', displayName: 'Dax Imura', seed: 3137127053, captain: false },
+    { person: 'p_44feab12c792', displayName: 'Cleo Varga', seed: 3990394516, captain: false },
+    { person: 'p_87cea0f2291a', displayName: 'Ada Quill', seed: 2222483224, captain: false },
+  ],
+  total: 6,
+  bots: 2,
   needsRescan: false,
 };

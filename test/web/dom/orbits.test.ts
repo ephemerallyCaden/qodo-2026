@@ -18,6 +18,8 @@ import { droneView } from '../../fixtures/drones.js';
 // The review panel (#75) and the drone panel need a DOM: no-ops here, as in live.test.ts.
 vi.mock('../../../web/src/ui/panel.js', () => ({ Panel: class { setFog() {} select() {} scale() {} } }));
 vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} } }));
+// The crew panel (#207) has its own DOM test (crew-panel.test.ts).
+vi.mock('../../../web/src/crew/panel.js', () => ({ CrewPanel: class { onClose = () => {}; open = false; show() {} hide() {} showDetail() {} } }));
 // The directory view (#209) has its own DOM test (tree.test.ts).
 vi.mock('../../../web/src/tree/panel.js', () => ({ TreePanel: class { scale() {} setLayout() {} setFog() {} } }));
 
@@ -62,6 +64,12 @@ async function live(reduced = false) {
     async load() { model = systemModel(miniLayout); },
     selectedDrone: null,
     setDrones: async () => true,
+    selectedPerson: null,
+    selectedName: '',
+    setCrew: async () => true,
+    pickCrewAt: () => null,
+    crewSpec: null,
+    crewSeat: () => null,
     setBeacons: () => true,
     setCoChange: () => true,
     coChangeLines: () => [],
@@ -81,6 +89,8 @@ async function live(reduced = false) {
     follow: () => () => {},
     drones: async () => droneView(miniLayout.source.head, []),
     droneDetail: async () => ({ ok: false, error: 'no-such-session' }),
+    crew: async () => { throw new Error('no crew here'); },
+    crewDetail: async () => ({ ok: false, error: 'no-such-person' }),
     unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }),
     chart: async () => ({ ok: false, error: 'not used' }),

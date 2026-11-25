@@ -7,6 +7,7 @@ import { CoChange } from './cochange/controller.js';
 import { PARKED_POSE, startPoseAt } from './camera/pose.js';
 import { FreeFlightRig, GLIDE_MS } from './camera/rig.js';
 import { ViewError, type DataClient } from './data/client.js';
+import { Crew } from './crew/controller.js';
 import { Drones } from './drones/controller.js';
 import { coveredBy } from './labels/overlay.js';
 import { startLoop } from './loop.js';
@@ -143,6 +144,11 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   // #80: the agent drones, refetched with every layout load and snapshot event.
   const drones = new Drones({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }),
     others: () => [byId('panel'), byId('tree')] });
+  // #207: the crew aboard the ship, refetched with every layout load and snapshot event. One selection at a
+  // time: picking a crew member closes a drone's panel, and the other way round.
+  const crew = new Crew({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }),
+    others: () => [byId('panel'), byId('tree')] });
+  const deselect = () => { drones.deselect(); crew.deselect(); };
 
   const fetchFog = (): Promise<Fetched> => client.fog().then((fog) => ({ fog }), (error: unknown) => ({ error }));
   const loadOnce = async () => {
@@ -178,6 +184,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       if (paired.notice) hud.announce(paired.notice); // after say(), so the status line keeps it
       if (rescanFailed) hud.announce(rescanFailed); // still true after a reload (#95): the drawn scan is the last good one
       void drones.refresh(drawnHead);
+      void crew.refresh(drawnHead);
       void beacons.refresh(drawnHead);
       void cochange.refresh(drawnHead);
       redraw();
@@ -221,19 +228,20 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       if (!loaded) return;
       // #211: an edge arrow focuses the partner it points at (the star's: free flight, where the panel lists the star's files)
       const to = view.arrowAt(x, y);
-      if (to !== null) { drones.deselect(); setFocus(to < 0 ? null : to); return; }
-      if (drones.pick(x, y, rig.pose(), shown())) return;
+      if (to !== null) { deselect(); setFocus(to < 0 ? null : to); return; }
+      if (drones.pick(x, y, rig.pose(), shown())) { crew.deselect(); return; }
+      if (crew.pick(x, y, rig.pose(), shown())) { drones.deselect(); return; }
       const i = view.pickAt(x, y, rig.pose(), shown());
-      if (i !== null) { drones.deselect(); setFocus(i); }
+      if (i !== null) { deselect(); setFocus(i); }
     },
     cycle: (dir) => {
-      drones.deselect();
+      deselect();
       const n = view.model?.planets.length ?? 0;
       if (n === 0) return;
       setFocus(focus === null ? (dir > 0 ? 0 : n - 1) : (focus + dir + n) % n);
     },
-    release: () => { drones.deselect(); setFocus(null); },
-    home: () => { drones.deselect(); if (view.model) { rig.reset(startPoseAt(view.model, shown())); setFocus(null); } },
+    release: () => { deselect(); setFocus(null); },
+    home: () => { deselect(); if (view.model) { rig.reset(startPoseAt(view.model, shown())); setFocus(null); } },
   });
 
   /**
@@ -244,7 +252,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   const openPlace = (place: Place, said: string) => {
     const m = view.model;
     if (!loaded || !m) return;
-    drones.deselect();
+    deselect();
     if (place.kind === 'star' || place.kind === 'moonlet') {
       rig.reset(startPoseAt(m, shown()));
       setFocus(null);
@@ -269,6 +277,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     }
     if (!changed && !dirty && now === lastFrame) return;
     drones.dock(now, rig.pose(), focus); // #189: before the labels, which move out from under the panel where it docks (#169)
+    crew.dock(now, rig.pose(), focus); // #207: the crew panel docks the same way
     view.draw(now, rig.pose(), focus);
     lastFrame = now;
     dirty = false;
@@ -290,7 +299,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   // #169: the review and drone panels are DOM laid over the label canvas, so the note and drone labels
   // move out from under the open ones. A panel that opens, closes or grows (a list that loaded) redraws,
   // which reduced motion's still frame would otherwise not.
-  const panels = [byId('panel'), byId('drone-panel'), byId('tree')];
+  const panels = [byId('panel'), byId('drone-panel'), byId('crew-panel'), byId('tree')];
   view.covered = () => coveredBy(view.labels.canvas, panels);
   const watch = new ResizeObserver(redraw);
   for (const p of panels) watch.observe(p);
@@ -306,7 +315,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     } else if (ev.type === 'layout' || ev.type === 'fog') {
       void update(ev.type);
       if (ev.type === 'fog') void cochange.refresh(drawnHead); // #211: a chart may have dismissed a flag
-    } else if (ev.type === 'snapshot' && ev.head === drawnHead) { void drones.refresh(drawnHead); void beacons.refresh(drawnHead); void cochange.refresh(drawnHead); } // a new head's layout event refetches for itself
+    } else if (ev.type === 'snapshot' && ev.head === drawnHead) { void drones.refresh(drawnHead); void crew.refresh(drawnHead); void beacons.refresh(drawnHead); void cochange.refresh(drawnHead); } // a new head's layout event refetches for itself
     else if (ev.type === 'beacons') void beacons.refresh(drawnHead); // #79: a note left here or by `commet beacon`
   }, (status) => {
     // The server keeps no backlog, so a change made while the stream was down (or before it first

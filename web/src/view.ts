@@ -5,7 +5,7 @@ import type { BeaconView } from '../../src/core/contract/beacons.js';
 import type { CoChangeView } from '../../src/core/contract/cochange.js';
 import type { FogView } from '../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
-import { fovOf, pick, project, projectedRadius, startPose, type OrbitPose } from './camera/pose.js';
+import { eyeOf, fovOf, pick, project, projectedRadius, startPose, type OrbitPose } from './camera/pose.js';
 import { ViewError } from './data/client.js';
 import { beaconSpots, spotBody } from './model/beacons.js';
 import { FogLedger } from './model/fog.js';
@@ -16,17 +16,20 @@ import { textWidth } from './labels/font.js';
 import { clearOf, placeLabels, type Placed, type Rect } from './labels/place.js';
 import { coChangeIndex, coChangeLines, focusFor, shortName, type CoIndex, type Focus } from './cochange/model.js';
 import { OVERLAY_COLOURS, planConstellation, rasterise, type Plan } from './cochange/overlay.js';
-import { FPS } from './model/motion.js';
+import { FPS, LOOP_SECONDS, loopPhase } from './model/motion.js';
 import { BEACON_MARK } from './render/beacons.js';
 import { SHARED } from './render/materials.js';
 import { PixelPass } from './render/pixel.js';
 import { DroneFleet, type FleetEntry } from './render/drone-fleet.js';
+import { CrewShip, type Rider } from './render/ship.js';
+import type { ShipSpec } from './render/ship-spec.js';
+import { placeShip, portholes } from './crew/place.js';
 import { capLabels } from './drones/select.js';
 import { SystemScene } from './render/scene.js';
 import { starOccluders } from './render/corona.js';
 
 import { UI_COLOURS } from './ui/colours.js';
-import type { Occluder, Sphere } from './model/vec.js';
+import { dot, sub, type Occluder, type Sphere } from './model/vec.js';
 
 /** A drone's smallest clickable size, as a share of half the frame height (a planet's is 0.04). */
 const DRONE_MIN_NDC = 0.015;
@@ -42,6 +45,9 @@ const NOTE_LABEL_CHARS = 48;
 
 /** #211: the overlay's colour table as RGB bytes (index 0 draws nothing). */
 const OVERLAY_RGB = OVERLAY_COLOURS.map((c) => (c === null ? null : [1, 3, 5].map((k) => parseInt(c.slice(k, k + 2), 16))));
+
+/** A crew member's smallest clickable porthole, as a share of half the frame height (a drone's is 0.015). */
+const CREW_MIN_NDC = 0.015;
 
 /** The star's disc and corona at a frame: they hide the planets and drones behind them from picking and labels. */
 const starBlockers = (s: SystemScene, frame: number): Occluder[] => starOccluders(s.model.star.radius, frame);
@@ -62,6 +68,13 @@ export class View {
   private dronesHead: string | null = null;
   private layoutHead: string | null = null;
   selectedDrone: string | null = null;
+  /** The crew aboard (#207: `seats[i]` rides in seat i, null empty), kept across layout reloads of the same scan, its head, and the crew the seats leave out (+N). */
+  private crewSeats: readonly (Rider | null)[] = [];
+  private crewHead: string | null = null;
+  private crewExtra = 0;
+  /** The selected crew member's person id, and the name shown under their porthole while selected. */
+  selectedPerson: string | null = null;
+  selectedName = '';
   /** The beacons drawn (#79), kept across layout reloads of the same scan, and the head they belong to. */
   private beaconView: BeaconView | null = null;
   private beaconHead: string | null = null;
@@ -149,6 +162,7 @@ export class View {
     const next = new SystemScene(systemModel(layout));
     try {
       next.fleet.set(this.dronesHead === layout.source.head ? this.drones : []);
+      next.crew.set(this.crewHead === layout.source.head ? this.crewSeats : []);
       next.beacons.set(this.beaconHead === layout.source.head ? beaconSpots(this.beaconView, next.model).spots : []);
       next.pose(0, startPose(next.model), this.pass.height);
       // Compile every program up front, hidden ones (small planets' cloud shadows) included, and force
@@ -204,6 +218,39 @@ export class View {
     }
     this.drones = entries;
     this.dronesHead = head;
+    return true;
+  }
+
+  /**
+   * Draws this crew (#207): `seats[i]` rides in seat i (seat 0 the captain's; null empty), `extra` more are
+   * counted in a "+N" label; they belong to the scan `head`. The ship's shaders are compiled first, on a ship
+   * that isn't in the scene. Returns false, changing nothing, when the drawn layout is of another scan or was
+   * replaced while compiling; a compile failure throws a ViewError and keeps the old crew.
+   */
+  async setCrew(seats: readonly (Rider | null)[], extra: number, head: string): Promise<boolean> {
+    const s = this.system;
+    if (!s) { this.crewSeats = seats; this.crewExtra = extra; this.crewHead = head; return true; }
+    if (head !== this.layoutHead) return false;
+    const probe = new CrewShip();
+    try {
+      if (seats.length > 0) {
+        probe.set(seats);
+        probe.pose(s.model, this.lastFrame);
+        this.pass.takeShaderErrors();
+        probe.group.traverse((o) => { o.visible = true; });
+        await this.pass.renderer.compileAsync(probe.group, s.camera);
+        for (const program of this.pass.renderer.info.programs ?? []) program.getUniforms();
+        const failed = this.pass.takeShaderErrors();
+        if (failed.length > 0) throw new ViewError("The view could not compile the crew's ship.", failed);
+      }
+      if (this.system !== s || head !== this.layoutHead) return false; // a layout reload replaced the scene meanwhile
+      s.crew.set(seats);
+    } finally {
+      probe.dispose();
+    }
+    this.crewSeats = seats;
+    this.crewExtra = extra;
+    this.crewHead = head;
     return true;
   }
 
@@ -319,6 +366,7 @@ export class View {
     });
     const plain = (l: Label & { arrow?: number }): Label => ({ text: l.text, x: l.x, y: l.y, align: l.align, colour: l.colour });
     out.push(...co.slice(0, Math.max(0, MAX_LABELS - out.length - drones.length)).map(plain), ...drones);
+    out.push(...this.crewLabels(s, frame, pose, W, H, px).map((l) => this.clear([l], covers, W, H)[0]!));
     // the arrows' click boxes (#211): the glyph and its name
     const scale = this.pass.scale;
     this.arrows = plan.arrows.map((a, k) => {
@@ -436,6 +484,58 @@ export class View {
       const sel = e.key === this.selectedDrone;
       return { text: sel ? e.selectedLabel : e.label!, x: l.x, y: l.y, align: 'centre', colour: sel ? UI_COLOURS.accent : UI_COLOURS.ink };
     });
+  }
+
+  /**
+   * The crew's labels (#207), bitmap glyphs only: the "+N" the seats leave out, under the ship, and the
+   * selected crew member's name under their porthole. At most two.
+   */
+  private crewLabels(s: SystemScene, frame: number, pose: OrbitPose, W: number, H: number, px: number): Label[] {
+    const spec = s.crew.spec;
+    if (!spec) return [];
+    const at = placeShip(s.model, frame), t = loopPhase(frame) * LOOP_SECONDS;
+    const out: Label[] = [];
+    const below = (centre: [number, number, number], radius: number, text: string, colour: string) => {
+      const p = project(pose, centre);
+      if (!p) return;
+      const r = projectedRadius(radius, p.depth, fovOf(pose)) * (H / 2);
+      out.push({ text, x: ((p.x + 1) / 2) * W, y: ((1 - p.y) / 2) * H + r + 2 * px, align: 'centre', colour });
+    };
+    const sel = s.crew.riders.find((r) => r.rider.person === this.selectedPerson);
+    if (sel && this.selectedName) {
+      const hole = portholes(spec, at, t)[sel.seat];
+      if (hole) below(hole.centre, hole.radius, this.selectedName, UI_COLOURS.accent);
+    }
+    if (this.crewExtra > 0) below(at.centre, 0, `+${this.crewExtra} crew`, UI_COLOURS.ink);
+    return out;
+  }
+
+  /** The ship drawn (#207), or null when nobody is aboard. */
+  get crewSpec(): ShipSpec | null { return this.system?.crew.spec ?? null; }
+  /** The seat a crew member rides in, or null when they aren't aboard the ship drawn. */
+  crewSeat(person: string | null): number | null {
+    return this.system?.crew.riders.find((r) => r.rider.person === person)?.seat ?? null;
+  }
+
+  /**
+   * The person id of the crew member whose porthole is under a point of the view canvas, or null. A porthole
+   * turned away from the eye can't be clicked (the hull hides it), and everything drawn in front hides it
+   * (planets, moons, moonlets, the star and its corona), as for drones.
+   */
+  pickCrewAt(cssX: number, cssY: number, pose: OrbitPose, frame: number): string | null {
+    const s = this.system, spec = s?.crew.spec;
+    if (!s || !spec || s.crew.riders.length === 0) return null;
+    const c = this.pass.canvas.getBoundingClientRect();
+    const ndc = { x: (cssX / c.width) * 2 - 1, y: 1 - (cssY / c.height) * 2 };
+    const holes = portholes(spec, placeShip(s.model, frame), loopPhase(frame) * LOOP_SECONDS);
+    const eye = eyeOf(pose);
+    const riders = s.crew.riders.filter((r) => {
+      const h = holes[r.seat];
+      return h !== undefined && dot(h.normal, sub(eye, h.centre)) > 0;
+    });
+    const spheres = riders.map((r) => ({ centre: holes[r.seat]!.centre, radius: holes[r.seat]!.radius }));
+    const hit = pick(pose, ndc, spheres, [...starBlockers(s, frame), ...s.spheres(frame), ...s.smallBodies(frame)], CREW_MIN_NDC);
+    return hit === null ? null : riders[hit]!.rider.person;
   }
 
   /** The planet under a point of the view canvas (CSS px from its top-left), or null. */

@@ -1,0 +1,45 @@
+{
+  "bots": 2,
+  "head": "1111111111111111111111111111111111111111",
+  "members": [
+    {
+      "captain": false,
+      "displayName": "Bram Tiller",
+      "person": "p_206cbb7a81b9",
+      "seed": 3710258663
+    },
+    {
+      "captain": false,
+      "displayName": "Esme Holt",
+      "person": "p_33da7d178551",
+      "seed": 2393886847
+    },
+    {
+      "captain": true,
+      "displayName": "Nova Reyes",
+      "person": "p_41500534dee9",
+      "seed": 4239677801
+    },
+    {
+      "captain": false,
+      "displayName": "Dax Imura",
+      "person": "p_4314cfdff962",
+      "seed": 3137127053
+    },
+    {
+      "captain": false,
+      "displayName": "Cleo Varga",
+      "person": "p_44feab12c792",
+      "seed": 3990394516
+    },
+    {
+      "captain": false,
+      "displayName": "Ada Quill",
+      "person": "p_87cea0f2291a",
+      "seed": 2222483224
+    }
+  ],
+  "needsRescan": false,
+  "schemaVersion": "crew.1",
+  "total": 6
+}

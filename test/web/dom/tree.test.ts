@@ -436,14 +436,15 @@ async function live(reduced: boolean) {
     reducedMotion: reduced, fogChange: { cleared: 0, refogged: 0 }, fogTicket: () => 1,
     applyFog(f: FogView | null) { view.fog = f; view.onFog?.(f); return true; },
     async load(layout: LayoutV1, fog: FogView | null) { model = systemModel(layout); view.applyFog(fog); },
-    selectedDrone: null, setDrones: async () => true, setBeacons: () => true, pickDroneAt: () => null, pickAt: () => null, resize: () => {},
+    selectedDrone: null, setDrones: async () => true, selectedPerson: null, selectedName: '', setCrew: async () => true, pickCrewAt: () => null, crewSpec: null, crewSeat: () => null, setBeacons: () => true, pickDroneAt: () => null, pickAt: () => null, resize: () => {},
     setCoChange: () => true, coChangeLines: () => [], arrowAt: () => null, focusFile: null, focusSince: 0, // #211, as orbits.test.ts
     draw: (frame: number, pose: OrbitPose, focus: number | null) => { drawn.push({ frame, pose: structuredClone(pose), focus }); return {}; },
     focusTarget: (i: number, frame: number) => (model ? { centre: planetCentre(model.planets[i]!, frame), radius: model.planets[i]!.radius } : null),
   };
   const client: DataClient = {
     layout: async () => miniLayout, fog: async () => miniFog, follow: () => () => {}, drones: async () => droneView(miniLayout.source.head, []),
-    droneDetail: async () => ({ ok: false, error: 'no-such-session' }), unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
+    droneDetail: async () => ({ ok: false, error: 'no-such-session' }),
+    crew: async () => { throw new Error('no crew here'); }, crewDetail: async () => ({ ok: false, error: 'no-such-person' }), unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }), chart: async () => ({ ok: false, error: 'not used' }),
     beacons: async () => ({ schemaVersion: 'beacons.1', head: miniLayout.source.head, beacons: [], unplaced: 0 }),
     beacon: async () => ({ ok: false, error: 'not used' }), files: async () => miniTree,

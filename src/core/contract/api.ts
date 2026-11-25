@@ -3,6 +3,7 @@
 import type { DirId, FileId, Sha } from '../snapshot/types.js';
 import type { BeaconView } from './beacons.js';
 import type { CoChangeView } from './cochange.js';
+import type { CrewView } from './crew.js';
 import type { DroneView } from './drones.js';
 import type { ChartUnknownHead, FogReason, FogView } from './fog.js';
 import type { LayoutV1 } from './layout.js';
@@ -141,6 +142,11 @@ export interface RenderInput {
   fog?: FogView | null;
   /** The drone view to draw (#80); the view draws at most 16 of its placed sessions. Default: none. */
   drones?: DroneView | null;
+  /**
+   * The crew to draw aboard the ship (#207), of the same scan as the layout: the captain and at most 15
+   * teammates by person id, the rest counted in a "+N" label. Default: none, and no ship.
+   */
+  crew?: CrewView | null;
   /** The beacons to draw (#79), of the same scan as the layout. Default: none. */
   beacons?: BeaconView | null;
   /** The co-change view (#211), of the same scan as the layout: its missing-pair flags, and the lines of `focus`. Default: none. */
