@@ -2,27 +2,38 @@
 
 > **Exploration, 2026-11-25: four cartoon-rocket directions (A–D) for the crew's spaceship, waiting for the human's pick.** The ship carries an astronaut for each teammate from local git history, near your star and next to your own drones (#207, `docs/features/crew-spaceship.md` on `session/week1`, C2 and C3). The human asked for "3-4 variants based on the description of a cartoonish rocket". This is a throwaway mockup, not product code. The product renderer (C4) comes after the pick.
 
+**The repo owner rides as the captain** (human, 2026-11-25): seat 0 of every ship, in a gold captain's cap and a seat of their own. Crew order is by person id, never by activity.
+
 The crew aboard are the asset viewer's own astronauts (`makeAstronaut`, in library mode, BLK 36 exactly, with its loop-locked bob, sway and blink). The drones in the system shots are the drone lab's (`makeDrone`, brand looks). Both are imported read-only. The ship is one raymarched SDF hull (`ship.js`), lit like the crew: one key light, four quantised bands, self-shadowing and contact occlusion.
 
 ## Run
 
 ```sh
 npm ci        # or: cp -cR from a sibling lab with the same lockfile (three 0.187.0, playwright 1.64.1)
-npm test      # pure checks + browser checks (headless Chromium + SwiftShader, no socket, no network), about 1 min
+npm test      # pure checks + browser checks (headless Chromium + SwiftShader, no socket, no network), about 1-2 min
 npm run lab   # regenerates out/ (about 2 min; needs ffmpeg) and copies it to the evidence folder when that exists
 npm run dev   # live page at http://127.0.0.1:5195/ship-lab/ (loopback only; PORT=... to change)
 ```
 
-`node lab.mjs contact crew teal gifs distinct` renders only the named outputs. Add `evidence` to copy `out/` to `<main-checkout>/.archive/docs/hackathon/evidence/ship-lab/`. No names renders everything and copies.
+`node lab.mjs contact crew captain teal gifs distinct` renders only the named outputs. Add `evidence` to copy `out/` to `<main-checkout>/.archive/docs/hackathon/evidence/ship-lab/`. No names renders everything and copies.
 
 ## The directions
 
 | | Direction | Silhouette | Crew seen as | Colours (BLK 36) |
 |---|---|---|---|---|
 | A | **Finned classic** | tall bullet, ogive nose, three swept fins, bell nozzle | a helmet behind a porthole of their own, two staggered columns | white body, red nose, fins and bands |
-| B | **Chubby capsule** | fat gumdrop on three stubby legs, bumper ring, antenna with a blinking ball | upper bodies behind one wraparound "bus windscreen", a front row of 4 and a raised back row of 4 | orange body, white trim |
-| C | **Bubble top** | short finned rocket under a big glass dome | full figures standing inside the dome, a front row on the floor and a back row on a bench | mauve body, white fins and collar, dark glass like the crew's visors |
+| B | **Chubby capsule** | fat gumdrop on three stubby legs, bumper ring, antenna with a blinking ball | upper bodies behind one wraparound "bus windscreen", in raised rows | orange body, white trim |
+| C | **Bubble top** | short finned rocket under a big glass dome | full figures standing inside the dome, a row on the floor and a back row on a riser | mauve body, white fins and collar, dark glass like the crew's visors |
 | D | **Ringed retro** | onion body, needle nose with a ball, three thin legs, a wide flat ring like a planet's | full figures standing on the open ring, spread round the front, with chasing marquee lights on the rim | navy body, white nose, orange ring |
+
+| | Captain's seat |
+|---|---|
+| A | the big gold-framed porthole under the nose, above every teammate's |
+| B | alone at the front of the window, middle; the rows of four and three are raised behind |
+| C | front and centre on a gold pedestal; four stand behind, three on a riser at the back |
+| D | at the front of the ring on a white podium; the teammates alternate either side |
+
+**The captain's cap** (`ship-spec.js` `CAP`, the same in every ship) is a flared gold crown (`#872a38` → `#ffe091`) over a navy hat band, with a navy peak over the visor. It's sized up from life so it reads at 320×180: 25–96 px at the close-up, and still 6–17 px at system distance. It's its own small SDF, attached inside the captain's body group, so it bobs and sways with the figure. The viewer's astronaut is unchanged.
 
 Shared by all four:
 - **Metal:** the crew's gear greys (`#293268` → `#909edd`) for nozzles, legs and window frames.
@@ -35,16 +46,16 @@ So every ship reads as the crew's kit.
 
 Each direction is a builder (`ship-spec.js` `BUILDERS`): a crew count in, a ship spec out (hull parts, paint bands, windows, domes, lights, flames, seats).
 
-**The proposed overflow rule:**
+**The proposed overflow rule:** 8 seats per deck, the captain's included.
 - **1–8:** the crew rides on one deck.
 - **9–16:** the crew rides on two. The ship grows a second deck:
   - A stretches by eight more portholes;
   - B gets a taller body with a second window band;
   - C stacks a second dome;
   - D adds a second, smaller ring higher up, so the lower deck stays in view from above.
-- **Past 16:** the 16 most recently active ride, and a `+N` label counts the rest. The label is in the bitmap font, outside the pixel pass; the crew sheet stands in for it with a badge.
+- **Past 16:** the captain and the first 15 teammates by person id ride (never by activity), and a `+N` label counts the rest. The label is in the bitmap font, outside the pixel pass; the crew sheet stands in for it with a badge.
 
-The cap keeps the draw cost at one hull plus 16 astronauts.
+The limit keeps the draw cost at one hull, 16 astronauts and the cap.
 
 ## Scale
 
@@ -76,6 +87,7 @@ Nothing reads a clock or `Math.random`. Flicker and blinks hash the step within 
 | File | Shows |
 |---|---|
 | `ship-lab-contact.png` | A–D, a crew of 3: close-up front and 3/4, crew close-up, near (with drones and the star behind), system (beside the star with drones), ×2 |
+| `ship-lab-captain.png` | The captain in A–D: a captain close-up, then 8 aboard at the close-up, near and system distances |
 | `ship-lab-crew.png` | A–D with 1, 3, 8, 12 (two decks) and 20 (two decks + "+4") aboard, close-up front, ×2 |
 | `ship-lab-teal.png` | The option only: thrust in [OIII] teal, for if the burn ever marks an event. No direction needs teal at rest, so it's not a default |
 | `ship-<id>-loop.gif` | One 12 s cycle at the close-up, a crew of 3, 15 fps, ×2, no dither |
@@ -101,6 +113,8 @@ Nothing reads a clock or `Math.random`. Flicker and blinks hash the step within 
 
 - Two-deck ships are taller, so their crew is gated at the near distance only.
 - Turned views and the system distance are reported, not gated. A window side turned away hides its crew, as it should.
+
+**The captain's cap:** what it adds (from a render without it) must clear 6 px with a 2×2 block at the close-up, 40 px with 4×4 in the captain close-up, and 8 px with 2×2 at the near distance. Seat 0 is the only captain, and in every ship it's the prime seat (pure test).
 
 **Other checks:**
 - **Thin parts:** every part, window frame and light is at least 2 px across at the near distance (pure test).

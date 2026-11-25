@@ -7,8 +7,8 @@ import { readFile, readdir } from 'node:fs/promises';
 import { mapPalette } from '../../asset-viewer/palette-map.js';
 import { LOSPEC } from '../../asset-viewer/palettes.js';
 import { VARIANTS, specOf } from '../variants.js';
-import { RAMPS, TEAL, BLK36, paletteHexes, tealThrust } from '../palette.js';
-import { BUILDERS, SHIP_SCALE, CYCLE, CYCLES, SEATS_PER_DECK, MAX_DECKS, HELMET_Y, crewPlan, idleAt, flameAt, lightOn, hash01 } from '../ship-spec.js';
+import { RAMPS, TEAL, BLK36, CAP_PALETTE, paletteHexes, tealThrust } from '../palette.js';
+import { BUILDERS, CAP, SHIP_SCALE, CYCLE, CYCLES, SEATS_PER_DECK, MAX_DECKS, HELMET_Y, crewPlan, idleAt, flameAt, lightOn, hash01 } from '../ship-spec.js';
 import { shipGlsl, SLOTS, MAX_LIGHTS } from '../ship-glsl.js';
 import { tileProblems, seamProblems } from '../checks.mjs';
 import { resolveFile } from '../routes.mjs';
@@ -63,6 +63,36 @@ test('overflow rule: 8 seats a deck, at most 2 decks, then +N', () => {
     assert.notEqual(shipGlsl(specOf(v.id, 8)), shipGlsl(specOf(v.id, 9)), `${v.id}: no second deck`);
     assert.equal(shipGlsl(specOf(v.id, 16)), shipGlsl(specOf(v.id, 24)), `${v.id}: past 16 the ship stays the same`);
   }
+});
+
+test('the captain (the repo owner) is seat 0 of every ship, alone, in a seat of their own', () => {
+  for (const v of VARIANTS) {
+    assert.ok(v.captain && v.captain.length > 10, `${v.id}: no captain description`);
+    for (let n = 1; n <= 24; n++) {
+      const crew = specOf(v.id, n).crew;
+      assert.equal(crew[0].captain, true, `${v.id} n=${n}: seat 0 isn't the captain`);
+      assert.equal(crew.filter((c) => c.captain).length, 1, `${v.id} n=${n}: one captain`);
+    }
+    const s = specOf(v.id, 8), cap = s.crew[0], helmet = (c) => [c.p[0], c.p[1] + HELMET_Y, c.p[2]];
+    if (v.id === 'A') {
+      // the biggest porthole, gold-framed, above every teammate's
+      const [w0, ...rest] = s.windows;
+      assert.ok(rest.every((w) => w0.w > w.w && w0.y > w.y) && w0.frameSlot === 'gold', 'A: the captain\'s porthole');
+    } else {
+      // front and centre: on the ship's axis and nearer the front than any teammate
+      assert.ok(Math.abs(cap.p[0]) < 1e-9, `${v.id}: the captain is off centre`);
+      assert.ok(s.crew.slice(1).every((c) => helmet(c)[2] < helmet(cap)[2]), `${v.id}: a teammate stands in front of the captain`);
+    }
+  }
+});
+
+test('the captain\'s cap: BLK 36, a gold crown over a navy band and peak', () => {
+  for (const h of paletteHexes(CAP_PALETTE)) assert.ok(BLK36.includes(h), h);
+  assert.deepEqual(CAP_PALETTE.gold, RAMPS.gold);
+  assert.deepEqual(CAP.parts.map((p) => [p.id, p.slot]), [['crown', 'gold'], ['peak', 'shell']]);
+  assert.deepEqual(CAP.bands.map((b) => b.slot), ['shell']);
+  assert.ok(CAP.parts.every((p) => SLOTS.includes(p.slot)));
+  assert.ok(shipGlsl(CAP).includes('float hull(vec3 p)'), 'the cap compiles to a distance field');
 });
 
 test('seats: helmets never stack on one another', () => {
@@ -138,7 +168,7 @@ test('the idle motion is locked to the crew\'s 12 s cycle: whole cycles, the sam
   assert.ok(Math.abs(idleAt(1.5).bob) > 0.05, 'the ship bobs');
 });
 
-const EMPTY = { cell: { v: 'A', n: 3, framing: 'close', view: 'front' }, plan: crewPlan(3), drawn: 0, px: 0, shipPx: 0, crewPx: 0, flamePx: 0, tealPx: 0, clipped: 0, pieces: 0, shipPieces: 0, hullPieces: 0, strays: [], shipStray: 0, crew: [] };
+const EMPTY = { cell: { v: 'A', n: 3, framing: 'close', view: 'front' }, plan: crewPlan(3), drawn: 0, px: 0, shipPx: 0, crewPx: 0, flamePx: 0, tealPx: 0, clipped: 0, pieces: 0, shipPieces: 0, hullPieces: 0, strays: [], shipStray: 0, crew: [], cap: { px: 0, block: 0 } };
 test('the tile checks fail on empty output', () => {
   const p = tileProblems(EMPTY, 'empty');
   assert.ok(p.some((x) => x.includes('empty')), p.join('\n'));
@@ -149,6 +179,7 @@ test('the tile checks fail on empty output', () => {
   // a hidden astronaut fails where crew is gated, and teal at rest fails
   const hidden = { ...EMPTY, shipPx: 900, pieces: 1, hullPieces: 1, flamePx: 20, drawn: 3, crew: [{ px: 300, block: 9 }, { px: 0, block: 0 }, { px: 250, block: 8 }] };
   assert.ok(tileProblems(hidden, 'hidden').some((x) => x.includes('astronaut 2 shows 0 px')));
+  assert.ok(tileProblems(hidden, 'no cap').some((x) => x.includes("captain's cap shows 0 px")), 'a missing captain\'s cap fails');
   assert.ok(tileProblems({ ...hidden, crew: hidden.crew.map(() => ({ px: 300, block: 9 })), tealPx: 3 }, 'teal').some((x) => x.includes('teal')));
 });
 

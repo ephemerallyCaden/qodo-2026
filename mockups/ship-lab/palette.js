@@ -17,6 +17,7 @@ export const RAMPS = {
   orange: ['#872a38', '#cc5250', '#ff965f', '#ffe091'],
   mauve: ['#3f233c', '#8c4b63', '#c16a7d', '#e5959f'],
   navy: ['#12173d', '#293268', '#354ab2', '#4185d8'],
+  gold: ['#872a38', '#cc5250', '#ff965f', '#ffe091'], // the captain's: cap crown, porthole frame, pedestal
   metal: [...blk.gear], // #293268 #464b8c #6b74b2 #909edd: the crew's mitts, boots and pack
   glass: [...blk.visor, '#36277f'], // interior and glass back: the visor's two near-blacks, then a lit sheen
   glint: [blk.glint, '#a5e6ff'], // glass highlight: white core, pale blue edge
@@ -26,8 +27,11 @@ export const RAMPS = {
 
 /** A ship palette: which ramp fills each slot the shader reads. */
 export const slotPalette = (shell, trim, extra = {}) => ({
-  shell: RAMPS[shell], trim: RAMPS[trim], metal: RAMPS.metal, glass: RAMPS.glass, glint: RAMPS.glint, flame: RAMPS.flame, lights: RAMPS.lights, ...extra,
+  shell: RAMPS[shell], trim: RAMPS[trim], metal: RAMPS.metal, gold: RAMPS.gold, glass: RAMPS.glass, glint: RAMPS.glint, flame: RAMPS.flame, lights: RAMPS.lights, ...extra,
 });
+
+/** The captain's cap: a gold crown over a navy band and peak (ship-spec.js CAP). */
+export const CAP_PALETTE = slotPalette('navy', 'navy');
 
 /** The same palette with the thrust in [OIII] teal: the option tile only (an event, never at rest). */
 export const tealThrust = (pal) => ({ ...pal, flame: [...TEAL] });

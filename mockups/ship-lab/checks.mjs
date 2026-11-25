@@ -10,6 +10,13 @@ export const CREW_MIN = {
   near: { px: 12, block: 2 },
   system: null, // beside the star at 18.8: reported, not gated (the ship must read there; its crew shows from the near distance in)
 };
+// What the captain's cap must add (the captain reads differently from the teammates), per framing.
+export const CAP_MIN = {
+  close: { px: 6, block: 2 },
+  crew: { px: 40, block: 4 },
+  near: { px: 8, block: 2 },
+  system: null, // reported
+};
 
 /**
  * Problems with one tile. opts.teal: the teal option tile (teal allowed). opts.crewGate: gate each
@@ -31,6 +38,8 @@ export function tileProblems(s, where, { teal = false, crewGate = s.cell.view ==
   const want = Math.min(c.n, 16);
   if (s.drawn !== want) out.push(`${where}: ${s.drawn} astronauts drawn, wanted ${want}`);
   const min = CREW_MIN[c.framing];
+  const capMin = CAP_MIN[c.framing];
+  if (capMin && crewGate && (s.cap.px < capMin.px || s.cap.block < capMin.block)) out.push(`${where}: the captain's cap shows ${s.cap.px} px (largest block ${s.cap.block}), wanted at least ${capMin.px} px and a ${capMin.block}x${capMin.block} block`);
   if (min && crewGate) s.crew.forEach((k, i) => {
     if (k.px < min.px || k.block < min.block) out.push(`${where}: astronaut ${i + 1} shows ${k.px} px (largest block ${k.block}), wanted at least ${min.px} px and a ${min.block}x${min.block} block`);
   });

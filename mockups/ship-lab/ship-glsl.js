@@ -3,7 +3,8 @@
 // (paint slot, see-through window, window frame, nav light). ship.js wraps it in the raymarching
 // shader. Pure: strings only, no three.js.
 
-export const SLOTS = ['shell', 'trim', 'metal', 'ring']; // the hull paint slots; 'ring' falls back to trim
+export const SLOTS = ['shell', 'trim', 'metal', 'ring', 'gold']; // the hull paint slots; 'ring' falls back to trim
+export const PAINT_WINDOW = 8, PAINT_LIGHT = 9; // paint() codes past the slots
 export const MAX_FLAMES = 2;
 export const MAX_LIGHTS = 32;
 
@@ -111,7 +112,7 @@ const HELPERS = /* glsl */ `
  * GLSL for a spec: constants BMIN/BMAX, uniforms uFlameL/uFlameW/uLightOn, and
  *   float hull(vec3 p), float flameField(vec3 p, out int j), float glassField(vec3 p, out int g),
  *   int partOf(vec3 p), int paint(vec3 p, int part, out int win, out int light)
- * paint: 0..3 a hull slot (SLOTS), 4 a see-through window (win = its index), 5 a lit or unlit nav light.
+ * paint: a hull slot (SLOTS index), PAINT_WINDOW a see-through window (win = its index), PAINT_LIGHT a nav light.
  */
 export function shipGlsl(spec) {
   const { lo, hi } = shipBounds(spec);
@@ -124,6 +125,7 @@ export function shipGlsl(spec) {
   P.slice(1).forEach((q, i) => { partBody += `    e = ${partExpr(q)}; if (e < best) { best = e; part = ${i + 1}; }\n`; });
   const slotOf = P.map((q) => SLOTS.indexOf(q.slot));
   if (slotOf.some((s) => s < 0)) throw new Error('a part has an unknown slot');
+  if (spec.windows.some((w) => w.frameSlot && !SLOTS.includes(w.frameSlot))) throw new Error('a window frame has an unknown slot');
   const W = spec.windows, B = spec.bands, L = spec.lights, G = spec.glass, F = spec.flames;
   if (F.length > MAX_FLAMES) throw new Error('too many flames');
   if (L.length > MAX_LIGHTS) throw new Error('too many lights');
@@ -150,6 +152,8 @@ export function shipGlsl(spec) {
     for (int j = 0; j < ${F.length}; j++) { float e = sdRoundCone(p, FLAME_A[j], flameTip(j), FLAME_R[j], 0.035); if (e < best) { best = e; jj = j; } }
     return best;
   }` : `
+  const vec3 FLAME_A[1] = vec3[1](vec3(0.0)); // no flame (the captain's cap): stand-ins for the shader's flame branch
+  const float FLAME_R[1] = float[1](0.0);
   vec3 flameTip(int j) { return vec3(0.0); }
   float flameField(vec3 p, out int jj) { jj = -1; return 1e9; }`}
   ${G.length ? `
@@ -164,7 +168,7 @@ export function shipGlsl(spec) {
   const int SLOT_OF[${P.length}] = ${arr('int', slotOf.map(String))};
   ${W.length ? `
   const vec4 WIN_A[${W.length}] = ${arr('vec4', W.map((w) => v4([w.yaw, w.y, w.w, w.h])))}; // yaw, centre y, half-width (arc), half-height
-  const vec2 WIN_B[${W.length}] = ${arr('vec2', W.map((w) => v2([w.n, w.frame])))}; // superellipse power, frame width
+  const vec3 WIN_B[${W.length}] = ${arr('vec3', W.map((w) => v3([w.n, w.frame, SLOTS.indexOf(w.frameSlot ?? 'metal')])))}; // superellipse power, frame width, frame slot
   const int WIN_HOST[${W.length}] = ${arr('int', W.map((w) => String(idx(w.host))))};` : ''}
   ${B.length ? `
   const vec3 BAND[${B.length}] = ${arr('vec3', B.map((b) => v3([b.part === '*' ? -1 : idx(b.part), b.y0, b.y1])))};
@@ -182,12 +186,12 @@ export function shipGlsl(spec) {
   int paint(vec3 p, int part, out int win, out int light) {
     win = -1; light = -1;
     ${L.length ? `for (int i = 0; i < ${L.length}; i++) {
-      if (LIGHT_BALL[i] == 1 ? distance(p, LIGHT[i].xyz) < LIGHT[i].w + 0.02 : distance(p, LIGHT[i].xyz) < LIGHT[i].w) { light = i; return 5; }
+      if (LIGHT_BALL[i] == 1 ? distance(p, LIGHT[i].xyz) < LIGHT[i].w + 0.02 : distance(p, LIGHT[i].xyz) < LIGHT[i].w) { light = i; return ${PAINT_LIGHT}; }
     }` : ''}
     ${W.length ? `for (int i = 0; i < ${W.length}; i++) {
       if (WIN_HOST[i] != part) continue;
-      if (winE(p, i, 0.0) < 1.0) { win = i; return 4; }
-      if (winE(p, i, WIN_B[i].y) < 1.0) return 2; // the frame: metal
+      if (winE(p, i, 0.0) < 1.0) { win = i; return ${PAINT_WINDOW}; }
+      if (winE(p, i, WIN_B[i].y) < 1.0) return int(WIN_B[i].z); // the frame
     }` : ''}
     ${B.length ? `for (int i = 0; i < ${B.length}; i++) if ((int(BAND[i].x) == part || BAND[i].x < 0.0) && p.y > BAND[i].y && p.y < BAND[i].z) return BAND_SLOT[i];` : ''}
     return SLOT_OF[part];

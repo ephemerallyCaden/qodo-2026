@@ -11,7 +11,7 @@ import { makeShip } from './ship.js';
 import { VARIANTS, VARIANT_BY_ID } from './variants.js';
 import { BUILDERS, SHIP_SCALE, CYCLE, crewPlan } from './ship-spec.js';
 import { shipBounds } from './ship-glsl.js';
-import { paletteHexes, tealThrust, CREW_HEXES, TEAL } from './palette.js';
+import { paletteHexes, tealThrust, CREW_HEXES, TEAL, CAP_PALETTE } from './palette.js';
 
 const FOV = 35;
 const TAN = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
@@ -92,9 +92,9 @@ function placeAll(c, ship, box) {
     const dist = Math.max(e.h / (CLOSE_FILL * 2 * TAN), e.w / (CLOSE_FILL * 2 * TAN * (c.w / c.h)));
     look(e.mid, dist, PITCH.close);
   } else if (c.framing === 'crew') {
-    // the viewer's crew close-up density, centred on the drawn crew's helmets
+    // the viewer's crew close-up density, centred on the drawn crew's helmets (focus 'captain': on seat 0's)
     ship.update(c.t, camera);
-    const seats = ship.crew.filter((a) => a.group.visible);
+    const seats = c.focus === 'captain' ? ship.crew.slice(0, 1) : ship.crew.filter((a) => a.group.visible);
     const mid = seats.reduce((m, a) => m.add(a.group.localToWorld(V(0, 0.709, 0))), V()).multiplyScalar(1 / Math.max(1, seats.length));
     look(seats.length ? mid : e.mid, DIST.crew, PITCH.crew);
   } else {
@@ -110,7 +110,8 @@ function placeAll(c, ship, box) {
 }
 
 /** What each render mode hides: 'final' shows the cell; 'check' only the ship and its crew; 'bare'
- *  the ship alone; 'noflame' the bare ship without its flame; 'hide' the check with one astronaut gone. */
+ *  the ship alone; 'noflame' the bare ship without its flame; 'hide' the check with one astronaut gone;
+ *  'nocap' the check with the captain's cap off. */
 function layers(mode, hideIndex = -1) {
   const { c, ship } = current;
   const only = mode !== 'final';
@@ -121,6 +122,7 @@ function layers(mode, hideIndex = -1) {
   const seats = ship.spec.crew.length;
   ship.crew.forEach((a, i) => (a.group.visible = i < seats && mode !== 'bare' && mode !== 'noflame' && i !== hideIndex));
   ship.setFlame(mode !== 'noflame');
+  ship.setCap(mode !== 'nocap');
 }
 
 /** Poses the configured scene at time t (s). */
@@ -221,14 +223,14 @@ function biggestBlock(set, w) {
  */
 function tileStats(raw, { perCrew = true } = {}) {
   const { c, ship } = configure(raw);
-  const check = shot(c, 'check'), bare = shot(c, 'bare'), noflame = shot(c, 'noflame');
+  const check = shot(c, 'check'), bare = shot(c, 'bare'), noflame = shot(c, 'noflame'), nocap = shot(c, 'nocap');
   const n = c.w * c.h;
   const space = hexToInt(resolve('space'));
   const pal = c.teal ? tealThrust(VARIANT_BY_ID[c.v].palette) : VARIANT_BY_ID[c.v].palette;
   const shipOk = new Set(paletteHexes(pal).map(hexToInt));
-  const crewOk = new Set(CREW_HEXES.map(hexToInt));
+  const crewOk = new Set([...CREW_HEXES, ...paletteHexes(CAP_PALETTE)].map(hexToInt)); // the crew's roles and the captain's cap
   const teal = new Set(TEAL.map(hexToInt));
-  const all = new Set(), shipSet = new Set(), hullSet = new Set();
+  const all = new Set(), shipSet = new Set(), hullSet = new Set(), capSet = new Set();
   const hist = new Map(), strays = new Map();
   let crewPx = 0, flamePx = 0, tealPx = 0, clipped = 0, shipStray = 0;
   for (let i = 0; i < n; i++) {
@@ -247,6 +249,7 @@ function tileStats(raw, { perCrew = true } = {}) {
     }
     if (q !== space) hullSet.add(i);
     if (a !== b) crewPx++;
+    if (a !== rgbAt(nocap, i)) capSet.add(i);
     if (b !== q) flamePx++;
   }
   const crew = [];
@@ -267,6 +270,7 @@ function tileStats(raw, { perCrew = true } = {}) {
     colours: [...hist.entries()].sort((p, q) => q[1] - p[1]).map(([k, v]) => [intToHex(k), v]),
     strays: [...strays.entries()].map(([k, v]) => [intToHex(k), v]), shipStray,
     crew,
+    cap: { px: capSet.size, block: biggestBlock(capSet, c.w), box: bboxOf([...capSet], c.w) }, // what the captain's cap adds
   };
 }
 
@@ -367,7 +371,7 @@ function tile(cell, { stats = true, mode = 'final', t = null } = {}) {
 
 const viewerCycle = () => VIEWER_LOOP.period / VIEWER_LOOP.surfaceTurns;
 
-window.lab = { ready: true, cycle: CYCLE, viewerCycle: viewerCycle(), starSize: STAR_DEFAULTS.size, variants: VARIANTS.map(({ id, name, pitch, crewSeen }) => ({ id, name, pitch, crewSeen })), tile, sheet, loop, tileStats: (c) => tileStats(c) };
+window.lab = { ready: true, cycle: CYCLE, viewerCycle: viewerCycle(), starSize: STAR_DEFAULTS.size, variants: VARIANTS.map(({ id, name, pitch, crewSeen, captain }) => ({ id, name, pitch, crewSeen, captain })), tile, sheet, loop, tileStats: (c) => tileStats(c) };
 
 // ---------------------------------------------------------------- live page
 if (!document.documentElement.classList.contains('capture')) {

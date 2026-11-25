@@ -1,10 +1,10 @@
 // Regenerates every lab output in out/ with headless Chromium (SwiftShader). The page is served
 // through Playwright request interception, so no socket is opened and nothing touches the network.
-// Usage: node lab.mjs [contact] [crew] [teal] [gifs] [distinct] [report] [evidence]
+// Usage: node lab.mjs [contact] [crew] [captain] [teal] [gifs] [distinct] [evidence]
 //   (no names = all, then a copy to the evidence folder when it exists)
 // Every tile is checked (checks.mjs tileProblems): BLK 36 only (plus the crew's own BLK 36 roles),
 // no teal at rest, one connected ship with its crew aboard, a flame, not empty, not clipped, and every
-// astronaut visible where it's gated. Each GIF's frame one cycle later must be pixel-identical to
+// astronaut and the captain's cap visible where they're gated. Each GIF's frame one cycle later must be pixel-identical to
 // frame 0. Every pair of directions must stay apart in silhouette or colour at every distance. Any
 // failure exits non-zero.
 import { mkdir, readFile, writeFile, rm, cp, mkdtemp, readdir, stat } from 'node:fs/promises';
@@ -13,9 +13,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, openLab, pngFrom } from './harness.mjs';
-import { tileProblems, seamProblems, decode, CREW_MIN } from './checks.mjs';
+import { tileProblems, seamProblems, decode, CREW_MIN, CAP_MIN } from './checks.mjs';
 import { VARIANTS } from './variants.js';
-import { paletteHexes, BLK36 } from './palette.js';
+import { paletteHexes, BLK36, CAP_PALETTE } from './palette.js';
 import { SHIP_SCALE, CYCLE, CYCLES, SEATS_PER_DECK, MAX_DECKS } from './ship-spec.js';
 import { partBounds } from './ship-glsl.js';
 import { specOf } from './variants.js';
@@ -82,9 +82,20 @@ async function crew(page) {
     cols: COUNTS.map((n) => (n <= SEATS_PER_DECK ? `${n} aboard` : n <= SEATS_PER_DECK * MAX_DECKS ? `${n}: two decks` : `${n}: two decks + "+${n - SEATS_PER_DECK * MAX_DECKS}"`)), padL: 260, scale: 2,
     rows: VARIANTS.map((v) => ({ label: v.id, sub: sub(v), cells: COUNTS.map((n) => ({ v: v.id, n, framing: 'close', view: 'front' })) })),
     statsFor: [{ framing: 'near' }],
-    note: 'Overflow rule: 8 seats per deck, at most 2 decks (16 drawn, the most recently active); the rest is a "+N" label outside the pixel pass. The +N badge here stands in for it.',
+    note: 'Overflow rule: 8 seats per deck, at most 2 decks: the captain and the first 15 teammates by person id ride (never by activity); the rest is a "+N" label outside the pixel pass. The +N badge stands in for it.',
   });
   report.crew = stats.map((s) => ({ ...check(s), near: check(s.more[0]) }));
+}
+
+async function captain(page) {
+  const cols = [['crew', 'front', 3, 'captain'], ['close', 'front', 8], ['near', 'front', 8], ['system', '3/4', 8]];
+  const stats = await sheet(page, 'ship-lab-captain.png', {
+    title: 'The captain (the repo owner, seat 0): the gold captain\'s cap in every ship, plus a seat of their own',
+    cols: ['captain close-up · front', 'close-up · 8 aboard', 'near · 8 aboard', 'system · 8 aboard · 3/4'], padL: 260, scale: 2,
+    rows: VARIANTS.map((v) => ({ label: v.id, sub: [v.name, ...wrapText(`Captain: ${v.captain}.`, 30)], cells: cols.map(([framing, view, n, focus]) => ({ v: v.id, n, framing, view, focus })) })),
+    note: 'Crew order is by person id, never by activity: the owner is seat 0, the teammates fill the seats after in person-id order.',
+  });
+  report.captain = stats.map((s) => ({ ...check(s), cap: { px: s.cap.px, block: s.cap.block } }));
 }
 
 async function teal(page) {
@@ -188,7 +199,16 @@ const md = (r) => {
     '',
     '## Directions',
     '',
-    t([['', 'Direction', 'Crew seen as', 'Pitch'], ['---', '---', '---', '---'], ...VARIANTS.map((v) => [v.id, v.name, v.crewSeen, v.pitch])]),
+    t([['', 'Direction', 'Crew seen as', 'Captain', 'Pitch'], ['---', '---', '---', '---', '---'], ...VARIANTS.map((v) => [v.id, v.name, v.crewSeen, v.captain, v.pitch])]),
+    '',
+    '## The captain',
+    '',
+    'The repo owner rides as the captain, in seat 0 of every ship. They wear a gold captain\'s cap (a flared gold crown over a navy hat band, a navy peak over the visor; BLK 36 ' + [...CAP_PALETTE.gold, ...CAP_PALETTE.shell].map((h) => `\`${h}\``).join(' ') + '), the same in every ship, and sit in a seat of their own. Crew order is by person id, never by activity.',
+    '',
+    'What the cap adds, in px (and its largest solid block), with 8 aboard (3 in the captain close-up):',
+    '',
+    t([['', 'captain close-up', 'close-up front', 'near front', 'system 3/4'], ['---', '---', '---', '---', '---'],
+      ...IDS.map((id) => [id, ...['crew', 'close', 'near', 'system'].map((f) => { const s = r.captain?.find((x) => x.cell.v === id && x.cell.framing === f); return s ? `${s.cap.px} px (${s.cap.block}x${s.cap.block})` : '-'; })])]),
     '',
     '## Sizes (a crew of 3)',
     '',
@@ -211,7 +231,7 @@ const md = (r) => {
     t([['', ...COUNTS.map(String)], ['---', ...COUNTS.map(() => '---')],
       ...IDS.map((id) => [id, ...COUNTS.map((n) => { const s = r.crew?.find((x) => x.cell.v === id && x.cell.n === n); return s ? `${s.decks} deck${s.decks > 1 ? 's' : ''}, ${s.drawn} drawn${s.extra ? `, +${s.extra}` : ''}; min ${s.crewMin} px (${s.near.crewMin} px)` : '-'; })])]),
     '',
-    `Overflow rule (proposed): 8 seats per deck. 1-8 ride on one deck; 9-16 on two (the ship grows a second deck: A stretches with 8 more portholes, B a second window band, C a second dome, D a second, smaller ring); past 16, the 16 most recently active ride and a "+N" label (bitmap font, outside the pixel pass) counts the rest. The cap keeps the draw cost at 1 hull + 16 astronauts.`,
+    `Overflow rule (proposed): 8 seats per deck, the captain's included. 1-8 ride on one deck; 9-16 on two (the ship grows a second deck: A stretches with 8 more portholes, B a second window band, C a second dome, D a second, smaller ring); past 16, the captain and the first 15 teammates by person id ride (never by activity) and a "+N" label (bitmap font, outside the pixel pass) counts the rest. That keeps the draw cost at 1 hull + 16 astronauts + the cap.`,
     '',
     '## Motion (art direction §7)',
     '',
@@ -227,9 +247,9 @@ const md = (r) => {
     '',
     '## Checks',
     '',
-    'Every tile: only the ship\'s BLK 36 palette and the crew\'s BLK 36 roles on screen; no teal outside the option tiles; the hull is one connected piece and the crew is attached to it (aboard); a flame; not empty; not clipped (except the crew close-up, which crops to the crew); the right number drawn. Crew visibility per astronaut (each one\'s own pixels, from a render without it) is gated in the front view: ' + Object.entries(CREW_MIN).map(([k, m]) => `${k} ${m ? `>= ${m.px} px with a ${m.block}x${m.block} block` : 'reported only'}`).join(', ') + '. Two-deck ships are gated at the near distance (they are taller, so the whole-ship close-up shrinks their crew). Turned (3/4) views are reported, not gated: a window side turned away hides its crew, as it should.',
+    'Every tile: only the ship\'s BLK 36 palette, the crew\'s BLK 36 roles and the captain\'s cap on screen; no teal outside the option tiles; the hull is one connected piece and the crew is attached to it (aboard); a flame; not empty; not clipped (except the crew close-up, which crops to the crew); the right number drawn. Crew visibility per astronaut (each one\'s own pixels, from a render without it) is gated in the front view: ' + Object.entries(CREW_MIN).map(([k, m]) => `${k} ${m ? `>= ${m.px} px with a ${m.block}x${m.block} block` : 'reported only'}`).join(', ') + '. The captain\'s cap (what it adds, from a render without it) is gated the same way: ' + Object.entries(CAP_MIN).map(([k, m]) => `${k} ${m ? `>= ${m.px} px with a ${m.block}x${m.block} block` : 'reported only'}`).join(', ') + '. Two-deck ships are gated at the near distance (they are taller, so the whole-ship close-up shrinks their crew). Turned (3/4) views are reported, not gated: a window side turned away hides its crew, as it should.',
     '',
-    r.problems?.length ? `**${r.problems.length} problems:**\n\n${r.problems.map((p) => `- ${p}`).join('\n')}` : `All checks passed: ${(r.contact?.length ?? 0) + (r.crew?.length ?? 0) * 2 + (r.teal?.length ?? 0)} tile checks, ${(r.gifs ?? []).length} loop seams, ${(r.distinct?.scales ?? []).length * 6} distinctness pairs.`,
+    r.problems?.length ? `**${r.problems.length} problems:**\n\n${r.problems.map((p) => `- ${p}`).join('\n')}` : `All checks passed: ${(r.contact?.length ?? 0) + (r.crew?.length ?? 0) * 2 + (r.captain?.length ?? 0) + (r.teal?.length ?? 0)} tile checks, ${(r.gifs ?? []).length} loop seams, ${(r.distinct?.scales ?? []).length * 6} distinctness pairs.`,
     '',
   ];
   return lines.join('\n');
@@ -244,6 +264,7 @@ try {
   if (viewerCycle !== CYCLE) problems.push(`the viewer's crew cycle is ${viewerCycle} s, the ship's ${CYCLE} s`);
   if (want('contact')) await contact(page);
   if (want('crew')) await crew(page);
+  if (want('captain')) await captain(page);
   if (want('teal')) await teal(page);
   if (want('gifs')) await gifs(page);
   if (want('distinct')) await distinct(page);
@@ -253,6 +274,7 @@ try {
 }
 // The palettes themselves: BLK 36 only (the teal option aside).
 for (const v of VARIANTS) for (const h of paletteHexes(v.palette)) if (!BLK36.includes(h)) problems.push(`${v.id}: palette colour ${h} is not BLK 36`);
+for (const h of paletteHexes(CAP_PALETTE)) if (!BLK36.includes(h)) problems.push(`the captain's cap: ${h} is not BLK 36`);
 report.problems = problems;
 report.meta = { ...report.meta, shipScale: SHIP_SCALE, cycle: CYCLE, cycles: CYCLES, labels: LABEL };
 await writeFile(path.join(OUT, 'report.json'), `${JSON.stringify(report, null, 1)}\n`);

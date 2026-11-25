@@ -7,8 +7,9 @@ import * as THREE from 'three';
 import { makeAstronaut } from '../asset-viewer/viewer.js';
 import { eyesFor } from '../asset-viewer/faces.js';
 import { LIGHT_DIR } from '../drone-lab/drone.js';
-import { shipGlsl, shipBounds, MAX_FLAMES, MAX_LIGHTS } from './ship-glsl.js';
-import { SHIP_SCALE, idleAt, flameAt, lightOn } from './ship-spec.js';
+import { shipGlsl, shipBounds, MAX_FLAMES, MAX_LIGHTS, PAINT_WINDOW, PAINT_LIGHT } from './ship-glsl.js';
+import { SHIP_SCALE, CAP, idleAt, flameAt, lightOn } from './ship-spec.js';
+import { CAP_PALETTE } from './palette.js';
 
 const VERT = /* glsl */ `
   out vec3 vPosW;
@@ -28,6 +29,7 @@ const frag = (spec) => /* glsl */ `
   uniform vec3 uTrim[4];
   uniform vec3 uMetal[4];
   uniform vec3 uRing[4];
+  uniform vec3 uGold[4];
   uniform vec3 uGlass[3];
   uniform vec3 uGlint[2];
   uniform vec3 uFlame[4];
@@ -69,6 +71,7 @@ const frag = (spec) => /* glsl */ `
     if (slot == 1) return uTrim[b];
     if (slot == 2) return uMetal[b];
     if (slot == 3) return uRing[b];
+    if (slot == 4) return uGold[b];
     return uShell[b];
   }
   // The hull at p, hit from direction rd: its colour, and the point whose depth it writes (a window
@@ -78,8 +81,8 @@ const frag = (spec) => /* glsl */ `
     vec3 n = calcNormal(p);
     int win, light;
     int r = paint(p, partOf(p), win, light);
-    if (r == 5) return uLights[uLightOn[light] > 0.5 ? 1 : 0]; // nav lights are unlit
-    if (r == 4) {
+    if (r == ${PAINT_LIGHT}) return uLights[uLightOn[light] > 0.5 ? 1 : 0]; // nav lights are unlit
+    if (r == ${PAINT_WINDOW}) {
       // the hit can stop just short of the surface (the march's epsilon grows with distance), so
       // first step in, then march the inside to the far wall
       vec3 q = p;
@@ -175,13 +178,57 @@ function proxyFor(spec) {
   return geometries.get(key);
 }
 
-// Sample crew: handles pick the eyes (as the viewer does), and the three contributor ramps cycle.
+/**
+ * One raymarched SDF object from a spec (a hull, or the captain's cap): its mesh, its palette, and
+ * sync(t, camera), which sets the per-frame uniforms from the mesh's current world matrix. Each has
+ * its own material; three.js compiles each distinct source once and shares the program.
+ */
+function sdfObject(spec, palette) {
+  const mesh = new THREE.Mesh(proxyFor(spec), new THREE.ShaderMaterial({
+    vertexShader: VERT, fragmentShader: frag(spec), side: THREE.BackSide,
+    uniforms: {
+      uInvModel: { value: new THREE.Matrix4() }, uModel: { value: new THREE.Matrix4() }, uProj: { value: null }, uLightLocal: { value: new THREE.Vector3() },
+      uShell: { value: [] }, uTrim: { value: [] }, uMetal: { value: [] }, uRing: { value: [] }, uGold: { value: [] }, uGlass: { value: [] }, uGlint: { value: [] }, uFlame: { value: [] }, uLights: { value: [] },
+      uFlameL: { value: new Array(MAX_FLAMES).fill(0) }, uFlameW: { value: Array.from({ length: MAX_FLAMES }, () => new THREE.Vector2()) },
+      uLightOn: { value: new Array(MAX_LIGHTS).fill(0) }, uFlameOn: { value: 1 },
+    },
+  }));
+  mesh.frustumCulled = false;
+  const U = mesh.material.uniforms;
+  const q = new THREE.Quaternion();
+  function setPalette(pal) {
+    for (const [u, k] of [['uShell', 'shell'], ['uTrim', 'trim'], ['uMetal', 'metal'], ['uRing', 'ring'], ['uGold', 'gold'], ['uGlass', 'glass'], ['uGlint', 'glint'], ['uFlame', 'flame'], ['uLights', 'lights']]) U[u].value = colors(pal[k] ?? pal.trim);
+  }
+  function sync(t, camera, flameOn = true) {
+    U.uModel.value.copy(mesh.matrixWorld);
+    U.uInvModel.value.copy(mesh.matrixWorld).invert();
+    U.uProj.value = camera.projectionMatrix;
+    mesh.matrixWorld.decompose(new THREE.Vector3(), q, new THREE.Vector3());
+    U.uLightLocal.value.copy(LIGHT_DIR).applyQuaternion(q.invert());
+    spec.flames.forEach((fl, j) => { const a = flameAt(t, j); U.uFlameL.value[j] = fl.len * a.len; U.uFlameW.value[j].set(a.dx, a.dz); });
+    spec.lights.forEach((l, i) => { U.uLightOn.value[i] = lightOn(l, i, t) ? 1 : 0; });
+    U.uFlameOn.value = flameOn ? 1 : 0;
+  }
+  setPalette(palette);
+  return { mesh, setPalette, sync, dispose: () => mesh.material.dispose() };
+}
+
+// Sample crew, in person-id order: seat 0 is the repo owner (the captain), then the teammates. The
+// handles pick the eyes (as the viewer does), and the three contributor ramps cycle.
 export const CREW_KEYS = ['coral', 'mint', 'lilac'];
-export const crewHandle = (i) => `@crew${i + 1}`;
+export const crewHandle = (i) => (i === 0 ? '@captain' : `@crew${i + 1}`);
+
+/** The astronaut's inner body group (root -> lift -> body: the one that bobs and sways), read-only. */
+function bodyOf(a) {
+  const body = a.group.children[0]?.children[0];
+  if (!body?.children.some((m) => m.material === a.material)) throw new Error('makeAstronaut changed shape: no body group holding its proxy');
+  return body;
+}
 
 /**
  * A ship of one direction: build(n) -> spec (ship-spec.js BUILDERS), its crew pool, and update(t).
  * root (placement, view yaw) -> idle (bob, roll, pitch) -> scaled (SHIP_SCALE) -> hull proxy + crew.
+ * Seat 0's astronaut, the captain, wears the cap (CAP), attached inside its body so it rides the bob.
  */
 export function makeShip(build, palette) {
   const root = new THREE.Group();
@@ -191,38 +238,26 @@ export function makeShip(build, palette) {
   root.add(idle);
   idle.add(scaled);
   const crew = [];
-  let mesh = null, spec = null, pal = palette, flameOn = true;
-  const q = new THREE.Quaternion();
+  let hull = null, spec = null, pal = palette, flameOn = true, capOn = true;
+  const cap = sdfObject(CAP, CAP_PALETTE);
+  cap.mesh.rotation.x = CAP.tilt;
 
-  // A material per hull: three.js compiles each distinct source once and shares the program.
-  const material = () => new THREE.ShaderMaterial({
-    vertexShader: VERT, fragmentShader: frag(spec), side: THREE.BackSide,
-    uniforms: {
-      uInvModel: { value: new THREE.Matrix4() }, uModel: { value: new THREE.Matrix4() }, uProj: { value: null }, uLightLocal: { value: new THREE.Vector3() },
-      uShell: { value: [] }, uTrim: { value: [] }, uMetal: { value: [] }, uRing: { value: [] }, uGlass: { value: [] }, uGlint: { value: [] }, uFlame: { value: [] }, uLights: { value: [] },
-      uFlameL: { value: new Array(MAX_FLAMES).fill(0) }, uFlameW: { value: Array.from({ length: MAX_FLAMES }, () => new THREE.Vector2()) },
-      uLightOn: { value: new Array(MAX_LIGHTS).fill(0) }, uFlameOn: { value: 1 },
-    },
-  });
-  /** Rebuilds the hull and seats for a crew of n. */
   function setPalette(p) {
     pal = p;
-    if (!mesh) return;
-    const U = mesh.material.uniforms;
-    for (const [u, k] of [['uShell', 'shell'], ['uTrim', 'trim'], ['uMetal', 'metal'], ['uRing', 'ring'], ['uGlass', 'glass'], ['uGlint', 'glint'], ['uFlame', 'flame'], ['uLights', 'lights']]) U[u].value = colors(pal[k] ?? pal.trim);
+    hull?.setPalette(pal);
   }
+  /** Rebuilds the hull and seats for a crew of n (seat 0: the captain). */
   function setCrew(n) {
     spec = build(n);
-    if (mesh) { scaled.remove(mesh); mesh.material.dispose(); }
-    mesh = new THREE.Mesh(proxyFor(spec), material());
-    mesh.frustumCulled = false;
-    scaled.add(mesh);
-    setPalette(pal);
+    if (hull) { scaled.remove(hull.mesh); hull.dispose(); }
+    hull = sdfObject(spec, pal);
+    scaled.add(hull.mesh);
     while (crew.length < spec.crew.length) {
       const i = crew.length;
       const a = makeAstronaut(CREW_KEYS[i % CREW_KEYS.length]);
       a.setFace(eyesFor(crewHandle(i)));
       a.group.userData.phase = i * 1.7; // staggered, as the viewer's crew: whole cycles either way
+      if (i === 0) bodyOf(a).add(cap.mesh);
       scaled.add(a.group);
       crew.push(a);
     }
@@ -239,20 +274,15 @@ export function makeShip(build, palette) {
     idle.position.y = m.bob * SHIP_SCALE;
     idle.rotation.set(m.pitch, 0, m.roll);
     root.updateMatrixWorld(true);
-    const U = mesh.material.uniforms;
-    U.uModel.value.copy(mesh.matrixWorld);
-    U.uInvModel.value.copy(mesh.matrixWorld).invert();
-    U.uProj.value = camera.projectionMatrix;
-    mesh.matrixWorld.decompose(new THREE.Vector3(), q, new THREE.Vector3());
-    U.uLightLocal.value.copy(LIGHT_DIR).applyQuaternion(q.invert());
-    spec.flames.forEach((fl, j) => { const a = flameAt(t, j); U.uFlameL.value[j] = fl.len * a.len; U.uFlameW.value[j].set(a.dx, a.dz); });
-    spec.lights.forEach((l, i) => { U.uLightOn.value[i] = lightOn(l, i, t) ? 1 : 0; });
-    U.uFlameOn.value = flameOn ? 1 : 0;
-    for (const a of crew) if (a.group.visible) a.update(t);
+    hull.sync(t, camera, flameOn);
+    for (const a of crew) if (a.group.visible) a.update(t); // updates each figure's matrices, the cap's too
+    cap.mesh.visible = capOn;
+    cap.sync(t, camera);
   }
   return {
     group: root, crew, setCrew, setPalette, update,
     setFlame(on) { flameOn = on; },
-    get spec() { return spec; }, get mesh() { return mesh; },
+    setCap(on) { capOn = on; },
+    get spec() { return spec; }, get mesh() { return hull.mesh; }, get cap() { return cap.mesh; },
   };
 }

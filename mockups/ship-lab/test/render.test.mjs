@@ -1,6 +1,6 @@
 // Browser checks (headless Chromium + SwiftShader, no socket, no network): every direction at the
 // close-up and near distance with 1, 3 and 8 aboard passes the tile checks (BLK 36 only, one connected
-// ship with its crew aboard and every astronaut visible, a flame, not empty, not clipped); the teal
+// ship with its crew aboard, every astronaut and the captain's cap visible, a flame, not empty, not clipped); the teal
 // option shows teal; renders are deterministic and loop-locked (one cycle later is the same frame);
 // the crew cycle is the viewer's; and the page asks for nothing off the allowlist. One browser for all.
 import { test, before, after } from 'node:test';
@@ -31,6 +31,16 @@ test('every direction, 1, 3 and 8 aboard, close-up and near: the tile checks pas
     assert.ok(s.shipPx > 500, `${v} ${framing} n=${n}: empty or tiny (${s.shipPx} px)`);
     assert.equal(s.crew.length, n);
     problems.push(...tileProblems(s, `${v} ${framing} n=${n}`));
+  }
+  assert.deepEqual(problems, []);
+});
+
+test('the captain reads apart: the cap shows on seat 0 in each ship\'s captain close-up', { timeout: 600000 }, async () => {
+  const problems = [];
+  for (const v of IDS) {
+    const s = await stats({ v, n: 3, framing: 'crew', view: 'front', focus: 'captain' });
+    assert.ok(s.cap.px >= 40, `${v}: the cap shows only ${s.cap.px} px`);
+    problems.push(...tileProblems(s, `${v} captain close-up`));
   }
   assert.deepEqual(problems, []);
 });
