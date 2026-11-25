@@ -1,5 +1,5 @@
 // The crew's ship (#207 C2): R2-4 "Round lander", the human's pick from the ship lab (feature/ship-lab,
-// mockups/ship-lab/ship-spec.js and ship-r2.js at 35eff13), as a builder: a crew count in, a ship spec out
+// mockups/ship-lab/ship-spec.js and ship-r2.js, R2-4c-final at 383cf22), as a builder: a crew count in, a ship spec out
 // (hull parts as signed-distance primitives, which ship-glsl.ts compiles to GLSL, paint bands, see-through
 // round windows, the beacon light, the thruster flame and the seats the astronauts ride in). Plus the idle
 // motion, as functions of time only. Pure: no three.js, no DOM, no clock, no random (AGENTS.md Rule 3).
@@ -9,9 +9,9 @@
 // SHIP_SCALE. y is up, the ship's front faces +z, and a yaw is atan(x, z) (0 = the front).
 //
 // The window layout (where the portholes sit, their size and rim colours, and the belly band) is its own part
-// of the spec, WINDOWS, so a revised layout swaps in without touching the hull. It holds R2-4c, the human's
-// pick (2026-11-25; ship lab R24C at 35eff13): every porthole alike, grey-rimmed, in three straight columns
-// under the captain's top porthole, on R2-4's red belly band.
+// of the spec, WINDOWS, so a revised layout swaps in without touching the hull. It holds R2-4c-final, the
+// human's pick (2026-11-25; ship lab R24C with R2-4's band, 383cf22): every porthole alike, grey-rimmed, in
+// three straight columns under the captain's top porthole, on R2-4's red belly band.
 
 export type Vec = readonly [number, number, number];
 /** The hull's paint slots, in the shader's order (ship-glsl.ts SLOTS). */
@@ -179,12 +179,12 @@ export interface WindowLayout {
 }
 
 /**
- * R2-4c (the human's pick, 2026-11-25; ship lab R24C at 35eff13): every porthole alike (radius 0.24, one grey
- * rim, the captain's too), the captain alone at the top on the axis, the teammates below in rows of three, in
- * person-id order left to right, each column a straight vertical line (`col`: the side columns' yaw, 31°). A
- * short last row stays on the columns, centred: 1 in the middle, 2 on the sides. A second deck adds three more
- * rows. The red belly band runs under the captain's porthole, as R2-4's did (its final numbers come from the
- * ship lab; R2-4's are here meanwhile).
+ * R2-4c-final (the human's pick, 2026-11-25; ship lab R24C with `band`, 383cf22): every porthole alike (radius
+ * 0.24, one grey rim, the captain's too), the captain alone at the top on the axis, the teammates below in rows
+ * of three, in person-id order left to right, each column a straight vertical line (`col`: the side columns'
+ * yaw, 31°). A short last row stays on the columns, centred: 1 in the middle, 2 on the sides. A second deck
+ * adds three more rows. R2-4's red belly band, exactly (the ship lab's final numbers): trim paint on the body
+ * from cy − 0.3 to top + 0.12, under the captain's porthole.
  */
 export const R24C = { rw: 0.24, tube: 0.05, pitch: 0.66, above: 0.42, low: 0.17, col: 0.54 } as const;
 /** The teammates' rows on `decks` decks: enough rows of three for every seat but the captain's. */
