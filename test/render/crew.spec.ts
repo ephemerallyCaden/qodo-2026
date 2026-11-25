@@ -1,4 +1,4 @@
-// The crew's ship on the real view (#207 C2–C4, C8; Qodo ae4b1e97): the R2-4b hull carries the crew fixture's six
+// The crew's ship on the real view (#207 C2–C4, C8; Qodo ae4b1e97): the R2-4c hull carries the crew fixture's six
 // (test/golden/crew.json, the JSON twin of test/fixtures/crew) at one draw call each, inside the frame budget; it
 // fails on a frame without the ship; every pixel it adds is BLK 36; each rider shows through their porthole (the
 // window's interior march steps inside the hull) and the captain wears the cap (the flameless cap shader
@@ -12,10 +12,10 @@ import type { CrewMember, CrewView } from '../../src/core/contract/crew.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { palette } from '../../src/core/palette.js';
 import { startPose, toCameraPose, type OrbitPose } from '../../web/src/camera/pose.js';
-import { placeShip } from '../../web/src/crew/place.js';
+import { placeShip, portholes } from '../../web/src/crew/place.js';
 import { FPS } from '../../web/src/model/motion.js';
 import { systemModel } from '../../web/src/model/system.js';
-import { CYCLE, MAX_ABOARD } from '../../web/src/render/ship-spec.js';
+import { buildShip, CYCLE, MAX_ABOARD } from '../../web/src/render/ship-spec.js';
 import { repoDrones } from '../fixtures/drones.js';
 import { selfLikeRoots } from '../fixtures/overview.js';
 import { assertRendered, diffPixels, hex, LOW_RES, rgbaAt, statsProblems, type Frame } from './frame.js';
@@ -43,7 +43,12 @@ function onShip(frame: number, lift: number, dist: number, pitch = 0.12): Return
   const pose: OrbitPose = { target: [at.centre[0], at.centre[1] + lift, at.centre[2]], yaw: at.yaw, pitch, dist };
   return toCameraPose(pose);
 }
-const WHOLE = (frame: number) => onShip(frame, 2.3, 11, 0.2);
+const WHOLE = (frame: number) => onShip(frame, 2.0, 9, 0.2);
+/** A camera `dist` level in front of the captain's porthole (seat 0) of a ship of `seats`, at frame 0: the cap's crown shows above the visor. */
+function onCaptain(seats: number, dist: number): ReturnType<typeof toCameraPose> {
+  const at = placeShip(model, 0), hole = portholes(buildShip(seats), at, 0)[0]!;
+  return toCameraPose({ target: hole.centre, yaw: at.yaw, pitch: 0, dist });
+}
 const count = (f: Frame, colours: readonly string[]) => {
   const set = new Set(colours);
   let n = 0;
@@ -74,12 +79,12 @@ test.describe('crew ship', () => {
     expect(changed.length).toBeGreaterThan(3000); // the ship is what changed: a view that drew no ship fails here
     expect(statsProblems(full.stats, full.pixels)).toEqual([]);
     // every colour it adds is BLK 36 (palette.ship and palette.crew), never teal, and nothing is off-palette
-    const top = onShip(0, 3.4, 3);
+    const top = onCaptain(ABOARD, 2.2);
     const bareTop = await shot(null, top), capt = await shot(crewOn(MINI), top);
     for (const [b, r] of [[bare, full], [bareTop, capt]] as const) {
       expect(paletteProblems(r.pixels)).toEqual([]);
       const colours = new Set(changedPixels(b.pixels, r.pixels).map((p) => hex(rgbaAt(r.pixels.rgba, p * 4))));
-      expect(colours.size).toBeGreaterThan(8);
+      expect(colours.size).toBeGreaterThanOrEqual(6);
       expect([...colours].filter((h) => !BLK_36.has(h))).toEqual([]);
       expect([...colours].filter((h) => (palette.accent.teal as readonly string[]).includes(h))).toEqual([]);
     }
@@ -96,7 +101,7 @@ test.describe('crew ship', () => {
     const gold = ['#ff965f', '#ffe091'];
     const none = await shot(crewOf(MINI, 6, null), top);
     console.log(`cap gold px: with the captain ${count(capt.pixels, gold)}, without ${count(none.pixels, gold)}; visor px in the captain's porthole ${count(capt.pixels, visor)}`);
-    expect(count(capt.pixels, gold)).toBeGreaterThan(6);
+    expect(count(capt.pixels, gold)).toBeGreaterThan(20);
     expect(count(none.pixels, gold)).toBe(0);
     expect(count(capt.pixels, visor)).toBeGreaterThan(40);
     expect(view.errors).toEqual([]);
@@ -126,7 +131,7 @@ test.describe('crew ship', () => {
   });
 
   // The camera rides with the ship, which turns round the star with the orbits (6° in 12 s), so the two frames
-  // see it through rotated matrices: float rounding flips a handful of edge pixels (3 of about 4900 here), far
+  // see it through rotated matrices: float rounding can flip a few edge pixels (0 to 3 of about 4600 seen), far
   // under the frame-to-frame change the seam rule compares against (art-direction §7 "Seamless test"). The pure
   // poses are exactly periodic: test/web/crew.test.ts.
   test('one 12 s idle cycle later, the ship and crew are the same frame (art-direction §7 loop lock)', async ({ page }) => {

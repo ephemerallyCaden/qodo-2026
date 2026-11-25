@@ -1,5 +1,5 @@
 // The crew's ship in the view (#207 C2–C5, C8), the parts that need no GPU: who rides in which seat and the
-// overflow, the R2-4b hull's seats and portholes (the ship lab's broken cases), the loop-locked idle, where the
+// overflow, the R2-4c hull's seats and portholes (the ship lab's broken cases), the loop-locked idle, where the
 // ship is, the astronauts' seeded look, the crew checks and the panel's rows. The pixels are test/render/crew.spec.ts.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -91,10 +91,10 @@ function bodyDist(s: ShipSpec, p: Vec): number {
   return Math.hypot(p[0], p[1] - y, p[2]) - body.r1;
 }
 
-describe('the R2-4b hull and its seats (C2; the ship lab\'s broken cases)', () => {
+describe('the R2-4c hull and its seats (C2; the ship lab\'s broken cases)', () => {
   const ships = [1, 3, 6, 8, 9, 12, 16].map((n) => [n, buildShip(n)] as const);
 
-  it('has a porthole per seat, every one alike (one size, one grey rim), the captain\'s at the top on the axis', () => {
+  it('has a porthole per seat, every one alike (one size, one grey rim), the captain\'s at the top on the axis, on the red belly band', () => {
     for (const [n, s] of ships) {
       expect(s.windows).toHaveLength(n);
       expect(s.seats).toHaveLength(n);
@@ -104,8 +104,20 @@ describe('the R2-4b hull and its seats (C2; the ship lab\'s broken cases)', () =
       expect(s.seats.slice(1).some((x) => x.captain)).toBe(false);
       const top = (i: number) => s.windows[i]!.c[1] + s.windows[i]!.n[1] * HULL.R;
       for (let i = 1; i < n; i++) expect(top(i)).toBeLessThanOrEqual(top(0) + 1e-9);
-      if (n <= 8) expect(Math.abs(s.windows[0]!.n[0])).toBeLessThan(1e-9);
+      expect(Math.abs(s.windows[0]!.n[0])).toBeLessThan(1e-9);
+      expect(s.bands.some((b) => b.part === 'body' && b.slot === 'trim')).toBe(true);
     }
+  });
+
+  it('lays the teammates out in three straight columns, rows of three by person id, a short last row centred on the columns', () => {
+    const yaws = (n: number) => buildShip(n).windows.slice(1).map((w) => +Math.atan2(w.n[0], w.n[2]).toFixed(4));
+    const cols = new Set(yaws(16));
+    expect(cols.size).toBe(3);
+    expect(yaws(8)).toEqual([-0.54, 0, 0.54, -0.54, 0, 0.54, 0]); // 7 teammates: two full rows, then one in the middle
+    expect(yaws(3)).toEqual([-0.54, 0.54]); // 2 teammates: the sides
+    // each column is one straight vertical line: its portholes share a yaw and step down by the row pitch
+    const s = buildShip(16), rows = s.windows.slice(1).map((w) => +(w.c[1] + w.n[1] * HULL.R).toFixed(3));
+    expect(new Set(rows).size).toBe(5);
   });
 
   it('turns no porthole more than 0.62 rad from the front (past that a helmet hides in the hull\'s depth)', () => {
@@ -133,11 +145,12 @@ describe('the R2-4b hull and its seats (C2; the ship lab\'s broken cases)', () =
     }
   });
 
-  it('keeps its shape as people join: one deck\'s hull is the same for 1 to 8, and a second deck adds a column, not height', () => {
+  it('keeps its shape as people join: the hull is the same for 1 to 8 and for 9 to 16; a second deck adds rows', () => {
     const hull = (s: ShipSpec) => JSON.stringify(s.parts.filter((q) => !q.id.startsWith('port')));
     expect(new Set([1, 3, 8].map((n) => hull(buildShip(n)))).size).toBe(1);
+    expect(new Set([9, 12, 16].map((n) => hull(buildShip(n)))).size).toBe(1);
     const h = (n: number) => { const b = shipBounds(buildShip(n), 0); return b.hi[1] - b.lo[1]; };
-    expect(h(16)).toBeCloseTo(h(8), 9);
+    expect(h(16)).toBeGreaterThan(h(8));
   });
 
   it('compiles the hull and the flameless cap (stand-ins for the flame, ship lab test 4), with no colour in the GLSL', () => {

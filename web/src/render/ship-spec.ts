@@ -8,9 +8,10 @@
 // sole at y 0.03, its helmet centre at y 0.709, facing +z). The whole ship, crew included, is drawn at
 // SHIP_SCALE. y is up, the ship's front faces +z, and a yaw is atan(x, z) (0 = the front).
 //
-// The window layout (where the portholes sit, their size and rim colours) is its own part of the spec,
-// WINDOWS, so a revised layout swaps in without touching the hull. It holds R2-4b (35eff13: every porthole
-// alike, one column down the front, the captain at the top), pending the human's approval.
+// The window layout (where the portholes sit, their size and rim colours, and the belly band) is its own part
+// of the spec, WINDOWS, so a revised layout swaps in without touching the hull. It holds R2-4c, the human's
+// pick (2026-11-25; ship lab R24C at 35eff13): every porthole alike, grey-rimmed, in three straight columns
+// under the captain's top porthole, on R2-4's red belly band.
 
 export type Vec = readonly [number, number, number];
 /** The hull's paint slots, in the shader's order (ship-glsl.ts SLOTS). */
@@ -167,29 +168,37 @@ export interface Body { R: number; cy: number; top: number }
 
 /**
  * The swappable window layout: how long the capsule must be for its decks, where each seat's porthole goes,
- * its size, its rim's colour, and any paint the layout brings (R2-4's belly band, which R2-4b drops).
+ * its size, its rim's colour, and any paint the layout brings (the belly band).
  */
 export interface WindowLayout {
   /** The capsule length (top − cy) the windows need on `decks` decks. */
   stretch(decks: 1 | 2): number;
-  /** Seat i's porthole: its height, yaw, radius and rim (tube, slot), and how far its astronaut sits low. */
-  port(i: number, decks: 1 | 2, b: Body): { y: number; yaw: number; rw: number; tube: number; slot: Slot; low: number };
+  /** Seat i's porthole for this plan: its height, yaw, radius and rim (tube, slot), and how far its astronaut sits low. */
+  port(i: number, plan: CrewPlan, b: Body): { y: number; yaw: number; rw: number; tube: number; slot: Slot; low: number };
   bands(b: Body): Band[];
 }
 
 /**
- * R2-4b (ship lab 35eff13, pending approval): every porthole alike (one size, one grey rim, the captain's
- * too), in one column of 8 down the front, the captain at the top; a second deck is a second column beside
- * the first on the same rows, so the ship gets no taller. No belly band.
+ * R2-4c (the human's pick, 2026-11-25; ship lab R24C at 35eff13): every porthole alike (radius 0.24, one grey
+ * rim, the captain's too), the captain alone at the top on the axis, the teammates below in rows of three, in
+ * person-id order left to right, each column a straight vertical line (`col`: the side columns' yaw, 31°). A
+ * short last row stays on the columns, centred: 1 in the middle, 2 on the sides. A second deck adds three more
+ * rows. The red belly band runs under the captain's porthole, as R2-4's did (its final numbers come from the
+ * ship lab; R2-4's are here meanwhile).
  */
-export const R24B = { rw: 0.24, tube: 0.05, pitch: 0.66, above: 0.3, low: 0.17, perColumn: 8, cols: [[0], [-0.24, 0.24]] as const } as const;
+export const R24C = { rw: 0.24, tube: 0.05, pitch: 0.66, above: 0.42, low: 0.17, col: 0.54 } as const;
+/** The teammates' rows on `decks` decks: enough rows of three for every seat but the captain's. */
+const rowsFor = (decks: 1 | 2) => Math.ceil((SEATS_PER_DECK * decks - 1) / 3);
+const ROW_YAWS: Readonly<Record<number, readonly number[]>> = { 1: [0], 2: [-R24C.col, R24C.col], 3: [-R24C.col, 0, R24C.col] };
 export const WINDOWS: WindowLayout = {
-  stretch: () => (R24B.perColumn - 1) * R24B.pitch + LIFT - R24B.above,
-  port: (i, decks, b) => {
-    const col = Math.floor(i / R24B.perColumn), row = i % R24B.perColumn;
-    return { y: b.top + R24B.above - row * R24B.pitch, yaw: R24B.cols[decks - 1]![col]!, rw: R24B.rw, tube: R24B.tube, slot: 'metal', low: i === 0 ? R24B.low : 0 };
+  stretch: (decks) => rowsFor(decks) * R24C.pitch - R24C.above + LIFT,
+  port: (i, plan, b) => {
+    const alike = { rw: R24C.rw, tube: R24C.tube, slot: 'metal' as const };
+    if (i === 0) return { ...alike, y: b.top + R24C.above, yaw: 0, low: R24C.low };
+    const row = Math.floor((i - 1) / 3), first = 1 + 3 * row, k = Math.min(3, plan.drawn - first);
+    return { ...alike, y: b.top + R24C.above - (row + 1) * R24C.pitch, yaw: ROW_YAWS[k]![i - first]!, low: 0 };
   },
-  bands: () => [],
+  bands: (b) => [{ part: 'body', y0: b.cy - 0.3, y1: b.top + 0.12, slot: 'trim' }],
 };
 
 /** R2-4's hull: the body, the blunt dome nose with its mast and blinking beacon, four splayed fins with ball feet, the nozzle and the flame. */
@@ -219,7 +228,7 @@ export function buildShip(n: number, layout: WindowLayout = WINDOWS): ShipSpec {
   const bands: Band[] = [{ part: '*', y0: top + 1.02, y1: top + 1.62, slot: 'trim' }, ...layout.bands(b)];
   const windows: Window[] = [], seats: Seat[] = [], rims: ShipSpec['rims'][number][] = [];
   for (let i = 0; i < plan.drawn; i++) {
-    const w = layout.port(i, plan.decks, b);
+    const w = layout.port(i, plan, b);
     const p = porthole(`port${i}`, [0, Math.min(Math.max(w.y, cy), top), 0], R, w.yaw, w.y, w.rw, w.tube, w.slot, w.low, i === 0);
     parts.push(p.rim); windows.push(p.window); seats.push(p.seat); rims.push(p.circle);
   }
