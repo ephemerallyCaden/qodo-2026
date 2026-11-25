@@ -215,8 +215,8 @@ test('the fog stays inside the draw budget, mini and a repo-sized system, fogged
 const lavaAt = (paths: readonly string[]): LayoutV1 => ({ ...MINI, planets: MINI.planets.map((p) => (paths.includes(p.path) ? { ...p, health: { ...p.health, band: 'lava' as const } } : p)) });
 
 // Health reads on discovered land and through the clear sky between the cloud's masses (art-direction §9;
-// #228, C, the human, 2026-11-25): the fog is the planets' weather at 0.35 of the sites, so a fully fogged
-// lava world shows about half its glow, by the human's choice; the cloud still hides a real share of it,
+// #228, C, the human, 2026-11-25): the fog is the planets' weather at 0.35 of the sites, every fogged file at
+// least 0.35 of its own, so a fully fogged lava world shows about half its glow, by the human's choice; the cloud still hides a real share of it,
 // there's no smoke over fogged ground, and misted (sparse white puffs) shows clearly more. The fade is off,
 // so every pixel is a palette colour.
 test('a fully fogged lava planet hides a share of its glow under the cloud, its health showing through the clear sky; misted, far more shows', async ({ page }) => {
@@ -235,8 +235,8 @@ test('a fully fogged lava planet hides a share of its glow under the cloud, its 
   expect(glow(clear!), 'not vacuous: a clear lava planet glows').toBeGreaterThan(0);
   expect(ash(clear!), 'not vacuous: its smoke shows').toBeGreaterThan(0);
   expect(glow(fogged!), 'fogged: its health shows through the clear sky').toBeGreaterThan(glow(clear!) * 0.2);
-  expect(glow(fogged!), 'fogged: over a third of it under the cloud').toBeLessThan(glow(clear!) * 0.65);
-  expect(glow(fogged90!), 'fogged, a later frame').toBeLessThan(glow(clear!) * 0.65);
+  expect(glow(fogged!), 'fogged (the weather, every file at least 0.35 of its own sites): two fifths of it under the cloud').toBeLessThan(glow(clear!) * 0.6);
+  expect(glow(fogged90!), 'fogged, a later frame').toBeLessThan(glow(clear!) * 0.6);
   expect(ash(fogged!), 'fogged: no smoke over the fogged ground').toBe(0);
   expect(glow(misted!), 'misted (0.07 of the sites): most of the glow shows through').toBeGreaterThan(glow(clear!) * 0.8);
   expect(glow(misted!), 'misted shows clearly more than fogged').toBeGreaterThan(glow(fogged!) * 1.5);
@@ -298,8 +298,8 @@ test('at overview a fogged lava planet glows less than clear (#228 C: over a qua
   console.log(`overview glow px: src clear ${sc}, fogged ${sf}; docs clear ${dc}, fogged ${df}`);
   expect(sc, 'src, clear, glows').toBeGreaterThan(0);
   expect(dc, 'docs, clear, glows').toBeGreaterThan(0);
-  expect(sf, 'src fogged: under the cloud').toBeLessThan(sc * 0.75);
-  expect(df, 'docs fogged: under the cloud').toBeLessThan(dc * 0.75);
+  expect(sf, 'src fogged: under the cloud').toBeLessThan(sc * 0.7);
+  expect(df, 'docs fogged: under the cloud').toBeLessThan(dc * 0.7);
   expect(glowIn(srcFogged!, 'docs'), 'docs keeps its own glow while src is fogged').toBe(dc);
   expect(glowIn(docsFogged!, 'src'), 'src keeps its own glow while docs is fogged').toBe(sc);
   expect(view.errors).toEqual([]);

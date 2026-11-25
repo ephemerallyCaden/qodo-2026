@@ -33,10 +33,10 @@ const all = (s: FogSky) => [...s.cloud, ...s.teal, ...s.mist];
 const top = (p: Puff) => 1 + p.float + p.size * p.flat * (1.75 + p.lift * 0.5);
 
 describe('the cloud over fogged files (the weather\'s cream, cover proportional, none at 100% reviewed)', () => {
-  it('covers the weather\'s share of a fully fogged planet: its density, plus the files\' floors', () => {
+  it('covers the weather\'s share of a fully fogged planet: its density, plus the files\' floors (about 0.45 on 48 files, accepted by the human)', () => {
     const s = sky.at(rest(() => 2));
     expect(s.cloudCover).toBeGreaterThanOrEqual(CLOUD.density - 1 / SKY_SITES);
-    expect(s.cloudCover).toBeLessThan(CLOUD.density + 0.05);
+    expect(s.cloudCover).toBeLessThan(CLOUD.density + 0.15);
     expect(s.mist).toEqual([]);
     expect(s.teal).toEqual([]);
   });
@@ -50,12 +50,32 @@ describe('the cloud over fogged files (the weather\'s cream, cover proportional,
     }
   });
 
-  it('never leaves a fogged file in clear sky (Rule 1): each covers at least half the density of its own sites', () => {
+  it('never leaves a fogged file in clear sky (Rule 1): each covers at least the density of its own sites', () => {
     for (let k = 0; k < plan.fileIds.length; k++) {
       const s = sky.covers(rest((j) => (j === k ? 2 : 0)), 'cloud');
       const own = [...sky.owners('cloud')].filter((o) => o === k).length;
       const covered = s.filter((c) => c.cloud > 0).length;
-      expect(covered, `file ${k}`).toBeGreaterThanOrEqual(Math.max(1, Math.round(own * CLOUD.density * 0.5)));
+      expect(covered / own, `file ${k}`).toBeGreaterThanOrEqual(CLOUD.density - 1e-9);
+    }
+  });
+
+  // The human, 2026-11-25 (#228): fogged always reads cloudier than misted, so every fogged file covers at
+  // least the cloud's density of its own sites and no misted file more than that of its own, on the
+  // fog-levels scene's geometry (3 files on a scanned planet's 256 cells) and on many-file planets.
+  it.each([[3, 256], [3, 64], [12, 256], [48, 256]] as const)('covers every fogged file at least as heavily as any misted one: at least the cloud\'s density of its own sites, %i files on %i cells', (files, cells) => {
+    const own = surfacePlan({ cells, settlements: Array.from({ length: files }, (_, k) => ({ fileId: `f_${k}`, cell: (k * 37 + Math.floor(k / 5) * 3) % cells })) });
+    for (const seed of [1234567, 42, 7, 99, 2024]) {
+      const p = new CloudPlan(own, seed);
+      const share = (layer: LayerName, k: number, level: Level) => {
+        const owner = p.owners(layer), c = p.covers(own.fileIds.map((_, j) => fileFogAt(j === k ? level : 0, undefined, 0)), layer);
+        const mine = [...owner].filter((o) => o === k).length;
+        return { mine, covered: c.filter((x, i) => owner[i] === k && (layer === 'cloud' ? x.cloud : x.mist) > 0).length };
+      };
+      for (let k = 0; k < files; k++) {
+        const fogged = share('cloud', k, 2), misted = share('mist', k, 1);
+        expect(fogged.covered / fogged.mine, `seed ${seed}, file ${k} fogged`).toBeGreaterThanOrEqual(CLOUD.density - 1e-9);
+        expect(misted.covered / misted.mine, `seed ${seed}, file ${k} misted`).toBeLessThanOrEqual(CLOUD.density + 1e-9);
+      }
     }
   });
 
@@ -63,10 +83,10 @@ describe('the cloud over fogged files (the weather\'s cream, cover proportional,
     const cellShare = (files: (k: number) => boolean) => [...plan.territory.owner].filter((k) => files(k)).length / 256;
     for (const pick of [(k: number) => k < fogged, (k: number) => (k * 7) % 48 < fogged]) {
       const s = sky.at(rest((k) => (pick(k) ? 2 : 0)));
-      for (const share of [siteShare('cloud', pick), cellShare(pick)]) {
-        expect(s.cloudCover / share).toBeGreaterThan(CLOUD.density * 0.6);
-        expect(s.cloudCover / share).toBeLessThan(CLOUD.density * 1.6);
-      }
+      // at least the density of every fogged file's own sites (the floor), and the weather's peaks above it
+      expect(s.cloudCover / siteShare('cloud', pick)).toBeGreaterThanOrEqual(CLOUD.density - 1e-9);
+      expect(s.cloudCover / cellShare(pick)).toBeGreaterThan(CLOUD.density * 0.9);
+      for (const share of [siteShare('cloud', pick), cellShare(pick)]) expect(s.cloudCover / share).toBeLessThan(CLOUD.density * 1.8);
     }
   });
 
@@ -111,7 +131,7 @@ describe('the cloud over fogged files (the weather\'s cream, cover proportional,
     const open = sky.covers(rest(() => 2), 'cloud').map((c) => c.cloud <= 0);
     const gaps = open.flatMap((o, i) => (o ? [i] : []));
     const together = gaps.reduce((t, i) => t + nb[i]!.filter((q) => open[q]).length / nb[i]!.length, 0) / gaps.length;
-    expect(together, 'random gaps would give about 1 - density').toBeGreaterThan(1 - CLOUD.density + 0.1);
+    expect(together, 'random gaps would give about the open share, 1 - cover').toBeGreaterThan(gaps.length / n + 0.1);
   });
 
   it('shades each mass as one dome, and a heavy cover as several masses, not one dome round the planet', () => {
@@ -148,8 +168,9 @@ describe('the mist over misted files (stored haze: read, not yet tested): the th
     const misted = sky.at(rest(() => 1)), fogged = sky.at(rest(() => 2));
     expect(misted.cloud).toEqual([]);
     expect(misted.teal).toEqual([]);
-    expect(misted.mistCover).toBeGreaterThanOrEqual(MIST.density - 1 / sky.sites('mist'));
-    expect(misted.mistCover).toBeLessThan(MIST.density + 0.05);
+    // the weather's cut at the mist's density, less what the ceiling trims off misted files on a noise peak
+    expect(misted.mistCover).toBeLessThanOrEqual(MIST.density + 1 / sky.sites('mist'));
+    expect(misted.mistCover).toBeGreaterThan(MIST.density * 0.8);
     expect(misted.mistCover).toBeLessThan(fogged.cloudCover);
     expect(Math.max(...misted.mist.map((p) => p.size)), 'the thin weather\'s leads: 0.7 × 0.058–0.108 R').toBeLessThanOrEqual(0.108 * MIST.size + 1e-9);
     expect(Math.min(...misted.mist.map((p) => p.size))).toBeGreaterThanOrEqual(0.058 * MIST.size * 0.5 - 1e-9);
@@ -244,7 +265,8 @@ describe('grids', () => {
       const p = new CloudPlan(coarse, 1);
       expect(p.sites('cloud')).toBe(SKY_SITES);
       const both = p.at([fileFogAt(2, undefined, 0), fileFogAt(2, undefined, 0)]);
-      expect(both.cloudCover, `${cells} cells, both fogged`).toBeCloseTo(CLOUD.density, 2);
+      expect(both.cloudCover, `${cells} cells, both fogged: the density, plus the files' floors`).toBeGreaterThanOrEqual(CLOUD.density - 1 / SKY_SITES);
+      expect(both.cloudCover, `${cells} cells, both fogged`).toBeLessThan(CLOUD.density + 0.15);
       const one = p.at([fileFogAt(2, undefined, 0), fileFogAt(0, undefined, 0)]);
       expect(one.cloudCover / CLOUD.density, `${cells} cells, one fogged: about its share`).toBeGreaterThan(0.25);
       expect(one.cloudCover / CLOUD.density, `${cells} cells, one fogged`).toBeLessThan(0.75);

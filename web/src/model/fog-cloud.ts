@@ -18,8 +18,9 @@
 //   and east–west streaks) is over the planet's cut at the layer's density, so a fully fogged planet wears
 //   the weather's own pattern, and a partly fogged one the part of it over its fogged files. A site's
 //   cover depends on its own file alone, so a planet's cover is the sum of its fogged files' and tracks
-//   their share; a fully reviewed planet has no cloud. Every file also keeps a floor of its own highest
-//   sites (FLOOR), so a fogged file never lies wholly in clear sky (Rule 1).
+//   their share; a fully reviewed planet has no cloud. Every fogged file covers at least the cloud's
+//   density of its own sites (its highest: FLOOR) and no misted file more of its own than that, so fogged
+//   always reads cloudier than misted, and a fogged file never lies in clear sky (Rule 1).
 // - Puffs: the weather's clump, a lead puff and satellites. A site's core (0 at a mass's edge, 1 deep
 //   inside) sizes and lifts its lead, so a mass domes; edge sites get 2–3 satellites for a lumpy edge.
 //   Core is the noise's rise over the cut, capped by the distance to the cloud's edge (a territory's
@@ -91,11 +92,12 @@ const MASS_JITTER = 0.4;
 const MASS_WARP = { amp: 0.6, freq: 2.5 } as const;
 
 /**
- * The least of a file's own sites a layer covers, as a share of its density: the file's highest sites in
- * the noise, wherever the weather's cut falls, so a file never lies wholly in clear sky (Rule 1: a fogged
- * file never looks reviewed).
+ * The least of a file's own sites the cloud covers, as a share of its density, and the most the mist may:
+ * a file's highest sites in the noise, wherever the weather's cut falls. Every fogged file covers at least
+ * the cloud's density of its own sites and no misted file more, so fogged always reads cloudier than
+ * misted, and a fogged file never lies in clear sky (Rule 1; the human, 2026-11-25, #228: the full floor).
  */
-const FLOOR = 0.5;
+const FLOOR = 1;
 
 /** How softly a front thins the cloud, rad (fog-cloud.js FRONT_SOFT). */
 export const FRONT_SOFT = 0.1;
@@ -235,7 +237,8 @@ class SkyGrid {
     const byRaw = (a: number, b: number) => raw[a]! - raw[b]! || a - b;
     const all = Array.from({ length: n }, (_, i) => i).sort(byRaw);
     const cut = raw[all[Math.min(n - 1, Math.round(n * (1 - layer.density)))]!]!;
-    // gaps: every site under the cut, except each file's floor, its highest sites, so every file's cloud shows (Rule 1)
+    // gaps: every site under the cut, except the cloud's floor of each file's highest sites (every fogged
+    // file at least the cloud's density of its own), and past the mist's ceiling (no misted file more)
     this.gap = Uint8Array.from(raw, (r) => (r < cut ? 1 : 0));
     const byFile = new Map<number, number[]>();
     for (let i = 0; i < n; i++) {
@@ -243,9 +246,11 @@ class SkyGrid {
       if (sites) sites.push(i); else byFile.set(this.owner[i]!, [i]);
     }
     for (const sites of byFile.values()) {
-      const ranked = [...sites].sort(byRaw).reverse();
-      const floor = Math.max(1, Math.round(sites.length * layer.density * FLOOR));
-      for (let j = 0; j < Math.min(floor, ranked.length); j++) this.gap[ranked[j]!] = 0;
+      // the cloud's floor rounds up and the mist's ceiling down, so a fogged file's share is at least the
+      // bound and a misted one's at most it, exactly (the epsilon absorbs float error at a whole number)
+      const ranked = [...sites].sort(byRaw).reverse(), bound = sites.length * CLOUD.density * FLOOR;
+      if (layer.id === CLOUD.id) for (let j = 0; j < Math.min(Math.max(1, Math.ceil(bound - 1e-9)), ranked.length); j++) this.gap[ranked[j]!] = 0;
+      else for (let j = Math.floor(bound + 1e-9); j < ranked.length; j++) this.gap[ranked[j]!] = 1;
     }
     // core from the noise: its rise over the cut (viewer.js: min(1, density × 7))
     this.noiseCore = raw.map((r) => Math.min(1, Math.max(0, (r - cut + 0.012) * CORE_GAIN)));
