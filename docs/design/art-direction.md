@@ -265,7 +265,7 @@ Files that usually change in the same commit (R9, #211; the human picked option 
 | Planet types | Healthy: lush, ocean, ice. Ash: desert/crater. Toxic. Lava. Library extras: gas giant, barren moon |
 | Shading | Quantised bands, lit directional terminator, hero at 42–50% of frame, optional moons and halo |
 | Cracks | ≥2 px jagged Voronoi cracks plus open lava pools / ice water |
-| Clouds | Float r≈1.05, offset shadow, blended clumps. They are the fog (§9): 0.9 of the undiscovered surface, locked to the ground; seeded weather only as toxic's smoke (~28%, 1.5× drift) and lava's ash (~8%) |
+| Clouds | Float r≈1.05, offset shadow, blended clumps. They are the fog (§9): 0.9 of the undiscovered surface, locked to the ground; misted (read, untested) files get thin light wisps, never dark (#224); seeded weather only as toxic's smoke (~28%, 1.5× drift) and lava's ash (~8%) |
 | Rings | Thin chunky clumps, 1 px dots, front arc over disc; meaning open, library only until it has one |
 | Motion | 48 s loop lock (surface 2 : clouds 3, #174); 72 s 3:4 alternative; planets orbit once per 12 min, off the loop, and focus follows them (#60, #174); reduced motion freezes |
 | Astronaut | Chibi SDF, 4:3 screen visor, ApprenticeHack V2 eyes, BLK 36 |

@@ -1,7 +1,7 @@
 # Feature: Fog of war (art)
 
 ## Status
-Complete (art): cloud fog C6 replaces the dark veil (human, 2026-11-16); product drawing (#74) to follow
+Complete: cloud fog C6 replaces the dark veil (human, 2026-11-16). #74 shipped the veil first; the product draws C6 cloud since #224 (2026-11-25), with mist for read-but-untested files and no veil.
 
 ## Trigger
 The human, 2026-11-09: "suggest more things to design and make", then "keep going" (2026-11-10). Fog of war is R5, the product's core signal. Its logic and chart state are in PR #50 (#33), which says "drawing fog waits for the art pass".
