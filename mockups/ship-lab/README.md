@@ -69,7 +69,18 @@ The human, 2026-11-25: "I imagined one like the finned classic but shorter, fatt
 
 **Distinctness:** pairs are reported, not gated, because round 2's are variations of one brief. R2-1 and R2-5 share a silhouette on purpose; their closest score is 0.22–0.28.
 
-## Crew count and overflow
+## Round 2b: R2-4's windows alike and in a line (R2-4b, R2-4c)
+
+The human picked R2-4, then: "I just don't like R2-4 the fact the windows are different colours, they should all be the same colour and also stack them vertically in a line instead of being stacked randomly." (`node lab.mjs round=2b` into `out/round2b/`.)
+
+**What both new variations change:** every porthole is alike, one size (radius 0.24) and one grey rim, the captain's too, and there's no belly band. The captain reads by the cap and by sitting in the top porthole. The portholes had to grow from 0.2 to 0.24: in a 0.2 porthole the captain's cap and visor don't both fit, and the cap check measured 0 px.
+
+| | Variation | What it is | Two decks (9–16) |
+|---|---|---|---|
+| R2-4b | **One column** (as asked) | every porthole in a single vertical line down the front, the captain at the top. Eight in a line stretch the lander into a tall capsule: 4.85 units against R2-4's 2.93, so the near framing pulls back. | a second column beside the first, on the same rows, so the ship gets no taller. One column of 16 would be about 7.7 units tall. |
+| R2-4c | **Straight columns** (an alternative reading) | three straight vertical columns under the captain, keeping R2-4's round, fat proportions (3.19 units) | three more rows of three |
+
+
 
 Each direction is a builder (`ship-spec.js` `BUILDERS`): a crew count in, a ship spec out (hull parts, paint bands, windows, domes, lights, flames, seats).
 

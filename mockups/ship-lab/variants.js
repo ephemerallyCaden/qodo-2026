@@ -66,7 +66,21 @@ export const R2_VARIANTS = [
     crewSeen: 'the bridge crew in a big window, the rest in small portholes below', captain: 'front and centre in the big gold-rimmed bridge window', palette: A_COLOURS,
   },
 ];
-export const ALL_VARIANTS = [...VARIANTS, ...R2_VARIANTS];
+// Round 2b (human, 2026-11-25), on the pick R2-4: every window the same colour, in one vertical line.
+export const R2B_VARIANTS = [
+  R2_VARIANTS.find((v) => v.id === 'R2-4'),
+  {
+    id: 'R2-4b', name: 'Round lander, one column',
+    pitch: 'R2-4 tidied up as asked: every porthole alike in one grey-rimmed column down the front, the captain at the top; eight in a line stretch the lander into a tall capsule.',
+    crewSeen: 'helmets in one column of identical round portholes', captain: 'the top porthole, in the gold cap', palette: A_COLOURS,
+  },
+  {
+    id: 'R2-4c', name: 'Round lander, straight columns',
+    pitch: 'An alternative reading: R2-4\'s round, fat shape kept, the portholes all alike in three straight vertical columns, the captain on top in the middle.',
+    crewSeen: 'helmets in three straight columns of identical round portholes', captain: 'the top porthole in the middle, in the gold cap', palette: A_COLOURS,
+  },
+];
+export const ALL_VARIANTS = [...VARIANTS, ...R2_VARIANTS, ...R2B_VARIANTS.slice(1)];
 export const VARIANT_BY_ID = Object.fromEntries(ALL_VARIANTS.map((v) => [v.id, v]));
 export const ALL_BUILDERS = { ...BUILDERS, ...R2_BUILDERS };
 

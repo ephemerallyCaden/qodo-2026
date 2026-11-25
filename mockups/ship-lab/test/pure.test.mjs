@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { mapPalette } from '../../asset-viewer/palette-map.js';
 import { LOSPEC } from '../../asset-viewer/palettes.js';
-import { VARIANTS, R2_VARIANTS, ALL_VARIANTS, specOf } from '../variants.js';
+import { VARIANTS, R2_VARIANTS, R2B_VARIANTS, ALL_VARIANTS, specOf } from '../variants.js';
 import { shipBounds } from '../ship-glsl.js';
 import { RAMPS, TEAL, BLK36, CAP_PALETTE, paletteHexes, tealThrust } from '../palette.js';
 import { BUILDERS, CAP, SHIP_SCALE, CYCLE, CYCLES, SEATS_PER_DECK, MAX_DECKS, HELMET_Y, crewPlan, idleAt, flameAt, lightOn, hash01 } from '../ship-spec.js';
@@ -79,6 +79,10 @@ test('the captain (the repo owner) is seat 0 of every ship, alone, in a seat of 
     if (v.id === 'A') {
       // the biggest porthole, gold-framed, above every teammate's
       assert.ok(rest.every((w) => w0.w > w.w && w0.y > w.y) && w0.frameSlot === 'gold', 'A: the captain\'s porthole');
+    } else if (v.id === 'R2-4b' || v.id === 'R2-4c') {
+      // every porthole alike: the captain's seat is the top one, on the ship's axis
+      const top = (w) => w.c[1] + w.n[1];
+      assert.ok(Math.abs(w0.n[0]) < 1e-9 && rest.every((w) => top(w) < top(w0)), `${v.id}: the captain isn't in the top porthole on the axis`);
     } else if (w0?.kind === 'cap' && w0.frameSlot === 'gold') {
       // round 2's captain's porthole or bridge window: gold-rimmed, the biggest, above every teammate's porthole, with the captain behind it
       assert.ok(rest.every((w) => w0.angle > w.angle && w0.n[1] > w.n[1]), `${v.id}: the captain's window isn't the biggest and highest`);
@@ -150,7 +154,7 @@ function roundCone(p, a, b, r1, r2) {
 }
 const bodyDist = (s, p) => Math.min(...s.parts.filter((q) => q.id === 'body' || q.id === 'bulb').map((q) => (q.kind === 'sphere' ? Math.hypot(...p.map((x, i) => x - q.c[i])) - q.r : roundCone(p, q.a, q.b, q.r1, q.r2))));
 test('crew behind windows stays inside the hull, boots included (nothing pokes out below a window)', () => {
-  for (const id of ['A', 'B', 'R2-1', 'R2-2', 'R2-4', 'R2-5']) for (const n of [1, 3, 8, 12, 16]) {
+  for (const id of ['A', 'B', 'R2-1', 'R2-2', 'R2-4', 'R2-5', 'R2-4b', 'R2-4c']) for (const n of [1, 3, 8, 12, 16]) {
     const s = specOf(id, n);
     s.crew.forEach((c, i) => {
       // the boot sole (lifted 0.03), its toe (0.09 forward) and the helmet top, with room for the bob (0.05)
@@ -168,7 +172,7 @@ test('round 2: one-deck ships fit the near frame without pulling back; portholes
     const s = specOf(v.id, n), { lo, hi } = shipBounds(s, 0);
     assert.ok((hi[1] - lo[1]) * SHIP_SCALE <= fits, `${v.id} n=${n}: ${((hi[1] - lo[1]) * SHIP_SCALE).toFixed(2)} tall, the near frame holds ${fits.toFixed(2)}`);
   }
-  for (const v of R2_VARIANTS) for (const n of [8, 16]) for (const w of specOf(v.id, n).windows) assert.ok(Math.abs(Math.atan2(w.n[0], w.n[2])) <= 0.62 + 1e-9, `${v.id}: a porthole turns ${Math.atan2(w.n[0], w.n[2]).toFixed(2)} rad`);
+  for (const v of [...R2_VARIANTS, ...R2B_VARIANTS]) for (const n of [8, 16]) for (const w of specOf(v.id, n).windows) assert.ok(Math.abs(Math.atan2(w.n[0], w.n[2])) <= 0.62 + 1e-9, `${v.id}: a porthole turns ${Math.atan2(w.n[0], w.n[2]).toFixed(2)} rad`);
 });
 
 test('deterministic: the same crew count gives the same ship, byte for byte', () => {
@@ -211,6 +215,25 @@ test('the idle motion is locked to the crew\'s 12 s cycle: whole cycles, the sam
 });
 
 const EMPTY = { cell: { v: 'A', n: 3, framing: 'close', view: 'front' }, plan: crewPlan(3), drawn: 0, px: 0, shipPx: 0, crewPx: 0, flamePx: 0, tealPx: 0, clipped: 0, pieces: 0, shipPieces: 0, hullPieces: 0, strays: [], shipStray: 0, crew: [], cap: { px: 0, block: 0 } };
+test('round 2b: every porthole alike (one size, one grey rim, the captain\'s too); R2-4b one column per deck, R2-4c straight columns', () => {
+  for (const id of ['R2-4b', 'R2-4c']) for (const n of [1, 3, 8, 12, 16]) {
+    const s = specOf(id, n);
+    assert.equal(new Set(s.windows.map((w) => `${w.angle.toFixed(6)}|${w.frameSlot}`)).size, 1, `${id} n=${n}: the windows differ`);
+    assert.ok(s.windows.every((w) => w.frameSlot === 'metal'), `${id}: a rim isn't grey`);
+    assert.ok(!s.bands.some((b) => b.part === 'body'), `${id}: a belly band`);
+    assert.equal(s.windows.length, s.crew.length);
+    // the captain is in the top porthole
+    assert.ok(s.windows.slice(1).every((w) => w.n[1] <= s.windows[0].n[1] + 1e-9 || Math.abs(w.c[1] + w.n[1] - s.windows[0].c[1] - s.windows[0].n[1]) < 1e-9), `${id}: the captain isn't at the top`);
+  }
+  // R2-4b: one column on one deck, two on two (same rows); R2-4c: three columns
+  const yawsOf = (id, n) => [...new Set(specOf(id, n).windows.map((w) => Math.atan2(w.n[0], w.n[2]).toFixed(4)))];
+  assert.deepEqual(yawsOf('R2-4b', 8), ['0.0000']);
+  assert.equal(yawsOf('R2-4b', 12).length, 2);
+  assert.equal(yawsOf('R2-4c', 8).length, 3);
+  const heights = (id, n) => specOf(id, n).windows.map((w) => +(w.c[1] + w.n[1] * 1.28).toFixed(3));
+  assert.deepEqual(new Set(heights('R2-4b', 16)).size, 8, 'R2-4b two decks: the two columns share their rows');
+});
+
 test('the tile checks fail on empty output', () => {
   const p = tileProblems(EMPTY, 'empty');
   assert.ok(p.some((x) => x.includes('empty')), p.join('\n'));

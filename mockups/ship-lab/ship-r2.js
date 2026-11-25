@@ -4,7 +4,7 @@
 // chunky fins and nozzle, and windows that are exact circles on the body with a raised torus rim (a
 // thick ring, lit like the hull). Same rules as round 1: seat 0 is the captain (the cap plus a seat of
 // their own), crew order is by person id, 8 a deck, a second deck for 9-16, "+N" past 16. Pure.
-import { cone, capcone, sphere, disc, box, fins, polar, spread, seat, helmetSeat, captainSeat, crewPlan } from './ship-spec.js';
+import { cone, capcone, sphere, disc, box, fins, polar, spread, seat, helmetSeat, captainSeat, crewPlan, SEATS_PER_DECK } from './ship-spec.js';
 
 const TUBE = 0.058; // a teammate's rim tube radius: 0.116 thick, about 3.3 px at the near distance
 const SEAT_DEPTH = 0.31; // a helmet's centre this far inside the hull behind its window (round 1's A)
@@ -182,4 +182,52 @@ function buildR25(n) {
   return assemble(b, { parts: [bridge.rim, ...r.rims], windows: [bridge.window, ...r.windows], crew: [...crew, ...r.seats], plan });
 }
 
-export const R2_BUILDERS = { 'R2-1': buildR21, 'R2-2': buildR22, 'R2-3': buildR23, 'R2-4': buildR24, 'R2-5': buildR25 };
+// ---------------------------------------------------------------- R2-4b: one column, one colour
+// The human, 2026-11-25, on R2-4: "the windows are different colours, they should all be the same colour
+// and also stack them vertically in a line instead of being stacked randomly". So R2-4's round lander
+// (body, splayed fins with ball feet, dome nose and blinking antenna) with no belly band, and every
+// porthole alike: one size, one grey rim, in a single column down the front, the captain at the top
+// (seat 0, in the cap), the teammates below in person-id order. The capsule is as long as eight
+// portholes need. A second deck (9-16) adds a second column beside the first, on the same rows, so the
+// ship gets no taller; both columns then sit either side of the front.
+export const R24B = { R: 1.28, rw: 0.24, tube: 0.05, pitch: 0.66, above: 0.3, low: 0.17, cols: [[0], [-0.24, 0.24]] };
+function buildR24b(n) {
+  const plan = crewPlan(n), { R, rw, tube, pitch, above, low } = R24B;
+  const b = base({ R, cy: 1.45, stretch: (SEATS_PER_COLUMN - 1) * pitch + LIFT - above, nose: 'dome', nFins: 4, stance: 1.22 });
+  const yaws = R24B.cols[plan.decks - 1];
+  const parts = [], windows = [], crew = [];
+  for (let i = 0; i < plan.drawn; i++) {
+    const col = Math.floor(i / SEATS_PER_COLUMN), row = i % SEATS_PER_COLUMN, y = b.top + above - row * pitch;
+    const p = porthole(`port${i}`, [0, Math.min(Math.max(y, b.cy), b.top), 0], R, yaws[col], y, rw, { tube, low: i === 0 ? low : 0 });
+    parts.push(p.rim); windows.push(p.window); crew.push(i === 0 ? captainSeat(p.seat) : p.seat);
+  }
+  return assemble(b, { parts, windows, crew, plan });
+}
+const SEATS_PER_COLUMN = 8;
+
+// ---------------------------------------------------------------- R2-4c: straight columns (an alternative)
+// One reading of "stack them vertically in a line": straight columns instead of R2-4's staggered
+// honeycomb. The captain on top in the middle, the teammates in rows of three below, each column a
+// straight vertical line, every porthole alike. It keeps R2-4's round, fat proportions (one column of
+// eight can't: R2-4b). A second deck adds three more rows.
+export const R24C = { R: 1.28, rw: 0.24, tube: 0.05, pitch: 0.66, above: 0.42, low: 0.17, col: 0.54 }; // col: the side columns' yaw (31°)
+function buildR24c(n) {
+  const plan = crewPlan(n), { R, rw, tube, pitch, above, low, col } = R24C;
+  const rows = Math.ceil((SEATS_PER_DECK * plan.decks - 1) / 3); // rows of teammates the decks need
+  const b = base({ R, cy: 1.45, stretch: rows * pitch - above + LIFT, nose: 'dome', nFins: 4, stance: 1.22 });
+  const parts = [], windows = [], crew = [];
+  const add = (i, yaw, y) => {
+    const p = porthole(`port${i}`, [0, Math.min(Math.max(y, b.cy), b.top), 0], R, yaw, y, rw, { tube, low: i === 0 ? low : 0 });
+    parts.push(p.rim); windows.push(p.window); crew.push(i === 0 ? captainSeat(p.seat) : p.seat);
+  };
+  add(0, 0, b.top + above);
+  // rows of three in person-id order, left to right; a short last row stays on the columns, centred (1: middle, 2: the sides)
+  const ROW = { 1: [0], 2: [-col, col], 3: [-col, 0, col] };
+  for (let i = 1, row = 1; i < plan.drawn; row++) {
+    const k = Math.min(3, plan.drawn - i);
+    for (const yaw of ROW[k]) add(i++, yaw, b.top + above - row * pitch);
+  }
+  return assemble(b, { parts, windows, crew, plan });
+}
+
+export const R2_BUILDERS = { 'R2-1': buildR21, 'R2-2': buildR22, 'R2-3': buildR23, 'R2-4': buildR24, 'R2-5': buildR25, 'R2-4b': buildR24b, 'R2-4c': buildR24c };

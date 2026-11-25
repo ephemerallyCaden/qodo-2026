@@ -10,7 +10,7 @@ import { tileProblems } from '../checks.mjs';
 import { CYCLE } from '../ship-spec.js';
 
 const IDS = ['A', 'B', 'C', 'D'];
-const R2 = ['R2-1', 'R2-2', 'R2-3', 'R2-4', 'R2-5']; // round 2: A, shorter, fatter and rounder
+const R2 = ['R2-1', 'R2-2', 'R2-3', 'R2-4', 'R2-5', 'R2-4b', 'R2-4c']; // round 2 (A, shorter, fatter and rounder) and 2b (R2-4's windows alike, in lines)
 let browser, page;
 before(async () => {
   browser = await launch();
@@ -48,7 +48,7 @@ test('the captain reads apart: the cap shows on seat 0 in each ship\'s captain c
 
 test('two decks (12 aboard) and the +N overflow (20) pass at the near distance', { timeout: 1200000 }, async () => {
   const problems = [];
-  for (const v of [...IDS, 'R2-1', 'R2-2']) for (const n of [12, 20]) {
+  for (const v of [...IDS, 'R2-1', 'R2-2', 'R2-4b', 'R2-4c']) for (const n of [12, 20]) {
     const s = await stats({ v, n, framing: 'near', view: 'front' });
     assert.equal(s.plan.decks, 2);
     assert.equal(s.plan.extra, Math.max(0, n - 16));
