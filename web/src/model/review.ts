@@ -36,10 +36,11 @@ export function diffFreshness(view: DiffView, fog: FogView, seen = false): 'curr
 /**
  * Whether opening a diff charts its file (#201, AC2: opening a file in the review panel moves it from
  * fogged to haze, never to clear): only when the panel shows the whole unseen change as text. A cut
- * diff, a binary part or a change git shows no text for waits for Chart, which says so.
+ * diff, a binary part or a part git shows no text for (no change at all, only a mode change, a bare
+ * rename: the content change that fogged it netted out of sight) waits for Chart, which says so.
  */
 export const seenOnOpen = (view: DiffView): boolean =>
-  view.since !== null && !view.truncated && view.sections.length > 0 && view.sections.every((s) => !s.binary);
+  view.since !== null && !view.truncated && view.sections.length > 0 && view.sections.every((s) => !s.binary && s.hunks.length > 0);
 
 /** A path as one POSIX shell word: single-quoted, so nothing in it is ever run or expanded. */
 export const shellWord = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;

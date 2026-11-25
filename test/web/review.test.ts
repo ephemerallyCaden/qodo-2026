@@ -76,6 +76,12 @@ describe('#75 diff freshness', () => {
     expect(seenOnOpen(view({ since: null }))).toBe(false);
     expect(seenOnOpen(view({ sections: [] }))).toBe(false);
     expect(seenOnOpen(view({ sections: [{ status: 'modified', path: 'x.png', oldPath: null, binary: true, hunks: [] }] }))).toBe(false);
+    // A part git shows no text for (only a mode change, a bare rename) shows none of the content change that fogged it (Qodo acdcaa1e)
+    const text = view().sections[0]!;
+    expect(seenOnOpen(view({ sections: [{ status: 'mode', path: 'run.sh', oldPath: null, binary: false, hunks: [] }] }))).toBe(false);
+    expect(seenOnOpen(view({ sections: [{ status: 'renamed', path: 'b.ts', oldPath: 'a.ts', binary: false, hunks: [] }] }))).toBe(false);
+    expect(seenOnOpen(view({ sections: [text, { status: 'mode', path: 'src/a.ts', oldPath: null, binary: false, hunks: [] }] }))).toBe(false);
+    expect(seenOnOpen(view({ sections: [{ ...text, status: 'renamed', oldPath: 'old.ts' }] }))).toBe(true); // a rename with its text change shown
   });
 });
 
