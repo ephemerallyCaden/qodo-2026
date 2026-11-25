@@ -222,8 +222,9 @@ export function chartedFileId(base: FogBase, e: ChartEntry): FileId | null {
  * - History that can't be followed past `through` (a window gap, an unsure birth, a name two files
  *   claim) fogs it with `lineage-unknown` whatever else holds: no chart or quiz can be tied to the
  *   file across it (Rule 1).
- * - With a quiz pass: clear while no content change (anyone's, yours too, AC3) came after it, else
- *   haze, never fogged: the change re-hazes it until a quiz on it clears it again (U2).
+ * - With a quiz pass: clear while no content change (anyone's, yours too, AC3) and no history it can't
+ *   follow came after it, else haze, never fogged: the change re-hazes it until a quiz on it clears it
+ *   again (U2). Lost history that a later chart or baseline covers is seen, not understood (Rule 1).
  * - Without one: fogged while a content change that isn't yours is newer than `through`, else haze.
  */
 function fileFog(base: FogBase, i: number, through: number, cleared: number): FileFog {
@@ -235,7 +236,9 @@ function fileFog(base: FogBase, i: number, through: number, cleared: number): Fi
     since = Math.min(since, seq);
   };
   let lost = false;
+  let lostSinceClear = false;
   for (const seq of base.unknownAt[i]!) {
+    if (seq > cleared) lostSinceClear = true;
     if (seq > through) {
       fog(seq, ['lineage-unknown']);
       lost = true;
@@ -247,7 +250,7 @@ function fileFog(base: FogBase, i: number, through: number, cleared: number): Fi
     if (x.seq > cleared) changedSinceClear = true;
     if (x.reasons.length > 0 && x.seq > through) fog(x.seq, x.reasons);
   }
-  if (!lost && cleared >= 0) return { fileId, state: changedSinceClear ? 'haze' : 'clear', reasons: [], since: null };
+  if (!lost && cleared >= 0) return { fileId, state: changedSinceClear || lostSinceClear ? 'haze' : 'clear', reasons: [], since: null };
   if (why.size === 0) return { fileId, state: 'haze', reasons: [], since: null };
   return { fileId, state: 'fogged', reasons: [...why].sort(byCodepoint), since: base.shaAt.get(since)! };
 }

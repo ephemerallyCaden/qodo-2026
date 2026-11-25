@@ -297,6 +297,21 @@ describe('#201 fog levels: fogged, haze (seen), clear (understood)', () => {
     expect(fileAt(fogOf(m, chart, { from: 2 }), 'src/a.ts').state).toBe('haze');
   });
 
+  it('a chart or baseline over history lost after a quiz makes the file haze, never clear (Rule 1, Qodo 39dc4ab8)', () => {
+    const m = agentFile();
+    const quizzed = pass(m, emptyChart(), 'src/a.ts'); // at seq 1
+    m.commit(YOURS, [{ op: 'edit', path: 'src/b.ts' }]); // seq 2: the window gap, so what it changed isn't known
+    m.commit(YOURS, [{ op: 'edit', path: 'src/b.ts' }]); // seq 3
+    const holes = { holes: new Set([2]) };
+    for (const chart of [chartPath(m, quizzed, 'src/a.ts'), act(m, quizzed, { kind: 'baseline' })]) {
+      // reviewed through seq 3, past the gap, so it is seen; but the gap may have changed it since the quiz
+      expect(fileAt(fogOf(m, chart, holes), 'src/a.ts')).toEqual({ fileId: fileIdOf('src/a.ts'), state: 'haze', reasons: [], since: null });
+      expect(fileAt(fogOf(m, chart), 'src/a.ts').state).toBe('clear'); // with the gap's commit known, nothing touched it
+    }
+    // A quiz after the gap is of the version at HEAD, so it clears
+    expect(fileAt(fogOf(m, pass(m, quizzed, 'src/a.ts'), holes), 'src/a.ts').state).toBe('clear');
+  });
+
   it('refuses a quiz pass at an unknown head or for a file not at HEAD; a newer one replaces the old', () => {
     const m = agentFile();
     const base = fogBase(m.snapshot(), m.history());
