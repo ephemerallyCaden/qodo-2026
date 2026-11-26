@@ -71,7 +71,7 @@ Stop and ask if the tree isn't clean, the fix isn't in HEAD, or the scratch bran
 **Create the record file now, before step 2** (path and sections in step 7): write its title, a
 `Status: running` line and the start state. Then keep it current: right after each later step, and
 before starting the next, append that step's commands and results to the file. Don't hold them back
-to write at the end: if the run stops or dies midway, the file must already show every step done.
+to write at the end: if the run stops or dies partway, the file must already show every step done.
 
 ### 2. Read the fix and isolate its logic
 ```sh

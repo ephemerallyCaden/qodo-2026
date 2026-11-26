@@ -1,5 +1,5 @@
 // visual-proof (R8): the saved record is created when the run starts and every step is written to it
-// as soon as it's done, so a run that dies midway still shows each step it finished; it ends with a status.
+// as soon as it's done, so a run that dies partway still shows each step it finished; it ends with a status.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';

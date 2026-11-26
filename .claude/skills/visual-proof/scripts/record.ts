@@ -1,5 +1,5 @@
 // visual-proof (R8): the run's record, like fix-proof's. Created before the first step with
-// `Status: running`, each step appended the moment it ends, so a run that stops or dies midway still
+// `Status: running`, each step appended the moment it ends, so a run that stops or dies partway still
 // shows every step it did; finish() writes the final status. Never overwrites a record: uniqueName picks
 // the next free `-2`, `-3`. Paths are written as names ($SCRATCH, $MAIN, ~), never as absolute paths.
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
