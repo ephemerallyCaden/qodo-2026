@@ -3,10 +3,11 @@
 // for privacy (and its scratch dir goes); a take that failed left nothing to scan, so its dir goes, and
 // the takes before it are still scanned.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { checkTakes, settleScratch, type TakeDone } from '../../.claude/skills/visual-proof/scripts/checks.js';
 import { solid } from '../../.claude/skills/visual-proof/scripts/frames.js';
+import { libraryRuns } from '../../.claude/skills/visual-proof/scripts/prepare.js';
 import { Stop } from '../../.claude/skills/visual-proof/scripts/rules.js';
 import type { TakeLog } from '../../.claude/skills/visual-proof/scripts/scene.js';
 import { encodePng } from '../render/png.js';
@@ -31,6 +32,20 @@ function take(scratch: string, name: string, text: string, odd = false): TakeDon
 const pairs = [['before', 'before-1', 'before-2']] as const;
 
 describe('checkTakes', () => {
+  it("keeps the token-like rule for three's WebGL names in page text and API responses: the library exemption is the bundle scan's alone (Qodo 648df95e)", async () => {
+    const scratch = tempDir('commet-vp-checks-');
+    const name = 'COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR';
+    const library = libraryRuns(resolve(import.meta.dirname, '../..'));
+    expect(library.has(name)).toBe(true);
+    const a = take(scratch, 'before-1', `ext ${name}`), b = take(scratch, 'before-2', 'web/src/view.ts');
+    b.log.served.push({ path: '/api/layout', status: 200, body: JSON.stringify({ note: name }) });
+    // Even a caller that hands checkTakes the library gets every hit
+    const withLibrary = { literals: [], library };
+    const got = await checkTakes({ done: [a, b], pairs, items: [], ctx: withLibrary });
+    expect((got.stop as Stop).code).toBe('privacy');
+    expect(got.hits.map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual(['token-like string @ GET /api/layout', 'token-like string @ take before-1 page text from frame 0']);
+  });
+
   it('two takes that differ, one holding a private path: a privacy stop, and the scratch dir goes', async () => {
     const scratch = tempDir('commet-vp-checks-');
     const done = [take(scratch, 'before-1', 'web/src/view.ts'), take(scratch, 'before-2', 'note: /Users/somebody/plan.txt', true)];

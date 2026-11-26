@@ -84,9 +84,10 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
    `node_modules`), `npm run build`, and a digest of `dist/web` (files and folders only, no links).
    Then every `dist/web` file name and file's text is privacy-scanned (step 7's rules), before the
    record names it or any take serves it: a build can copy into the view any file the sandbox lets it
-   read. There only, a token-shaped run that is three.js's own text (in this checkout's
-   `node_modules/three/build`: WebGL names like `COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR`) is library
-   text, not a token; every other rule applies, and any other hit stops the run (`privacy`).
+   read. There only, a token-shaped run found verbatim in three.js's own build files (this checkout's
+   `node_modules/three/build/*.js`: WebGL names like `COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR`) is
+   library text, not a token. No other file or package counts, every other rule still applies to it,
+   and any other token-shaped run stops the run (`privacy`). Step 7's scans have no such exemption.
 4. **View change?** The same `dist/web` on both sides → `no-view-change` (R11), before any capture.
    A diff touching the data paths → `data-change` (R12).
 5. **The data**: one clone of this repo at the scene's pinned commit (default: the base), or the
@@ -106,10 +107,10 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
    take behind (a take that failed wrote no log to scan, so its dir is removed): every frame's page text
    (text nodes, attributes, input values), every API response, the event stream, the state files, the
    page errors, the scene's notes and still names, and both commit subjects (those before the record is
-   even created), for absolute paths, `~/`, `file:` URLs, the launch URL or token, token-like strings and
-   secret prefixes, agent-log fields, and this machine's own paths. Any hit → `privacy`, whatever else
-   stopped the run, before any image is written and before the notes and page errors go into the
-   record (R5).
+   even created), for absolute paths, `~/`, `file:` URLs, the launch URL or token, token-like strings
+   (three's WebGL names too: step 3's exemption is the bundle scan's alone), secret prefixes,
+   agent-log fields, and this machine's own paths. Any hit → `privacy`, whatever else stopped the
+   run, before any image is written and before the notes and page errors go into the record (R5).
 8. **Determinism**: both takes of each build, frame by frame: any pixel, still, probe or page text that
    differs → `takes-differ` (R2).
 9. **Before → after**: per still, the changed pixels, their box and which part of the view (each open

@@ -124,6 +124,10 @@ describe('libraryRuns (Qodo 648df95e)', () => {
     const three = [{ path: 'assets/index.js', text: readFileSync(join(ROOT, 'node_modules', 'three', 'build', 'three.module.js'), 'utf8') }];
     expect(bundleHits('after', three, { literals: [] }).map((h) => h.rule)).toContain('token-like string');
     expect(bundleHits('after', three, { literals: [], library })).toEqual([]);
+    // A token that isn't three's own text still stops, beside three's names and with them exempt
+    const canary = { path: 'assets/notes.js', text: `const k="${'aB3'.repeat(11)}",gl="COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR";` };
+    expect(bundleHits('after', [...three, canary], { literals: [], library }).map((h) => `${h.rule} @ ${h.where}: ${h.excerpt}`))
+      .toEqual(["token-like string @ the after build's dist/web/assets/notes.js: aB3aB3… (33 chars)"]);
   });
   it('is empty in a checkout without three', () => {
     expect(libraryRuns(tempDir('commet-vp-prep-')).size).toBe(0);

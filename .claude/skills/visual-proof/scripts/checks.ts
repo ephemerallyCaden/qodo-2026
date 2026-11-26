@@ -23,13 +23,14 @@ export interface Checked {
  * is removed. A hit is a privacy stop whatever else happened; then the failed take's own stop; then the
  * first pair of takes that differ.
  */
-export async function checkTakes(o: { done: readonly TakeDone[]; failed?: TakeFailed; pairs: readonly (readonly [string, string, string])[]; items: readonly Scanned[]; ctx: PrivacyContext; tokenHits?: number }): Promise<Checked> {
+export async function checkTakes(o: { done: readonly TakeDone[]; failed?: TakeFailed; pairs: readonly (readonly [string, string, string])[]; items: readonly Scanned[]; ctx: Pick<PrivacyContext, 'literals'>; tokenHits?: number }): Promise<Checked> {
   const removed: string[] = [];
   if (o.failed) {
     rmSync(o.failed.dir, { recursive: true, force: true });
     removed.push(o.failed.name);
   }
-  const hits = privacyHits([...o.items, ...o.done.flatMap((t) => takeTexts(t.name, t.log))], o.ctx);
+  // The literals only: three's library text is skipped in the bundle scan alone, never in what a take saw (Qodo 648df95e)
+  const hits = privacyHits([...o.items, ...o.done.flatMap((t) => takeTexts(t.name, t.log))], { literals: o.ctx.literals });
   if (o.tokenHits) hits.push({ rule: 'the launch token', where: 'a take log', excerpt: `(${o.tokenHits} times, replaced before writing)` });
   const compared: Checked['compared'] = [];
   const leak = privacyStop(hits);
