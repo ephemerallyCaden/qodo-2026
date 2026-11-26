@@ -276,6 +276,37 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
       'cat <<EOF > /tmp/note\ngit push\nEOF',
     ]);
   });
+
+  // Since 5a246fcc a verb must be one of git's own commands: the ones agents use, with the options before them.
+  it('runs the git commands agents use, with -C, -c and --no-pager', () => {
+    const repo = realTempDir('commet-guard-verbs-');
+    spawnSync('git', ['init', '-q', repo], { env: ENV });
+    expectAllowed('feature', [
+      `git -C ${repo} status`,
+      'git -c color.ui=never log --oneline -5',
+      'git --no-pager diff --cached',
+      'git --no-optional-locks status --porcelain',
+      'git show HEAD --stat',
+      'git diff origin/session/week1...HEAD -- src',
+      'git blame -L 1,20 src/cli.ts',
+      'git grep -n featureGit',
+      'git ls-files test',
+      'git rev-parse --abbrev-ref HEAD',
+      'git add src/cli.ts test/cli.test.ts',
+      'git commit -m "fix: x"',
+      'git commit --amend --no-edit',
+      'git restore --staged src/cli.ts',
+      'git rm --cached x.log',
+      'git mv a.ts b.ts',
+      'git reset --soft HEAD~1',
+      'git rebase origin/session/week1',
+      'git cherry-pick abc123',
+      'git stash list',
+      'git config --get user.email',
+      'git worktree list',
+      'git help commit',
+    ]);
+  });
 });
 
 // Qodo round 3 on #150: each of these got past the denylist guard on fe69af7.
