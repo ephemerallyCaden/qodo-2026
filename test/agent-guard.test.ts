@@ -150,8 +150,12 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
       `GIT_DIR=${repo}/.git git pu`,
       `GIT_CONFIG_GLOBAL=${cfg} git p`,
       `git -c include.path=${cfg} p`,
+      // Qodo #237 a38f1efe: behind a wrapper the guard doesn't know.
+      `setsid git -C ${repo} pu`,
+      `script -q /dev/null git -C ${repo} pu`,
+      'setsid gh m 150',
     ]);
-    expectAllowed('feature', [`git -C ${repo} status`, `cd ${repo} && git log -1`, 'git status']);
+    expectAllowed('feature', [`git -C ${repo} status`, `cd ${repo} && git log -1`, 'git status', 'echo git st', 'grep -rn git src']);
   });
 
   // Qodo #93 c97354aa: send-pack is git's lower-level push.
@@ -194,6 +198,12 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
       'git fetch origin +main:main',
       'git fetch . HEAD:main',
       'git pull origin main:main',
+      // Qodo #237 112373e5, e77708f7: a destination from --refmap, from the refspecs --stdin reads, or from config.
+      'git fetch --refmap=+refs/heads/main:refs/heads/main origin main',
+      'git fetch --refmap +refs/heads/*:refs/heads/* origin main',
+      "printf 'HEAD:refs/heads/main\\n' | git fetch --stdin .",
+      'git fetch --stdin . < /tmp/refspecs',
+      'git -c remote.origin.fetch=+refs/heads/*:refs/heads/* fetch origin',
     ]);
     expectAllowed('feature', [
       'git branch',
@@ -211,6 +221,8 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
       'git fetch origin session/week1',
       'git fetch https://github.com/o/r main',
       'git fetch git@github.com:o/r.git main',
+      'git fetch github.com:o/r.git main', // Qodo #237 dec489fd: an scp-like URL without a user
+      'git fetch --depth 1 origin main',
       'git pull --rebase origin session/week1',
       'git commit -m "fix: x" -- src/cli.ts',
     ]);
@@ -252,13 +264,18 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
       "gh api graphql -f query='query { viewer { login } }'",
       'grep -rn gh src',
       'which gh',
+      'npx vitest run test/agent-guard.test.ts -t gh',
     ]);
   });
 
   // Qodo #93 8cc5f722: npm runs any unique prefix of a command.
   it('blocks npm publish however it is abbreviated', () => {
-    expectBlocked('feature', ['npm pu', 'npm pub', 'npm publi --dry-run', 'npm unp commet', 'npm unpub commet', 'npm --workspace x pub', 'pnpm pub', 'yarn publi']);
-    expectAllowed('feature', ['npm un lodash', 'npm run build', 'npm ci', 'npm test']);
+    expectBlocked('feature', [
+      'npm pu', 'npm pub', 'npm publi --dry-run', 'npm unp commet', 'npm unpub commet', 'npm --workspace x pub', 'npm -w x pub',
+      'npm -- pub', 'pnpm pub', 'yarn publi', 'yarn workspace x publish', 'yarn npm publish',
+    ]);
+    // Qodo #237 6481a3ed: a prefix counts only as npm's own command, not as a script's name or argument.
+    expectAllowed('feature', ['npm un lodash', 'npm run build', 'npm ci', 'npm test', 'npm run pub', 'npm test -- pub', 'npm run-script pu']);
   });
 
   it('lets ordinary work through, including text that only mentions a push', () => {

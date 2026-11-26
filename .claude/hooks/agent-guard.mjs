@@ -528,8 +528,10 @@ function hasOption(args, shorts, longs) {
 
 // Verbs that update another repository.
 const GIT_PUSH = new Set(['push', 'send-pack', 'http-push']);
-// A fetch refspec with a destination (main:main, . HEAD:main) writes that local branch; a URL isn't one.
-const refspecDest = (rest) => rest.some((a) => !a.startsWith('-') && /^\+?[^:@]*:/.test(a) && !a.includes('://'));
+// fetch and pull: a refspec with a destination (origin main:main, . HEAD:main) writes that local branch, and so can
+// --refmap and the refspecs --stdin reads. The first operand is the repository, a URL that may hold a colon too.
+const refspecDest = (rest) => hasOption(rest, '', ['--refmap', '--stdin'])
+  || rest.filter((a) => !a.startsWith('-')).slice(1).some((a) => a.includes(':'));
 // Branches live in the shared .git, so a branch moved here moves it for the human and every sandbox (main too).
 const GIT_REF_WRITES = {
   'update-ref': () => true,
@@ -546,11 +548,12 @@ const GIT_REF_WRITES = {
 const featureMsg = (what) => `feature-agent never pushes, merges or publishes (${what}): the team lead does that (AGENTS.md).`;
 const refMsg = (what) => `feature-agent never moves, overwrites or deletes a branch (${what}): branches live in the shared .git, so the team lead does that (AGENTS.md).`;
 
-/** `run`: the word is a command name for sure. Elsewhere `git` may be a word for another program (grep -rn git src). */
+/** `run`: the word may run as a command; false when it follows a program that only reads it (grep -rn git src). */
 function featureGit(args, ctx, run) {
   const { verb, rest, conf, configEnv } = gitVerb(args);
   if (configEnv) return '`git --config-env` sets git config from the environment, which can run any command.';
   if (conf.some((c) => /^alias\./i.test(c))) return '`git -c alias.…` can run any command: call the git verb itself.';
+  if (conf.some((c) => /^remote\..+\.fetch=/i.test(c))) return refMsg('git -c remote.<name>.fetch');
   for (const c of conf) { const r = checkFeature(c.slice(c.indexOf('=') + 1), { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
   if (verb === null) return null;
   if (unknown(verb)) return RUNTIME('a git verb');
@@ -568,13 +571,28 @@ const GH_COMMANDS = new Set(('agent-task alias api attestation auth browse cache
 /** feature-agent's gh is the read-only list, as scout's. Where `run` is false, `gh` counts only before one of gh's commands. */
 function featureGh(args, ctx, run) {
   const [group = '', ...rest] = ghCommandFirst(args);
-  if (!run && !GH_COMMANDS.has(group) && !unknown(group)) return null;
+  if (group === '' || (!run && !GH_COMMANDS.has(group) && !unknown(group))) return null;
   if (group === 'api' && rest.some(unknown)) return RUNTIME('a gh api argument');
   return gh(args, ctx);
 }
 
-// npm runs any unique prefix of a command: `npm pub` publishes and `npm unp` unpublishes (`npm un` is uninstall).
+// npm runs any unique prefix of its command: `npm pub` publishes and `npm unp` unpublishes (`npm un` is uninstall).
 const PUBLISH = (a) => (a.length >= 2 && 'publish'.startsWith(a)) || (a.length >= 3 && 'unpublish'.startsWith(a));
+
+/** npm/pnpm/yarn `args` publish: `publish` anywhere (yarn workspace x publish), or a prefix of it as the command,
+ *  the first operand, where a word after an option may be its value (npm -w x pub), so the scan goes past it. */
+function publishes(args) {
+  if (args.some((a) => a === 'publish' || a === 'unpublish')) return true;
+  for (let j = 0; j < args.length; j++) {
+    if (args[j].startsWith('-')) continue;
+    if (PUBLISH(args[j])) return true;
+    const prev = args[j - 1] ?? '';
+    if (!prev.startsWith('-') || prev === '--' || prev.includes('=')) return false; // the command, and not publish
+  }
+  return false;
+}
+// Programs that only read their arguments: a `git` or `gh` among them is a word, not a command (grep -rn gh src).
+const READS_ARGS = new Set(['grep', 'rg', 'echo', 'printf', 'cat', 'ls', 'which', 'head', 'tail', 'wc', 'jq', 'sort', 'diff', 'man']);
 const GIT_CONFIG_ENV = /^GIT_CONFIG_(PARAMETERS|COUNT|KEY_\d+|VALUE_\d+)$/;
 const RUNTIME = (what) => `${what} only known at run time ($VAR, $(…), a shell's "$@") could hide a push or publish: spell it out.`;
 // Programs that hand text on to the command after them, and the commands they may not be handed to.
@@ -630,17 +648,22 @@ function featureWords(words, ctx) {
     if ((name === 'source' || name === '.') && (ctx.fed || rest.some((w) => STDIN_FILE.test(w)))) return `\`${name}\` could read its script from stdin: run the command itself.`;
     if (name === 'eval') { const r = checkFeature(rest.join(' '), { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
   }
-  // A command name can hide behind a wrapper we don't know (xargs-like): check git/gh/npm at every word.
+  // A command name can hide behind a wrapper we don't know (xargs-like): check git/gh/npm at every word. git and gh
+  // run there too, unless the program they follow only reads its arguments.
+  const runs = (i) => {
+    const k = Math.max(-1, ...[...starts].filter((s) => s <= i));
+    return k === i || k < 0 || !READS_ARGS.has(base(words[k]));
+  };
   for (let i = 0; i < words.length; i++) {
     const name = base(words[i]);
     const rest = words.slice(i + 1);
     let r = null;
-    if (name === 'git') r = featureGit(rest, ctx, starts.has(i));
-    else if (name === 'gh') r = featureGh(rest, ctx, starts.has(i));
+    if (name === 'git') r = featureGit(rest, ctx, runs(i));
+    else if (name === 'gh') r = featureGh(rest, ctx, runs(i));
     else if (['npm', 'pnpm', 'yarn'].includes(name)) {
       const own = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest; // after --, the script's arguments
       if (own.some(unknown)) r = RUNTIME(`an argument to ${name}`);
-      else if (rest.some(PUBLISH)) r = featureMsg(`${name} publish`);
+      else if (publishes(rest)) r = featureMsg(`${name} publish`);
     }
     if (r) return r;
   }
