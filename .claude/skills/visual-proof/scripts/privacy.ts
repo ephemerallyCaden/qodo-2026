@@ -55,15 +55,32 @@ export function privacyHits(items: readonly Scanned[], ctx: PrivacyContext): Hit
   return out;
 }
 
+/** A route the server answers: lowercase words only, so it can be printed as a hit's place. */
+const ROUTE = /^\/api\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/;
+
+/** A request path as text to scan (Qodo f3aa696b): as sent, its path decoded, and each query parameter decoded, so `%2FUsers…` is caught too. */
+export function requestText(path: string): string {
+  const q = path.indexOf('?');
+  const pathname = q < 0 ? path : path.slice(0, q);
+  let decoded = pathname;
+  try { decoded = decodeURIComponent(pathname); } catch { /* malformed: scanned as sent */ }
+  return [path, decoded, ...[...new URLSearchParams(q < 0 ? '' : path.slice(q + 1))].flat()].join('\n');
+}
+
 /**
  * What one served response holds, to scan: a JSON body's decoded strings and, apart, its keys; any other
- * body as it is; and its request's query. A hit is placed by the path alone, since its place is printed
- * unmasked and a query could hold anything (PR #199 r2).
+ * body as it is; its request's query; and a request's path itself. A hit is placed by the path alone,
+ * since its place is printed unmasked and a query could hold anything (PR #199 r2), and only by a path
+ * that is a plain route: any other request is placed as one, unnamed (Qodo f3aa696b).
  */
 export function servedTexts(r: { path: string; body: string }): Scanned[] {
   const q = r.path.indexOf('?');
-  const where = `GET ${q < 0 ? r.path : r.path.slice(0, q)}`;
-  const query: Scanned[] = q < 0 ? [] : [{ where: `${where} (query)`, text: [r.path.slice(q + 1), ...[...new URLSearchParams(r.path.slice(q + 1))].flat()].join('\n') }];
+  const pathname = q < 0 ? r.path : r.path.slice(0, q), request = pathname.startsWith('/');
+  const where = `GET ${!request || ROUTE.test(pathname) ? pathname : '(a request that is not a route)'}`;
+  const query: Scanned[] = [
+    ...(q < 0 ? [] : [{ where: `${where} (query)`, text: [r.path.slice(q + 1), ...[...new URLSearchParams(r.path.slice(q + 1))].flat()].join('\n') }]),
+    ...(request ? [{ where: `${where} (path)`, text: requestText(pathname) }] : []),
+  ];
   let value: unknown;
   try {
     value = JSON.parse(r.body);
@@ -80,9 +97,11 @@ export function servedTexts(r: { path: string; body: string }): Scanned[] {
   return [{ where, text: strings.join('\n') }, { where: `${where} (keys)`, text: keys.join('\n') }, ...query];
 }
 
-/** What one take saw, to scan: every distinct page text, every API response, the event stream and the scene's notes. */
-export function takeTexts(name: string, log: { texts: readonly [string, number][]; served: readonly { path: string; body: string }[]; events: string; notes: readonly string[]; errors: readonly string[] }): Scanned[] {
+/** What one take saw, to scan: every distinct page text, every API response, every static file request, the event stream and the scene's notes. */
+export function takeTexts(name: string, log: { texts: readonly [string, number][]; served: readonly { path: string; body: string }[]; assets: readonly { path: string }[]; events: string; notes: readonly string[]; errors: readonly string[] }): Scanned[] {
   return [
+    // a static file's request (its path and query) is the page's own text too; placed by the take alone (Qodo f3aa696b)
+    { where: `take ${name} static file requests`, text: log.assets.map((a) => requestText(a.path)).join('\n') },
     // page, console and server errors go into the record too (PR #199 10bde0e3)
     { where: `take ${name} page errors`, text: log.errors.join('\n') },
     ...log.texts.map(([text, k]) => ({ where: `take ${name} page text from frame ${k}`, text })),
@@ -142,11 +161,13 @@ export function assetPath(requestPath: string): string | null {
 /**
  * The static files a take was served that aren't byte for byte one the bundle scan read (Qodo 968ff513):
  * a process the build left behind can change dist/web after the scan, and the take serves the build's
- * own tree. A hit names the scanned file it should have been, never the request (printed unmasked).
+ * own tree. A hit names the scanned file it should have been, never the request (printed unmasked). An
+ * answer other than 200 serves no bundle file; its body reaches only the page, whose text is scanned.
  */
-export function assetHits(take: string, assets: readonly { path: string; sha256: string }[], scanned: ReadonlyMap<string, string>): Hit[] {
+export function assetHits(take: string, assets: readonly { path: string; status: number; sha256: string }[], scanned: ReadonlyMap<string, string>): Hit[] {
   const out: Hit[] = [];
   for (const a of assets) {
+    if (a.status !== 200) continue;
     const file = assetPath(a.path);
     const want = file === null ? undefined : scanned.get(file);
     if (want === a.sha256) continue;

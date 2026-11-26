@@ -108,9 +108,10 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
    load nothing but that server: any other request is refused and stops the run (`privacy`).
 7. **Privacy**, of every take that finished, before any is compared, so no stop leaves an unscanned
    take behind (a take that failed wrote no log to scan, so its dir is removed): every frame's page text
-   (text nodes, attributes, input values), every API response, every static file the page was served
-   (its bytes must be a file step 3 scanned: the take serves the build's own tree, which a process the
-   build left can change after the scan), the event stream, the state files, the
+   (text nodes, attributes, input values), every API response and request path, every static file
+   request (its path and query, decoded, placed by the take alone) and every static file the page was
+   served (each 200's bytes must be a file step 3 scanned: the take serves the build's own tree, which a
+   process the build left can change after the scan), the event stream, the state files, the
    page errors, the scene's notes and still names, and both commit subjects (those before the record is
    even created), for absolute paths, `~/`, `file:` URLs, the launch URL or token, token-like strings
    (three's WebGL names too: step 3's exemption is the bundle scan's alone), secret prefixes,

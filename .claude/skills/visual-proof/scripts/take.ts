@@ -171,9 +171,9 @@ export async function runTake(page: Page, url: string, deps: TakeDeps & { run?: 
     if (u.pathname === '/api/events') return;
     // Path and query only: the token is in the URL's hash, and never in a request line.
     const path = u.pathname + u.search;
-    // A static file the server answered: its bytes' hash, for the check against the bundle scan (Qodo 968ff513); any other answer is scanned as text
-    if (!u.pathname.startsWith('/api/') && r.status() === 200) {
-      bodies.push(r.body().then((b) => { log.assets.push({ path, sha256: createHash('sha256').update(b).digest('hex') }); }, () => {}));
+    // A static file the server answered: its request and its bytes' hash, for the privacy scan and the check against the bundle scan (Qodo 968ff513, f3aa696b)
+    if (!u.pathname.startsWith('/api/')) {
+      bodies.push(r.body().then((b) => { log.assets.push({ path, status: r.status(), sha256: createHash('sha256').update(b).digest('hex') }); }, () => {}));
       return;
     }
     bodies.push(r.text().then((body) => { log.served.push({ path, status: r.status(), body }); }, () => {}));
@@ -373,7 +373,7 @@ export async function runTake(page: Page, url: string, deps: TakeDeps & { run?: 
   await Promise.all(bodies);
   log.events = (await page.evaluate(() => window.__vpEvents ?? [])).join('');
   log.served.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.body < b.body ? -1 : a.body > b.body ? 1 : 0));
-  log.assets.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0));
+  log.assets.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.status - b.status || (a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0)));
   return log;
 }
 

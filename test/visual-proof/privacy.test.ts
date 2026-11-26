@@ -76,6 +76,17 @@ describe('servedTexts', () => {
     for (const h of hits) expect(`${h.where} ${h.excerpt}`).not.toContain(TOKEN);
   });
 
+  it("scans a request's path too, and names a response by it only when it is a plain route (Qodo f3aa696b)", () => {
+    expect(privacyHits(servedTexts({ path: '/api/drone-detail?key=s_1', body: '{}' }), ctx)).toEqual([]);
+    const hits = privacyHits(servedTexts({ path: `/api/${'aB3'.repeat(11)}`, body: '{"note":"/home/eve/x"}' }), ctx);
+    expect(hits.map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual(['absolute path @ GET (a request that is not a route)', 'token-like string @ GET (a request that is not a route) (path)']);
+    expect(JSON.stringify(hits)).not.toContain('aB3aB3aB3');
+    // percent-encoded, it is caught decoded
+    expect(privacyHits(servedTexts({ path: '/api/notes%20%2FUsers%2Feve', body: '{}' }), ctx).map((h) => h.where)).toEqual(['GET (a request that is not a route) (path)']);
+    // a state file, scanned through the same reader, keeps its own name
+    expect(servedTexts({ path: 'start state: layout.json', body: '{}' }).map((x) => x.where)).toEqual(['GET start state: layout.json', 'GET start state: layout.json (keys)']);
+  });
+
   it('scans a body that is not JSON as it is', () => {
     expect(privacyHits(servedTexts({ path: '/api/events', body: 'data: {"type":"state"}\n\n' }), ctx)).toEqual([]);
     expect(privacyHits(servedTexts({ path: '/api/events', body: 'data: /home/eve\n' }), ctx).map((h) => h.rule)).toEqual(['absolute path']);
@@ -83,7 +94,7 @@ describe('servedTexts', () => {
 });
 
 describe('takeTexts and runTexts', () => {
-  const log = { texts: [] as [string, number][], served: [], events: '', notes: [], errors: [] as string[] };
+  const log = { texts: [] as [string, number][], served: [], assets: [], events: '', notes: [], errors: [] as string[] };
   it("scans a take's page and console errors too, which go into the record (PR #199 10bde0e3)", () => {
     const hits = privacyHits(takeTexts('before-1', { ...log, errors: ['pageerror: cannot read /Users/somebody/secret.txt'] }), ctx);
     expect(hits.map((h) => `${h.rule} @ ${h.where}`)).toContain('absolute path @ take before-1 page errors');

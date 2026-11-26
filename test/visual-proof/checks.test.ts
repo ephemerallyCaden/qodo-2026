@@ -38,8 +38,8 @@ describe('checkTakes', () => {
     const sha = (t: string) => createHash('sha256').update(t).digest('hex');
     const scanned = new Map([['index.html', sha('<p>view</p>')], ['assets/app.js', sha('x;')]]);
     const a = take(scratch, 'before-1', 'web/src/view.ts'), b = take(scratch, 'before-2', 'web/src/view.ts');
-    a.log.assets.push({ path: '/', sha256: sha('<p>view</p>') }, { path: '/assets/app.js?v=1', sha256: sha('x;') });
-    b.log.assets.push({ path: '/', sha256: sha('<p>view</p>') }, { path: '/assets/app.js', sha256: sha('x; // notes') }, { path: `/assets/${'aB3'.repeat(11)}.js`, sha256: sha('y') });
+    a.log.assets.push({ path: '/', status: 200, sha256: sha('<p>view</p>') }, { path: '/assets/app.js?v=1', status: 200, sha256: sha('x;') }, { path: '/favicon.ico', status: 404, sha256: sha('not found') });
+    b.log.assets.push({ path: '/', status: 200, sha256: sha('<p>view</p>') }, { path: '/assets/app.js', status: 200, sha256: sha('x; // notes') }, { path: '/assets/gone.js', status: 200, sha256: sha('y') });
     const clean = await checkTakes({ done: [{ ...a, scanned }], pairs: [], items: [], ctx });
     expect(clean.stop).toBeNull();
     const got = await checkTakes({ done: [{ ...a, scanned }, { ...b, scanned }], pairs, items: [], ctx });
@@ -48,7 +48,25 @@ describe('checkTakes', () => {
       'bytes the bundle scan never read @ take before-2 static files: dist/web/assets/app.js changed after the scan',
       'bytes the bundle scan never read @ take before-2 static files: a file not in the scanned dist/web',
     ]);
-    expect(JSON.stringify(got.hits), 'a hit never names the request').not.toContain('aB3aB3aB3');
+    expect(JSON.stringify(got.hits), 'a hit never names the request').not.toContain('gone.js');
+  });
+
+  it("scans every static file request's path and query, placed by the take alone, never the request (Qodo f3aa696b)", async () => {
+    const scratch = tempDir('commet-vp-checks-');
+    const sha = (t: string) => createHash('sha256').update(t).digest('hex');
+    const scanned = new Map([['index.html', sha('<p>view</p>')], ['assets/app.js', sha('x;')]]);
+    const t = take(scratch, 'after-1', 'web/src/view.ts');
+    // Valid files, answered 200 and matching the scan, asked for with private text in the request
+    t.log.assets.push({ path: '/', status: 200, sha256: sha('<p>view</p>') }, { path: `/assets/app.js?k=${'aB3'.repeat(11)}`, status: 200, sha256: sha('x;') },
+      { path: '/assets/app.js?p=%2FUsers%2Feve%2Fnotes.txt', status: 200, sha256: sha('x;') }, { path: '/home/eve/x.js', status: 404, sha256: sha('not found') });
+    const got = await checkTakes({ done: [{ ...t, scanned }], pairs: [], items: [], ctx });
+    expect((got.stop as Stop).code).toBe('privacy');
+    // the decoded query's /Users/… and the 404's own path, each once; the token in the other query
+    expect(got.hits.map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual(['absolute path @ take after-1 static file requests', 'absolute path @ take after-1 static file requests', 'token-like string @ take after-1 static file requests']);
+    expect(JSON.stringify(got.hits)).not.toMatch(/aB3aB3aB3|eve/);
+    const clean = take(scratch, 'after-2', 'web/src/view.ts');
+    clean.log.assets.push({ path: '/', status: 200, sha256: sha('<p>view</p>') }, { path: '/assets/app.js?v=2', status: 200, sha256: sha('x;') });
+    expect((await checkTakes({ done: [{ ...clean, scanned }], pairs: [], items: [], ctx })).stop).toBeNull();
   });
 
   it("keeps the token-like rule for three's WebGL names in page text and API responses: the library exemption is the bundle scan's alone (Qodo 648df95e)", async () => {
