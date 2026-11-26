@@ -4,7 +4,7 @@
 // sandbox-exec. A self-test proves both before any ticket is claimed, and fails closed.
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { agentEnv, DENIED_TOOLS } from './agent.js';
 import type { Exec } from './exec.js';
 import { firstJson } from './review.js';
@@ -30,21 +30,25 @@ export interface Denied {
 }
 
 /**
- * Credentials the agent never needs: the AWS and SSH stores, gh's and qodo's logins, the npm,
- * netrc and git credential files (Qodo PR #93 f9a2cd5a), Claude Code's own credential and account
- * files, and whatever this machine's local config adds; also the runner's state, whose local config
- * and logs name this machine's paths (Qodo PR #235 7bdf99b6). npm and git run fine without them. The
- * agent's model calls still work: Claude Code fetches its model credentials in its own process,
- * outside the sandbox and the permission rules (Research, S7).
+ * Credentials the agent never needs: the AWS and SSH stores, gh's and qodo's logins, the docker,
+ * kube, gcloud, azure and gnupg stores (Qodo PR #93 e947968f), the npm, netrc and git credential
+ * files (Qodo PR #93 f9a2cd5a), Claude Code's own credential and account files, and whatever this
+ * machine's local config adds; also the runner's state, whose local config and logs name this
+ * machine's paths (Qodo PR #235 7bdf99b6). npm and git run fine without them. The agent's model
+ * calls still work: Claude Code fetches its model credentials in its own process, outside the
+ * sandbox and the permission rules (Research, S7).
  */
 export function deniedReads(p: SandboxPaths): Denied[] {
   const { home, env } = p;
   const claudeDir = env['CLAUDE_CONFIG_DIR'] || join(home, '.claude');
-  const dirs = ['.aws', '.ssh', '.qodo', '.config/gh'].map((d) => join(home, d));
+  const dirs = ['.aws', '.ssh', '.qodo', '.config/gh', '.docker', '.kube', '.config/gcloud', '.azure', '.gnupg'].map((d) => join(home, d));
   if (env['XDG_CONFIG_HOME']) dirs.push(join(env['XDG_CONFIG_HOME'], 'gh'));
   if (env['GH_CONFIG_DIR']) dirs.push(env['GH_CONFIG_DIR']);
+  // Where the environment moves those stores; KUBECONFIG is a list of files.
+  for (const k of ['DOCKER_CONFIG', 'CLOUDSDK_CONFIG', 'AZURE_CONFIG_DIR', 'GNUPGHOME']) if (isAbsolute(env[k] ?? '')) dirs.push(env[k]!);
   const files = ['.npmrc', '.netrc', '.git-credentials', '.config/git/credentials'].map((f) => join(home, f));
   if (env['XDG_CONFIG_HOME']) files.push(join(env['XDG_CONFIG_HOME'], 'git/credentials'));
+  files.push(...(env['KUBECONFIG'] ?? '').split(':').filter((f) => isAbsolute(f)));
   const list: Denied[] = [
     ...dirs.map((path): Denied => ({ path, kind: 'dir' })),
     ...files.map((path): Denied => ({ path, kind: 'file' })),
@@ -81,7 +85,9 @@ const commonRecords = (p: SandboxPaths) => ['commondir', 'config.worktree'].map(
  * rules hold the file tools to the same list (S2), and the Edit tools stay out of the runner's
  * state, the worktree's `.git` file and everything else outside the worktree (S3). The agent's
  * calls load no repo settings at all (`--setting-sources user`), so nothing in the worktree can
- * loosen this (Qodo PR #93 cf5b7463).
+ * loosen this (Qodo PR #93 cf5b7463). Unlike `seatbeltProfile`, Bash may still write any ref in the
+ * shared `.git`: `denyWrite` can't re-allow the run's own branch inside a denied dir (only
+ * `allowRead` overrides a deny), so the runner pushes only the SHA it verified (Qodo PR #93 b488a43f).
  */
 export function claudeSettings(p: SandboxPaths, o: { worktree: string; extra?: Denied[] }): Record<string, unknown> {
   const denied = [...deniedReads(p), ...(o.extra ?? [])];
@@ -123,13 +129,33 @@ const sbFilter = (d: Denied) => (d.kind === 'dir' ? `(subpath ${sbString(real(d.
   : d.kind === 'file' ? `(literal ${sbString(real(d.path))})` : `(regex ${sbRegex(real(dirname(d.path)) + d.path.slice(dirname(d.path).length))})`);
 
 /**
- * The Seatbelt profile the runner's own npm calls run under (S5), the documented equivalent of the
- * agent's sandbox: the same denied reads, writes only to the worktree, the shared `.git` (not its
- * hooks, config or the runner's state), the temp dirs and `/dev`. `check` (the four checks and
- * install scripts) reaches localhost only. `install` (`npm ci --ignore-scripts`, which runs no repo
- * code) also reaches the registry and writes npm's cache.
+ * What the run's git may write under the shared `.git` (Qodo PR #93 b488a43f): the object store,
+ * this run's worktree dir (`gitDir`, when it sits in `worktrees/`) and its own branch's ref, lock
+ * and reflog. Each path is the resolved `.git` plus the literal rest, so one swapped for a symlink
+ * resolves elsewhere and is refused: a fail closed.
  */
-export function seatbeltProfile(p: SandboxPaths, o: { worktree: string; mode: 'install' | 'check'; extra?: Denied[] }): string {
+function ownGitWrites(p: SandboxPaths, o: { gitDir?: string; branch?: string }): string[] {
+  const common = real(dirname(p.stateDir));
+  const own = [`(subpath ${sbString(join(common, 'objects'))})`];
+  if (o.gitDir && real(dirname(o.gitDir)) === join(common, 'worktrees')) own.push(`(subpath ${sbString(join(common, 'worktrees', basename(o.gitDir)))})`);
+  if (o.branch) {
+    for (const f of [`refs/heads/${o.branch}`, `refs/heads/${o.branch}.lock`, `logs/refs/heads/${o.branch}`]) own.push(`(literal ${sbString(join(common, f))})`);
+  }
+  return own;
+}
+
+/**
+ * The Seatbelt profile the runner's own npm calls run under (S5), the documented equivalent of the
+ * agent's sandbox: the same denied reads, writes only to the worktree, the temp dirs, `/dev` and,
+ * in the shared `.git`, only what `ownGitWrites` lists, so no other branch, tag, remote ref,
+ * `packed-refs`, the main checkout's HEAD or index, hooks, config or the runner's state. `check`
+ * (the four checks and install scripts) reaches localhost only. `install` (`npm ci
+ * --ignore-scripts`, which runs no repo code) also reaches the registry and writes npm's cache.
+ * One deny rule each, never an allow after a deny: an allow would re-open what an earlier rule shut.
+ */
+export function seatbeltProfile(p: SandboxPaths, o: {
+  worktree: string; mode: 'install' | 'check'; gitDir?: string; branch?: string; extra?: Denied[];
+}): string {
   const common = dirname(p.stateDir);
   const writable = [o.worktree, common, '/private/tmp', '/private/var/folders', '/dev'];
   if (p.env['TMPDIR']) writable.push(p.env['TMPDIR']);
@@ -143,6 +169,7 @@ export function seatbeltProfile(p: SandboxPaths, o: { worktree: string; mode: 'i
     '(version 1)',
     '(allow default)',
     `(deny file-write* (require-not (require-any ${writable.map((w) => `(subpath ${sbString(real(w))})`).join(' ')})))`,
+    `(deny file-write* (require-all (subpath ${sbString(real(common))}) (require-not (require-any ${ownGitWrites(p, o).join(' ')}))))`,
     `(deny file-write* (subpath ${sbString(real(p.stateDir))}) (subpath ${sbString(real(join(common, 'hooks')))}) (literal ${sbString(real(join(common, 'config')))})`,
     `  (literal ${sbString(real(join(o.worktree, '.git')))}) ${shared} ${records})`,
     `(deny file-read* ${denied.map(sbFilter).join(' ')})`,
@@ -319,9 +346,10 @@ export async function sandboxSelfTest(o: {
  * recorded. Whatever config the agent plants there runs contained. Only the push leaves the
  * sandbox, and it runs in the main checkout, never in the worktree.
  */
-export function worktreeGit(p: SandboxPaths, g: { gitDir: string; worktree: string }, args: readonly string[], env: NodeJS.ProcessEnv) {
+export function worktreeGit(p: SandboxPaths, g: { gitDir: string; worktree: string; branch?: string }, args: readonly string[], env: NodeJS.ProcessEnv) {
   const pin = g.gitDir ? pinnedGitEnv({ gitDir: g.gitDir, commonDir: dirname(p.stateDir), worktree: g.worktree }) : {};
-  return { cmd: SANDBOX_EXEC, args: seatbelt(seatbeltProfile(p, { worktree: g.worktree, mode: 'check' }), 'git', args), env: { ...env, ...pin } };
+  const profile = seatbeltProfile(p, { worktree: g.worktree, mode: 'check', gitDir: g.gitDir, ...(g.branch ? { branch: g.branch } : {}) });
+  return { cmd: SANDBOX_EXEC, args: seatbelt(profile, 'git', args), env: { ...env, ...pin } };
 }
 
 /**

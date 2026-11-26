@@ -73,6 +73,22 @@ describe('what the sandbox denies (S1, S2, S3)', () => {
     expect(deniedReads(p).map((d) => d.path)).not.toContain('/opt/login');
   });
 
+  it('denies the docker, kube, gcloud, azure and gnupg stores, and where the environment moves them (Qodo PR93 e947968f)', () => {
+    const dirs = ['/h/.docker', '/h/.kube', '/h/.config/gcloud', '/h/.azure', '/h/.gnupg'];
+    expect(deniedReads(p)).toEqual(expect.arrayContaining(dirs.map((path) => ({ path, kind: 'dir' }))));
+    const s = claudeSettings(p, { worktree: '/r/.sandboxes/agent-1' }) as { sandbox: { filesystem: { denyRead: string[] } }; permissions: { deny: string[] } };
+    expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining(dirs));
+    expect(s.permissions.deny).toEqual(expect.arrayContaining(dirs.flatMap((d) => [`Read(/${d})`, `Read(/${d}/**)`])));
+    const check = seatbeltProfile(p, { worktree: '/r/.sandboxes/agent-1', mode: 'check' });
+    for (const d of dirs) expect(check).toContain(`(subpath "${d}")`);
+    const env = { DOCKER_CONFIG: '/d', CLOUDSDK_CONFIG: '/g', AZURE_CONFIG_DIR: '/a', GNUPGHOME: '/n', KUBECONFIG: '/k/one:relative:/k/two' };
+    expect(deniedReads({ ...p, env })).toEqual(expect.arrayContaining([
+      { path: '/d', kind: 'dir' }, { path: '/g', kind: 'dir' }, { path: '/a', kind: 'dir' }, { path: '/n', kind: 'dir' },
+      { path: '/k/one', kind: 'file' }, { path: '/k/two', kind: 'file' },
+    ]));
+    expect(deniedReads({ ...p, env }).map((d) => d.path)).not.toContain('relative');
+  });
+
   it('follows gh and Claude Code to the config dirs the environment names', () => {
     const paths = deniedReads({ ...p, env: { GH_CONFIG_DIR: '/g', XDG_CONFIG_HOME: '/x', CLAUDE_CONFIG_DIR: '/c' } }).map((d) => d.path);
     expect(paths).toEqual(expect.arrayContaining(['/g', '/x/gh', '/h/.config/gh', '/c/.credentials.json', '/c/.claude.json', '/h/.claude.json']));
@@ -146,7 +162,7 @@ describe('the self-test verdict (S4)', () => {
 const canSandbox = existsSync(SANDBOX_EXEC) && spawnSync(SANDBOX_EXEC, ['-p', '(version 1)(allow default)', '/usr/bin/true']).status === 0;
 
 describe.skipIf(!canSandbox)('the runner sandbox, for real (S5)', () => {
-  function setup() {
+  function setup(gitDir?: string) {
     const root = temp();
     const home = join(root, 'home');
     const stateDir = join(root, 'repo/.git/factory');
@@ -157,7 +173,8 @@ describe.skipIf(!canSandbox)('the runner sandbox, for real (S5)', () => {
     writeFileSync(join(d.denied, 'canary.txt'), 'CANARY-TOKEN\n');
     writeFileSync(join(d.work, PROBE), probeScript(join(d.denied, 'canary.txt'), stateDir));
     const paths: SandboxPaths = { home, stateDir, env: {} };
-    const profile = seatbeltProfile(paths, { worktree: d.work, mode: 'check', extra: [{ path: d.denied, kind: 'dir' }] });
+    const own = gitDir ? { gitDir: join(root, 'repo/.git', gitDir) } : {};
+    const profile = seatbeltProfile(paths, { worktree: d.work, mode: 'check', ...own, extra: [{ path: d.denied, kind: 'dir' }] });
     return { d, home, profile };
   }
   const env = { PATH: process.env['PATH'] ?? '/usr/bin:/bin' };
@@ -173,7 +190,7 @@ describe.skipIf(!canSandbox)('the runner sandbox, for real (S5)', () => {
   }, 30_000);
 
   it("refuses rewriting the worktree's .git file and any worktree's commondir, but lets git update the rest (Qodo PR93 b301674c)", async () => {
-    const { d, profile } = setup();
+    const { d, profile } = setup('worktrees/agent-1');
     const common = join(d.stateDir, '..');
     for (const x of ['worktrees/agent-1', 'worktrees/other']) mkdirSync(join(common, x), { recursive: true });
     const targets = [join(d.work, '.git'), join(common, 'worktrees/other/commondir'), join(common, 'worktrees/agent-1/gitdir'),
@@ -212,6 +229,82 @@ describe.skipIf(!canSandbox)('the runner sandbox, for real (S5)', () => {
     expect(denied.stdout).toBe('');
     expect(denied.stderr).toMatch(/Operation not permitted/);
   }, 30_000);
+
+  // Qodo PR93 b488a43f: install and test scripts run under this profile, and the shared .git holds
+  // every branch. Real git, offline: only the run's own branch, its worktree dir and objects move.
+  describe("under the shared .git, writes only the run's own branch, worktree dir and objects (Qodo PR93 b488a43f)", () => {
+    const gitEnv = { PATH: process.env['PATH'] ?? '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' };
+    const git = (cwd: string, args: string[]) => {
+      const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: gitEnv });
+      if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
+      return r.stdout.trim();
+    };
+    function repo() {
+      const root = temp();
+      const main = join(root, 'repo');
+      mkdirSync(main);
+      git(main, ['init', '-q', '-b', 'session/week1']);
+      git(main, ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'a']);
+      git(main, ['branch', 'other']);
+      git(main, ['tag', 'v1']);
+      const worktree = join(main, '.sandboxes/agent-1');
+      git(main, ['worktree', 'add', '-q', '-b', 'agent/1-x', worktree]);
+      const common = join(main, '.git');
+      const stateDir = join(common, 'factory');
+      mkdirSync(stateDir);
+      const gitDir = git(worktree, ['rev-parse', '--absolute-git-dir']);
+      git(worktree, ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'b']);
+      const paths: SandboxPaths = { home: join(root, 'home'), stateDir, env: {} };
+      return { root, main, worktree, common, gitDir, paths, base: git(main, ['rev-parse', 'session/week1']), tip: git(worktree, ['rev-parse', 'HEAD']) };
+    }
+    const run = (profile: string, cwd: string, cmd: string, args: string[]) =>
+      realExec()(SANDBOX_EXEC, seatbelt(profile, cmd, args), { cwd, timeoutMs: 10_000, env: gitEnv });
+
+    it.each(['check', 'install'] as const)('%s: another branch, a tag, a remote ref, packed-refs, the main HEAD and .git/commet are refused', async (mode) => {
+      const s = repo();
+      const profile = seatbeltProfile(s.paths, { worktree: s.worktree, mode, gitDir: s.gitDir, branch: 'agent/1-x' });
+      const refused = [
+        ['git', ['update-ref', 'refs/heads/other', s.tip]], ['git', ['update-ref', 'refs/heads/session/week1', s.tip]],
+        ['git', ['update-ref', 'refs/heads/new', s.tip]], ['git', ['tag', '-f', 'v1', s.tip]], ['git', ['update-ref', 'refs/remotes/origin/session/week1', s.tip]],
+        ['/bin/sh', ['-c', `echo x > '${join(s.common, 'packed-refs')}'`]], ['/bin/sh', ['-c', `echo 'ref: refs/heads/other' > '${join(s.common, 'HEAD')}'`]],
+        ['/bin/sh', ['-c', `mkdir -p '${join(s.common, 'commet')}' && echo x > '${join(s.common, 'commet/x')}'`]],
+      ] as const;
+      for (const [cmd, args] of refused) {
+        const res = await run(profile, s.worktree, cmd, [...args]);
+        expect(res.code, `${cmd} ${args.join(' ')}`).not.toBe(0);
+        expect(res.stderr, `${cmd} ${args.join(' ')}`).toMatch(/Operation not permitted|unable to create directory/);
+      }
+      expect(git(s.main, ['rev-parse', 'other', 'session/week1', 'v1'])).toBe([s.base, s.base, s.base].join('\n'));
+      expect(git(s.main, ['symbolic-ref', 'HEAD'])).toBe('refs/heads/session/week1');
+      expect(existsSync(join(s.common, 'commet'))).toBe(false);
+    }, 30_000);
+
+    it("the run's own branch, its reflog, its worktree dir and the object store still update", async () => {
+      const s = repo();
+      const profile = seatbeltProfile(s.paths, { worktree: s.worktree, mode: 'check', gitDir: s.gitDir, branch: 'agent/1-x' });
+      const reflog = () => readFileSync(join(s.common, 'logs/refs/heads/agent/1-x'), 'utf8').trim().split('\n').length;
+      const before = reflog();
+      const commit = await run(profile, s.worktree, 'git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'c']);
+      expect(commit.code, commit.stderr).toBe(0);
+      expect(git(s.worktree, ['log', '-1', '--format=%s'])).toBe('c');
+      const moved = await run(profile, s.worktree, 'git', ['update-ref', 'refs/heads/agent/1-x', s.tip]);
+      expect(moved.code, moved.stderr).toBe(0);
+      expect(git(s.worktree, ['rev-parse', 'HEAD'])).toBe(s.tip);
+      expect(reflog()).toBe(before + 2);
+      const own = await run(profile, s.worktree, '/bin/sh', ['-c', `echo x > '${join(s.gitDir, 'scratch')}'`]);
+      expect(own.code, own.stderr).toBe(0);
+    }, 30_000);
+
+    it('fails closed when the worktree dir has been swapped for a symlink into the refs', async () => {
+      const s = repo();
+      renameSync(s.gitDir, `${s.gitDir}-moved`);
+      symlinkSync(join(s.common, 'refs/heads'), s.gitDir);
+      const profile = seatbeltProfile(s.paths, { worktree: s.worktree, mode: 'check', gitDir: s.gitDir, branch: 'agent/1-x' });
+      const res = await run(profile, s.main, '/bin/sh', ['-c', `echo x > '${join(s.gitDir, 'other')}'`]);
+      expect(res.stderr).toMatch(/Operation not permitted/);
+      expect(git(s.main, ['rev-parse', 'other'])).toBe(s.base);
+    }, 30_000);
+  });
 
   it('the same probe unsandboxed fails the verdict, so a pass means something', async () => {
     const { d } = setup();

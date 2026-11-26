@@ -1050,4 +1050,16 @@ describe('judge answers (R4)', () => {
     expect(args).not.toContain('THE-PROMPT');
     expect(args).toEqual(expect.arrayContaining(['--tools', '', '--no-session-persistence', '--json-schema', '{"type":"object"}', '--system-prompt', 's']));
   });
+
+  it('gives the model no tool, no MCP server and no project settings, so its environment reaches no model-driven code (Qodo PR93 1773a9ba)', () => {
+    const args = judgeArgs({ system: 's', prompt: 'p', schema: { type: 'object' } }, 1);
+    const value = (flag: string) => args[args.indexOf(flag) + 1];
+    expect(value('--tools'), 'an empty tool list').toBe('');
+    expect(args).toContain('--strict-mcp-config');
+    expect(value('--setting-sources')).toBe('user');
+    expect(value('--permission-mode')).toBe('dontAsk');
+    for (const flag of ['--mcp-config', '--allowedTools', '--allowed-tools', '--settings', '--add-dir', '--dangerously-skip-permissions', '--resume']) {
+      expect(args, flag).not.toContain(flag);
+    }
+  });
 });

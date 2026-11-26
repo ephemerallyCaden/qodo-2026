@@ -1,10 +1,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DENIED_TOOLS } from '../../factory/agent.js';
+import { DENIED_TOOLS, PASSED_ENV } from '../../factory/agent.js';
 import { LABELS } from '../../factory/config.js';
 import {
-  assertGuardrails, BASE, claudeOut, COOKIE_VALUE, FAKE_TOKEN, finding, firstHeadOnly, fixDone, implementDone, OWNER, promptOf,
+  agentDone, assertGuardrails, BASE, claudeOut, COOKIE_VALUE, FAKE_TOKEN, finding, firstHeadOnly, fixDone, implementDone, OWNER, promptOf,
   RUNNER_SECRETS, T0, World,
 } from './world.js';
 
@@ -331,7 +331,7 @@ describe('agent failures end in agent-needs-help (R7)', () => {
       x.commitFiles.set(x.commit(), ['src/x.ts']);
       // Repo code can write the shared .git's refs: point origin/<base> past the workflow change.
       x.originRef = hidden;
-      return claudeOut({ result: '```json\n{"status":"done","summary":"s","criteria":[]}\n```' });
+      return claudeOut({ result: '```json\n{"status":"done","summary":"s","criteria":[{"met":true},{"met":true}]}\n```' });
     });
     expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: expect.stringContaining('.github/workflows/ci.yml') });
     expect(w.gitCalls('push')).toHaveLength(0);
@@ -343,6 +343,33 @@ describe('agent failures end in agent-needs-help (R7)', () => {
     w.changed = ['src/x.ts', '.github/workflows/ci.yml'];
     w.claude.push(implementDone());
     expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: expect.stringContaining('.github/workflows/ci.yml') });
+    expect(w.gitCalls('push')).toHaveLength(0);
+  });
+
+  it.each([
+    ['reported not met', [{ met: true, evidence: 'x' }, { met: false, evidence: 'not yet' }], '2 (reported not met)'],
+    ['left out', [{ met: true, evidence: 'x' }], '2 (no answer)'],
+    ['not a boolean', [{ met: true, evidence: 'x' }, { met: 'true', evidence: 'x' }], '2 (no answer)'],
+    ['with no met at all', [{ evidence: 'x' }, { met: true, evidence: 'x' }], '1 (no answer)'],
+  ])('a criterion %s stops the run before anything is pushed, opened or labelled done, naming it (Qodo PR93 d9ef8649)', async (_, criteria, named) => {
+    const w = world();
+    w.addIssue(24);
+    w.claude.push(agentDone({ pr_title: 'fix(scan): x', summary: 's', criteria }));
+    const out = await w.tick();
+    expect(out).toMatchObject({ state: 'needs-help', issue: 24, reason: expect.stringContaining(`acceptance criteria not met: ${named}`) });
+    expect(labels(w, 24)).toEqual([LABELS.help]);
+    expect(w.issues.get(24)!.comments.at(-1)).toContain(named);
+    expect(w.gitCalls('push')).toHaveLength(0);
+    expect(w.prs).toHaveLength(0);
+    expect(w.npmCalls().map((c) => c.args[0])).toEqual(['ci', 'rebuild']);
+  });
+
+  it('stops if HEAD moves while its own checks run, so it never pushes a commit they did not check (Qodo PR93 b488a43f)', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.onCheck = (name, x) => { if (name === 'npm test') x.commit(); };
+    w.claude.push(implementDone());
+    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: expect.stringMatching(/^HEAD moved while the runner's checks ran/) });
     expect(w.gitCalls('push')).toHaveLength(0);
   });
 });
@@ -484,7 +511,7 @@ describe('review loop (R6, R7)', () => {
     w.claude.push(implementDone(), fixDone());
     expect(await w.tick()).toMatchObject({ state: 'done' });
     const prompt = promptOf(w.agentCalls()[1]!.args);
-    expect(prompt).toContain('CI check "check (20)" ended failure');
+    expect(prompt).toContain('A CI check failed:\n<untrusted-data source="ci">\ncheck: check (20)\nconclusion: failure\nfailed log tail:');
     expect(prompt).toContain('Error: test failed');
   });
 
@@ -518,7 +545,7 @@ describe('review loop (R6, R7)', () => {
     w.addIssue(24);
     w.claude.push(implementDone(), fixDone());
     expect(await w.tick()).toMatchObject({ state: 'done' });
-    expect(promptOf(w.agentCalls()[1]!.args)).toContain('CI check "extra 149" ended failure');
+    expect(promptOf(w.agentCalls()[1]!.args)).toContain('check: extra 149\nconclusion: failure');
   });
 
   it('a clean review from a poll that returns after the deadline is not accepted (Qodo PR93 ff427862)', async () => {
@@ -703,7 +730,7 @@ describe('run log (R9, task AC6)', () => {
     w.claude.push((x) => {
       x.commit();
       const summary = `token=${FAKE_TOKEN} in ${x.repoDir}/src and ${x.home}/.aws`;
-      return claudeOut({ result: '```json\n' + JSON.stringify({ status: 'done', summary, criteria: [] }) + '\n```' });
+      return claudeOut({ result: '```json\n' + JSON.stringify({ status: 'done', summary, criteria: [{ met: true }, { met: true }] }) + '\n```' });
     }, fixDone());
     await w.tick();
     const log = runLog(w);
@@ -822,6 +849,42 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
       for (const k of Object.keys(RUNNER_SECRETS)) expect(c.env?.[k], k).toBeUndefined();
       expect(c.env).toMatchObject({ PATH: '/usr/bin', HOME: w.home, GH_TOKEN: '', GITHUB_TOKEN: '', GIT_CONFIG_VALUE_1: expect.stringMatching(/push-disabled/) });
     }
+  });
+
+  it('the checks, whose output goes back to the agent, see no token, key or secret of the runner (Qodo PR93 b3bd96e6)', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.checkFailures['npm test'] = 1;
+    w.claude.push(implementDone(), fixDone());
+    const secrets = { GH_TOKEN: FAKE_TOKEN, GITHUB_TOKEN: FAKE_TOKEN, NPM_TOKEN: 'NPM-TOKEN-MUST-NOT-LEAK', AWS_ACCESS_KEY_ID: 'AWS-KEY-ID-MUST-NOT-LEAK', ...RUNNER_SECRETS };
+    expect(await w.tick({}, { env: { PATH: '/usr/bin', HOME: w.home, ...secrets } })).toMatchObject({ state: 'done' });
+    const checks = w.npmCalls().filter((c) => !['ci', 'rebuild'].includes(c.args[0]!));
+    expect(checks.map((c) => c.args.join(' '))).toEqual(['run build', 'run typecheck', 'run lint', 'test', 'run build', 'run typecheck', 'run lint', 'test']);
+    const set = ['NO_COLOR', 'GIT_TERMINAL_PROMPT', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0', 'GIT_CONFIG_KEY_1', 'GIT_CONFIG_VALUE_1', 'GH_CONFIG_DIR', 'GH_TOKEN', 'GITHUB_TOKEN'];
+    for (const c of checks) {
+      const env = c.env ?? {};
+      expect(Object.keys(env).filter((k) => !PASSED_ENV.includes(k) && !set.includes(k)), 'only the allowlist and what the runner sets').toEqual([]);
+      expect(env).toMatchObject({ GH_TOKEN: '', GITHUB_TOKEN: '', GIT_CONFIG_VALUE_0: '' });
+      for (const v of Object.values(secrets)) expect(JSON.stringify(env)).not.toContain(v);
+    }
+    const fix = promptOf(w.agentCalls()[1]!.args);
+    expect(fix).toContain(`The runner's own "npm test" failed`);
+    for (const v of Object.values(secrets)) expect(fix).not.toContain(v);
+  });
+
+  it("its npm and its git in the worktree may write only the run's own branch, worktree dir and objects in the shared .git (Qodo PR93 b488a43f)", async () => {
+    const w = world();
+    await happy(w);
+    const own = (gitDir: boolean) => `(deny file-write* (require-all (subpath "${w.commonDir}") (require-not (require-any (subpath "${join(w.commonDir, 'objects')}")` +
+      `${gitDir ? ` (subpath "${join(w.commonDir, 'worktrees/agent-24')}")` : ''}` +
+      ['', '.lock'].map((x) => ` (literal "${join(w.commonDir, 'refs/heads/agent/24-scan-windowcommits-splits-numstat-on-u')}${x}")`).join('') +
+      ` (literal "${join(w.commonDir, 'logs/refs/heads/agent/24-scan-windowcommits-splits-numstat-on-u')}")))))`;
+    const worktreeGit = w.callsTo('git').filter((c) => c.profile);
+    expect(worktreeGit[0]!.args).toEqual(['rev-parse', '--absolute-git-dir']);
+    expect(worktreeGit[0]!.profile).toContain(own(false));
+    const rest = [...worktreeGit.slice(1), ...w.npmCalls()];
+    expect(rest.length).toBeGreaterThan(8);
+    for (const c of rest) expect(c.profile, c.args.join(' ')).toContain(own(true));
   });
 
   it('npm ci runs no repo code while the network is open; install scripts and the checks run offline (S5)', async () => {

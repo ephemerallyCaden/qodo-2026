@@ -382,6 +382,9 @@ class Tick {
 
     const call = await this.agent(implementPrompt(t, this.criteria), cfg.maxTurns, cfg.maxBudgetUsd, cfg.timeouts.agent);
     const impl = implementResult(call.block, this.criteria.length);
+    // Done means every criterion met (Qodo PR #93 d9ef8649): false, a non-boolean or no answer stops it here, unpublished.
+    const unmet = impl.criteria.flatMap((c, i) => (c.met === true ? [] : [`${i + 1} (${c.met === false ? 'reported not met' : 'no answer'})`]));
+    if (unmet.length) throw new Stop(`acceptance criteria not met: ${unmet.join(', ')}`);
     await this.verifyAndPush();
     await this.openPr(impl);
     await this.reviewLoop();
@@ -460,13 +463,16 @@ class Tick {
     // Never into a nested repo the agent planted: git would run under that repo's config.
     const dirty = (await this.git(this.worktree, ['status', '--porcelain', '--ignore-submodules=all'])).trim();
     if (dirty) return [{ check: 'git status', output: `Uncommitted changes:\n${dirty}` }];
+    const sha = await this.revHead();
     this.checks = [];
     for (const [name, args] of CHECKS) {
       const res = await this.npm(args, cfg.timeouts.check);
       this.checks.push({ check: name, ok: res.code === 0 });
       if (res.code !== 0) return [{ check: name, output: res.timedOut ? `timed out after ${cfg.timeouts.check / 60_000} min` : tail(res.stdout + '\n' + res.stderr) }];
     }
-    const sha = await this.revHead();
+    // The checks may move this run's own branch (factory/sandbox.ts), so only the commit they checked is pushed.
+    const after = await this.revHead();
+    if (after !== sha) throw new Stop(`HEAD moved while the runner's checks ran (${shortSha(sha)} → ${shortSha(after)}), so nothing is pushed`);
     this.log.event('verified', { head: sha, commits: ahead, checks: this.checks });
     return sha;
   }
@@ -701,7 +707,7 @@ class Tick {
 
   /** npm in the worktree runs agent-written code, so it gets the agent's environment and limits (S5). */
   private npm(args: string[], timeoutMs: number, mode: 'install' | 'check' = 'check'): Promise<ExecResult> {
-    const profile = seatbeltProfile(this.sandbox, { worktree: this.worktree, mode });
+    const profile = seatbeltProfile(this.sandbox, { worktree: this.worktree, mode, gitDir: this.gitDir, branch: this.branch });
     return this.sh(SANDBOX_EXEC, seatbelt(profile, 'npm', args), { cwd: this.worktree, timeoutMs, env: this.agentEnv });
   }
 
@@ -712,7 +718,7 @@ class Tick {
   private gitTry(cwd: string, args: string[]): Promise<ExecResult> {
     const timeoutMs = this.cfg.timeouts.git;
     if (cwd === this.worktree) {
-      const g = worktreeGit(this.sandbox, { gitDir: this.gitDir, worktree: this.worktree }, args, this.agentEnv);
+      const g = worktreeGit(this.sandbox, { gitDir: this.gitDir, worktree: this.worktree, branch: this.branch }, args, this.agentEnv);
       return this.sh(g.cmd, g.args, { cwd, timeoutMs, env: g.env });
     }
     return this.sh('git', args, {

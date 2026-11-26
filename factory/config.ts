@@ -110,9 +110,12 @@ export function configError(c: Config): string | null {
   return null;
 }
 
-/** `https://github.com/o/r(.git)` or `git@github.com:o/r(.git)` → `o/r`. */
+/**
+ * `https://github.com/o/r(.git)`, `ssh://git@github.com/o/r(.git)` or `git@github.com:o/r(.git)` → `o/r`.
+ * The host is anchored (Qodo PR #93 4d01b33a): `evilgithub.com` or `github.com.evil` is no slug.
+ */
 export function slugFromRemote(url: string): string | null {
-  const m = /github\.com[/:]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/.exec(url.trim());
+  const m = /^(?:https:\/\/(?:[^@/\s]+@)?github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/i.exec(url.trim());
   return m ? m[1]! : null;
 }
 

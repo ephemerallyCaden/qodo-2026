@@ -213,6 +213,8 @@ export class World {
   remoteHead: string | null = null;
   pushTimes = new Map<string, number>();
   checkFailures: Record<string, number> = {};
+  /** Runs inside each of the runner's checks, as repo code would (e.g. a test script that commits). */
+  onCheck: ((name: string, w: World) => void) | null = null;
   claude: Claude[] = [];
   /** Findings Qodo reports once it has reviewed `head`. */
   findings: (head: string, w: World) => Finding[] = () => [];
@@ -596,6 +598,7 @@ export class World {
   private npm(args: string[]): ExecResult {
     if (args[0] === 'ci' || args[0] === 'rebuild' || args[0] === '--version') return ok('10.9.0\n');
     const name = args[0] === 'test' ? 'npm test' : `npm run ${args[1]}`;
+    this.onCheck?.(name, this);
     if ((this.checkFailures[name] ?? 0) > 0) {
       this.checkFailures[name]!--;
       return { code: 1, stdout: `FAIL ${name}\nexpected 1 to be 2`, stderr: '', timedOut: false };
