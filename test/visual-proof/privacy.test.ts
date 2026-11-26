@@ -2,7 +2,7 @@
 // for what AGENTS.md Rule 2 keeps out of any output. A hit names its rule and where it was, never the
 // text it matched in full.
 import { describe, expect, it } from 'vitest';
-import { privacyHits, runTexts, screen, servedTexts, takeTexts, type Scanned } from '../../.claude/skills/visual-proof/scripts/privacy.js';
+import { bundleHits, dataTexts, privacyHits, runTexts, screen, servedTexts, takeTexts, type Scanned } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 
 const TOKEN = 'Qx3vL0t9-mN_2bYk7RfA1sWc8dHe5jUp4gZiTo6aVyE';
 const ctx = { literals: [{ name: 'the launch token', value: TOKEN }, { name: 'HOME', value: '/Users/somebody' }] };
@@ -97,6 +97,50 @@ describe('takeTexts and runTexts', () => {
     const texts = runTexts({ base: { subject: 'a' }, head: { subject: 'b' }, scene: { name: 's', summary: 'ok' }, refs: ['8cf028c', `wip/${'aB3'.repeat(11)}`], branch: 'feature/~/home/x' });
     expect(privacyHits(texts, ctx).map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual(['token-like string @ the refs as given']);
     expect(privacyHits(runTexts({ base: { subject: 'a' }, head: { subject: 'b' }, scene: { name: 's', summary: 'ok' }, branch: 'x /Users/eve/y' }), ctx).map((h) => h.where)).toEqual(['the branch']);
+  });
+  it('scans the changed paths, which the record lists, before anything is written (Qodo 878c1941)', () => {
+    const run = { base: { subject: 'a' }, head: { subject: 'b' }, scene: { name: 's', summary: 'ok' } };
+    const hits = privacyHits(runTexts({ ...run, changed: ['web/src/view.ts', `web/${'aB3'.repeat(11)}.txt`, 'docs/x /home/eve/y.md'] }), ctx);
+    expect(hits.map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual(['absolute path @ the changed paths', 'token-like string @ the changed paths']);
+    expect(privacyHits(runTexts({ ...run, changed: ['web/src/view.ts', 'src/core/palette.ts'] }), ctx)).toEqual([]);
+  });
+  it("scans the data repo's commit subject, the layout's roots and the start state's file names, which the record writes (Qodo 878c1941)", () => {
+    const state = ['0123456789abcdef  layout.json', '0123456789abcdef  snapshot.json'];
+    expect(privacyHits(dataTexts({ subject: 'fix(view): labels', roots: '["src"]', state }), ctx)).toEqual([]);
+    const hits = privacyHits(dataTexts({ subject: `wip ${TOKEN}`, roots: '["/home/eve/src"]', state: [...state, `0123456789abcdef  ${'aB3'.repeat(11)}`] }), ctx);
+    expect(hits.map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual([
+      "absolute path @ the layout's roots", "the launch token @ the data repo's commit subject", "token-like string @ the data repo's commit subject",
+      'token-like string @ the start state files',
+    ]);
+  });
+});
+
+describe('bundleHits (Qodo 648df95e)', () => {
+  const file = (path: string, text: string) => ({ path, text });
+  const clean = [file('index.html', '<!doctype html><script src="/assets/index-BtfLvpny.js"></script>'), file('assets/index-BtfLvpny.js', 'const a="/api/drones";')];
+  it("stops on what a build copied into dist/web, placed by the file's path", () => {
+    expect(bundleHits('after', clean, ctx)).toEqual([]);
+    const hits = bundleHits('after', [...clean, file('assets/x.js', `const k="${TOKEN}",p="/Users/somebody/.config/x";`)], ctx);
+    expect(hits.map((h) => `${h.rule} @ ${h.where}`).sort()).toEqual([
+      "HOME @ the after build's dist/web/assets/x.js", "absolute path @ the after build's dist/web/assets/x.js",
+      "the launch token @ the after build's dist/web/assets/x.js", "token-like string @ the after build's dist/web/assets/x.js",
+    ]);
+    for (const h of hits) expect(`${h.where} ${h.excerpt}`).not.toContain(TOKEN);
+  });
+  it('scans the file names first, and names no file while one of them is the leak (a hit is placed unmasked)', () => {
+    const name = `assets/${'aB3'.repeat(11)}.js`;
+    const hits = bundleHits('before', [...clean, file(name, '/home/eve/x')], ctx);
+    expect(hits.map((h) => `${h.rule} @ ${h.where}`)).toEqual(["token-like string @ the before build's dist/web file names"]);
+    expect(JSON.stringify(hits)).not.toContain('aB3aB3aB3');
+  });
+  it("skips a token-like run only when it is the library's own text (three.js's WebGL names), and only that rule", () => {
+    const gl = file('assets/index-BtfLvpny.js', 'e.COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR,t.getExtension("WEBGL_compressed_texture_s3tc_srgb")');
+    expect(bundleHits('after', [gl], ctx).map((h) => h.rule)).toEqual(['token-like string', 'token-like string']);
+    const library = new Set(['COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR', 'WEBGL_compressed_texture_s3tc_srgb']);
+    expect(bundleHits('after', [gl], { ...ctx, library })).toEqual([]);
+    const leak = file('assets/y.js', `"${'aB3'.repeat(11)}","/home/eve/x","${TOKEN}"`);
+    expect(bundleHits('after', [gl, leak], { ...ctx, library: new Set([...library, '/home/eve/x', TOKEN]) }).map((h) => h.rule).sort())
+      .toEqual(['absolute path', 'the launch token', 'token-like string']);
   });
 });
 

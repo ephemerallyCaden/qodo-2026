@@ -2,10 +2,11 @@
 // node_modules: the run stops and asks (npm ci needs the network). A scene's own repo is the same commit
 // every run, so both builds, and every run, see the same data (R12).
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addNodeModules, contained, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, revisionEnv, SANDBOX_EXEC, sandboxProfile, sandboxState, worktreeRev } from '../../.claude/skills/visual-proof/scripts/prepare.js';
+import { addNodeModules, bundleFiles, bundleOf, contained, exportTree, libraryRuns, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, revisionEnv, SANDBOX_EXEC, sandboxProfile, sandboxState, worktreeRev } from '../../.claude/skills/visual-proof/scripts/prepare.js';
+import { bundleHits } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 import { Stop } from '../../.claude/skills/visual-proof/scripts/rules.js';
 import { tempDir } from '../fixtures/tmp.js';
 
@@ -38,6 +39,94 @@ describe('addNodeModules', () => {
     writeFileSync(join(head, 'package-lock.json'), '{"lockfileVersion":3}\n');
     addNodeModules(top, head);
     expect(existsSync(join(head, 'node_modules', 'dep', 'index.js'))).toBe(true);
+  });
+  it('stops before the copy when a tracked node_modules is a symlink out of the tree, and writes nothing outside it (Qodo d8fc556d)', () => {
+    const root = tempDir('commet-vp-prep-');
+    const top = checkout(join(root, 'top'), '{"lockfileVersion":3}\n');
+    const outside = join(root, 'outside');
+    mkdirSync(outside);
+    // A revision that tracks node_modules as a link to a dir outside scratch, exported as the run exports it
+    const repo = join(root, 'repo');
+    mkdirSync(repo);
+    const g = (...args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    g('init', '-q', '-b', 'main');
+    for (const [k, v] of [['user.name', 'Mate'], ['user.email', 'mate@example.com'], ['commit.gpgsign', 'false']] as const) g('config', k, v);
+    writeFileSync(join(repo, 'package-lock.json'), '{"lockfileVersion":3}\n');
+    symlinkSync(outside, join(repo, 'node_modules'));
+    g('add', 'package-lock.json', 'node_modules');
+    g('commit', '-q', '-m', 'link');
+    const rev = { sha: g('rev-parse', 'HEAD').trim(), short: 'x', subject: 'link', worktree: false };
+    const head = join(root, 'head');
+    exportTree(repo, rev, head, join(root, 'head.tar'));
+    expect(lstatSync(join(head, 'node_modules')).isSymbolicLink()).toBe(true);
+    let got: unknown;
+    try { addNodeModules(top, head); } catch (e) { got = e; }
+    expect(readdirSync(outside), 'written through the link').toEqual([]);
+    expect(got).toBeInstanceOf(Stop);
+    expect((got as Stop).code).toBe('build-failed');
+    expect((got as Stop).message).toMatch(/^the head tree has its own node_modules \(a symlink\)/);
+  });
+  it('stops, and leaves it as it is, when the tree has a node_modules of any other kind: a dir, a file, a dangling link', () => {
+    const root = tempDir('commet-vp-prep-');
+    const top = checkout(join(root, 'top'), '{"lockfileVersion":3}\n');
+    const cases: [string, (p: string) => void][] = [
+      ['a directory', (p) => { mkdirSync(join(p, 'own')); }],
+      ['a file', (p) => { rmSync(p, { recursive: true }); writeFileSync(p, 'x\n'); }],
+      ['a symlink', (p) => { rmSync(p, { recursive: true }); symlinkSync(join(root, 'no-such-dir'), p); }],
+    ];
+    for (const [kind, make] of cases) {
+      const tree = join(root, `base-${kind.replace(/\W/g, '')}`);
+      mkdirSync(join(tree, 'node_modules'), { recursive: true });
+      writeFileSync(join(tree, 'package-lock.json'), '{"lockfileVersion":3}\n');
+      make(join(tree, 'node_modules'));
+      const before = readdirSync(tree, { recursive: true }).map(String).sort();
+      let got: unknown;
+      try { addNodeModules(top, tree); } catch (e) { got = e; }
+      expect((got as Stop).code, kind).toBe('build-failed');
+      expect((got as Stop).message, kind).toContain(`has its own node_modules (${kind})`);
+      expect(readdirSync(tree, { recursive: true }).map(String).sort(), kind).toEqual(before);
+      expect(existsSync(join(root, 'no-such-dir')), kind).toBe(false);
+    }
+  });
+});
+
+describe('bundleOf', () => {
+  const tree = (make: (web: string) => void) => {
+    const dest = tempDir('commet-vp-prep-');
+    mkdirSync(join(dest, 'dist', 'web', 'assets'), { recursive: true });
+    writeFileSync(join(dest, 'dist', 'web', 'index.html'), '<!doctype html>\n');
+    make(join(dest, 'dist', 'web'));
+    return dest;
+  };
+  it("lists dist/web's files, and their text for the privacy scan (Qodo 648df95e)", () => {
+    const dest = tree((web) => writeFileSync(join(web, 'assets', 'a.js'), 'x;\n'));
+    const b = bundleOf(dest);
+    expect(b.files).toEqual(['assets/a.js', 'index.html']);
+    expect(bundleFiles(dest, b)).toEqual([{ path: 'assets/a.js', text: 'x;\n' }, { path: 'index.html', text: '<!doctype html>\n' }]);
+  });
+  it('stops on a link the build made in dist/web, which this process would read through outside the sandbox', () => {
+    const secret = join(tempDir('commet-vp-prep-'), 'id');
+    writeFileSync(secret, 'secret\n');
+    const linked = tree((web) => symlinkSync(secret, join(web, 'assets', 'a.js')));
+    expect(() => bundleOf(linked)).toThrow(/^the build wrote a symlink into dist\/web; it may hold files and folders only$/);
+    const whole = tempDir('commet-vp-prep-');
+    mkdirSync(join(whole, 'dist'));
+    symlinkSync(dirname(secret), join(whole, 'dist', 'web'));
+    expect(() => bundleOf(whole)).toThrow(/^the build's dist\/web is a symlink, not a folder$/);
+  });
+});
+
+describe('libraryRuns (Qodo 648df95e)', () => {
+  const ROOT = resolve(import.meta.dirname, '../..');
+  it("holds the token-like runs of this checkout's own three.js build, so the view bundle's WebGL names pass the bundle scan", () => {
+    const library = libraryRuns(ROOT);
+    expect(library.has('COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR')).toBe(true);
+    const three = [{ path: 'assets/index.js', text: readFileSync(join(ROOT, 'node_modules', 'three', 'build', 'three.module.js'), 'utf8') }];
+    expect(bundleHits('after', three, { literals: [] }).map((h) => h.rule)).toContain('token-like string');
+    expect(bundleHits('after', three, { literals: [], library })).toEqual([]);
+  });
+  it('is empty in a checkout without three', () => {
+    expect(libraryRuns(tempDir('commet-vp-prep-')).size).toBe(0);
   });
 });
 

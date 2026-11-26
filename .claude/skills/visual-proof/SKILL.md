@@ -75,11 +75,18 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
    the data scan, the scene's CLI steps and every take run the revisions' own code, so all of them run
    under sandbox-exec: no credential store read, nothing written outside the scratch and temp dirs,
    nothing reached but localhost, and an allowlisted environment (no tokens).
-2. **The change**: the paths base → head; any under `src/scan/`, `src/attrib/`, `src/core/layout/`,
+2. **The change**: the paths base → head (privacy-scanned with the commit subjects, before the record
+   is even created); any under `src/scan/`, `src/attrib/`, `src/core/layout/`,
    `src/core/snapshot/`, `src/core/contract/`, or what serves the data to each side (`src/state/`,
    `src/core/fog/`, `src/server/`), changes the data itself (R12).
 3. **Builds**: `git archive` of each commit (or a copy of the working tree) into the scratch dir (0700),
-   this checkout's `node_modules` (same lockfile only), `npm run build`, and a digest of `dist/web`.
+   this checkout's `node_modules` (same lockfile only, and never over or through a tree's own
+   `node_modules`), `npm run build`, and a digest of `dist/web` (files and folders only, no links).
+   Then every `dist/web` file name and file's text is privacy-scanned (step 7's rules), before the
+   record names it or any take serves it: a build can copy into the view any file the sandbox lets it
+   read. There only, a token-shaped run that is three.js's own text (in this checkout's
+   `node_modules/three/build`: WebGL names like `COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR`) is library
+   text, not a token; every other rule applies, and any other hit stops the run (`privacy`).
 4. **View change?** The same `dist/web` on both sides → `no-view-change` (R11), before any capture.
    A diff touching the data paths → `data-change` (R12).
 5. **The data**: one clone of this repo at the scene's pinned commit (default: the base), or the
@@ -87,7 +94,9 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
    commits at theirs, the same SHA every run),
    scanned once with `--no-ingest` and an empty `CLAUDE_CONFIG_DIR` (0 sessions, or `data-change`), then
    the scene's setup (a beacon, a chart). Every take starts from a copy of that state. Drones come only from the
-   scene's script, through the server's hooks: no agent log is read (R12).
+   scene's script, through the server's hooks: no agent log is read (R12). The data repo's commit
+   subject, the layout's roots and the start state's file names are privacy-scanned before the record
+   names them.
 6. **Takes**: four, each in its own process and browser: before twice, after twice. Each build serves
    itself (its own server and `dist/web`, in-process, 127.0.0.1, a fresh token). The view's
    `requestAnimationFrame` is stepped by hand, 50 ms of loop time a tick (R1), at the scene's viewport
@@ -136,14 +145,20 @@ code, its message and detail lines, and ask the user what to do:
   readers, the fog model or the server (R12), or the scan read agent sessions. Both sides would not see the same data; ask before filming anyway.
 - `build-failed`: the base or head (or the data clone's scan) didn't build; the tail is in the record,
   the full log in the scratch dir. Also when a side's `package-lock.json` differs from this checkout's:
-  this checkout's `node_modules` isn't its dependencies, and its own `npm ci` needs the network.
+  this checkout's `node_modules` isn't its dependencies, and its own `npm ci` needs the network. Also
+  when a side's tree has its own `node_modules` (tracked, or in the working tree: a symlink, a folder
+  or a file): the run copies this checkout's in outside the sandbox, so never over or through one.
+  Also when a build wrote a symlink or a special file into `dist/web`, or `dist/web` isn't a folder.
 - `scene-unreachable`: the scene couldn't get the view where it needed (a click opened nothing, a
   planet isn't in the layout). Check the scene with `vp.sh try` on each side.
 - `takes-differ`: a take isn't reproducible: the frames named differ. Don't retry until it passes;
   find what in the view or the scene depends on wall time, and report it.
 - `privacy`: what was found and where (masked). Nothing was composed, and the scratch dir with the raw
   takes is removed (even with `--keep`). Even if it looks like repo content (a path in a diff), report
-  it and let the user decide. A view that reached past its local server is a `privacy` stop too.
+  it and let the user decide. A view that reached past its local server is a `privacy` stop too. So is
+  a hit in a changed path (before anything is written), in a build's `dist/web` (a file name, or text
+  in a file: e.g. a build that copied a private file into the view), or in the data repo's subject,
+  the layout's roots or the start state's file names.
 - `tool-missing`: what to install, in the message. `sandbox-exec can't nest: already sandboxed` means
   run it from a shell that isn't sandboxed (not the agent runner's checks or a sandboxed Bash tool).
 - `bad-input`: a ref that isn't a commit, an unknown scene, no folder for the record (`--out`).

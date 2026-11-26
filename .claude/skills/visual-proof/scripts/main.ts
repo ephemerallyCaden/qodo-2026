@@ -14,8 +14,8 @@ import { chromium } from '@playwright/test';
 import { SCENES } from '../scenes/index.js';
 import { checkTakes, settleScratch, type TakeFailed } from './checks.js';
 import { compose, GITHUB_IMAGE_LIMIT } from './compose.js';
-import { addNodeModules, buildTree, bundleOf, changedFiles, contained, exportTree, git, makeClone, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, resolveRev, revisionEnv, SANDBOX_EXEC, sandboxProfile, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
-import { privacyHits, runTexts, screen, servedTexts, type Scanned } from './privacy.js';
+import { addNodeModules, buildTree, bundleFiles, bundleOf, changedFiles, contained, exportTree, git, libraryRuns, makeClone, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, resolveRev, revisionEnv, SANDBOX_EXEC, sandboxProfile, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
+import { bundleHits, dataTexts, privacyHits, runTexts, screen, servedTexts, type Hit, type Scanned } from './privacy.js';
 import { RunRecord, redact, uniqueName, type Literal } from './record.js';
 import { DATA_PATHS, dataPathsTouched, missingTools, noViewChange, privacyStop, Stop, takeFailure } from './rules.js';
 import { partsOf, type Scene, type ScenePart, type TakeLog } from './scene.js';
@@ -79,9 +79,10 @@ async function run(a: RunArgs): Promise<number> {
     { name: '$SCRATCH', value: scratch }, { name: '$SCRATCH', value: join('/tmp', id) },
     { name: '$MAIN', value: main }, { name: '$CHECKOUT', value: top }, { name: '$HOME', value: homedir() }, { name: '$TMPDIR', value: realpathSync(tmpdir()) },
   ];
-  // The commit subjects and the scene's words go into the record, captions and summary: scanned before any is written (PR #199 5b136d3c)
+  // The commit subjects, the scene's words and the changed paths go into the record, captions and summary: scanned before any is written (PR #199 5b136d3c, Qodo 878c1941)
   const branch = git(top, 'branch', '--show-current').trim();
-  const early = privacyHits(runTexts({ base, head, scene, refs: [...(a.base ? [a.base] : []), a.head ?? '--worktree'], branch }), { literals });
+  const changed = trying ? null : changedFiles(top, base, head);
+  const early = privacyHits(runTexts({ base, head, scene, refs: [...(a.base ? [a.base] : []), a.head ?? '--worktree'], branch, ...(changed ? { changed } : {}) }), { literals });
   if (early.length) {
     rmSync(scratch, { recursive: true, force: true });
     process.stdout.write(`STOP privacy: ${early.length} hit${early.length === 1 ? '' : 's'} in what the run would write; nothing was written\n`);
@@ -103,6 +104,9 @@ async function run(a: RunArgs): Promise<number> {
   const where = (path: string) => process.stdout.write(`${path}\n`);
   // A command's output, a stop's words: into the record only if the scan finds nothing once this machine's paths are names (PR #199 r2)
   const screened = (lines: readonly string[], what: string) => screen(lines.map((l) => redact(l, literals)), what, { literals: [] });
+  // Text a revision made (its dist/web, its data), scanned as it is: any hit stops the run before the record names it (Qodo 648df95e, 878c1941)
+  const machinePaths = literals.map((l) => ({ name: `this machine's path (${l.name})`, value: l.value }));
+  const refuse = (hits: readonly Hit[]) => { const leak = privacyStop(hits); if (leak) throw leak; };
   process.stdout.write(`record: ${record.path}\n`);
   try {
     // 1. Tools
@@ -126,21 +130,22 @@ async function run(a: RunArgs): Promise<number> {
     // Already sandboxed, no build could start: say so, rather than a build-failed with exit 71
     if (probeSandbox() === 'nested') throw new Stop('tool-missing', NESTED_SANDBOX, ['sandbox: run the skill from a shell that is not itself sandboxed (not the agent runner\'s checks or a sandboxed Bash tool)']);
 
-    // 2. The change
+    // 2. The change (its paths passed the early scan)
     const sides = trying ? (['after'] as const) : SIDES;
-    const changed = trying ? ['(a try: no base)'] : changedFiles(top, base, head);
-    const data = trying ? [] : dataPathsTouched(changed);
-    if (!trying) record.step('The change', [`${changed.length} paths differ between base and head:`, ...block(changed), data.length ? `Data paths touched (R12): ${data.join(', ')}` : `No path that makes or serves the data is touched (R12: ${DATA_PATHS.join(', ')}).`]);
-    if (!changed.length) throw new Stop('no-view-change', 'base and head are the same tree');
+    const data = changed ? dataPathsTouched(changed) : [];
+    if (changed) record.step('The change', [`${changed.length} paths differ between base and head:`, ...block(changed), data.length ? `Data paths touched (R12): ${data.join(', ')}` : `No path that makes or serves the data is touched (R12: ${DATA_PATHS.join(', ')}).`]);
+    if (changed && !changed.length) throw new Stop('no-view-change', 'base and head are the same tree');
 
-    // 3. Builds
+    // 3. Builds. What each build wrote into dist/web is scanned before it is named here, served or filmed (Qodo 648df95e)
     const trees = { before: join(scratch, 'base'), after: join(scratch, 'head') };
     const bundles = {} as Record<(typeof SIDES)[number], ReturnType<typeof bundleOf>>;
+    const library = libraryRuns(top);
     for (const side of sides) {
       const rev = side === 'before' ? base : head;
       const cmds = [...exportTree(top, rev, trees[side], join(scratch, `${side}.tar`)), ...addNodeModules(top, trees[side])];
       const { ms } = buildTree(trees[side], join(scratch, `build-${side}.log`), side, profile);
       bundles[side] = bundleOf(trees[side]);
+      refuse(bundleHits(side, bundleFiles(trees[side], bundles[side]), { literals: machinePaths, library }));
       record.step(`Build ${side} (${rev.short})`, [...block(screened([...cmds, `sandbox-exec npm run build   # in ${trees[side]}, ${secs(ms)}, output in $SCRATCH/build-${side}.log`], `the ${side} build step`)),
         `dist/web: ${bundles[side].files.join(', ')}; sha256 ${bundles[side].digest}`]);
     }
@@ -184,10 +189,13 @@ async function run(a: RunArgs): Promise<number> {
     writeFileSync(filesJson, JSON.stringify(files));
     const parts = sceneStep('parts', () => partsOf(scene));
     const drones = sceneStep('drones', () => Math.max(0, ...parts.map((p) => (p.drones ?? scene.drones)?.({ layout, files }).view.sessions.length ?? 0)));
+    // The repo's subject, and the roots and state files the base build's scan wrote: scanned before the record names them (Qodo 878c1941)
+    const roots = JSON.stringify(layout.source.roots), startState = stateDigest(stateStart);
+    refuse(privacyHits(dataTexts({ subject: repoAt.subject, roots, state: startState }), { literals: [...machinePaths, { name: 'the data clone path', value: clone }] }));
     record.step('The data (R12)', [...block(screened([...dataCmds, ...setupCmds], 'the data step')),
-      `${scene.fixture || scene.repo ? "the scene's own repo" : 'clone'} at \`${repoAt.sha}\` ${repoAt.subject}; ${layout.planets.length} planets; roots ${JSON.stringify(layout.source.roots)}; ${files.length} files`,
+      `${scene.fixture || scene.repo ? "the scene's own repo" : 'clone'} at \`${repoAt.sha}\` ${repoAt.subject}; ${layout.planets.length} planets; roots ${roots}; ${files.length} files`,
       `snapshot sessions: ${sessions} (--no-ingest, CLAUDE_CONFIG_DIR empty); scripted drones: ${drones}`,
-      'state every take starts from:', ...block(stateDigest(stateStart))]);
+      'state every take starts from:', ...block(startState)]);
     if (sessions) throw new Stop('data-change', `the scan read ${sessions} agent sessions; it must read none (--no-ingest)`);
 
     // 6. Takes: two per build, each in its own process and browser. A take that fails stops the takes; the stop waits for step 7
@@ -240,7 +248,7 @@ async function run(a: RunArgs): Promise<number> {
     const checked = await checkTakes({
       done, ...(failed ? { failed } : {}), items,
       pairs: trying || failed ? [] : SIDES.map((side) => [side, `${side}-1`, `${side}-2`] as const),
-      ctx: { literals: [...literals.map((l) => ({ name: `this machine's path (${l.name})`, value: l.value })), { name: 'the data clone path', value: clone }] },
+      ctx: { literals: [...machinePaths, { name: 'the data clone path', value: clone }] },
       tokenHits: done.reduce((n, t) => n + (t.log.tokenHits ?? 0), 0),
     });
     const texts = done.reduce((n, t) => n + t.log.texts.length, 0), responses = done.reduce((n, t) => n + t.log.served.length, 0);

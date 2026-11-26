@@ -5,9 +5,10 @@
 // CLAUDE_CONFIG_DIR (R12): never this repo's own .git/commet.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, writeFileSync, type Stats } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { deniedReads, type Denied } from '../../../../factory/sandbox.js';
+import { tokenRuns } from './privacy.js';
 import { Stop, type Bundle } from './rules.js';
 import type { FixtureCommit } from './scene.js';
 
@@ -81,11 +82,22 @@ export function exportTree(cwd: string, rev: Rev, dest: string, tarPath: string)
   return [`git ls-files -z -c -o --exclude-standard (${files.length} paths), ${n} files copied into ${dest}`];
 }
 
-/** This checkout's node_modules into `dest`, which must have the same lockfile (else the build could differ). */
+const kindOf = (st: Stats) => (st.isSymbolicLink() ? 'a symlink' : st.isDirectory() ? 'a directory' : st.isFile() ? 'a file' : 'a special file');
+
+/**
+ * This checkout's node_modules into `dest`, which must have the same lockfile (else the build could differ)
+ * and no node_modules of its own: the copy runs outside the sandbox, so it never goes over one, or
+ * through a link wherever that points (Qodo d8fc556d).
+ */
 export function addNodeModules(top: string, dest: string): string[] {
+  const side = relative(dirname(dest), dest);
   const mine = readFileSync(join(top, 'package-lock.json')), theirs = readFileSync(join(dest, 'package-lock.json'));
   if (!mine.equals(theirs)) {
-    throw new Stop('build-failed', `the ${relative(dirname(dest), dest)} tree's package-lock.json differs from this checkout's, so this checkout's node_modules isn't its dependencies; it would need its own npm ci, which needs the network`);
+    throw new Stop('build-failed', `the ${side} tree's package-lock.json differs from this checkout's, so this checkout's node_modules isn't its dependencies; it would need its own npm ci, which needs the network`);
+  }
+  const own = lstatSync(join(dest, 'node_modules'), { throwIfNoEntry: false });
+  if (own) {
+    throw new Stop('build-failed', `the ${side} tree has its own node_modules (${kindOf(own)}), tracked or in the working tree; the run copies this checkout's node_modules in outside the sandbox, and never over or through one`);
   }
   // APFS clones the tree in seconds (CLAUDE.md); elsewhere a plain copy
   const args = process.platform === 'darwin' ? ['-cR'] : ['-R'];
@@ -106,16 +118,23 @@ export function buildTree(dest: string, log: string, side: string, profile: stri
   return { ms: Date.now() - t0 };
 }
 
-/** dist/web, every file's path and bytes digested in codepoint order of path. */
+/**
+ * dist/web, every file's path and bytes digested in codepoint order of path. Files and folders only: this
+ * process reads them outside the sandbox (the digest, the privacy scan), so a link the build made to a
+ * file the sandbox denies is never read through.
+ */
 export function bundleOf(dest: string): Bundle {
   const root = join(dest, 'dist', 'web');
-  if (!existsSync(root)) throw new Stop('build-failed', 'the build wrote no dist/web');
+  const top = lstatSync(root, { throwIfNoEntry: false });
+  if (!top) throw new Stop('build-failed', 'the build wrote no dist/web');
+  if (!top.isDirectory()) throw new Stop('build-failed', `the build's dist/web is ${kindOf(top)}, not a folder`);
   const files: string[] = [];
   const walk = (d: string) => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
       const p = join(d, e.name);
       if (e.isDirectory()) walk(p);
-      else files.push(relative(root, p).split('\\').join('/'));
+      else if (e.isFile()) files.push(relative(root, p).split('\\').join('/'));
+      else throw new Stop('build-failed', `the build wrote ${e.isSymbolicLink() ? 'a symlink' : 'a special file'} into dist/web; it may hold files and folders only`);
     }
   };
   walk(root);
@@ -123,6 +142,25 @@ export function bundleOf(dest: string): Bundle {
   const h = createHash('sha256');
   for (const f of files) h.update(`${f}\0`).update(readFileSync(join(root, f))).update('\0');
   return { digest: h.digest('hex'), files };
+}
+
+/** Each dist/web file's path and its bytes as text, for the privacy scan before anything is served (Qodo 648df95e). */
+export function bundleFiles(dest: string, bundle: Bundle): { path: string; text: string }[] {
+  return bundle.files.map((path) => ({ path, text: readFileSync(join(dest, 'dist', 'web', path), 'utf8') }));
+}
+
+/**
+ * The token-like runs in this checkout's own three.js build: library text, not secrets. The view bundles
+ * three, whose WebGL names (`COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR`) have a token's shape, and both sides
+ * build from this checkout's node_modules (the same lockfile), which no revision can write. The bundle
+ * scan skips these runs, and nothing else (Qodo 648df95e).
+ */
+export function libraryRuns(top: string): Set<string> {
+  const dir = join(top, 'node_modules', 'three', 'build');
+  const out = new Set<string>();
+  if (!existsSync(dir)) return out;
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.js')).sort(byCodepoint)) for (const r of tokenRuns(readFileSync(join(dir, f), 'utf8'))) out.add(r);
+  return out;
 }
 
 /** One clone of the main checkout at `sha` (objects shared read-only, so it takes a second). Its git dir is its own. */

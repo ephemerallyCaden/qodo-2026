@@ -5,8 +5,12 @@
 
 export interface Scanned { where: string; text: string }
 export interface Hit { rule: string; where: string; excerpt: string }
-/** This run's own private strings (the launch token, HOME, the scratch dir, the main checkout), found as they are. */
-export interface PrivacyContext { literals: readonly { name: string; value: string }[] }
+/**
+ * This run's own private strings (the launch token, HOME, the scratch dir, the main checkout), found as
+ * they are; and, for the bundle scan only, the token-like runs that are library text (libraryRuns), which
+ * the token-like rule skips. Every other rule still applies to them.
+ */
+export interface PrivacyContext { literals: readonly { name: string; value: string }[]; library?: ReadonlySet<string> }
 
 /** The first folders of absolute paths on macOS, Linux and their containers. */
 const ROOTS = ['Users', 'home', 'private', 'tmp', 'var', 'Volumes', 'root', 'opt', 'etc', 'mnt', 'srv', 'usr', 'bin', 'sbin', 'lib', 'lib64',
@@ -28,6 +32,8 @@ const PATTERNS: readonly { rule: string; re: RegExp }[] = [
 /** A run of 32+ token characters with capitals, small letters and digits: a token's shape (a SHA or file id has no capitals). */
 const RUN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
 const tokenLike = (s: string) => /[A-Z]/.test(s) && /[a-z]/.test(s) && /[0-9]/.test(s);
+/** The token-like runs in `text`. */
+export const tokenRuns = (text: string): string[] => [...text.matchAll(RUN)].map((m) => m[0]).filter(tokenLike);
 /**
  * Agent-log fields Rule 2 never reads (docs/research/agent-attribution.md): as a key in served JSON they
  * mean log data got through. Only names no Commet contract uses (`message` or `text` could be a real answer).
@@ -43,7 +49,7 @@ export function privacyHits(items: readonly Scanned[], ctx: PrivacyContext): Hit
   for (const { where, text } of items) {
     for (const l of ctx.literals) if (l.value && text.includes(l.value)) add({ rule: l.name, where, excerpt: `(${l.name}, ${[...l.value].length} chars)` });
     for (const { rule, re } of PATTERNS) for (const m of text.matchAll(re)) add({ rule, where, excerpt: mask(m[0]) });
-    for (const m of text.matchAll(RUN)) if (tokenLike(m[0])) add({ rule: 'token-like string', where, excerpt: mask(m[0]) });
+    for (const run of tokenRuns(text)) if (!ctx.library?.has(run)) add({ rule: 'token-like string', where, excerpt: mask(run) });
     if (where.endsWith(' (keys)')) for (const key of text.split('\n')) if (LOG_FIELDS.has(key)) add({ rule: 'agent-log field', where: where.slice(0, -' (keys)'.length), excerpt: key });
   }
   return out;
@@ -87,7 +93,7 @@ export function takeTexts(name: string, log: { texts: readonly [string, number][
 }
 
 /** What the run itself writes into captions, the record and the summary: both commit subjects and the scene's own words (PR #199 5b136d3c). */
-export function runTexts(r: { base: { subject: string }; head: { subject: string }; scene: { name: string; summary: string }; refs?: readonly string[]; branch?: string }): Scanned[] {
+export function runTexts(r: { base: { subject: string }; head: { subject: string }; scene: { name: string; summary: string }; refs?: readonly string[]; branch?: string; changed?: readonly string[] }): Scanned[] {
   return [
     { where: 'the base commit subject', text: r.base.subject },
     { where: 'the head commit subject', text: r.head.subject },
@@ -95,7 +101,31 @@ export function runTexts(r: { base: { subject: string }; head: { subject: string
     // the refs as typed and the checkout's branch go into the record's first lines too (PR #199 r2)
     ...(r.refs ? [{ where: 'the refs as given', text: r.refs.join('\n') }] : []),
     ...(r.branch !== undefined ? [{ where: 'the branch', text: r.branch }] : []),
+    // and the paths that differ between base and head, which the record lists (Qodo 878c1941)
+    ...(r.changed ? [{ where: 'the changed paths', text: r.changed.join('\n') }] : []),
   ];
+}
+
+/** What the data step writes into the record from the data repo: its commit subject, the layout's roots and the start state's file names (Qodo 878c1941). */
+export function dataTexts(r: { subject: string; roots: string; state: readonly string[] }): Scanned[] {
+  return [
+    { where: "the data repo's commit subject", text: r.subject },
+    { where: "the layout's roots", text: r.roots },
+    { where: 'the start state files', text: r.state.join('\n') },
+  ];
+}
+
+/**
+ * What a build wrote into dist/web, scanned before it is served, filmed or named in the record (Qodo
+ * 648df95e, 878c1941): a build can copy any file the sandbox lets it read into the view, and a take scans
+ * only what the page shows and the API answers. The file names first: a hit's place is printed unmasked,
+ * so a file is named by its path only once every path is clean.
+ */
+export function bundleHits(side: string, files: readonly { path: string; text: string }[], ctx: PrivacyContext): Hit[] {
+  const where = `the ${side} build's dist/web`;
+  const names = privacyHits([{ where: `${where} file names`, text: files.map((f) => f.path).join('\n') }], ctx);
+  if (names.length) return names;
+  return privacyHits(files.map((f) => ({ where: `${where}/${f.path}`, text: f.text })), ctx);
 }
 
 /**
