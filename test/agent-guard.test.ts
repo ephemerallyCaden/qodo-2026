@@ -133,12 +133,132 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
     ]);
   });
 
-  it('resolves a repo-local git alias before deciding', () => {
+  // Qodo #93 5a246fcc: an alias from another repo's config or a config file got past the cwd lookup.
+  it('runs no git alias, whichever config defines it', () => {
     const repo = realTempDir('commet-guard-alias-');
     spawnSync('git', ['init', '-q', repo], { env: ENV });
     spawnSync('git', ['-C', repo, 'config', 'alias.pu', 'push'], { env: ENV });
     spawnSync('git', ['-C', repo, 'config', 'alias.sh-pu', '!git push origin'], { env: ENV });
-    expectBlocked('feature', ['git pu', 'git sh-pu'], repo);
+    spawnSync('git', ['-C', repo, 'config', 'alias.st', 'status'], { env: ENV });
+    const cfg = join(repo, 'aliases.cfg');
+    writeFileSync(cfg, '[alias]\n\tp = push\n');
+    expectBlocked('feature', ['git pu', 'git sh-pu', 'git st'], repo);
+    expectBlocked('feature', [
+      `git -C ${repo} pu`,
+      `cd ${repo} && git pu`,
+      `git --git-dir=${repo}/.git pu`,
+      `GIT_DIR=${repo}/.git git pu`,
+      `GIT_CONFIG_GLOBAL=${cfg} git p`,
+      `git -c include.path=${cfg} p`,
+    ]);
+    expectAllowed('feature', [`git -C ${repo} status`, `cd ${repo} && git log -1`, 'git status']);
+  });
+
+  // Qodo #93 c97354aa: send-pack is git's lower-level push.
+  it('blocks the other ways git updates a remote', () => {
+    expectBlocked('feature', [
+      'git send-pack ../other.git HEAD:refs/heads/main',
+      'git send-pack git@github.com:o/r.git HEAD:refs/heads/main',
+      'git -C ../x send-pack origin main',
+      'git http-push https://example.com/r.git main',
+    ]);
+  });
+
+  // Qodo #93 cc0ae30a: branches live in the shared .git, so moving main here moves the human's main.
+  it('blocks moving, overwriting or deleting a branch', () => {
+    expectBlocked('feature', [
+      'git update-ref refs/heads/main HEAD',
+      'git update-ref -d refs/heads/main',
+      'git update-ref --stdin < /tmp/refs',
+      'git -C ../x update-ref refs/heads/main HEAD',
+      'git symbolic-ref refs/heads/main refs/heads/x',
+      'git symbolic-ref -d HEAD',
+      'git branch -f main HEAD',
+      'git branch --force main HEAD',
+      'git branch --forc main HEAD',
+      'git branch -fv main HEAD',
+      'git branch -M x main',
+      'git branch -m main old',
+      'git branch --move main old',
+      'git branch -C x main',
+      'git branch -D main',
+      'git branch -d main',
+      'git branch --delete main',
+      'git branch -dr origin/main',
+      'git checkout -B main',
+      'git switch -C main HEAD',
+      'git switch --force-create main',
+      'git switch --force-c main',
+      'git worktree add -B main ../x',
+      'git fetch origin main:main',
+      'git fetch origin +main:main',
+      'git fetch . HEAD:main',
+      'git pull origin main:main',
+    ]);
+    expectAllowed('feature', [
+      'git branch',
+      'git branch --list "feature/*"',
+      'git branch -a -vv --contains HEAD',
+      'git branch --sort=-committerdate',
+      'git branch --show-current',
+      'git branch new-topic',
+      'git checkout -b new-topic',
+      'git checkout -- src/cli.ts',
+      'git switch -c new-topic',
+      'git switch --force new-topic',
+      'git symbolic-ref --short HEAD',
+      'git fetch origin',
+      'git fetch origin session/week1',
+      'git fetch https://github.com/o/r main',
+      'git fetch git@github.com:o/r.git main',
+      'git pull --rebase origin session/week1',
+      'git commit -m "fix: x" -- src/cli.ts',
+    ]);
+  });
+
+  // Qodo #93 a0c387f1, fd60f5e5, bce2a465: the gh denylist missed `pr --repo o/r merge`, issue writes and aliases.
+  it('runs gh only from the read-only gh list, past -R/--repo', () => {
+    expectBlocked('feature', [
+      'gh pr --repo o/r merge 1',
+      'gh pr -R o/r merge 1',
+      'gh pr --repo=o/r merge 1',
+      'gh pr -Ro/r merge 1',
+      'gh -R o/r pr merge 1',
+      'gh issue close 1',
+      'gh issue comment 1 -b x',
+      'gh issue edit 1 --add-label x',
+      "gh alias set m 'pr merge'",
+      'gh m 150',
+      'gh repo delete o/r --yes',
+      'gh secret set X',
+      'gh pr review 150 --approve',
+      'gh api -iXPUT repos/o/r/pulls/1/merge',
+      'gh api -X GET search/issues -f q=x',
+      'gh api $ENDPOINT',
+      'script -q /dev/null gh pr merge 1',
+      'script -q /dev/null gh -R o/r issue close 1',
+    ]);
+    expectAllowed('feature', [
+      'gh pr view 150 --json title',
+      'gh -R o/r pr view 1',
+      'gh pr -R o/r view 1 --comments',
+      'gh pr view 1 --repo o/r',
+      'gh pr checks 150 --watch',
+      'gh pr diff 150 --name-only',
+      'gh pr view $PR --json headRefOid -q .headRefOid',
+      'gh issue view 3 --comments',
+      'gh run view 1 --log-failed',
+      "gh api 'search/issues?q=x'",
+      "gh api graphql -f query='query { viewer { login } }'",
+      'grep -rn gh src',
+      'which gh',
+    ]);
+  });
+
+  // Qodo #93 8cc5f722: npm runs any unique prefix of a command.
+  it('blocks npm publish however it is abbreviated', () => {
+    expectBlocked('feature', ['npm pu', 'npm pub', 'npm publi --dry-run', 'npm unp commet', 'npm unpub commet', 'npm --workspace x pub', 'pnpm pub', 'yarn publi']);
+    expectAllowed('feature', ['npm un lodash', 'npm run build', 'npm ci', 'npm test']);
   });
 
   it('lets ordinary work through, including text that only mentions a push', () => {
@@ -153,7 +273,6 @@ describe('feature role: no push, PR merge/create/close or publish', () => {
       'npm run typecheck && npm run lint',
       'gh pr view 150 --json title',
       'gh api repos/o/r/pulls/150/comments',
-      'gh api -X GET search/issues -f q=x',
       'cat <<EOF > /tmp/note\ngit push\nEOF',
     ]);
   });

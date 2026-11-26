@@ -1,9 +1,10 @@
 // PreToolUse guard for the project agents (`hooks:` in .claude/agents/*.md; Qodo on #150).
 // Usage: node agent-guard.mjs <feature|debugger|readonly>, with Claude Code's hook JSON on stdin.
 // Exit 2 blocks the tool call (the reason goes to the agent on stderr); exit 0 lets it through.
-//   feature   a ban list against accidents, not against an agent set on getting round it: no `git push`,
-//             `gh pr merge|create|close|reopen`, `gh release` writes, `gh api` writes, npm publish, and no text
-//             handed on to git/gh/npm at run time (`git -c alias.…`, `bash -c 'git "$@"' _ push`, `xargs git`).
+//   feature   a ban list against accidents, not against an agent set on getting round it: no `git push` or
+//             send-pack, no git alias, no moving or deleting a branch (update-ref, branch -f|-m|-d, fetch x:main, …),
+//             gh only from scout's read-only list, no npm publish however abbreviated, and no text handed on to
+//             git/gh/npm at run time (`git -c alias.…`, `bash -c 'git "$@"' _ push`, `xargs git`).
 //   readonly  (scout, bar-raiser) an allowlist: Bash runs only the programs, subcommands and options in READ;
 //             anything else, an abbreviated option too, is blocked. The one write is a shell redirect into a temp
 //             dir outside any checkout.
@@ -349,11 +350,27 @@ const ghApi = opts(GH_API, (r) => {
   return fields.length > 0 ? '`gh api` takes no -f/-F fields (they make gh POST): put parameters in the endpoint (search/issues?q=…).' : null;
 });
 
+/** `args` with -R/--repo moved from before the command (`gh -R o/r pr view`, `gh pr --repo o/r view`) to after it. */
+function ghCommandFirst(args) {
+  const head = [];
+  const repo = [];
+  let j = 0;
+  while (j < args.length && head.length < (head[0] === 'api' ? 1 : 2)) {
+    const a = args[j];
+    if ((a === '-R' || a === '--repo') && j + 1 < args.length) { repo.push(a, args[j + 1]); j += 2; continue; }
+    if (/^(-R.|--repo=)/.test(a)) repo.push(a);
+    else head.push(a);
+    j++;
+  }
+  return [...head, ...repo, ...args.slice(j)];
+}
+
 function gh(args, ctx) {
-  if (args[0] === 'api') return ghApi(args.slice(1), ctx, 'gh api');
-  const cmd = `${args[0]} ${args[1]}`;
+  const words = ghCommandFirst(args);
+  if (words[0] === 'api') return ghApi(words.slice(1), ctx, 'gh api');
+  const cmd = words.slice(0, 2).join(' ');
   if (!Object.hasOwn(GH_READ, cmd)) return `\`gh ${show(cmd)}\` is not on the read-only gh list (pr view|list|checks|diff, issue view|list, run view|list, api GET).`;
-  return opts(GH_READ[cmd])(args.slice(2), ctx, `gh ${cmd}`);
+  return opts(GH_READ[cmd])(words.slice(2), ctx, `gh ${cmd}`);
 }
 
 const SED_PRINT = /^(\d+|\$)(,(\d+|\$))?p(;(\d+|\$)(,(\d+|\$))?p)*$/;
@@ -493,64 +510,71 @@ function gitVerb(args) {
   return { verb: null, rest: [], conf, configEnv };
 }
 
-function gitAlias(verb, cwd) {
-  if (!/^\w[\w.-]*$/.test(verb)) return null;
-  const r = spawnSync('git', ['config', '--get', `alias.${verb}`], { cwd: existsSync(cwd) ? cwd : undefined, encoding: 'utf8' });
-  return r.status === 0 ? r.stdout.trim() : null;
+/** git's own commands: built-ins and the git-* programs on PATH. Any other verb is an alias, from whichever config git reads. */
+function gitCommands() {
+  const r = spawnSync('git', ['--list-cmds=main,others'], { encoding: 'utf8' });
+  return r.status === 0 ? new Set(r.stdout.split('\n')) : null;
 }
 
-const quote = (a) => `'${a.replaceAll("'", "'\\''")}'`;
-const featureMsg = (what) => `feature-agent never pushes, merges or publishes (${what}): the team lead does that (AGENTS.md).`;
+/** `args` (up to `--`) hold a short option from `shorts`, alone or in a cluster (-fv), or one of `longs`, abbreviated as git allows (--forc). */
+function hasOption(args, shorts, longs) {
+  const own = args.includes('--') ? args.slice(0, args.indexOf('--')) : args;
+  return own.some((a) => {
+    if (/^-[^-]/.test(a)) return [...a.slice(1)].some((c) => shorts.includes(c));
+    const name = a.split('=')[0] ?? '';
+    return a.startsWith('--') && name.length > 2 && longs.some((l) => l.startsWith(name));
+  });
+}
 
-function featureGit(args, ctx) {
+// Verbs that update another repository.
+const GIT_PUSH = new Set(['push', 'send-pack', 'http-push']);
+// A fetch refspec with a destination (main:main, . HEAD:main) writes that local branch; a URL isn't one.
+const refspecDest = (rest) => rest.some((a) => !a.startsWith('-') && /^\+?[^:@]*:/.test(a) && !a.includes('://'));
+// Branches live in the shared .git, so a branch moved here moves it for the human and every sandbox (main too).
+const GIT_REF_WRITES = {
+  'update-ref': () => true,
+  'symbolic-ref': (rest) => rest.filter((a) => !a.startsWith('-')).length > 1 || hasOption(rest, 'd', ['--delete']),
+  branch: (rest) => hasOption(rest, 'fmMcCdD', ['--force', '--move', '--copy', '--delete']),
+  checkout: (rest) => hasOption(rest, 'B', []),
+  // switch's own --force (--discard-changes) is not an abbreviated --force-create.
+  switch: (rest) => hasOption(rest.filter((a) => a !== '--force'), 'C', ['--force-create']),
+  worktree: (rest) => rest[0] === 'add' && hasOption(rest, 'B', []),
+  fetch: refspecDest,
+  pull: refspecDest,
+};
+
+const featureMsg = (what) => `feature-agent never pushes, merges or publishes (${what}): the team lead does that (AGENTS.md).`;
+const refMsg = (what) => `feature-agent never moves, overwrites or deletes a branch (${what}): branches live in the shared .git, so the team lead does that (AGENTS.md).`;
+
+/** `run`: the word is a command name for sure. Elsewhere `git` may be a word for another program (grep -rn git src). */
+function featureGit(args, ctx, run) {
   const { verb, rest, conf, configEnv } = gitVerb(args);
   if (configEnv) return '`git --config-env` sets git config from the environment, which can run any command.';
   if (conf.some((c) => /^alias\./i.test(c))) return '`git -c alias.…` can run any command: call the git verb itself.';
   for (const c of conf) { const r = checkFeature(c.slice(c.indexOf('=') + 1), { ...ctx, depth: ctx.depth + 1 }); if (r) return r; }
   if (verb === null) return null;
   if (unknown(verb)) return RUNTIME('a git verb');
-  if (verb === 'push') return featureMsg('git push');
-  const alias = gitAlias(verb, ctx.cwd);
-  if (alias === null) return null;
-  const expanded = alias.startsWith('!') ? alias.slice(1) : `git ${alias}`;
-  return checkFeature([expanded, ...rest.map(quote)].join(' '), { ...ctx, depth: ctx.depth + 1 });
+  const commands = gitCommands();
+  if (commands === null) return "agent-guard could not list git's commands, so the call is blocked.";
+  if (!commands.has(verb)) return run ? `\`git ${verb}\` is not one of git's commands, so it runs an alias, which can hide a push: spell out the git command.` : null;
+  if (GIT_PUSH.has(verb)) return featureMsg(`git ${verb}`);
+  return Object.hasOwn(GIT_REF_WRITES, verb) && GIT_REF_WRITES[verb](rest) ? refMsg(`git ${verb}`) : null;
 }
 
-const FEATURE_GH = { pr: ['merge', 'create', 'close', 'reopen'], release: ['create', 'upload', 'edit', 'delete'] };
-const GH_API_VALUED = new Set(['-H', '--header', '-q', '--jq', '-t', '--template', '--cache', '--hostname', '-p', '--preview']);
+// gh's own commands (gh 2.92). Any other word after `gh` is an alias or an extension.
+const GH_COMMANDS = new Set(('agent-task alias api attestation auth browse cache codespace completion config copilot extension gist gpg-key '
+  + 'issue label licenses org pr preview project release repo ruleset run search secret skill ssh-key status variable workflow').split(' '));
 
-function apiWrites(args) {
-  let method = null;
-  let fields = false;
-  let endpoint = null;
-  for (let j = 0; j < args.length; j++) {
-    const a = args[j];
-    if (a === '-X' || a === '--method') { method = args[++j] ?? ''; continue; }
-    if (a.startsWith('--method=')) { method = a.slice(9); continue; }
-    if (/^-X./.test(a)) { method = a.slice(2); continue; }
-    if (['-f', '-F', '--field', '--raw-field', '--input'].includes(a)) { fields = true; j++; continue; }
-    if (/^(-[fF].|--(field|raw-field|input)=)/.test(a)) { fields = true; continue; }
-    if (GH_API_VALUED.has(a)) { j++; continue; }
-    if (!a.startsWith('-') && endpoint === null) endpoint = a;
-  }
-  if (endpoint === 'graphql') return true; // always a POST, and mutations look like queries
-  return method !== null ? method.toUpperCase() !== 'GET' : fields; // fields without a method make gh POST
+/** feature-agent's gh is the read-only list, as scout's. Where `run` is false, `gh` counts only before one of gh's commands. */
+function featureGh(args, ctx, run) {
+  const [group = '', ...rest] = ghCommandFirst(args);
+  if (!run && !GH_COMMANDS.has(group) && !unknown(group)) return null;
+  if (group === 'api' && rest.some(unknown)) return RUNTIME('a gh api argument');
+  return gh(args, ctx);
 }
 
-function featureGh(args) {
-  let g = -1;
-  for (let j = 0; j < args.length; j++) {
-    if (args[j] === '-R' || args[j] === '--repo') { j++; continue; }
-    if (!args[j].startsWith('-')) { g = j; break; }
-  }
-  if (g < 0) return null;
-  const group = args[g];
-  const verb = args.slice(g + 1).find((a) => !a.startsWith('-'));
-  if (unknown(group) || (verb !== undefined && unknown(verb))) return RUNTIME('a gh command');
-  if (group === 'api') return args.some(unknown) ? RUNTIME('a gh api argument') : apiWrites(args.slice(g + 1)) ? featureMsg('a gh api write') : null;
-  return Object.hasOwn(FEATURE_GH, group) && FEATURE_GH[group].includes(verb) ? featureMsg(`gh ${group} ${verb}`) : null;
-}
-
+// npm runs any unique prefix of a command: `npm pub` publishes and `npm unp` unpublishes (`npm un` is uninstall).
+const PUBLISH = (a) => (a.length >= 2 && 'publish'.startsWith(a)) || (a.length >= 3 && 'unpublish'.startsWith(a));
 const GIT_CONFIG_ENV = /^GIT_CONFIG_(PARAMETERS|COUNT|KEY_\d+|VALUE_\d+)$/;
 const RUNTIME = (what) => `${what} only known at run time ($VAR, $(…), a shell's "$@") could hide a push or publish: spell it out.`;
 // Programs that hand text on to the command after them, and the commands they may not be handed to.
@@ -586,7 +610,8 @@ function featureWords(words, ctx) {
     if (r) return r;
   }
   for (let k = 0; k < words.length; k++) { const r = FIND_EXEC.has(words[k]) ? relays(words, k) : null; if (r) return r; }
-  for (const k of commandStarts(words)) {
+  const starts = commandStarts(words);
+  for (const k of starts) {
     const name = base(words[k]);
     const rest = words.slice(k + 1);
     if (unknown(words[k])) return RUNTIME('a command name');
@@ -610,12 +635,12 @@ function featureWords(words, ctx) {
     const name = base(words[i]);
     const rest = words.slice(i + 1);
     let r = null;
-    if (name === 'git') r = featureGit(rest, ctx);
-    else if (name === 'gh') r = featureGh(rest);
+    if (name === 'git') r = featureGit(rest, ctx, starts.has(i));
+    else if (name === 'gh') r = featureGh(rest, ctx, starts.has(i));
     else if (['npm', 'pnpm', 'yarn'].includes(name)) {
       const own = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest; // after --, the script's arguments
       if (own.some(unknown)) r = RUNTIME(`an argument to ${name}`);
-      else if (rest.some((a) => a === 'publish' || a === 'unpublish')) r = featureMsg(`${name} publish`);
+      else if (rest.some(PUBLISH)) r = featureMsg(`${name} publish`);
     }
     if (r) return r;
   }
