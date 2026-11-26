@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { main, RUN_CAP_MS, type CliDeps } from '../../factory/cli.js';
@@ -225,6 +225,32 @@ describe('the local config (<git-common-dir>/factory/local.json)', () => {
     expect(await main(['tick', '--dry-run'], d)).toBe(0);
     expect(out.join('')).toContain('"name":"credentials","ok":true,"detail":"no freshness check configured"');
     expect(out.join('')).toContain('"name":"claude","ok":true,"detail":"~/.local/bin/claude"');
+  });
+
+  it('an agent CLI outside HOME and the checkout is never printed, logged or posted absolute (Qodo PR235 87229e71)', async () => {
+    const w = new World();
+    w.addIssue(24);
+    const cli = join(w.root, 'opt/agent/bin/claude');
+    mkdirSync(join(w.root, 'opt/agent/bin'), { recursive: true });
+    writeFileSync(cli, '#!/bin/sh\nexit 1\n');
+    chmodSync(cli, 0o755);
+    writeLocal(w, { agentCli: cli });
+    const dry = deps(w);
+    expect(await main(['tick', '--dry-run'], dry.d)).toBe(0);
+    expect(dry.out.join('')).toContain('"name":"claude","ok":true,"detail":"<agent-cli-dir>/claude"');
+    // A real tick whose agent call can't start: the reason names the CLI's path.
+    w.claude.push(() => ({ code: null, stdout: '', stderr: '', timedOut: false, error: `spawn ${cli} ENOENT` }));
+    const { d, out } = deps(w);
+    w.inner = () => main(['tick'], { ...d, env: { ...d.env, COMMET_FACTORY_LOCKED: '1' } });
+    expect(await main(['tick'], d)).toBe(0);
+    const comment = w.issues.get(24)!.comments.at(-1)!;
+    expect(comment).toContain('spawn <agent-cli-dir>/claude ENOENT');
+    const runs = join(w.commonDir, 'factory/runs');
+    const run = join(runs, readdirSync(runs)[0]!);
+    const files = [join(w.commonDir, 'factory/ticks.jsonl'), ...readdirSync(run).map((f) => join(run, f)).filter((f) => statSync(f).isFile())];
+    for (const text of [dry.out.join(''), out.join(''), comment, ...w.issues.get(24)!.comments, ...files.map((f) => readFileSync(f, 'utf8'))]) {
+      expect(text).not.toContain(w.root);
+    }
   });
 
   it('install puts the local agent CLI on the job PATH', async () => {

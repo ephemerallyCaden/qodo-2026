@@ -1,5 +1,5 @@
 import { lstatSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 export const LABELS = {
   ready: 'ready-for-agent',
@@ -75,8 +75,16 @@ export function defaults(home: string, repoDir: string, commonDir: string, slug:
   };
 }
 
-/** Machine paths that logs and GitHub posts show as `.` and `~` instead. */
-export const machinePaths = (c: Config): [string, string][] => [[c.repoDir, '.'], [c.home, '~']];
+/**
+ * Machine paths that logs, CLI output and GitHub posts show as `.` and `~` instead, plus the agent
+ * CLI's dir as `<agent-cli-dir>` when the local config puts it outside both (Qodo PR #235 87229e71).
+ */
+export function machinePaths(c: Config): [string, string][] {
+  const paths: [string, string][] = [[c.repoDir, '.'], [c.home, '~']];
+  const cliDir = dirname(c.claude);
+  if (!paths.some(([p]) => cliDir === p || cliDir.startsWith(`${p}/`))) paths.push([cliDir, '<agent-cli-dir>']);
+  return paths;
+}
 
 export const ticksFile = (c: Config) => join(c.stateDir, 'ticks.jsonl');
 
