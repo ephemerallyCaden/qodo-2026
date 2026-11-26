@@ -126,6 +126,39 @@ describe('the cloud over fogged files (the weather\'s cream, cover proportional,
     expect(s.cloud.length / sites).toBeLessThan(4);
   });
 
+  // Qodo 9761c8da (PR #230, dismissed as a false positive, the human approved 2026-11-26): the clump's
+  // shares are hash01's 0..1 (fog-cloud.ts SkyGrid clumps; the -0.5 at the mass cells is their own jitter),
+  // so its puffs are the weather's: edge leads with 2-3 satellites, cores with 1, leads 0.058-0.108 R, and
+  // the lead's jitter centred on its site.
+  it.each([1234567, 42, 7])('keeps the weather\'s clumps (seed %i): edge leads carry 2-3 satellites and cores 1, leads 0.058-0.108 R, jitter unbiased', (seed) => {
+    const s = new CloudPlan(plan, seed).at(rest(() => 2));
+    // a lead's satellites follow it, each with exactly half its lift and a smaller size (SAT.lift, SAT.size)
+    const leads: { size: number; lift: number; sats: number; dir: readonly number[] }[] = [];
+    for (const p of s.cloud) {
+      const last = leads.at(-1);
+      if (last && p.lift === last.lift * 0.5 && p.size < last.size) last.sats++;
+      else leads.push({ size: p.size, lift: p.lift, sats: 0, dir: p.dir });
+    }
+    const edgeLift = CLOUD.lift * (0.2 + 0.35 * 0.9); // a lead's lift at core 0.35, at rest (LEAD, SAT.edge)
+    const edge = leads.filter((l) => l.lift < edgeLift - 1e-9), core = leads.filter((l) => l.lift >= edgeLift - 1e-9);
+    expect(edge.length, 'not vacuous: edge leads').toBeGreaterThan(100);
+    expect(core.length, 'not vacuous: core leads').toBeGreaterThan(0);
+    expect(new Set(edge.map((l) => l.sats)), 'edge leads: 2 or 3 satellites').toEqual(new Set([2, 3]));
+    expect(new Set(core.map((l) => l.sats)), 'core leads: 1 satellite').toEqual(new Set([1]));
+    for (const l of leads) {
+      expect(l.size).toBeGreaterThanOrEqual(0.058 - 1e-9);
+      expect(l.size).toBeLessThanOrEqual(0.108 + 1e-9);
+    }
+    // each lead's offset from its nearest site, averaged per axis: the jitter is ±0.025, centred
+    const n = s.cloud.length > 0 ? new CloudPlan(plan, seed).sites('cloud') : 0, c = centresOf(n), mean = [0, 0, 0];
+    for (const l of leads) {
+      let best = -2, at = 0;
+      for (let i = 0; i < n; i++) { const v = l.dir[0]! * c[3 * i]! + l.dir[1]! * c[3 * i + 1]! + l.dir[2]! * c[3 * i + 2]!; if (v > best) { best = v; at = i; } }
+      for (let a = 0; a < 3; a++) mean[a]! += (l.dir[a]! - c[3 * at + a]!) / leads.length;
+    }
+    for (const m of mean) expect(Math.abs(m), 'mean lead jitter per axis (half-range 0.025)').toBeLessThan(0.004);
+  });
+
   it('gathers each file\'s gap into clear sky between masses, not scattered holes: a gap site\'s neighbours are mostly gap too', () => {
     const n = sky.sites('cloud'), nb = neighbours(n);
     const open = sky.covers(rest(() => 2), 'cloud').map((c) => c.cloud <= 0);
