@@ -54,6 +54,9 @@ function hasTruncation(v: unknown, depth = 0): boolean {
 }
 
 /** Parses `qodo read pr-review-session findings --extended --json`; null if it isn't that shape. */
+/** Qodo's ids are UUIDs; anything else that isn't one plain token makes the whole read unreadable, never clean. */
+const FINDING_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
 export function parseQodo(stdout: string): QodoOutput | null {
   const o = firstJson(stdout);
   if (!o || typeof o !== 'object') return null;
@@ -61,7 +64,8 @@ export function parseQodo(stdout: string): QodoOutput | null {
   if (!Array.isArray(runs) || !Array.isArray(findings)) return null;
   const okRun = (r: unknown): r is ReviewRun =>
     !!r && typeof (r as ReviewRun).commit_sha === 'string' && typeof (r as ReviewRun).status === 'string';
-  const okFinding = (f: unknown): f is Finding => !!f && typeof (f as Finding).id === 'string';
+  // A plain token only (Qodo PR #239 5dac6bb5): the id goes into the fix prompt outside the data fence.
+  const okFinding = (f: unknown): f is Finding => !!f && typeof (f as Finding).id === 'string' && FINDING_ID.test((f as Finding).id);
   if (!runs.every(okRun) || !findings.every(okFinding)) return null;
   return { runs, findings, truncated: hasTruncation(o) };
 }

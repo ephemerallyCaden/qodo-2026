@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
   agentEnv, agentRecord, claudeArgs, fixPrompt, fixResult, implementPrompt, implementResult, isPrTitle, readClaude,
-  systemPrompt, type AgentCall, type Disposition, type FixInput, type ImplementResult,
+  systemPrompt, unmetCriteria, type AgentCall, type Disposition, type FixInput, type ImplementResult,
 } from './agent.js';
 import { LABELS, localDenies, machinePaths, ticksFile, type Config } from './config.js';
 import type { Exec, ExecResult } from './exec.js';
@@ -382,8 +382,8 @@ class Tick {
 
     const call = await this.agent(implementPrompt(t, this.criteria), cfg.maxTurns, cfg.maxBudgetUsd, cfg.timeouts.agent);
     const impl = implementResult(call.block, this.criteria.length);
-    // Done means every criterion met (Qodo PR #93 d9ef8649): false, a non-boolean or no answer stops it here, unpublished.
-    const unmet = impl.criteria.flatMap((c, i) => (c.met === true ? [] : [`${i + 1} (${c.met === false ? 'reported not met' : 'no answer'})`]));
+    // Done means every criterion met (Qodo PR #93 d9ef8649): anything else stops it here, unpublished.
+    const unmet = unmetCriteria(impl.criteria);
     if (unmet.length) throw new Stop(`acceptance criteria not met: ${unmet.join(', ')}`);
     await this.verifyAndPush();
     await this.openPr(impl);
@@ -478,7 +478,7 @@ class Tick {
   }
 
   /** One fix round (R7: at most `maxFixRounds`; a would-be extra round stops the run). */
-  private async fixRound(input: Omit<FixInput, 'round' | 'maxRounds' | 'head'>): Promise<{ notes: string; dispositions: Disposition[] }> {
+  private async fixRound(input: Omit<FixInput, 'round' | 'maxRounds' | 'head' | 'criteria'>): Promise<{ notes: string; dispositions: Disposition[] }> {
     const { cfg } = this;
     if (this.fixRounds >= cfg.maxFixRounds) {
       const what = [
@@ -491,10 +491,14 @@ class Tick {
     const round = ++this.fixRounds;
     const head = await this.revHead();
     this.log.event('fix-round', { round, head, findings: input.findings.map((f) => f.id), ci: input.ciFailures.map((c) => c.run.name), local: input.localFailures.map((c) => c.check) });
-    const call = await this.agent(fixPrompt({ ...input, round, maxRounds: cfg.maxFixRounds, head }), cfg.fixMaxTurns, cfg.fixMaxBudgetUsd, cfg.timeouts.fix);
-    const res = fixResult(call.block, input.findings);
+    const prompt = fixPrompt({ ...input, round, maxRounds: cfg.maxFixRounds, head, criteria: this.criteria });
+    const call = await this.agent(prompt, cfg.fixMaxTurns, cfg.fixMaxBudgetUsd, cfg.timeouts.fix);
+    const res = fixResult(call.block, input.findings, this.criteria.length);
     this.dispositions.push(...res.dispositions.map((d) => ({ ...d, round })));
     this.log.event('fix-round-end', { round, dispositions: res.dispositions });
+    // A fix can undo a criterion (Qodo PR #239 3300ab7b): each round reports them all again, before anything is pushed.
+    const unmet = unmetCriteria(res.criteria);
+    if (unmet.length) throw new Stop(`acceptance criteria not met after fix round ${round}: ${unmet.join(', ')}`);
     return res;
   }
 

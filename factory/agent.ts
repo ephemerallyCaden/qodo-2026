@@ -141,6 +141,8 @@ export interface FixInput {
   findings: Finding[];
   ciFailures: { run: CheckRun; log: string }[];
   localFailures: { check: string; output: string }[];
+  /** The ticket's acceptance criteria, reported again after every round (Qodo PR #239 3300ab7b). */
+  criteria: string[];
 }
 
 /**
@@ -176,12 +178,14 @@ export function fixPrompt(f: FixInput): string {
   }
   for (const c of f.localFailures) out.push(`The runner's own "${c.check}" failed on your last commit. Output tail:`, ...untrusted(c.check, [c.output]), '');
   out.push(
-    'Add new commits (never amend), re-run the four checks, then end with this JSON block:',
+    'Add new commits (never amend), re-run the four checks, check every acceptance criterion again on your last commit,',
+    'then end with this JSON block (one criteria entry per acceptance criterion, in order):',
     '```json',
     JSON.stringify({
       status: 'done | blocked',
       blocked_reason: 'why, if blocked',
       findings: f.findings.map((x) => ({ id: x.id, verdict: 'confirmed | rejected', reason: 'why', fix: 'commit and the test that failed first' })),
+      criteria: f.criteria.map((c) => ({ criterion: c, met: true, evidence: 'test name, command and result on your last commit' })),
       notes: 'what you changed for CI or the runner\'s checks, if anything',
     }, null, 2),
     '```',
@@ -308,15 +312,26 @@ const TITLE = /^(feat|fix|design|docs|chore|test)(\([a-z0-9-]+\))?: \S.{0,90}$/;
 /** A PR title in the AGENTS.md form, e.g. `fix(scan): …`. */
 export const isPrTitle = (s: string) => TITLE.test(s);
 
-export function implementResult(block: unknown, criteriaCount: number): ImplementResult {
-  const b = block as { pr_title?: unknown; summary?: unknown; criteria?: unknown };
-  const list = Array.isArray(b.criteria) ? b.criteria : [];
-  const criteria = Array.from({ length: criteriaCount }, (_, i): CriterionEvidence => {
-    const c = list[i] as { met?: unknown; evidence?: unknown } | undefined;
+/** One entry per acceptance criterion, in order; a missing or non-boolean `met` is null (no answer). */
+function criteriaOf(list: unknown, count: number): CriterionEvidence[] {
+  const given = Array.isArray(list) ? list : [];
+  return Array.from({ length: count }, (_, i): CriterionEvidence => {
+    const c = given[i] as { met?: unknown; evidence?: unknown } | undefined;
     return { met: typeof c?.met === 'boolean' ? c.met : null, evidence: typeof c?.evidence === 'string' ? c.evidence : '' };
   });
+}
+
+/**
+ * The criteria that keep a run from done, numbered from 1 (Qodo PR #93 d9ef8649): only `met: true`
+ * counts as met, so false, a non-boolean and no answer all stop it.
+ */
+export const unmetCriteria = (criteria: CriterionEvidence[]): string[] =>
+  criteria.flatMap((c, i) => (c.met === true ? [] : [`${i + 1} (${c.met === false ? 'reported not met' : 'no answer'})`]));
+
+export function implementResult(block: unknown, criteriaCount: number): ImplementResult {
+  const b = block as { pr_title?: unknown; summary?: unknown; criteria?: unknown };
   const title = typeof b.pr_title === 'string' && isPrTitle(b.pr_title) ? b.pr_title : null;
-  return { prTitle: title, summary: typeof b.summary === 'string' ? b.summary : '', criteria };
+  return { prTitle: title, summary: typeof b.summary === 'string' ? b.summary : '', criteria: criteriaOf(b.criteria, criteriaCount) };
 }
 
 export interface Disposition {
@@ -328,10 +343,11 @@ export interface Disposition {
 
 /**
  * One disposition per finding sent; a finding the agent skipped, or rejected without a reason,
- * stays `unanswered` (still open): a rejection is only settled by its evidence.
+ * stays `unanswered` (still open): a rejection is only settled by its evidence. The criteria come
+ * back too, one per acceptance criterion, as `implementResult` reads them.
  */
-export function fixResult(block: unknown, sent: Finding[]): { dispositions: Disposition[]; notes: string } {
-  const b = block as { findings?: unknown; notes?: unknown };
+export function fixResult(block: unknown, sent: Finding[], criteriaCount = 0): { dispositions: Disposition[]; notes: string; criteria: CriterionEvidence[] } {
+  const b = block as { findings?: unknown; notes?: unknown; criteria?: unknown };
   const list = (Array.isArray(b.findings) ? b.findings : []) as { id?: unknown; verdict?: unknown; reason?: unknown; fix?: unknown }[];
   const dispositions = sent.map((f): Disposition => {
     const d = list.find((x) => x?.id === f.id);
@@ -339,5 +355,5 @@ export function fixResult(block: unknown, sent: Finding[]): { dispositions: Disp
     const verdict = d?.verdict === 'confirmed' ? 'confirmed' : d?.verdict === 'rejected' && reason.trim() ? 'rejected' : 'unanswered';
     return { id: f.id, verdict, reason, fix: typeof d?.fix === 'string' ? d.fix : '' };
   });
-  return { dispositions, notes: typeof b.notes === 'string' ? b.notes : '' };
+  return { dispositions, notes: typeof b.notes === 'string' ? b.notes : '', criteria: criteriaOf(b.criteria, criteriaCount) };
 }

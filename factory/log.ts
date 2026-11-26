@@ -20,14 +20,15 @@ export const stamp = (ms: number) => iso(ms).replace(/[-:]/g, '').replace(/\.\d+
 // bearer headers and secret-looking assignments. An assignment's name ends in a secret word, with
 // any prefix (`GITHUB_TOKEN`, `authToken`, `x-api-key`; Qodo PR #93 278622a8), and the word must end
 // the name: `tokenizer`, `maxTokens` or `primaryKey` are no secrets. Values under 8 characters stay.
-// A quote may come escaped (`\"`), as it does in a JSON-encoded log line, and the value stops at a
-// backslash, so the redacted line is still valid JSON.
+// A quote may come escaped (`\"`), as it does in a JSON-encoded log line. The value takes a backslash
+// with the character after it, so `abc\def` goes whole (Qodo PR #239 8b587a36), but stops at an
+// escaped quote, so the redacted line is still valid JSON.
 const SECRETS: [RegExp, string][] = [
   [/\bgh[opsur]_[A-Za-z0-9]{20,}/g, 'gh*_<redacted>'],
   [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, 'github_pat_<redacted>'],
   [/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, '<aws-key-id>'],
   [/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/g, 'Bearer <redacted>'],
-  [/\b([A-Za-z0-9_-]*?(?:api[_-]?key|access[_-]?key|private[_-]?key|secret[_-]?key|client[_-]?secret|token|secret|password|cookie))(\\?["']?\s*[:=]\s*\\?["']?)[^\s"'\\,}]{8,}/gi, '$1$2<redacted>'],
+  [/\b([A-Za-z0-9_-]*?(?:api[_-]?key|access[_-]?key|private[_-]?key|secret[_-]?key|client[_-]?secret|token|secret|password|cookie))(\\?["']?\s*[:=]\s*\\?["']?)(?:\\[^\s"']|[^\s"'\\,}]){8,}/gi, '$1$2<redacted>'],
 ];
 
 /** Removes secrets and replaces machine paths, so text is safe to log or post. */

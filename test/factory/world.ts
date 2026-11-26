@@ -171,13 +171,14 @@ export const implementDone = (commits = 1) => agentDone({
   ],
 }, commits);
 
-/** A fix round that answers every finding it was sent with `verdict`. */
+/** A fix round that answers every finding it was sent with `verdict`, and reports every criterion still met. */
 export function fixDone(verdict: 'confirmed' | 'rejected' = 'confirmed', commits = 1, reason = `${verdict} by trace`): Claude {
   return (w, args) => {
     const ids = [...promptOf(args).matchAll(/^- id (\S+) /gm)].map((m) => m[1]!);
+    const criteria = [...promptOf(args).matchAll(/"criterion": /g)].map(() => ({ met: true, evidence: 'still holds' }));
     for (let i = 0; i < commits; i++) w.commit();
     return claudeOut({
-      result: fence({ status: 'done', findings: ids.map((id) => ({ id, verdict, reason, fix: verdict === 'confirmed' ? 'test "x" fails first' : '' })), notes: '' }),
+      result: fence({ status: 'done', findings: ids.map((id) => ({ id, verdict, reason, fix: verdict === 'confirmed' ? 'test "x" fails first' : '' })), criteria, notes: '' }),
       session: 'sess-2', turns: 5, cost: 0.5,
     });
   };

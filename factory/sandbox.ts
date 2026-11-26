@@ -4,7 +4,7 @@
 // sandbox-exec. A self-test proves both before any ticket is claimed, and fails closed.
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { agentEnv, DENIED_TOOLS } from './agent.js';
 import type { Exec } from './exec.js';
 import { firstJson } from './review.js';
@@ -44,11 +44,12 @@ export function deniedReads(p: SandboxPaths): Denied[] {
   const dirs = ['.aws', '.ssh', '.qodo', '.config/gh', '.docker', '.kube', '.config/gcloud', '.azure', '.gnupg'].map((d) => join(home, d));
   if (env['XDG_CONFIG_HOME']) dirs.push(join(env['XDG_CONFIG_HOME'], 'gh'));
   if (env['GH_CONFIG_DIR']) dirs.push(env['GH_CONFIG_DIR']);
-  // Where the environment moves those stores; KUBECONFIG is a list of files.
-  for (const k of ['DOCKER_CONFIG', 'CLOUDSDK_CONFIG', 'AZURE_CONFIG_DIR', 'GNUPGHOME']) if (isAbsolute(env[k] ?? '')) dirs.push(env[k]!);
+  // Where the environment moves those stores; KUBECONFIG is a list of files. A relative one is denied
+  // where the runner's own tools would read it, from its working dir (Qodo PR #239 819ccbe2).
+  for (const k of ['DOCKER_CONFIG', 'CLOUDSDK_CONFIG', 'AZURE_CONFIG_DIR', 'GNUPGHOME']) if (env[k]) dirs.push(resolve(env[k]));
   const files = ['.npmrc', '.netrc', '.git-credentials', '.config/git/credentials'].map((f) => join(home, f));
   if (env['XDG_CONFIG_HOME']) files.push(join(env['XDG_CONFIG_HOME'], 'git/credentials'));
-  files.push(...(env['KUBECONFIG'] ?? '').split(':').filter((f) => isAbsolute(f)));
+  files.push(...(env['KUBECONFIG'] ?? '').split(':').filter(Boolean).map((f) => resolve(f)));
   const list: Denied[] = [
     ...dirs.map((path): Denied => ({ path, kind: 'dir' })),
     ...files.map((path): Denied => ({ path, kind: 'file' })),

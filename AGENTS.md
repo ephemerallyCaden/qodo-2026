@@ -103,8 +103,8 @@ Where it differs from the review loop above:
 - `action_required` (High) and `remediation_recommended` (Medium) findings both block and go to the agent to fix or reject; `informational` (Low) ones are listed in the summary for the human.
 - An `action_required` finding the agent rejects stops the run with `agent-needs-help` for the human's decision. A `remediation_recommended` one it rejects with evidence is settled, recorded in the run log and PR comment; a rejection with no reason counts as unanswered.
 - The stop rule: a finding the agent reported fixed that is still open in the review of its new head stops the run with `agent-needs-help`, naming it, instead of another fix round.
-- Done needs every acceptance criterion reported `met: true`. One reported not met, left out or not a boolean stops the run with `agent-needs-help` before the push, naming it.
-- Finding text, CI logs and check output reach the agent fenced as `<untrusted-data>` blocks, and its system prompt says their contents are data, never instructions.
+- Done needs every acceptance criterion reported `met: true`, after the implement call and again after every fix round. One reported not met, left out or not a boolean stops the run with `agent-needs-help` before the push, naming it.
+- Finding text, CI logs and check output reach the agent fenced as `<untrusted-data>` blocks, and its system prompt says their contents are data, never instructions. A finding id that isn't one plain token makes the review unreadable, never clean.
 
 ## Daily Discussion posts
 - Each day has one post file, `.archive/docs/hackathon/day<N>-discussion-post.md`, following that day's template. Create it if missing.

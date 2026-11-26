@@ -2,7 +2,7 @@
 // files the test creates under a temp dir; no real credential file is ever touched.
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { agentEnv, PASSED_ENV, readClaude } from '../../factory/agent.js';
 import { realExec } from '../../factory/exec.js';
@@ -86,7 +86,17 @@ describe('what the sandbox denies (S1, S2, S3)', () => {
       { path: '/d', kind: 'dir' }, { path: '/g', kind: 'dir' }, { path: '/a', kind: 'dir' }, { path: '/n', kind: 'dir' },
       { path: '/k/one', kind: 'file' }, { path: '/k/two', kind: 'file' },
     ]));
-    expect(deniedReads({ ...p, env }).map((d) => d.path)).not.toContain('relative');
+  });
+
+  it('denies a relative store override where the runner itself would read it, never drops it (Qodo PR239 819ccbe2)', () => {
+    const env = { DOCKER_CONFIG: 'rel/docker', CLOUDSDK_CONFIG: './gcloud', AZURE_CONFIG_DIR: '../azure', GNUPGHOME: 'gnupg', KUBECONFIG: 'rel/kube::/k/abs:' };
+    const list = deniedReads({ ...p, env });
+    expect(list).toEqual(expect.arrayContaining([
+      { path: resolve('rel/docker'), kind: 'dir' }, { path: resolve('gcloud'), kind: 'dir' }, { path: resolve('../azure'), kind: 'dir' },
+      { path: resolve('gnupg'), kind: 'dir' }, { path: resolve('rel/kube'), kind: 'file' }, { path: '/k/abs', kind: 'file' },
+    ]));
+    expect(list.every((d) => isAbsolute(d.path)), 'every deny is absolute, as Seatbelt needs').toBe(true);
+    expect(list.map((d) => d.path)).not.toContain(resolve(''));
   });
 
   it('follows gh and Claude Code to the config dirs the environment names', () => {
