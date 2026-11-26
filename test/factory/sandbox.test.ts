@@ -55,6 +55,14 @@ describe('what the sandbox denies (S1, S2, S3)', () => {
     ]));
   });
 
+  it("denies reads of the runner's state, local config and run logs included (Qodo PR235 7bdf99b6)", () => {
+    expect(deniedReads(p)).toContainEqual({ path: '/r/.git/factory', kind: 'dir' });
+    const s = claudeSettings(p, { worktree: '/r/.sandboxes/agent-1' }) as { sandbox: { filesystem: { denyRead: string[] } }; permissions: { deny: string[] } };
+    expect(s.sandbox.filesystem.denyRead).toContain('/r/.git/factory');
+    expect(s.permissions.deny).toEqual(expect.arrayContaining(['Read(//r/.git/factory)', 'Read(//r/.git/factory/**)']));
+    expect(seatbeltProfile(p, { worktree: '/r/.sandboxes/agent-1', mode: 'check' })).toMatch(/\(deny file-read\* [^\n]*\(subpath "\/r\/\.git\/factory"\)/);
+  });
+
   it("adds the machine's local denies to both sandboxes, each path with everything under it", () => {
     const local: SandboxPaths = { ...p, denyReads: ['/opt/login', '/h/.config/login'] };
     expect(deniedReads(local)).toEqual(expect.arrayContaining([{ path: '/opt/login', kind: 'dir' }, { path: '/h/.config/login', kind: 'dir' }]));
@@ -177,6 +185,17 @@ describe.skipIf(!canSandbox)('the runner sandbox, for real (S5)', () => {
     expect(res.code).toBe(0);
     expect(targets.map((t) => existsSync(t))).toEqual([false, false, false, false, false, true]);
     expect(existsSync(join(common, 'worktrees/other'))).toBe(true);
+  }, 30_000);
+
+  it("refuses reading the runner's local config and logs, and the self-test's write probe still reads as refused (Qodo PR235 7bdf99b6)", async () => {
+    const { d, profile } = setup();
+    writeFileSync(join(d.stateDir, 'local.json'), '{"agentCli": "/LOCAL-CONFIG-TOKEN"}\n');
+    const res = await realExec()(SANDBOX_EXEC, seatbelt(profile, '/bin/cat', [join(d.stateDir, 'local.json')]), { timeoutMs: 5_000, env });
+    expect(res.stdout).toBe('');
+    expect(res.stderr).toMatch(/Operation not permitted/);
+    const probe = await realExec()(SANDBOX_EXEC, seatbelt(profile, '/bin/sh', [PROBE]), { cwd: d.work, timeoutMs: 20_000, env });
+    expect(probe.code).toBe(0);
+    expect(probeVerdict(d)).toEqual([]);
   }, 30_000);
 
   it("refuses a path the machine's local config lists, which is readable without it", async () => {

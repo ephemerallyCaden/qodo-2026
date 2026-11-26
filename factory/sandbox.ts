@@ -32,7 +32,8 @@ export interface Denied {
 /**
  * Credentials the agent never needs: the AWS and SSH stores, gh's and qodo's logins, the npm,
  * netrc and git credential files (Qodo PR #93 f9a2cd5a), Claude Code's own credential and account
- * files, and whatever this machine's local config adds. npm and git run fine without them. The
+ * files, and whatever this machine's local config adds; also the runner's state, whose local config
+ * and logs name this machine's paths (Qodo PR #235 7bdf99b6). npm and git run fine without them. The
  * agent's model calls still work: Claude Code fetches its model credentials in its own process,
  * outside the sandbox and the permission rules (Research, S7).
  */
@@ -53,6 +54,7 @@ export function deniedReads(p: SandboxPaths): Denied[] {
     // ~/.claude.json and the .backup and .tmp.* copies Claude Code writes beside it.
     { path: join(home, '.claude.json'), kind: 'prefix' },
     { path: join(claudeDir, '.claude.json'), kind: 'prefix' },
+    { path: p.stateDir, kind: 'dir' },
     ...(p.denyReads ?? []).map((path): Denied => ({ path, kind: 'dir' })),
   ];
   return list.filter((d, i) => list.findIndex((x) => x.path === d.path) === i);

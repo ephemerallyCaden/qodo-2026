@@ -779,6 +779,9 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
       // Qodo PR93 cf5b7463: no settings from the worktree, so nothing there can loosen these.
       expect(c.args.slice(c.args.indexOf('--setting-sources'), c.args.indexOf('--setting-sources') + 2)).toEqual(['--setting-sources', 'user']);
       expect(s.permissions.deny).toContain(`Edit(/${stateDir(w)}/**)`);
+      // Qodo PR235 7bdf99b6: nor read it (the local config and the run logs name this machine's paths).
+      expect(s.sandbox.filesystem.denyRead).toContain(stateDir(w));
+      expect(s.permissions.deny).toContain(`Read(/${stateDir(w)}/**)`);
       expect(s.permissions.blockWritesOutsideWorkingDirectories).toBe(true);
     }
   });
