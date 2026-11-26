@@ -20,7 +20,8 @@
 //   cover depends on its own file alone, so a planet's cover is the sum of its fogged files' and tracks
 //   their share; a fully reviewed planet has no cloud. Every fogged file covers at least the cloud's
 //   density of its own sites (its highest: FLOOR) and no misted file more of its own than that, so fogged
-//   always reads cloudier than misted, and a fogged file never lies in clear sky (Rule 1).
+//   always reads cloudier than misted, and a fogged file never lies in clear sky (Rule 1); every misted
+//   file shows at least the mist's density of its own, so read never draws like understood.
 // - Puffs: the weather's clump, a lead puff and satellites. A site's core (0 at a mass's edge, 1 deep
 //   inside) sizes and lifts its lead, so a mass domes; edge sites get 2–3 satellites for a lumpy edge.
 //   Core is the noise's rise over the cut, capped by the distance to the cloud's edge (a territory's
@@ -249,8 +250,11 @@ class SkyGrid {
       // the cloud's floor rounds up and the mist's ceiling down, so a fogged file's share is at least the
       // bound and a misted one's at most it, exactly (the epsilon absorbs float error at a whole number)
       const ranked = [...sites].sort(byRaw).reverse(), bound = sites.length * CLOUD.density * FLOOR;
-      if (layer.id === CLOUD.id) for (let j = 0; j < Math.min(Math.max(1, Math.ceil(bound - 1e-9)), ranked.length); j++) this.gap[ranked[j]!] = 0;
-      else for (let j = Math.floor(bound + 1e-9); j < ranked.length; j++) this.gap[ranked[j]!] = 1;
+      // and every layer keeps a floor of its own density over each file's highest sites, so a misted file
+      // always shows its mist and never draws like a clear one (Qodo c6ba99ee: read is not understood)
+      const floor = layer.id === CLOUD.id ? bound : sites.length * layer.density;
+      for (let j = 0; j < Math.min(Math.max(1, Math.ceil(floor - 1e-9)), ranked.length); j++) this.gap[ranked[j]!] = 0;
+      if (layer.id !== CLOUD.id) for (let j = Math.floor(bound + 1e-9); j < ranked.length; j++) this.gap[ranked[j]!] = 1;
     }
     // core from the noise: its rise over the cut (viewer.js: min(1, density × 7))
     this.noiseCore = raw.map((r) => Math.min(1, Math.max(0, (r - cut + 0.012) * CORE_GAIN)));

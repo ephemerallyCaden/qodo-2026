@@ -62,7 +62,7 @@ describe('the cloud over fogged files (the weather\'s cream, cover proportional,
   // The human, 2026-11-25 (#228): fogged always reads cloudier than misted, so every fogged file covers at
   // least the cloud's density of its own sites and no misted file more than that of its own, on the
   // fog-levels scene's geometry (3 files on a scanned planet's 256 cells) and on many-file planets.
-  it.each([[3, 256], [3, 64], [12, 256], [48, 256]] as const)('covers every fogged file at least as heavily as any misted one: at least the cloud\'s density of its own sites, %i files on %i cells', (files, cells) => {
+  it.each([[3, 256], [3, 64], [12, 256], [30, 256], [48, 256]] as const)('covers every fogged file at least as heavily as any misted one, and every misted file with some mist: %i files on %i cells', (files, cells) => {
     const own = surfacePlan({ cells, settlements: Array.from({ length: files }, (_, k) => ({ fileId: `f_${k}`, cell: (k * 37 + Math.floor(k / 5) * 3) % cells })) });
     for (const seed of [1234567, 42, 7, 99, 2024]) {
       const p = new CloudPlan(own, seed);
@@ -75,6 +75,8 @@ describe('the cloud over fogged files (the weather\'s cream, cover proportional,
         const fogged = share('cloud', k, 2), misted = share('mist', k, 1);
         expect(fogged.covered / fogged.mine, `seed ${seed}, file ${k} fogged`).toBeGreaterThanOrEqual(CLOUD.density - 1e-9);
         expect(misted.covered / misted.mine, `seed ${seed}, file ${k} misted`).toBeLessThanOrEqual(CLOUD.density + 1e-9);
+        // Qodo c6ba99ee (PR #230): every misted file shows its mist, so read never looks understood (clear)
+        expect(misted.covered / misted.mine, `seed ${seed}, file ${k} misted: some mist`).toBeGreaterThanOrEqual(MIST.density - 1e-9);
       }
     }
   });
@@ -201,9 +203,11 @@ describe('the mist over misted files (stored haze: read, not yet tested): the th
     const misted = sky.at(rest(() => 1)), fogged = sky.at(rest(() => 2));
     expect(misted.cloud).toEqual([]);
     expect(misted.teal).toEqual([]);
-    // the weather's cut at the mist's density, less what the ceiling trims off misted files on a noise peak
-    expect(misted.mistCover).toBeLessThanOrEqual(MIST.density + 1 / sky.sites('mist'));
+    // the weather's cut at the mist's density, less what the ceiling trims off misted files on a noise peak,
+    // plus each file's floor (Qodo c6ba99ee): a little cloud, far lighter than fogged
     expect(misted.mistCover).toBeGreaterThan(MIST.density * 0.8);
+    expect(misted.mistCover).toBeLessThanOrEqual(MIST.density * 2);
+    expect(misted.mistCover).toBeLessThan(fogged.cloudCover / 3);
     expect(misted.mistCover).toBeLessThan(fogged.cloudCover);
     expect(Math.max(...misted.mist.map((p) => p.size)), 'the thin weather\'s leads: 0.7 × 0.058–0.108 R').toBeLessThanOrEqual(0.108 * MIST.size + 1e-9);
     expect(Math.min(...misted.mist.map((p) => p.size))).toBeGreaterThanOrEqual(0.058 * MIST.size * 0.5 - 1e-9);
