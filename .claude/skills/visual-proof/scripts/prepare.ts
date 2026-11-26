@@ -9,7 +9,7 @@ import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readF
 import { dirname, join, relative } from 'node:path';
 import { deniedReads, type Denied } from '../../../../factory/sandbox.js';
 import { tokenRuns } from './privacy.js';
-import { Stop, type Bundle } from './rules.js';
+import { Stop, type Bundle, type StopCode } from './rules.js';
 import type { FixtureCommit } from './scene.js';
 
 const byCodepoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -118,16 +118,21 @@ export function buildTree(dest: string, log: string, side: string, profile: stri
   return { ms: Date.now() - t0 };
 }
 
+/** What one build wrote into dist/web: the digest and file list, and each file's sha256 and its bytes as text (for the privacy scan). */
+export interface BuiltBundle extends Bundle { contents: { path: string; sha256: string; text: string }[] }
+
 /**
- * dist/web, every file's path and bytes digested in codepoint order of path. Files and folders only: this
- * process reads them outside the sandbox (the digest, the privacy scan), so a link the build made to a
- * file the sandbox denies is never read through.
+ * dist/web, every file's path and bytes digested in codepoint order of path, each file read once. Files
+ * and folders only, under a dist and a dist/web that are folders themselves (Qodo 70a17b28), so nothing
+ * outside the tree is read. The run calls it under the sandbox (sandboxedBundle), never in its own process.
  */
-export function bundleOf(dest: string): Bundle {
+export function bundleOf(dest: string): BuiltBundle {
   const root = join(dest, 'dist', 'web');
-  const top = lstatSync(root, { throwIfNoEntry: false });
-  if (!top) throw new Stop('build-failed', 'the build wrote no dist/web');
-  if (!top.isDirectory()) throw new Stop('build-failed', `the build's dist/web is ${kindOf(top)}, not a folder`);
+  for (const [dir, what] of [[join(dest, 'dist'), 'dist'], [root, 'dist/web']] as const) {
+    const st = lstatSync(dir, { throwIfNoEntry: false });
+    if (!st) throw new Stop('build-failed', `the build wrote no ${what}`);
+    if (!st.isDirectory()) throw new Stop('build-failed', `the build's ${what} is ${kindOf(st)}, not a folder`);
+  }
   const files: string[] = [];
   const walk = (d: string) => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
@@ -140,13 +145,27 @@ export function bundleOf(dest: string): Bundle {
   walk(root);
   files.sort(byCodepoint);
   const h = createHash('sha256');
-  for (const f of files) h.update(`${f}\0`).update(readFileSync(join(root, f))).update('\0');
-  return { digest: h.digest('hex'), files };
+  const contents = files.map((path) => {
+    const bytes = readFileSync(join(root, path));
+    h.update(`${path}\0`).update(bytes).update('\0');
+    return { path, sha256: createHash('sha256').update(bytes).digest('hex'), text: bytes.toString('utf8') };
+  });
+  return { digest: h.digest('hex'), files, contents };
 }
 
-/** Each dist/web file's path and its bytes as text, for the privacy scan before anything is served (Qodo 648df95e). */
-export function bundleFiles(dest: string, bundle: Bundle): { path: string; text: string }[] {
-  return bundle.files.map((path) => ({ path, text: readFileSync(join(dest, 'dist', 'web', path), 'utf8') }));
+/**
+ * bundleOf, run as `main.js bundle <dest>` under `profile` (Qodo af83b6b5): a process the build left
+ * behind can still change dist/web, so it is read where the build ran, under the same denies. A link
+ * swapped in mid-read reaches only what the build itself could read, and a credential store fails the
+ * read. Its stop comes through as it is; any other failure is a build-failed stop that names no path.
+ */
+export function sandboxedBundle(self: string, dest: string, side: string, profile: string): BuiltBundle {
+  const c = contained(process.execPath, [self, 'bundle', dest], profile);
+  const r = spawnSync(c.cmd, c.args, { encoding: 'utf8', maxBuffer: 1 << 30, env: revisionEnv(process.env, { NO_COLOR: '1' }) });
+  if (r.status === 0) return JSON.parse(r.stdout) as BuiltBundle;
+  const stop = /^STOP ([a-z-]+): (.*)$/m.exec(r.stdout ?? '');
+  if (stop) throw new Stop(stop[1] as StopCode, stop[2]!);
+  throw new Stop('build-failed', `the ${side} build's dist/web couldn't be read under the sandbox (exit ${r.status ?? r.signal}): a file in it is one the sandbox denies, or it changed while it was read`);
 }
 
 /**

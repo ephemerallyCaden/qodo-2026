@@ -128,6 +128,33 @@ export function bundleHits(side: string, files: readonly { path: string; text: s
   return privacyHits(files.map((f) => ({ where: `${where}/${f.path}`, text: f.text })), ctx);
 }
 
+/** The dist/web file a static request names: `/` is index.html (the server's own bundleKey), null for bad percent-encoding. */
+export function assetPath(requestPath: string): string | null {
+  const q = requestPath.indexOf('?');
+  try {
+    const key = decodeURIComponent(q < 0 ? requestPath : requestPath.slice(0, q));
+    return key === '/' ? 'index.html' : key.replace(/^\//, '');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The static files a take was served that aren't byte for byte one the bundle scan read (Qodo 968ff513):
+ * a process the build left behind can change dist/web after the scan, and the take serves the build's
+ * own tree. A hit names the scanned file it should have been, never the request (printed unmasked).
+ */
+export function assetHits(take: string, assets: readonly { path: string; sha256: string }[], scanned: ReadonlyMap<string, string>): Hit[] {
+  const out: Hit[] = [];
+  for (const a of assets) {
+    const file = assetPath(a.path);
+    const want = file === null ? undefined : scanned.get(file);
+    if (want === a.sha256) continue;
+    out.push({ rule: 'bytes the bundle scan never read', where: `take ${take} static files`, excerpt: want === undefined ? 'a file not in the scanned dist/web' : `dist/web/${file} changed after the scan` });
+  }
+  return out;
+}
+
 /**
  * A command's output for the record: as it is when the scan finds nothing in it, else one line saying it
  * was withheld and why (rules only, never the text). For build, scan and setup output, stop details and

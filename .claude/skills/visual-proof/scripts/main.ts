@@ -14,7 +14,7 @@ import { chromium } from '@playwright/test';
 import { SCENES } from '../scenes/index.js';
 import { checkTakes, settleScratch, type TakeFailed } from './checks.js';
 import { compose, GITHUB_IMAGE_LIMIT } from './compose.js';
-import { addNodeModules, buildTree, bundleFiles, bundleOf, changedFiles, contained, exportTree, git, libraryRuns, makeClone, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, resolveRev, revisionEnv, SANDBOX_EXEC, sandboxProfile, scanClone, snapshotSessions, stateDigest, worktreeRev, type Rev } from './prepare.js';
+import { addNodeModules, buildTree, bundleOf, changedFiles, contained, exportTree, git, libraryRuns, makeClone, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, resolveRev, revisionEnv, SANDBOX_EXEC, sandboxedBundle, sandboxProfile, scanClone, snapshotSessions, stateDigest, worktreeRev, type BuiltBundle, type Rev } from './prepare.js';
 import { bundleHits, dataTexts, privacyHits, runTexts, screen, servedTexts, type Hit, type Scanned } from './privacy.js';
 import { RunRecord, redact, uniqueName, type Literal } from './record.js';
 import { DATA_PATHS, dataPathsTouched, missingTools, noViewChange, privacyStop, Stop, takeFailure } from './rules.js';
@@ -138,14 +138,16 @@ async function run(a: RunArgs): Promise<number> {
 
     // 3. Builds. What each build wrote into dist/web is scanned before it is named here, served or filmed (Qodo 648df95e)
     const trees = { before: join(scratch, 'base'), after: join(scratch, 'head') };
-    const bundles = {} as Record<(typeof SIDES)[number], ReturnType<typeof bundleOf>>;
+    const bundles = {} as Record<(typeof SIDES)[number], BuiltBundle>;
     const library = libraryRuns(top);
+    const self = process.argv[1]!;
     for (const side of sides) {
       const rev = side === 'before' ? base : head;
       const cmds = [...exportTree(top, rev, trees[side], join(scratch, `${side}.tar`)), ...addNodeModules(top, trees[side])];
       const { ms } = buildTree(trees[side], join(scratch, `build-${side}.log`), side, profile);
-      bundles[side] = bundleOf(trees[side]);
-      refuse(bundleHits(side, bundleFiles(trees[side], bundles[side]), { literals: machinePaths, library }));
+      // Read under the sandbox: a process the build left could swap a link in (Qodo af83b6b5)
+      bundles[side] = sandboxedBundle(self, trees[side], side, profile);
+      refuse(bundleHits(side, bundles[side].contents, { literals: machinePaths, library }));
       record.step(`Build ${side} (${rev.short})`, [...block(screened([...cmds, `sandbox-exec npm run build   # in ${trees[side]}, ${secs(ms)}, output in $SCRATCH/build-${side}.log`], `the ${side} build step`)),
         `dist/web: ${bundles[side].files.join(', ')}; sha256 ${bundles[side].digest}`]);
     }
@@ -199,9 +201,8 @@ async function run(a: RunArgs): Promise<number> {
     if (sessions) throw new Stop('data-change', `the scan read ${sessions} agent sessions; it must read none (--no-ingest)`);
 
     // 6. Takes: two per build, each in its own process and browser. A take that fails stops the takes; the stop waits for step 7
-    const takes: Record<string, { dir: string; log: TakeLog; ms: number }> = {};
+    const takes: Record<string, { side: (typeof SIDES)[number]; dir: string; log: TakeLog; ms: number }> = {};
     let failed: TakeFailed | undefined;
-    const self = process.argv[1]!;
     takes: for (const side of sides) {
       for (const n of trying ? [1] : [1, 2]) {
         const name = `${side}-${n}`, dir = join(scratch, 'takes', name);
@@ -224,7 +225,7 @@ async function run(a: RunArgs): Promise<number> {
           failed = { name, dir, error: r.status === 0 ? new Error(`take ${name} wrote no readable log`) : takeFailure(name, r.status, r.stdout ?? '') };
           break takes;
         }
-        takes[name] = { dir, log, ms };
+        takes[name] = { side, dir, log, ms };
         // notes and page errors wait for the privacy scan (step 7) before they are written
         record.step(`Take ${name}`, [`sandbox-exec node <tools>/main.js take $SCRATCH/takes/${name}/take.json: ${log.frames.length} frames in ${secs(ms)}; stills ${log.stills.map((x) => `${x.name} @ ${x.k}`).join(', ')}`,
           `${log.notes.length} scene notes and ${log.errors.length} page errors, written after the privacy scan`,
@@ -234,7 +235,9 @@ async function run(a: RunArgs): Promise<number> {
 
     // 7. Privacy (R5), then determinism (R2): every take that finished is scanned before any is compared, and a
     // failed take left no log to scan, so its dir goes (PR #199 be6e0044). Also the run's own words and the state files.
-    const done = Object.entries(takes).map(([name, t]) => ({ name, dir: t.dir, log: t.log }));
+    // Each take was served by its build's own tree: every static file must be what the bundle scan read (Qodo 968ff513)
+    const scanned = (side: (typeof SIDES)[number]) => new Map(bundles[side].contents.map((f) => [f.path, f.sha256]));
+    const done = Object.entries(takes).map(([name, t]) => ({ name, dir: t.dir, log: t.log, scanned: scanned(t.side) }));
     const items: Scanned[] = [...runTexts({ base, head, scene }), { where: 'the stills', text: done.flatMap((t) => t.log.stills.map((x) => x.name)).join('\n') }];
     let stateFiles = 0;
     for (const dir of [stateStart, state]) {
@@ -251,8 +254,8 @@ async function run(a: RunArgs): Promise<number> {
       ctx: { literals: [...machinePaths, { name: 'the data clone path', value: clone }] },
       tokenHits: done.reduce((n, t) => n + (t.log.tokenHits ?? 0), 0),
     });
-    const texts = done.reduce((n, t) => n + t.log.texts.length, 0), responses = done.reduce((n, t) => n + t.log.served.length, 0);
-    record.step('Privacy (R5)', [`scanned ${texts} page texts, ${responses} API responses, ${done.length} event streams and ${stateFiles} state files of ${done.length} finished take(s): ${checked.hits.length} hits`,
+    const texts = done.reduce((n, t) => n + t.log.texts.length, 0), responses = done.reduce((n, t) => n + t.log.served.length, 0), assets = done.reduce((n, t) => n + t.log.assets.length, 0);
+    record.step('Privacy (R5)', [`scanned ${texts} page texts, ${responses} API responses, ${done.length} event streams and ${stateFiles} state files of ${done.length} finished take(s), and checked ${assets} static files served against the bundle scan: ${checked.hits.length} hits`,
       ...checked.hits.map((h) => `- ${h.rule} in ${h.where}: ${h.excerpt}`),
       ...(checked.removed.length ? [`removed, with nothing to scan: the dir of take ${checked.removed.join(', ')}, which failed`] : [])]);
     if (checked.stop && !(checked.stop instanceof Stop && checked.stop.code === 'takes-differ')) throw checked.stop;
@@ -366,6 +369,16 @@ async function cliMain(argv: string[]): Promise<number> {
       process.stdout.write(`${s.name}: ${s.summary} [${viewport}; ${motion}${s.fixture || s.repo ? "; the scene's own repo" : ''}]\n`);
     }
     return 0;
+  }
+  // dist/web as one build left it, read inside the sandbox the run starts this in (sandboxedBundle)
+  if (cmd === 'bundle' && rest.length === 1) {
+    try {
+      process.stdout.write(JSON.stringify(bundleOf(rest[0]!)));
+      return 0;
+    } catch (e) {
+      if (e instanceof Stop) { process.stdout.write(`STOP ${e.code}: ${e.message}\n`); return 3; }
+      throw e;
+    }
   }
   if (cmd === 'take' && rest.length === 1) {
     try {

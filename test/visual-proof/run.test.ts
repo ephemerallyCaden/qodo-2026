@@ -54,13 +54,15 @@ function checkout() {
   return { dir, git, commit, base };
 }
 
+/** The scratch dir a run of these two commits gets: the first name it picks (a fresh --out, fresh SHAs). */
+const scratchOf = (base: string, head: string) => join(realpathSync('/tmp'), `visual-proof-${base.slice(0, 7)}-${head.slice(0, 7)}-panel-labels`);
+
 /** `main.js run` in `cwd`; the scratch dir (/tmp/<the record's name>), whatever the stop left of it, goes afterwards. */
-function run(cwd: string, base: string, head: string) {
+function run(cwd: string, base: string, head: string, env: Readonly<Record<string, string>> = {}) {
   const out = realTempDir('commet-vp-out-');
-  const r = spawnSync(process.execPath, [mainJs, 'run', '--base', base, '--head', head, '--scene', 'panel-labels', '--out', out], { cwd, encoding: 'utf8', timeout: 110_000 });
+  const r = spawnSync(process.execPath, [mainJs, 'run', '--base', base, '--head', head, '--scene', 'panel-labels', '--out', out], { cwd, encoding: 'utf8', timeout: 110_000, env: { ...process.env, ...env } });
   const record = /^record: (.*\.md)$/m.exec(r.stdout)?.[1];
-  // A stop before the record has the first name the run picks (a fresh --out, fresh SHAs)
-  const scratch = join(realpathSync('/tmp'), record ? basename(record, '.md') : `visual-proof-${base.slice(0, 7)}-${head.slice(0, 7)}-panel-labels`);
+  const scratch = record ? join(realpathSync('/tmp'), basename(record, '.md')) : scratchOf(base, head);
   const left = existsSync(scratch);
   if (left) rmSync(scratch, { recursive: true, force: true });
   return { status: r.status, stdout: r.stdout, stderr: r.stderr, out, record: record && existsSync(record) ? readFileSync(record, 'utf8') : null, scratchLeft: left };
@@ -103,6 +105,18 @@ describe('a visual-proof run', { timeout: 120_000 }, () => {
     expect(`${r.stdout}${r.record}`).not.toContain(TOKEN);
     expect(r.scratchLeft, 'a privacy stop removes the scratch dir with the builds').toBe(false);
     expect(readdirSync(r.out).filter((x) => !x.endsWith('.md')), 'nothing composed').toEqual([]);
+  });
+
+  it.skipIf(process.platform !== 'darwin')("reads dist/web under the build's sandbox, never in its own process, so what the sandbox denies stays unread whatever the build left running (Qodo af83b6b5)", (ctx) => {
+    ctx.skip(probeSandbox() === 'nested', NESTED_SANDBOX);
+    const f = checkout();
+    const head = f.commit('feat: the view, with a folder', { 'build.js': `${BUILD(`'console.log(1);\\n'`)}fs.mkdirSync('dist/web/private');\nfs.writeFileSync('dist/web/private/notes.js', 'x;\\n');\n` });
+    // The sandbox denies the dirs its deny list names (GH_CONFIG_DIR among them): here the head build's own
+    // dist/web/private, which the build can write but not read back. The run's own process could read it; the sandbox can't.
+    const r = run(f.dir, f.base, head, { GH_CONFIG_DIR: join(scratchOf(f.base, head), 'head', 'dist', 'web', 'private') });
+    expect(r.status, r.stdout + r.stderr).toBe(3);
+    expect(r.stdout).toMatch(/^STOP build-failed: the after build's dist\/web couldn't be read under the sandbox \(exit 1\)/m);
+    expect(r.record).toMatch(/^## 3\. Build before \(/m);
   });
 
   it.skipIf(process.platform !== 'darwin')('stops on a tracked node_modules symlink before the copy, and writes nothing outside scratch (Qodo d8fc556d)', (ctx) => {

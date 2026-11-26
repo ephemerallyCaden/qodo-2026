@@ -2,10 +2,11 @@
 // node_modules: the run stops and asks (npm ci needs the network). A scene's own repo is the same commit
 // every run, so both builds, and every run, see the same data (R12).
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addNodeModules, bundleFiles, bundleOf, contained, exportTree, libraryRuns, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, revisionEnv, SANDBOX_EXEC, sandboxProfile, sandboxState, worktreeRev } from '../../.claude/skills/visual-proof/scripts/prepare.js';
+import { addNodeModules, bundleOf, contained, exportTree, libraryRuns, makeFixtureRepo, makeScratch, NESTED_SANDBOX, probeSandbox, revisionEnv, SANDBOX_EXEC, sandboxProfile, sandboxState, worktreeRev } from '../../.claude/skills/visual-proof/scripts/prepare.js';
 import { bundleHits } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 import { Stop } from '../../.claude/skills/visual-proof/scripts/rules.js';
 import { tempDir } from '../fixtures/tmp.js';
@@ -98,11 +99,12 @@ describe('bundleOf', () => {
     make(join(dest, 'dist', 'web'));
     return dest;
   };
-  it("lists dist/web's files, and their text for the privacy scan (Qodo 648df95e)", () => {
+  it("lists dist/web's files, each with its sha256 and its text for the privacy scan (Qodo 648df95e, 968ff513)", () => {
     const dest = tree((web) => writeFileSync(join(web, 'assets', 'a.js'), 'x;\n'));
     const b = bundleOf(dest);
     expect(b.files).toEqual(['assets/a.js', 'index.html']);
-    expect(bundleFiles(dest, b)).toEqual([{ path: 'assets/a.js', text: 'x;\n' }, { path: 'index.html', text: '<!doctype html>\n' }]);
+    const sha = (t: string) => createHash('sha256').update(t).digest('hex');
+    expect(b.contents).toEqual([{ path: 'assets/a.js', sha256: sha('x;\n'), text: 'x;\n' }, { path: 'index.html', sha256: sha('<!doctype html>\n'), text: '<!doctype html>\n' }]);
   });
   it('stops on a link the build made in dist/web, which this process would read through outside the sandbox', () => {
     const secret = join(tempDir('commet-vp-prep-'), 'id');
@@ -113,6 +115,14 @@ describe('bundleOf', () => {
     mkdirSync(join(whole, 'dist'));
     symlinkSync(dirname(secret), join(whole, 'dist', 'web'));
     expect(() => bundleOf(whole)).toThrow(/^the build's dist\/web is a symlink, not a folder$/);
+  });
+  it('stops on a linked dist, before it reads anything outside the tree (Qodo 70a17b28)', () => {
+    const outside = tempDir('commet-vp-prep-');
+    mkdirSync(join(outside, 'web'));
+    writeFileSync(join(outside, 'web', 'index.html'), 'not this tree\n');
+    const dest = tempDir('commet-vp-prep-');
+    symlinkSync(outside, join(dest, 'dist'));
+    expect(() => bundleOf(dest)).toThrow(/^the build's dist is a symlink, not a folder$/);
   });
 });
 

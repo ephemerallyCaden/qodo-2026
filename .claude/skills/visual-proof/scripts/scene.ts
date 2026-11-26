@@ -176,6 +176,8 @@ export interface TakeLog {
   /** Every distinct page text (all text in the DOM, the title and every attribute value), with the first frame it was seen at. */
   texts: [string, number][];
   served: { path: string; status: number; body: string }[];
+  /** Every static file the page was served (200), by request path and the sha256 of its bytes: checked against the bundle scan (Qodo 968ff513). */
+  assets: { path: string; sha256: string }[];
   /** The live event stream's bytes (GET /api/events never ends, so its body is teed in the page). */
   events: string;
   notes: string[];

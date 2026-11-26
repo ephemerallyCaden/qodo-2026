@@ -2,7 +2,7 @@
 // for what AGENTS.md Rule 2 keeps out of any output. A hit names its rule and where it was, never the
 // text it matched in full.
 import { describe, expect, it } from 'vitest';
-import { bundleHits, dataTexts, privacyHits, runTexts, screen, servedTexts, takeTexts, type Scanned } from '../../.claude/skills/visual-proof/scripts/privacy.js';
+import { assetPath, bundleHits, dataTexts, privacyHits, runTexts, screen, servedTexts, takeTexts, type Scanned } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 
 const TOKEN = 'Qx3vL0t9-mN_2bYk7RfA1sWc8dHe5jUp4gZiTo6aVyE';
 const ctx = { literals: [{ name: 'the launch token', value: TOKEN }, { name: 'HOME', value: '/Users/somebody' }] };
@@ -112,6 +112,15 @@ describe('takeTexts and runTexts', () => {
       "absolute path @ the layout's roots", "the launch token @ the data repo's commit subject", "token-like string @ the data repo's commit subject",
       'token-like string @ the start state files',
     ]);
+  });
+});
+
+describe('assetPath (Qodo 968ff513)', () => {
+  it("names the dist/web file a static request is for, as the server's bundleKey does", () => {
+    expect(assetPath('/')).toBe('index.html');
+    expect(assetPath('/assets/index-BtfLvpny.js?v=2')).toBe('assets/index-BtfLvpny.js');
+    expect(assetPath('/assets/a%20b.css')).toBe('assets/a b.css');
+    expect(assetPath('/%E0%A4%A')).toBeNull();
   });
 });
 

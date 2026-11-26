@@ -81,8 +81,11 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
    `src/core/fog/`, `src/server/`), changes the data itself (R12).
 3. **Builds**: `git archive` of each commit (or a copy of the working tree) into the scratch dir (0700),
    this checkout's `node_modules` (same lockfile only, and never over or through a tree's own
-   `node_modules`), `npm run build`, and a digest of `dist/web` (files and folders only, no links).
-   Then every `dist/web` file name and file's text is privacy-scanned (step 7's rules), before the
+   `node_modules`), `npm run build`, and a digest of `dist/web` (files and folders only, no links, under
+   a `dist` that isn't a link either). `dist/web` is read under the build's own sandbox, never in the
+   run's process: a process the build left running can still change it, so a link swapped in mid-read
+   reaches only what the build itself could read. Every `dist/web` file name and file's text is then
+   privacy-scanned (step 7's rules), before the
    record names it or any take serves it: a build can copy into the view any file the sandbox lets it
    read. There only, a token-shaped run found verbatim in three.js's own build files (this checkout's
    `node_modules/three/build/*.js`: WebGL names like `COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR`) is
@@ -105,7 +108,9 @@ on the terminal only; the record and summary write `$MAIN`). The record exists f
    load nothing but that server: any other request is refused and stops the run (`privacy`).
 7. **Privacy**, of every take that finished, before any is compared, so no stop leaves an unscanned
    take behind (a take that failed wrote no log to scan, so its dir is removed): every frame's page text
-   (text nodes, attributes, input values), every API response, the event stream, the state files, the
+   (text nodes, attributes, input values), every API response, every static file the page was served
+   (its bytes must be a file step 3 scanned: the take serves the build's own tree, which a process the
+   build left can change after the scan), the event stream, the state files, the
    page errors, the scene's notes and still names, and both commit subjects (those before the record is
    even created), for absolute paths, `~/`, `file:` URLs, the launch URL or token, token-like strings
    (three's WebGL names too: step 3's exemption is the bundle scan's alone), secret prefixes,
@@ -149,7 +154,8 @@ code, its message and detail lines, and ask the user what to do:
   this checkout's `node_modules` isn't its dependencies, and its own `npm ci` needs the network. Also
   when a side's tree has its own `node_modules` (tracked, or in the working tree: a symlink, a folder
   or a file): the run copies this checkout's in outside the sandbox, so never over or through one.
-  Also when a build wrote a symlink or a special file into `dist/web`, or `dist/web` isn't a folder.
+  Also when a build wrote a symlink or a special file into `dist/web`, or `dist` or `dist/web` isn't a
+  folder, or `dist/web` couldn't be read under the sandbox (a file in it the sandbox denies).
 - `scene-unreachable`: the scene couldn't get the view where it needed (a click opened nothing, a
   planet isn't in the layout). Check the scene with `vp.sh try` on each side.
 - `takes-differ`: a take isn't reproducible: the frames named differ. Don't retry until it passes;
@@ -159,7 +165,8 @@ code, its message and detail lines, and ask the user what to do:
   it and let the user decide. A view that reached past its local server is a `privacy` stop too. So is
   a hit in a changed path (before anything is written), in a build's `dist/web` (a file name, or text
   in a file: e.g. a build that copied a private file into the view), or in the data repo's subject,
-  the layout's roots or the start state's file names.
+  the layout's roots or the start state's file names, and a take served a static file that isn't
+  byte for byte one the bundle scan read (`bytes the bundle scan never read`).
 - `tool-missing`: what to install, in the message. `sandbox-exec can't nest: already sandboxed` means
   run it from a shell that isn't sandboxed (not the agent runner's checks or a sandboxed Bash tool).
 - `bad-input`: a ref that isn't a commit, an unknown scene, no folder for the record (`--out`).

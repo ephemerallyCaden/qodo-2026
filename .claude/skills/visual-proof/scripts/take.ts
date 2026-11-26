@@ -8,6 +8,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chromium, type Page } from '@playwright/test';
 import { context as renderContext, launch as renderLaunch } from '../../../../playwright.config.js';
 import type { LayoutV1 } from '../../../../src/core/contract/layout.js';
@@ -154,7 +155,7 @@ export async function runTake(page: Page, url: string, deps: TakeDeps & { run?: 
   const vp = page.viewportSize() ?? { width: 1280, height: 720 };
   const reduced = part.reducedMotion ?? scene.reducedMotion ?? false;
   mkdirSync(join(out, 'raw'), { recursive: true });
-  const log: TakeLog = { scene: scene.name, width: vp.width, height: vp.height, reducedMotion: reduced, frames: [], stills: [], texts: [], served: [], events: '', notes: [], errors: [], ticks: [] };
+  const log: TakeLog = { scene: scene.name, width: vp.width, height: vp.height, reducedMotion: reduced, frames: [], stills: [], texts: [], served: [], assets: [], events: '', notes: [], errors: [], ticks: [] };
   const seenText = new Map<string, number>();
   page.on('pageerror', (e) => log.errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') log.errors.push(`console.error: ${m.text()}`); });
@@ -167,9 +168,15 @@ export async function runTake(page: Page, url: string, deps: TakeDeps & { run?: 
   const bodies: Promise<void>[] = [];
   page.on('response', (r) => {
     const u = new URL(r.url());
-    if (!u.pathname.startsWith('/api/') || u.pathname === '/api/events') return;
+    if (u.pathname === '/api/events') return;
     // Path and query only: the token is in the URL's hash, and never in a request line.
-    bodies.push(r.text().then((body) => { log.served.push({ path: u.pathname + u.search, status: r.status(), body }); }, () => {}));
+    const path = u.pathname + u.search;
+    // A static file the server answered: its bytes' hash, for the check against the bundle scan (Qodo 968ff513); any other answer is scanned as text
+    if (!u.pathname.startsWith('/api/') && r.status() === 200) {
+      bodies.push(r.body().then((b) => { log.assets.push({ path, sha256: createHash('sha256').update(b).digest('hex') }); }, () => {}));
+      return;
+    }
+    bodies.push(r.text().then((body) => { log.served.push({ path, status: r.status(), body }); }, () => {}));
   });
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -366,6 +373,7 @@ export async function runTake(page: Page, url: string, deps: TakeDeps & { run?: 
   await Promise.all(bodies);
   log.events = (await page.evaluate(() => window.__vpEvents ?? [])).join('');
   log.served.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.body < b.body ? -1 : a.body > b.body ? 1 : 0));
+  log.assets.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0));
   return log;
 }
 
@@ -476,6 +484,6 @@ export async function takeMain(cfg: TakeConfig, scenes: Readonly<Record<string, 
 function merge(a: TakeLog, b: TakeLog): TakeLog {
   const texts = [...a.texts];
   for (const t of b.texts) if (!texts.some(([x]) => x === t[0])) texts.push(t);
-  return { ...a, frames: [...a.frames, ...b.frames], stills: [...a.stills, ...b.stills], texts, served: [...a.served, ...b.served],
+  return { ...a, frames: [...a.frames, ...b.frames], stills: [...a.stills, ...b.stills], texts, served: [...a.served, ...b.served], assets: [...a.assets, ...b.assets],
     events: a.events + b.events, notes: [...a.notes, ...b.notes], errors: [...a.errors, ...b.errors], ticks: [...a.ticks, ...b.ticks] };
 }

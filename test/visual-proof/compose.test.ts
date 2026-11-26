@@ -23,7 +23,7 @@ describe('delaysCs', () => {
 function take(dir: string, frames: number, colour: [number, number, number], stills: TakeLog['stills'], probes: Record<string, number> = {}): { dir: string; log: TakeLog } {
   mkdirSync(join(dir, 'raw'), { recursive: true });
   for (let k = 0; k < frames; k++) writeFileSync(join(dir, 'raw', `${String(k).padStart(4, '0')}.png`), encodePng(4, 3, solid(4, 3, colour).rgba));
-  const log: TakeLog = { scene: 's', width: 4, height: 3, reducedMotion: false, frames: Array.from({ length: frames }, (_, k) => ({ k, ts: 1000 + 50 * k, frame: 0, boxes: {}, probes, heading: null })), stills, texts: [], served: [], events: '', notes: [], errors: [], ticks: [] };
+  const log: TakeLog = { scene: 's', width: 4, height: 3, reducedMotion: false, frames: Array.from({ length: frames }, (_, k) => ({ k, ts: 1000 + 50 * k, frame: 0, boxes: {}, probes, heading: null })), stills, texts: [], served: [], assets: [], events: '', notes: [], errors: [], ticks: [] };
   return { dir, log };
 }
 

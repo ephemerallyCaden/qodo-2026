@@ -3,7 +3,7 @@
 // scene match pixel for pixel and one changed pixel stops the run (R2); a planted absolute path or
 // token-like string in the scene's data stops it (R5); a scripted drone can be selected (R12).
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, test, type Browser } from '@playwright/test';
 import { WEB_DIST } from '../../src/core/contract/api.js';
@@ -18,7 +18,9 @@ import { readCoChange } from '../../src/state/cochange.js';
 import { readDiff, readUnseen } from '../../src/state/diff.js';
 import { systemModel } from '../../web/src/model/system.js';
 import { findDrone, homePose, scriptedDrone } from '../../.claude/skills/visual-proof/scenes/helpers.js';
+import { checkTakes } from '../../.claude/skills/visual-proof/scripts/checks.js';
 import { readPng } from '../../.claude/skills/visual-proof/scripts/png.js';
+import { bundleOf } from '../../.claude/skills/visual-proof/scripts/prepare.js';
 import { privacyHits, takeTexts } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 import { compareTakes, privacyStop, Stop, takesStop } from '../../.claude/skills/visual-proof/scripts/rules.js';
 import type { Scene } from '../../.claude/skills/visual-proof/scripts/scene.js';
@@ -34,7 +36,7 @@ test.afterEach(async () => { for (const s of servers.splice(0)) await s.close();
 test.afterAll(() => removeTempDirs());
 
 /** A repo with planets aa and bb and files on the star, scanned with --no-ingest and served; `drones` through the hook. */
-async function fixture(extra: Record<string, string> = {}, drones?: (l: LayoutV1) => DroneView) {
+async function fixture(extra: Record<string, string> = {}, drones?: (l: LayoutV1) => DroneView, webRoot = WEB) {
   const dir = realTempDir('commet-vp-spec-');
   const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
   git('init', '-q', '-b', 'main');
@@ -49,7 +51,7 @@ async function fixture(extra: Record<string, string> = {}, drones?: (l: LayoutV1
   const layout = JSON.parse(readFileSync(join(dir, '.git', 'commet', 'layout.json'), 'utf8')) as LayoutV1;
   const view = drones?.(layout);
   const server = await startServer({
-    stateDir: join(dir, '.git', 'commet'), webRoot: WEB, port: 0, token: newToken(), pollMs: 100,
+    stateDir: join(dir, '.git', 'commet'), webRoot, port: 0, token: newToken(), pollMs: 100,
     fog: () => readFog(dir), chart: (a) => applyChart(dir, a), unseen: (q) => readUnseen(dir, q), diff: (q, s) => readDiff(dir, q, s),
     beacons: () => readBeacons(dir), beacon: (a) => applyBeacon(dir, a),
     cochange: () => readCoChange(dir), // #211, as `commet open` serves it
@@ -96,6 +98,23 @@ test.describe('visual-proof takes', () => {
     const stop = takesStop('before', await compareTakes(a.out, b.out));
     expect(stop?.code).toBe('takes-differ');
     expect(stop?.message).toContain('frame 1: 1 px, x 200-200, y 100-100');
+  });
+
+  test("a static file changed after the bundle scan stops the run: the take hashes what it was served (Qodo 968ff513)", async ({ browser }) => {
+    // The build's tree as the run scans it, then served by a server over that same tree
+    const tree = realTempDir('commet-vp-tree-');
+    cpSync(WEB, join(tree, 'dist', 'web'), { recursive: true });
+    const scanned = new Map(bundleOf(tree).contents.map((c) => [c.path, c.sha256]));
+    const f = await fixture({}, undefined, join(tree, 'dist', 'web'));
+    const clean = await take(browser, f, still, 'clean');
+    expect(clean.log.assets.map((a) => a.path), 'the page and its script, hashed').toEqual(expect.arrayContaining(['/', expect.stringMatching(/^\/assets\/index-[\w-]+\.js$/)]));
+    expect((await checkTakes({ done: [{ name: 'clean', dir: clean.out, log: clean.log, scanned }], pairs: [], items: [], ctx: { literals: [] } })).stop).toBeNull();
+    // A process the build left behind rewrites the page after the scan; the take serves the new bytes
+    appendFileSync(join(tree, 'dist', 'web', 'index.html'), '<!-- notes: written after the scan -->\n');
+    const swapped = await take(browser, f, still, 'swapped');
+    const got = await checkTakes({ done: [{ name: 'swapped', dir: swapped.out, log: swapped.log, scanned }], pairs: [], items: [], ctx: { literals: [] } });
+    expect((got.stop as Stop | null)?.code).toBe('privacy');
+    expect(got.hits.map((h) => `${h.rule} @ ${h.where}: ${h.excerpt}`)).toEqual(['bytes the bundle scan never read @ take swapped static files: dist/web/index.html changed after the scan']);
   });
 
   test('a planted absolute path in a beacon note stops the run (R5)', async ({ browser }) => {

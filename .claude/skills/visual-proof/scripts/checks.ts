@@ -1,11 +1,12 @@
 // visual-proof: what the run decides once the takes are done (or one of them failed): the privacy scan
 // (R5), the determinism check (R2) and the failed take, and which of them stops the run.
 import { rmSync } from 'node:fs';
-import { privacyHits, takeTexts, type Hit, type PrivacyContext, type Scanned } from './privacy.js';
+import { assetHits, privacyHits, takeTexts, type Hit, type PrivacyContext, type Scanned } from './privacy.js';
 import { compareTakes, keepsScratch, privacyStop, Stop, takesStop, type TakeCompare } from './rules.js';
 import type { TakeLog } from './scene.js';
 
-export interface TakeDone { name: string; dir: string; log: TakeLog }
+/** A finished take; `scanned` is its build's dist/web as the bundle scan read it (path → sha256), which every static file it was served must match. */
+export interface TakeDone { name: string; dir: string; log: TakeLog; scanned?: ReadonlyMap<string, string> }
 export interface TakeFailed { name: string; dir: string; error: Stop | Error }
 
 export interface Checked {
@@ -31,6 +32,7 @@ export async function checkTakes(o: { done: readonly TakeDone[]; failed?: TakeFa
   }
   // The literals only: three's library text is skipped in the bundle scan alone, never in what a take saw (Qodo 648df95e)
   const hits = privacyHits([...o.items, ...o.done.flatMap((t) => takeTexts(t.name, t.log))], { literals: o.ctx.literals });
+  for (const t of o.done) if (t.scanned) hits.push(...assetHits(t.name, t.log.assets, t.scanned));
   if (o.tokenHits) hits.push({ rule: 'the launch token', where: 'a take log', excerpt: `(${o.tokenHits} times, replaced before writing)` });
   const compared: Checked['compared'] = [];
   const leak = privacyStop(hits);

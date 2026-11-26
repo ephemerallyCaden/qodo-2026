@@ -2,6 +2,7 @@
 // scanned before they are compared, so a run whose takes differ and also hold something private stops
 // for privacy (and its scratch dir goes); a take that failed left nothing to scan, so its dir goes, and
 // the takes before it are still scanned.
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -25,13 +26,31 @@ function take(scratch: string, name: string, text: string, odd = false): TakeDon
     writeFileSync(join(dir, 'raw', `000${k}.png`), encodePng(6, 4, img.rgba));
   }
   const log: TakeLog = { scene: 's', width: 6, height: 4, reducedMotion: false, frames: [0, 1].map((k) => ({ k, ts: 1000 + 50 * k, frame: 0, boxes: {}, probes: {}, heading: null })),
-    stills: [{ name: 'end', k: 1 }], texts: [[text, 0]], served: [], events: '', notes: [], errors: [], ticks: [] };
+    stills: [{ name: 'end', k: 1 }], texts: [[text, 0]], served: [], assets: [], events: '', notes: [], errors: [], ticks: [] };
   writeFileSync(join(dir, 'log.json'), JSON.stringify(log));
   return { name, dir, log };
 }
 const pairs = [['before', 'before-1', 'before-2']] as const;
 
 describe('checkTakes', () => {
+  it("stops when a take was served a static file that isn't what the bundle scan read: changed after it, or never in it (Qodo 968ff513)", async () => {
+    const scratch = tempDir('commet-vp-checks-');
+    const sha = (t: string) => createHash('sha256').update(t).digest('hex');
+    const scanned = new Map([['index.html', sha('<p>view</p>')], ['assets/app.js', sha('x;')]]);
+    const a = take(scratch, 'before-1', 'web/src/view.ts'), b = take(scratch, 'before-2', 'web/src/view.ts');
+    a.log.assets.push({ path: '/', sha256: sha('<p>view</p>') }, { path: '/assets/app.js?v=1', sha256: sha('x;') });
+    b.log.assets.push({ path: '/', sha256: sha('<p>view</p>') }, { path: '/assets/app.js', sha256: sha('x; // notes') }, { path: `/assets/${'aB3'.repeat(11)}.js`, sha256: sha('y') });
+    const clean = await checkTakes({ done: [{ ...a, scanned }], pairs: [], items: [], ctx });
+    expect(clean.stop).toBeNull();
+    const got = await checkTakes({ done: [{ ...a, scanned }, { ...b, scanned }], pairs, items: [], ctx });
+    expect((got.stop as Stop).code).toBe('privacy');
+    expect(got.hits.map((h) => `${h.rule} @ ${h.where}: ${h.excerpt}`)).toEqual([
+      'bytes the bundle scan never read @ take before-2 static files: dist/web/assets/app.js changed after the scan',
+      'bytes the bundle scan never read @ take before-2 static files: a file not in the scanned dist/web',
+    ]);
+    expect(JSON.stringify(got.hits), 'a hit never names the request').not.toContain('aB3aB3aB3');
+  });
+
   it("keeps the token-like rule for three's WebGL names in page text and API responses: the library exemption is the bundle scan's alone (Qodo 648df95e)", async () => {
     const scratch = tempDir('commet-vp-checks-');
     const name = 'COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR';
