@@ -21,7 +21,7 @@ Human decisions (2026-11-09): a launchd schedule on the Mac plus the `ready-for-
 - [x] **R10 Offline tests.** The runner's decisions (pick, claim, refuse, retry limit, stop reasons, never-merge) are covered by tests that stub `gh`, `git`, `claude` and `qodo`, with no network.
 - [x] **R11 Install and uninstall.** One command loads the launchd job and one removes it. The lead reinstalls it after any `factory/` change merges (AGENTS.md "Agent runner"), and the human may uninstall it at any time.
 - [x] **R12 Trust boundary.** The repo is public, so anyone can open an issue. The runner acts only on an issue the repo owner both opened and labelled; anything else is refused without starting an agent. The ticket text is snapshotted at claim time and the agent works from the snapshot. An edit to the issue during the run stops it.
-- [x] **R13 Pre-flight and timers.** Before claiming, the runner checks that Claude credentials (Midway), `gh` and `qodo` all work. If they don't, it logs the reason and leaves the ticket unclaimed. Every agent call and every wait has a wall-clock kill timer, so a hung login prompt can't stall the job.
+- [x] **R13 Pre-flight and timers.** Before claiming, the runner checks that the agent CLI is installed, its login has time left (when the local config describes a freshness check), and `gh` and `qodo` work. If they don't, it logs the reason and leaves the ticket unclaimed. Every agent call and every wait has a wall-clock kill timer, so a hung login prompt can't stall the job.
 
 ### Added in PR #37 (Qodo r1)
 - **Skipped.** A ticket that is closed, unlabelled or edited between the pick and the claim is left untouched (outcome `skipped`). The next tick reads it again.
@@ -35,13 +35,18 @@ Human decisions (2026-11-09): a launchd schedule on the Mac plus the `ready-for-
 - **Base SHA.** The runner records the base commit right after its fetch and compares against that SHA, never the `origin/<base>` ref, which the agent can move in the shared `.git` to hide a protected-path change.
 - **Not covered:** in Claude Code's sandbox a path rule can't pin a directory entry without also denying writes inside it, so the agent's Bash could still move `.git/worktrees/` aside and plant records for the human's other worktrees; the human's next git command there would run them. The runner itself never reads them. A follow-up could give the agent a clone with its own `.git` instead of a linked worktree. Also: hooks, plugins and Claude Code's own process run outside the sandbox, as before. `blockReadsOutsideWorkingDirectories` would also hide the node toolchain under `~` from sandboxed Bash, so the deny list is explicit instead.
 
+### Added 2026-11-26: the local config (no employer-specific values in tracked files)
+- **Local config.** This machine's own values live in `<git-common-dir>/factory/local.json`, untracked, beside the runner's state (which neither sandbox can write) and outside every work tree: `agentCli` (the agent CLI's absolute path; default `~/.local/bin/claude`), `credentials` (`{cookieJar, domain, cookie, minHours}`: a freshness check on one cookie's expiry in a Netscape cookie jar, value never read) and `denyReads` (absolute paths both sandboxes deny, each with everything under it). All optional; strict: an unknown key, a relative or unnormalised path, or a bad value refuses `tick`, `sweep` and `install` with exit 2, while `uninstall` and `labels` don't read it. `factory/config.ts` (`parseLocalConfig`).
+- **Pre-flight.** The `credentials` line passes with "no freshness check configured" when there is none; an expired login then shows when the agent call fails. With one, a claim needs `minHours` left, and a failed agent call with the cookie expired stops with "agent credentials expired". The findings sweep's judge waits the same way.
+- **Sandbox.** The generic denies stay in code (`factory/sandbox.ts`); `denyReads` and the checked cookie jar are added to both sandboxes the same way (a real `sandbox-exec` test proves a listed path is refused and readable without it).
+
 ### Day 4 demo (not runner code)
 - [x] **D1 Happy path.** Label #24 → the scheduled tick runs it end to end → PR with Qodo review → the human decides on the merge.
 - [x] **D2 Stop path shown live.** A deliberately bad ticket (no acceptance criteria) is refused with `agent-needs-help`, with no agent started.
 - [x] **D3 Commet sees the factory.** After the run, `commet scan` on this repo attributes the runner's commits to the headless agent session.
 
 ## Assumptions
-- [x] **A1 Verified.** Headless `claude -p` works in a launchd-like minimal env (exit 0, 7 s, Bedrock). Midway expiry is a risk → R13.
+- [x] **A1 Verified.** Headless `claude -p` works in a launchd-like minimal env (exit 0, 7 s). Login expiry is a risk → R13.
 - [x] **A2 Verified, with traps.** Completion is detectable via `qodo read pr-review-session findings --extended --json`, but `review_complete` is unreliable and a skipped review (`review_effort=skip`) renders as "no issues found".
 - [x] **A3 Verified.** Qodo starts a run 5–12 s after a push made from a non-interactive process with the human's credentials.
 - [x] **A4 Verified end to end.** A headless commit in a `.sandboxes/` worktree is classed agent (100%), even after the worktree is removed.
@@ -52,7 +57,7 @@ label `ready-for-agent` → launchd tick → runner: lock, pick oldest labelled 
 
 ## Research
 runner-scout, 2026-11-09 (tags as reported):
-- **Claude:** call `~/.toolbox/bin/claude` (a stable symlink; the versioned binary auto-updates almost daily). Auth is Bedrock via `AWS_PROFILE` + ada/Midway (`~/.midway/cookie`, ~20 h lifetime); the wrapper may try `mwinit` when expired, which would hang without a TTY [INFERRED]. Plist PATH: `$HOME/.toolbox/bin:$HOME/.local/share/mise/installs/node/22/bin:/opt/homebrew/bin:$HOME/.qodo/bin:/usr/bin:/bin:/usr/sbin:/sbin`, plus HOME and USER (a plugin hook needs `node`).
+- **Claude:** call a stable path to the agent CLI, never the versioned binary, which auto-updates almost daily (the local config's `agentCli`). Its login expires (about 20 h on the runner's machine), and a login prompt when it has would hang without a TTY [INFERRED]. Plist PATH: the agent CLI's dir, then `$HOME/.local/share/mise/installs/node/22/bin:/opt/homebrew/bin:$HOME/.qodo/bin:/usr/bin:/bin:/usr/sbin:/sbin`, plus HOME and USER (a plugin hook needs `node`).
 - **Flags [PROBED]:**
   - Always pass `--permission-mode dontAsk` (the user default is `auto`).
   - `--allowedTools` / `--disallowedTools` work: a denied push still ends `subtype=success`, with `permission_denials[]` listing it.
