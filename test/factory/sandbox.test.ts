@@ -47,12 +47,29 @@ describe('what the sandbox denies (S1, S2, S3)', () => {
     expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining(['/h/.aws', '/h/.claude.json*', '/h/.claude/.credentials.json']));
     // Qodo PR93 b301674c: the records that tell git where a worktree's config lives.
     expect(s.sandbox.filesystem.denyWrite).toEqual(['/r/.git/factory', '/r/.sandboxes/agent-1/.git', '/r/.git/commondir', '/r/.git/config.worktree',
-      '/r/.git/worktrees/*/commondir', '/r/.git/worktrees/*/gitdir', '/r/.git/worktrees/*/config.worktree']);
+      '/r/.git/worktrees/*/commondir', '/r/.git/worktrees/*/gitdir', '/r/.git/worktrees/*/config.worktree',
+      ...['refs/tags', 'refs/remotes', 'packed-refs', 'HEAD', 'index', 'ORIG_HEAD', 'FETCH_HEAD'].map((f) => `/r/.git/${f}`)]);
     // `//` is an absolute path in a permission rule; a single `/` would anchor at the settings source.
     expect(s.permissions.deny).toEqual(expect.arrayContaining([
       'Read(//h/.aws)', 'Read(//h/.aws/**)', 'Read(//h/.claude.json*)', 'Read(//h/.claude/.credentials.json)', 'Edit(//r/.git/factory/**)',
       'Edit(//r/.sandboxes/agent-1/.git)',
     ]));
+  });
+
+  it("denies the agent's Bash the shared .git's tags, remote refs, packed-refs and the main checkout's HEAD, index, ORIG_HEAD and FETCH_HEAD, never its own (Qodo PR239 56aaacc6)", () => {
+    const root = temp();
+    const common = join(root, 'repo/.git');
+    mkdirSync(join(common, 'refs/heads/agent'), { recursive: true });
+    // Spelt from the resolved .git, as Seatbelt matches them: here the common dir is reached through a symlink.
+    symlinkSync(join(root, 'repo'), join(root, 'link'));
+    const linked: SandboxPaths = { home: '/h', stateDir: join(root, 'link/.git/factory'), env: {} };
+    const deny = (claudeSettings(linked, { worktree: join(root, 'repo/.sandboxes/agent-1') }) as { sandbox: { filesystem: { denyWrite: string[] } } })
+      .sandbox.filesystem.denyWrite;
+    const shared = ['refs/tags', 'refs/remotes', 'packed-refs', 'HEAD', 'index', 'ORIG_HEAD', 'FETCH_HEAD'].map((f) => join(common, f));
+    expect(deny).toEqual(expect.arrayContaining(shared));
+    const own = ['objects', 'objects/ab/cdef', 'worktrees/agent-1', 'worktrees/agent-1/HEAD', 'worktrees/agent-1/index', 'refs', 'refs/heads',
+      'refs/heads/agent/1-x', 'refs/heads/agent/1-x.lock', 'logs/refs/heads/agent/1-x'].map((f) => join(common, f));
+    for (const path of own) expect(deny.filter((d) => path === d || path.startsWith(`${d}/`)), path).toEqual([]);
   });
 
   it("denies reads of the runner's state, local config and run logs included (Qodo PR235 7bdf99b6)", () => {

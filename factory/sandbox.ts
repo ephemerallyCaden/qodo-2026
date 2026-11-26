@@ -79,6 +79,14 @@ const worktreesDir = (p: SandboxPaths) => join(dirname(p.stateDir), 'worktrees')
 const commonRecords = (p: SandboxPaths) => ['commondir', 'config.worktree'].map((r) => join(dirname(p.stateDir), r));
 
 /**
+ * Shared `.git` paths no run's own commit writes (it needs only `objects/`, its `worktrees/<id>/` and
+ * its own branch's ref and reflog), so the agent's Bash is denied them outright, spelt from the
+ * resolved `.git` as Seatbelt matches them.
+ */
+const SHARED_REFS = ['refs/tags', 'refs/remotes', 'packed-refs', 'HEAD', 'index', 'ORIG_HEAD', 'FETCH_HEAD'];
+const sharedRefs = (p: SandboxPaths) => SHARED_REFS.map((f) => join(real(dirname(p.stateDir)), f));
+
+/**
  * The `--settings` for every headless call. Bash runs sandboxed, and nothing falls back to
  * unsandboxed: Claude Code exits if the sandbox can't start, ignores `dangerouslyDisableSandbox`
  * retries, and still asks the allowlist about each command (a sandboxed command would otherwise
@@ -86,9 +94,11 @@ const commonRecords = (p: SandboxPaths) => ['commondir', 'config.worktree'].map(
  * rules hold the file tools to the same list (S2), and the Edit tools stay out of the runner's
  * state, the worktree's `.git` file and everything else outside the worktree (S3). The agent's
  * calls load no repo settings at all (`--setting-sources user`), so nothing in the worktree can
- * loosen this (Qodo PR #93 cf5b7463). Unlike `seatbeltProfile`, Bash may still write any ref in the
- * shared `.git`: `denyWrite` can't re-allow the run's own branch inside a denied dir (only
- * `allowRead` overrides a deny), so the runner pushes only the SHA it verified (Qodo PR #93 b488a43f).
+ * loosen this (Qodo PR #93 cf5b7463). Bash also can't write the shared `.git`'s tags, remote refs,
+ * `packed-refs` or the main checkout's HEAD, index, ORIG_HEAD and FETCH_HEAD (`SHARED_REFS`, Qodo
+ * PR #239 56aaacc6). It can still write other branches under `refs/heads/`: `denyWrite` can't
+ * re-allow the run's own branch inside a denied dir (only `allowRead` overrides a deny), so the
+ * runner pushes only the SHA it verified (Qodo PR #93 b488a43f).
  */
 export function claudeSettings(p: SandboxPaths, o: { worktree: string; extra?: Denied[] }): Record<string, unknown> {
   const denied = [...deniedReads(p), ...(o.extra ?? [])];
@@ -103,7 +113,7 @@ export function claudeSettings(p: SandboxPaths, o: { worktree: string; extra?: D
       autoAllowBashIfSandboxed: false,
       filesystem: {
         denyRead: denied.map((d) => (d.kind === 'prefix' ? `${d.path}*` : d.path)),
-        denyWrite: [p.stateDir, gitFile, ...commonRecords(p), ...RECORDS.map((r) => join(worktreesDir(p), '*', r))],
+        denyWrite: [p.stateDir, gitFile, ...commonRecords(p), ...RECORDS.map((r) => join(worktreesDir(p), '*', r)), ...sharedRefs(p)],
       },
       network: { allowedDomains: [], strictAllowlist: true, allowLocalBinding: true },
     },

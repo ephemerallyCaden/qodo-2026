@@ -854,7 +854,8 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
       expect(s.permissions.deny).toContain(`Read(/${join(w.home, '.claude/.credentials.json')})`);
       expect(s.sandbox.filesystem.denyWrite).toEqual([stateDir(w), join(w.repoDir, '.sandboxes/agent-24/.git'),
         join(w.commonDir, 'commondir'), join(w.commonDir, 'config.worktree'),
-        ...['commondir', 'gitdir', 'config.worktree'].map((r) => join(w.commonDir, 'worktrees/*', r))]);
+        ...['commondir', 'gitdir', 'config.worktree'].map((r) => join(w.commonDir, 'worktrees/*', r)),
+        ...['refs/tags', 'refs/remotes', 'packed-refs', 'HEAD', 'index', 'ORIG_HEAD', 'FETCH_HEAD'].map((f) => join(w.commonDir, f))]);
       expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining([join(w.home, '.npmrc'), join(w.home, '.netrc')]));
       // Qodo PR93 cf5b7463: no settings from the worktree, so nothing there can loosen these.
       expect(c.args.slice(c.args.indexOf('--setting-sources'), c.args.indexOf('--setting-sources') + 2)).toEqual(['--setting-sources', 'user']);
