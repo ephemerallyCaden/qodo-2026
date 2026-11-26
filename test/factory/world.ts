@@ -250,7 +250,7 @@ export class World {
   /** The files each commit changes; when empty, every diff is `changed`. */
   commitFiles = new Map<string, string[]>();
 
-  /** The check a local config would describe: the tests' runs check this login unless they pass `credentials: null`. */
+  /** The check a local config would describe: the tests' runs have a local config with this login unless they pass `credentials: null` (or `localConfig: false`). */
   readonly credentials: CredentialCheck = { cookieJar: join(this.home, '.login/cookies'), ...LOGIN };
 
   constructor() {
@@ -270,7 +270,7 @@ export class World {
   }
 
   config(over: Partial<Config> = {}): Config {
-    return { ...defaults(this.home, this.repoDir, this.commonDir, SLUG), credentials: this.credentials, ...over };
+    return { ...defaults(this.home, this.repoDir, this.commonDir, SLUG), localConfig: true, credentials: this.credentials, ...over };
   }
 
   /** One findings sweep with the real defaults, except a generous call cap. */

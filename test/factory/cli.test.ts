@@ -217,12 +217,26 @@ describe('the local config (<git-common-dir>/factory/local.json)', () => {
     expect(w.callsTo('claude')).toHaveLength(0);
   });
 
-  it('without one, a dry-run tick skips the freshness check and looks for the default agent CLI', async () => {
+  it('without one, a tick fails pre-flight and claims nothing (Qodo PR235 ca6e209e)', async () => {
+    const w = new World();
+    w.addIssue(24);
+    const { d, out } = deps(w);
+    expect(await main(['tick', '--dry-run'], d)).toBe(1);
+    expect(out.join('')).toContain('"name":"local config","ok":false,"detail":"none; write one ({} for the generic denies only)"');
+    w.inner = () => main(['tick'], { ...d, env: { ...d.env, COMMET_FACTORY_LOCKED: '1' } });
+    expect(await main(['tick'], d)).toBe(1);
+    expect([...w.issues.get(24)!.labels]).toEqual(['ready-for-agent']);
+    expect(w.callsTo('claude')).toHaveLength(0);
+  });
+
+  it('an empty one keeps only the generic denies: no freshness check, the default agent CLI', async () => {
     const w = new World();
     w.addIssue(24);
     w.setCredentialHours(-1);
+    writeLocal(w, {});
     const { d, out } = deps(w);
     expect(await main(['tick', '--dry-run'], d)).toBe(0);
+    expect(out.join('')).toContain('"name":"local config","ok":true,"detail":"loaded"');
     expect(out.join('')).toContain('"name":"credentials","ok":true,"detail":"no freshness check configured"');
     expect(out.join('')).toContain('"name":"claude","ok":true,"detail":"~/.local/bin/claude"');
   });

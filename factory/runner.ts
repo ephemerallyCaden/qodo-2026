@@ -338,6 +338,7 @@ class Tick {
     ]);
     const login = user.code === 0 ? user.stdout.trim() : '';
     const checks: Check[] = [
+      { name: 'local config', ok: cfg.localConfig, detail: cfg.localConfig ? 'loaded' : 'none; write one ({} for the generic denies only)' },
       credentialCheck(cfg.credentials, hours),
       { name: 'claude', ok: claude, detail: cfg.claude },
       { name: 'gh', ok: login === cfg.owner, detail: login ? `logged in as @${login}` : 'not logged in' },

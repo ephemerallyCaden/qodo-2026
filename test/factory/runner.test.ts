@@ -199,6 +199,17 @@ describe('pre-flight (R13)', () => {
     expect(ticks).not.toContain(COOKIE_VALUE);
   });
 
+  it('with no local config, claims nothing: a missing file never quietly weakens the sandbox (Qodo PR235 ca6e209e)', async () => {
+    const w = world();
+    w.addIssue(24);
+    const out = await w.tick({ localConfig: false });
+    expect(out).toEqual({ state: 'preflight-failed', issue: 24, reasons: ['local config: none; write one ({} for the generic denies only)'] });
+    expect(labels(w, 24)).toEqual([LABELS.ready]);
+    expect(w.issues.get(24)!.comments).toEqual([]);
+    expect(w.callsTo('claude')).toHaveLength(0);
+    expect(w.callsTo('sandbox-exec')).toHaveLength(0);
+  });
+
   it('with no freshness check configured, skips it and says so; an expired login then shows when the agent call fails', async () => {
     const w = world();
     w.addIssue(24);

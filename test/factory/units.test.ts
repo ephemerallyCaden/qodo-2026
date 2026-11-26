@@ -255,12 +255,12 @@ describe('the local config (<git-common-dir>/factory/local.json)', () => {
 
   it('overrides the defaults, and the sandboxes also deny the checked cookie jar', () => {
     const base = defaults('/h', '/r', '/r/.git', 'o/r');
-    expect(base).toMatchObject({ claude: '/h/.local/bin/claude', credentials: null, denyReads: [] });
+    expect(base).toMatchObject({ localConfig: false, claude: '/h/.local/bin/claude', credentials: null, denyReads: [] });
     expect(localDenies(base)).toEqual([]);
     const cfg = withLocalConfig(base, full);
-    expect(cfg).toMatchObject({ claude: '/h/bin/claude', credentials: check, denyReads: ['/h/.login', '/opt/corp'] });
+    expect(cfg).toMatchObject({ localConfig: true, claude: '/h/bin/claude', credentials: check, denyReads: ['/h/.login', '/opt/corp'] });
     expect(localDenies(cfg)).toEqual(['/h/.login', '/opt/corp', '/h/.login/cookies']);
-    expect(withLocalConfig(base, {})).toEqual(base);
+    expect(withLocalConfig(base, {})).toEqual({ ...base, localConfig: true });
   });
 });
 

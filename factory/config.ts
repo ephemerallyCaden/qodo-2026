@@ -26,6 +26,11 @@ export interface Config {
   claude: string;
   gh: string;
   qodo: string;
+  /**
+   * Whether `<git-common-dir>/factory/local.json` was read. Without one a tick claims nothing, so a
+   * missing file never quietly weakens the sandbox; `{}` keeps only the generic denies (Qodo PR #235 ca6e209e).
+   */
+  localConfig: boolean;
   /** The local config's credential freshness check, or null for none (R13). */
   credentials: CredentialCheck | null;
   /** The local config's extra paths both sandboxes deny (`localDenies`). */
@@ -65,7 +70,7 @@ export function defaults(home: string, repoDir: string, commonDir: string, slug:
   return {
     repoDir, stateDir: join(commonDir, 'factory'), slug, owner: slug.split('/')[0]!, base: 'session/week1', home,
     claude: join(home, '.local/bin/claude'), gh: '/opt/homebrew/bin/gh', qodo: join(home, '.qodo/bin/qodo'),
-    credentials: null, denyReads: [],
+    localConfig: false, credentials: null, denyReads: [],
     maxFixRounds: 2, pollMs: MIN, reviewTimeoutMs: 30 * MIN, settleMs: 3 * MIN,
     maxTurns: 120, fixMaxTurns: 80, maxBudgetUsd: 15, fixMaxBudgetUsd: 8,
     timeouts: { gh: MIN, git: 2 * MIN, npmCi: 10 * MIN, check: 15 * MIN, agent: 90 * MIN, fix: 30 * MIN, qodo: 2 * MIN, judge: 5 * MIN },
@@ -208,7 +213,7 @@ export function readLocalConfig(file: string): LocalConfig | null | string {
 }
 
 export function withLocalConfig(c: Config, l: LocalConfig): Config {
-  return { ...c, claude: l.agentCli ?? c.claude, credentials: l.credentials ?? null, denyReads: l.denyReads ?? [] };
+  return { ...c, localConfig: true, claude: l.agentCli ?? c.claude, credentials: l.credentials ?? null, denyReads: l.denyReads ?? [] };
 }
 
 /** What both sandboxes deny on top of the generic list: the local denies and the checked cookie jar. */
