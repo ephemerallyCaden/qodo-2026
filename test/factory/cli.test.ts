@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { main, RUN_CAP_MS, type CliDeps } from '../../factory/cli.js';
@@ -8,7 +8,7 @@ import { JOB_LABEL, LABEL_DEFS, plistPath, renderPlist } from '../../factory/lau
 import type { Ledger } from '../../factory/ledger.js';
 import { ledgerFile } from '../../factory/repeats.js';
 import { PROBE_TIMEOUT_MS, SELF_TEST_TIMEOUT_MS } from '../../factory/sandbox.js';
-import { BASE, finding, ok, SLUG, World } from './world.js';
+import { BASE, claudeOut, finding, ok, SLUG, World } from './world.js';
 import { tempDir } from '../fixtures/tmp.js';
 
 function deps(w: World, over: Partial<CliDeps> = {}) {
@@ -132,13 +132,13 @@ describe('install and uninstall (R11)', () => {
     expect(plist).toMatch(/<string>tick<\/string>\s*<string>--repo<\/string>/);
     expect(plist).toContain(`<string>${BASE}</string>`);
     expect(plist).toContain(`<string>${SLUG}</string>`);
-    expect(plist).toContain(`<key>PATH</key><string>${w.home}/.toolbox/bin:${w.home}/.local/share/mise/installs/node/22/bin:/opt/homebrew/bin:${w.home}/.qodo/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>`);
+    expect(plist).toContain(`<key>PATH</key><string>${w.home}/.local/bin:${w.home}/.local/share/mise/installs/node/22/bin:/opt/homebrew/bin:${w.home}/.qodo/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>`);
     expect(plist).toContain(`<key>HOME</key><string>${w.home}</string>`);
     expect(plist).toContain('<key>USER</key><string>me</string>');
     expect(plist).toContain('<key>StartInterval</key><integer>300</integer>');
     expect(plist).toContain('<key>RunAtLoad</key><false/>');
-    // The runner calls the stable claude symlink (Research).
-    expect(w.config().claude).toBe(join(w.home, '.toolbox/bin/claude'));
+    // Without a local config, the agent CLI is the native installer's stable path (Research).
+    expect(w.config().claude).toBe(join(w.home, '.local/bin/claude'));
   });
 
   it('install copies the runner, writes the plist and loads it; uninstall removes both', async () => {
@@ -181,6 +181,103 @@ describe('install and uninstall (R11)', () => {
     expect(out.join('')).toContain('would run launchctl bootstrap');
     expect(existsSync(plistPath(w.home))).toBe(false);
     expect(w.callsTo('launchctl')).toHaveLength(0);
+  });
+});
+
+describe('the local config (<git-common-dir>/factory/local.json)', () => {
+  const localFile = (w: World) => join(w.commonDir, 'factory/local.json');
+  const writeLocal = (w: World, v: unknown) => {
+    mkdirSync(join(w.commonDir, 'factory'), { recursive: true });
+    writeFileSync(localFile(w), typeof v === 'string' ? v : JSON.stringify(v));
+  };
+  /** An agent CLI somewhere only the local config names. */
+  const agentCli = (w: World) => {
+    const cli = join(w.home, 'machine/bin/claude');
+    mkdirSync(join(w.home, 'machine/bin'), { recursive: true });
+    writeFileSync(cli, '#!/bin/sh\nexit 1\n');
+    chmodSync(cli, 0o755);
+    return cli;
+  };
+
+  it("a dry-run tick pre-flights this machine's agent CLI and freshness check", async () => {
+    const w = new World();
+    w.addIssue(24);
+    const cli = agentCli(w);
+    writeLocal(w, { agentCli: cli, credentials: w.credentials });
+    const { d, out } = deps(w);
+    expect(await main(['tick', '--dry-run'], d)).toBe(0);
+    const text = out.join('');
+    expect(text).toContain('"name":"credentials","ok":true,"detail":"12.0 h left (need 2)"');
+    expect(text).toContain('"name":"claude","ok":true,"detail":"~/machine/bin/claude"');
+    expect(text).toContain('would action=claim #24');
+    w.setCredentialHours(1);
+    const again = deps(w);
+    expect(await main(['tick', '--dry-run'], again.d)).toBe(1);
+    expect(again.out.join('')).toContain('"name":"credentials","ok":false,"detail":"1.0 h left (need 2)"');
+    expect(w.callsTo('claude')).toHaveLength(0);
+  });
+
+  it('without one, a dry-run tick skips the freshness check and looks for the default agent CLI', async () => {
+    const w = new World();
+    w.addIssue(24);
+    w.setCredentialHours(-1);
+    const { d, out } = deps(w);
+    expect(await main(['tick', '--dry-run'], d)).toBe(0);
+    expect(out.join('')).toContain('"name":"credentials","ok":true,"detail":"no freshness check configured"');
+    expect(out.join('')).toContain('"name":"claude","ok":true,"detail":"~/.local/bin/claude"');
+  });
+
+  it('install puts the local agent CLI on the job PATH', async () => {
+    const w = new World();
+    writeLocal(w, { agentCli: agentCli(w) });
+    const { d, out } = deps(w);
+    expect(await main(['install', '--dry-run'], d)).toBe(0);
+    expect(out.join('')).toContain('<key>PATH</key><string>~/machine/bin:');
+  });
+
+  it("a tick's sandboxes deny the local config's paths and the checked cookie jar", async () => {
+    const w = new World();
+    w.addIssue(24);
+    const login = join(w.root, 'machine/login');
+    writeLocal(w, { credentials: w.credentials, denyReads: [login] });
+    w.claude.push(() => claudeOut({ subtype: 'error_during_execution', is_error: true, code: 1 }));
+    const { d } = deps(w);
+    w.inner = () => main(['tick'], { ...d, env: { ...d.env, COMMET_FACTORY_LOCKED: '1' } });
+    expect(await main(['tick'], d)).toBe(0);
+    const agent = w.agentCalls();
+    expect(agent).toHaveLength(1);
+    const settings = JSON.parse(agent[0]!.args[agent[0]!.args.indexOf('--settings') + 1]!) as { sandbox: { filesystem: { denyRead: string[] } } };
+    expect(settings.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining([login, w.credentials.cookieJar]));
+    for (const c of w.npmCalls()) expect(c.profile).toContain(`(subpath "${login}")`);
+  });
+
+  it.each([
+    ['an unknown key', { agentCli: '/x/claude', denyRead: ['/x'] }, 'has unknown key(s) "denyRead"'],
+    ['a relative path', { denyReads: ['.login'] }, '"denyReads" must be a list of absolute, normalised paths'],
+    ['broken JSON', '{', 'is not valid JSON'],
+  ])('%s refuses tick, sweep and install before anything runs, but never uninstall or labels', async (_, v, why) => {
+    const w = new World();
+    w.addIssue(24);
+    writeLocal(w, v);
+    for (const command of ['tick', 'sweep', 'install']) {
+      const { d, err } = deps(w);
+      expect(await main([command], d), command).toBe(2);
+      expect(err.join('')).toContain(`the local config ./.git/factory/local.json ${why}`);
+      expect(err.join('')).not.toContain(w.root);
+    }
+    expect(w.callsTo('lockf')).toHaveLength(0);
+    expect(w.callsTo('gh')).toHaveLength(0);
+    expect(w.callsTo('launchctl')).toHaveLength(0);
+    expect(await main(['uninstall', '--dry-run'], deps(w).d)).toBe(0);
+    expect(await main(['labels', '--dry-run'], deps(w).d)).toBe(0);
+  });
+
+  it('refuses a local config that is not a regular file', async () => {
+    const w = new World();
+    mkdirSync(localFile(w), { recursive: true });
+    const { d, err } = deps(w);
+    expect(await main(['tick', '--dry-run'], d)).toBe(2);
+    expect(err.join('')).toContain('the local config ./.git/factory/local.json is not a regular file');
   });
 });
 

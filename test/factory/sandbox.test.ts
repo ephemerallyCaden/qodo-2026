@@ -35,24 +35,34 @@ describe('the agent environment is an allowlist (S6)', () => {
 describe('what the sandbox denies (S1, S2, S3)', () => {
   const p: SandboxPaths = { home: '/h', stateDir: '/r/.git/factory', env: {} };
 
-  it("denies the Midway, AWS, SSH, gh and Claude Code credential stores, and the runner's state for writes", () => {
+  it("denies the AWS, SSH, qodo, gh and Claude Code credential stores, and the runner's state for writes", () => {
     expect(deniedReads(p)).toEqual(expect.arrayContaining([
-      { path: '/h/.midway', kind: 'dir' }, { path: '/h/.aws', kind: 'dir' }, { path: '/h/.ssh', kind: 'dir' }, { path: '/h/.config/gh', kind: 'dir' },
+      { path: '/h/.aws', kind: 'dir' }, { path: '/h/.qodo', kind: 'dir' }, { path: '/h/.ssh', kind: 'dir' }, { path: '/h/.config/gh', kind: 'dir' },
       { path: '/h/.claude/.credentials.json', kind: 'file' }, { path: '/h/.claude.json', kind: 'prefix' },
       // Qodo PR93 f9a2cd5a: other tokens a home dir holds.
       { path: '/h/.npmrc', kind: 'file' }, { path: '/h/.netrc', kind: 'file' }, { path: '/h/.git-credentials', kind: 'file' },
       { path: '/h/.config/git/credentials', kind: 'file' },
     ]));
     const s = claudeSettings(p, { worktree: '/r/.sandboxes/agent-1' }) as { sandbox: { filesystem: { denyRead: string[]; denyWrite: string[] } }; permissions: { deny: string[] } };
-    expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining(['/h/.midway', '/h/.claude.json*', '/h/.claude/.credentials.json']));
+    expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining(['/h/.aws', '/h/.claude.json*', '/h/.claude/.credentials.json']));
     // Qodo PR93 b301674c: the records that tell git where a worktree's config lives.
     expect(s.sandbox.filesystem.denyWrite).toEqual(['/r/.git/factory', '/r/.sandboxes/agent-1/.git', '/r/.git/commondir', '/r/.git/config.worktree',
       '/r/.git/worktrees/*/commondir', '/r/.git/worktrees/*/gitdir', '/r/.git/worktrees/*/config.worktree']);
     // `//` is an absolute path in a permission rule; a single `/` would anchor at the settings source.
     expect(s.permissions.deny).toEqual(expect.arrayContaining([
-      'Read(//h/.midway)', 'Read(//h/.midway/**)', 'Read(//h/.claude.json*)', 'Read(//h/.claude/.credentials.json)', 'Edit(//r/.git/factory/**)',
+      'Read(//h/.aws)', 'Read(//h/.aws/**)', 'Read(//h/.claude.json*)', 'Read(//h/.claude/.credentials.json)', 'Edit(//r/.git/factory/**)',
       'Edit(//r/.sandboxes/agent-1/.git)',
     ]));
+  });
+
+  it("adds the machine's local denies to both sandboxes, each path with everything under it", () => {
+    const local: SandboxPaths = { ...p, denyReads: ['/opt/login', '/h/.config/login'] };
+    expect(deniedReads(local)).toEqual(expect.arrayContaining([{ path: '/opt/login', kind: 'dir' }, { path: '/h/.config/login', kind: 'dir' }]));
+    const s = claudeSettings(local, { worktree: '/r/.sandboxes/agent-1' }) as { sandbox: { filesystem: { denyRead: string[] } }; permissions: { deny: string[] } };
+    expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining(['/opt/login', '/h/.config/login']));
+    expect(s.permissions.deny).toEqual(expect.arrayContaining(['Read(//opt/login)', 'Read(//opt/login/**)', 'Read(//h/.config/login/**)']));
+    expect(seatbeltProfile(local, { worktree: '/r/.sandboxes/agent-1', mode: 'check' })).toContain('(subpath "/opt/login") (subpath "/h/.config/login")');
+    expect(deniedReads(p).map((d) => d.path)).not.toContain('/opt/login');
   });
 
   it('follows gh and Claude Code to the config dirs the environment names', () => {
@@ -64,7 +74,7 @@ describe('what the sandbox denies (S1, S2, S3)', () => {
   it('gives the checks only localhost, and the install the registry but no repo code', () => {
     const check = seatbeltProfile(p, { worktree: '/r/.sandboxes/agent-1', mode: 'check' });
     expect(check).toContain('(deny network-outbound (require-not (remote ip "localhost:*")))');
-    expect(check).toContain('(deny file-read* (subpath "/h/.midway") (subpath "/h/.aws") (subpath "/h/.ssh")');
+    expect(check).toContain('(deny file-read* (subpath "/h/.aws") (subpath "/h/.ssh") (subpath "/h/.qodo") (subpath "/h/.config/gh")');
     expect(check).toContain('(regex #"^/h/\\.claude\\.json")');
     expect(check).toContain('(deny file-write* (subpath "/r/.git/factory") (subpath "/r/.git/hooks") (literal "/r/.git/config")\n' +
       '  (literal "/r/.sandboxes/agent-1/.git") (literal "/r/.git/commondir") (literal "/r/.git/config.worktree") (literal "/r/.git/worktrees")' +
@@ -133,8 +143,8 @@ describe.skipIf(!canSandbox)('the runner sandbox, for real (S5)', () => {
     const home = join(root, 'home');
     const stateDir = join(root, 'repo/.git/factory');
     const d: ProbeDirs = { work: join(root, 'repo/.sandboxes/agent-1'), denied: join(root, 'denied'), stateDir, visible: 'VISIBLE-TOKEN', canary: 'CANARY-TOKEN' };
-    for (const x of [join(home, '.midway'), d.work, d.denied, stateDir]) mkdirSync(x, { recursive: true });
-    writeFileSync(join(home, '.midway/cookie'), 'FAKE-COOKIE-TOKEN\n');
+    for (const x of [join(home, '.aws'), d.work, d.denied, stateDir]) mkdirSync(x, { recursive: true });
+    writeFileSync(join(home, '.aws/credentials'), 'FAKE-SECRET-TOKEN\n');
     writeFileSync(join(d.work, 'visible.txt'), 'VISIBLE-TOKEN\n');
     writeFileSync(join(d.denied, 'canary.txt'), 'CANARY-TOKEN\n');
     writeFileSync(join(d.work, PROBE), probeScript(join(d.denied, 'canary.txt'), stateDir));
@@ -149,9 +159,9 @@ describe.skipIf(!canSandbox)('the runner sandbox, for real (S5)', () => {
     const res = await realExec()(SANDBOX_EXEC, seatbelt(profile, '/bin/sh', [PROBE]), { cwd: d.work, timeoutMs: 20_000, env });
     expect(res.code).toBe(0);
     expect(probeVerdict(d)).toEqual([]);
-    const cookie = await realExec()(SANDBOX_EXEC, seatbelt(profile, '/bin/cat', [join(home, '.midway/cookie')]), { timeoutMs: 5_000, env });
-    expect(cookie.stdout).toBe('');
-    expect(cookie.stderr).toMatch(/Operation not permitted/);
+    const secret = await realExec()(SANDBOX_EXEC, seatbelt(profile, '/bin/cat', [join(home, '.aws/credentials')]), { timeoutMs: 5_000, env });
+    expect(secret.stdout).toBe('');
+    expect(secret.stderr).toMatch(/Operation not permitted/);
   }, 30_000);
 
   it("refuses rewriting the worktree's .git file and any worktree's commondir, but lets git update the rest (Qodo PR93 b301674c)", async () => {
@@ -167,6 +177,21 @@ describe.skipIf(!canSandbox)('the runner sandbox, for real (S5)', () => {
     expect(res.code).toBe(0);
     expect(targets.map((t) => existsSync(t))).toEqual([false, false, false, false, false, true]);
     expect(existsSync(join(common, 'worktrees/other'))).toBe(true);
+  }, 30_000);
+
+  it("refuses a path the machine's local config lists, which is readable without it", async () => {
+    const root = temp();
+    const home = join(root, 'home');
+    const stateDir = join(root, 'repo/.git/factory');
+    const work = join(root, 'repo/.sandboxes/agent-1');
+    const login = join(root, 'machine/login');
+    for (const x of [home, stateDir, work, login]) mkdirSync(x, { recursive: true });
+    writeFileSync(join(login, 'cookies'), 'LOCAL-LOGIN-TOKEN\n');
+    const read = (paths: SandboxPaths) => realExec()(SANDBOX_EXEC, seatbelt(seatbeltProfile(paths, { worktree: work, mode: 'check' }), '/bin/cat', [join(login, 'cookies')]), { timeoutMs: 5_000, env });
+    expect((await read({ home, stateDir, env: {} })).stdout, 'the generic list does not cover it').toContain('LOCAL-LOGIN-TOKEN');
+    const denied = await read({ home, stateDir, env: {}, denyReads: [login] });
+    expect(denied.stdout).toBe('');
+    expect(denied.stderr).toMatch(/Operation not permitted/);
   }, 30_000);
 
   it('the same probe unsandboxed fails the verdict, so a pass means something', async () => {
@@ -230,11 +255,11 @@ describe.skipIf(!canSandbox)("the runner's git in a hijacked worktree runs conta
     if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
     return r.stdout;
   };
-  it('a planted fsmonitor reads the cookie and writes the state dir for unsandboxed git, but neither under worktreeGit', async () => {
+  it('a planted fsmonitor reads a credential and writes the state dir for unsandboxed git, but neither under worktreeGit', async () => {
     const root = temp();
     const home = join(root, 'home');
-    mkdirSync(join(home, '.midway'), { recursive: true });
-    writeFileSync(join(home, '.midway/cookie'), 'FAKE-COOKIE-TOKEN\n');
+    mkdirSync(join(home, '.aws'), { recursive: true });
+    writeFileSync(join(home, '.aws/credentials'), 'FAKE-SECRET-TOKEN\n');
     const main = join(root, 'main');
     mkdirSync(main);
     git(main, ['init', '-q', '-b', 'session/week1']);
@@ -249,7 +274,7 @@ describe.skipIf(!canSandbox)("the runner's git in a hijacked worktree runs conta
     git(main, ['config', 'extensions.worktreeConfig', 'true']);
     // The swap: the real worktree dir moved aside, a symlink to a copy with a planted config in its place.
     const leak = join(root, 'leak');
-    writeFileSync(join(root, 'hook.sh'), `#!/bin/sh\ncat '${join(home, '.midway/cookie')}' > '${leak}' 2>&1\ntouch '${join(stateDir, 'pwned')}'\nexit 1\n`, { mode: 0o755 });
+    writeFileSync(join(root, 'hook.sh'), `#!/bin/sh\ncat '${join(home, '.aws/credentials')}' > '${leak}' 2>&1\ntouch '${join(stateDir, 'pwned')}'\nexit 1\n`, { mode: 0o755 });
     const evil = join(root, 'evil-gitdir');
     cpSync(gitDir, evil, { recursive: true });
     writeFileSync(join(evil, 'config.worktree'), `[core]\n\tfsmonitor = ${join(root, 'hook.sh')}\n`);
@@ -261,14 +286,14 @@ describe.skipIf(!canSandbox)("the runner's git in a hijacked worktree runs conta
 
     // Pinning alone: the planted command runs with the runner's access.
     spawnSync('git', status, { cwd: worktree, env: { ...base, ...pinnedGitEnv({ gitDir, commonDir: join(main, '.git'), worktree }) } });
-    expect(readFileSync(leak, 'utf8')).toContain('FAKE-COOKIE-TOKEN');
+    expect(readFileSync(leak, 'utf8')).toContain('FAKE-SECRET-TOKEN');
     expect(existsSync(join(stateDir, 'pwned'))).toBe(true);
     rmSync(leak);
     rmSync(join(stateDir, 'pwned'));
 
     const g = worktreeGit(paths, { gitDir, worktree }, status, base);
     await realExec()(g.cmd, g.args, { cwd: worktree, timeoutMs: 20_000, env: g.env });
-    expect(existsSync(leak) ? readFileSync(leak, 'utf8') : '').not.toContain('FAKE-COOKIE-TOKEN');
+    expect(existsSync(leak) ? readFileSync(leak, 'utf8') : '').not.toContain('FAKE-SECRET-TOKEN');
     expect(existsSync(join(stateDir, 'pwned'))).toBe(false);
   }, 30_000);
 });

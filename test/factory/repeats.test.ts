@@ -651,12 +651,21 @@ describe('fail closed (R4)', () => {
     expect(sweepEvents(w).find((e) => e['event'] === 'findings-out-of-time')).toMatchObject({ stopped: 'proposals' });
   });
 
-  it('no Midway session: no judge call, findings wait', async () => {
+  it('expired agent credentials: no judge call, findings wait', async () => {
     const w = world();
     w.startLedger();
     framing(w);
-    w.setCookieHours(-1);
+    w.setCredentialHours(-1);
     expect(await w.sweep()).toMatchObject({ calls: 0, waiting: 3, newFindings: 3 });
+    expect(sweepEvents(w).find((e) => e['event'] === 'findings-judge-skipped')).toMatchObject({ why: 'agent credentials expired' });
+  });
+
+  it('with no freshness check configured, the judge runs and its own call is the test', async () => {
+    const w = world();
+    w.startLedger();
+    framing(w);
+    w.setCredentialHours(-1);
+    expect((await w.sweep({}, { credentials: null })).calls).toBeGreaterThan(0);
   });
 
   it('a failed rule search opens nothing; the next sweep retries without drafting again', async () => {

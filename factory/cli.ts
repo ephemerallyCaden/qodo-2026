@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { configError, defaults, machinePaths, slugFromRemote, ticksFile, type Config } from './config.js';
+import { configError, defaults, localConfigFile, machinePaths, readLocalConfig, slugFromRemote, ticksFile, withLocalConfig, type Config } from './config.js';
 import type { Exec } from './exec.js';
 import { guarded } from './guard.js';
 import { install, setupLabels, uninstall } from './launchd.js';
@@ -117,12 +117,21 @@ async function resolveConfig(a: Args, d: CliDeps, exec: Exec): Promise<Config | 
     slug = url.code === 0 ? slugFromRemote(url.stdout) : null;
     if (!slug) return 'origin is not a GitHub remote; pass --github <owner/repo>';
   }
-  const cfg = defaults(d.home, dirname(commonDir), commonDir, slug);
+  let cfg = defaults(d.home, dirname(commonDir), commonDir, slug);
   if (a.base) cfg.base = a.base;
   cfg.dryRun = a.dryRun;
   cfg.previewIssue = a.issue;
+  // This machine's own values. Uninstall and labels never need them, so a broken file can't block either.
+  if (!LOCAL_FREE.includes(a.command)) {
+    const local = readLocalConfig(localConfigFile(cfg));
+    if (typeof local === 'string') return `the local config ${redact(localConfigFile(cfg), machinePaths(cfg))} ${local}`;
+    if (local) cfg = withLocalConfig(cfg, local);
+  }
   return configError(cfg) ?? cfg;
 }
+
+/** Commands that run without the local config. */
+const LOCAL_FREE = ['uninstall', 'labels'];
 
 /** Options that mean something to one command only. */
 const OPTION_COMMANDS: [string, string, (a: Args) => boolean][] = [

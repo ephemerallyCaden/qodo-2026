@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { fixResult, implementResult, lastJsonBlock, readClaude, systemPrompt } from '../../factory/agent.js';
-import { configError, defaults, slugFromRemote } from '../../factory/config.js';
+import { configError, defaults, localDenies, parseLocalConfig, slugFromRemote, withLocalConfig } from '../../factory/config.js';
 import { assertGhAllowed, assertGitAllowed, guarded, GuardError } from '../../factory/guard.js';
 import { redact } from '../../factory/log.js';
-import { midwaySessionExpiry } from '../../factory/preflight.js';
+import { cookieExpiry } from '../../factory/preflight.js';
 import { ciState, isBlocking, parseQodo, qodoMarker, qodoState, type QodoOutput } from '../../factory/review.js';
 import { acceptanceCriteria, cell, slugify, ticketHash } from '../../factory/ticket.js';
 import { claudeOut, finding } from './world.js';
@@ -203,18 +203,64 @@ describe('agent output', () => {
   });
 });
 
-describe('Midway cookie (R13)', () => {
-  it('reads only the session cookie expiry for midway-auth', () => {
+describe('the credential cookie (R13)', () => {
+  it("reads only the configured cookie's expiry for the configured domain, the latest of several", () => {
     const jar = [
       '# Netscape HTTP Cookie File',
-      '#HttpOnly_.midway-auth.amazon.com\tTRUE\t/\tTRUE\t1794305831\ttpm_metrics\tv',
-      '#HttpOnly_midway-auth.amazon.com\tFALSE\t/\tTRUE\t1794305000\tsession\tv',
-      '#HttpOnly_midway-auth.amazon.com\tFALSE\t/\tTRUE\t1794305831\tsession\tv',
-      '#HttpOnly_.auth.midway.aws.dev\tTRUE\t/\tTRUE\t1794999999\tsession\tv',
-      'midway-auth.amazon.com\tFALSE\t/\tTRUE\t1825769829\tuser_name\tv',
+      '#HttpOnly_.login.example.test\tTRUE\t/\tTRUE\t1794305831\tmetrics\tv',
+      '#HttpOnly_login.example.test\tFALSE\t/\tTRUE\t1794305000\tsession\tv',
+      '#HttpOnly_.Login.Example.Test\tFALSE\t/\tTRUE\t1794305831\tsession\tv',
+      '#HttpOnly_.auth.example.test\tTRUE\t/\tTRUE\t1794999999\tsession\tv',
+      'login.example.test\tFALSE\t/\tTRUE\t1825769829\tuser_name\tv',
+      '# login.example.test\tFALSE\t/\tTRUE\t1899999999\tsession\tv',
     ].join('\n');
-    expect(midwaySessionExpiry(jar)).toBe(1794305831);
-    expect(midwaySessionExpiry('# empty\n')).toBeNull();
+    expect(cookieExpiry(jar, 'login.example.test', 'session')).toBe(1794305831);
+    expect(cookieExpiry(jar, 'auth.example.test', 'session')).toBe(1794999999);
+    expect(cookieExpiry(jar, 'login.example.test', 'user_name')).toBe(1825769829);
+    expect(cookieExpiry(jar, 'example.test', 'session')).toBeNull();
+    expect(cookieExpiry('# empty\n', 'login.example.test', 'session')).toBeNull();
+  });
+});
+
+describe('the local config (<git-common-dir>/factory/local.json)', () => {
+  const check = { cookieJar: '/h/.login/cookies', domain: 'login.example.test', cookie: 'session', minHours: 2 };
+  const full = { agentCli: '/h/bin/claude', credentials: check, denyReads: ['/h/.login', '/opt/corp'] };
+
+  it('reads every key, and an empty file sets nothing', () => {
+    expect(parseLocalConfig(JSON.stringify(full))).toEqual(full);
+    expect(parseLocalConfig('{}')).toEqual({});
+  });
+
+  it.each([
+    ['not JSON', '{"agentCli": ', 'is not valid JSON'],
+    ['not an object', '["/h/bin/claude"]', 'must be a JSON object'],
+    ['an unknown key', JSON.stringify({ ...full, agentcli: '/x' }), 'has unknown key(s) "agentcli"'],
+    ['a relative agentCli', JSON.stringify({ agentCli: 'bin/claude' }), '"agentCli" must be an absolute, normalised path'],
+    ['a ~ path', JSON.stringify({ agentCli: '~/bin/claude' }), '"agentCli" must be an absolute, normalised path'],
+    ['a path with ..', JSON.stringify({ denyReads: ['/h/x/../.ssh'] }), '"denyReads" must be a list of absolute, normalised paths'],
+    ['a trailing slash', JSON.stringify({ denyReads: ['/h/.login/'] }), '"denyReads" must be a list of absolute, normalised paths'],
+    ['a relative deny', JSON.stringify({ denyReads: ['/h/.login', '.login'] }), '"denyReads" must be a list of absolute, normalised paths'],
+    ['denyReads not a list', JSON.stringify({ denyReads: '/h/.login' }), '"denyReads" must be a list of absolute, normalised paths'],
+    ['credentials not an object', JSON.stringify({ credentials: true }), '"credentials" must be an object'],
+    ['an unknown credentials key', JSON.stringify({ credentials: { ...check, command: 'x' } }), '"credentials" has unknown key(s) "command"'],
+    ['a missing credentials key', JSON.stringify({ credentials: { cookieJar: check.cookieJar, domain: check.domain } }), '"credentials" needs "cookie", "minHours"'],
+    ['a relative cookie jar', JSON.stringify({ credentials: { ...check, cookieJar: 'cookies' } }), '"credentials.cookieJar" must be an absolute, normalised path'],
+    ['a domain with a scheme', JSON.stringify({ credentials: { ...check, domain: 'https://login.example.test' } }), '"credentials.domain" must be a host name'],
+    ['a cookie name with a space', JSON.stringify({ credentials: { ...check, cookie: 'my session' } }), '"credentials.cookie" must be a cookie name'],
+    ['negative hours', JSON.stringify({ credentials: { ...check, minHours: -1 } }), '"credentials.minHours" must be a number of hours, at least 0'],
+    ['hours as text', JSON.stringify({ credentials: { ...check, minHours: '2' } }), '"credentials.minHours" must be a number of hours, at least 0'],
+  ])('refuses %s, naming the key and never the value', (_, text, why) => {
+    expect(parseLocalConfig(text)).toBe(why);
+  });
+
+  it('overrides the defaults, and the sandboxes also deny the checked cookie jar', () => {
+    const base = defaults('/h', '/r', '/r/.git', 'o/r');
+    expect(base).toMatchObject({ claude: '/h/.local/bin/claude', credentials: null, denyReads: [] });
+    expect(localDenies(base)).toEqual([]);
+    const cfg = withLocalConfig(base, full);
+    expect(cfg).toMatchObject({ claude: '/h/bin/claude', credentials: check, denyReads: ['/h/.login', '/opt/corp'] });
+    expect(localDenies(cfg)).toEqual(['/h/.login', '/opt/corp', '/h/.login/cookies']);
+    expect(withLocalConfig(base, {})).toEqual(base);
   });
 });
 

@@ -3,7 +3,7 @@
 import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect } from 'vitest';
-import { defaults, LABELS, type Config } from '../../factory/config.js';
+import { defaults, LABELS, type Config, type CredentialCheck } from '../../factory/config.js';
 import type { Exec, ExecOptions, ExecResult } from '../../factory/exec.js';
 import type { Clock } from '../../factory/log.js';
 import { emptyLedger } from '../../factory/ledger.js';
@@ -18,6 +18,8 @@ export const SLUG = 'owner/repo';
 export const BASE = 'session/week1';
 export const T0 = Date.UTC(2026, 10, 9, 12, 0, 0);
 export const COOKIE_VALUE = 'COOKIE-VALUE-MUST-NOT-LEAK-0123456789';
+/** The world's local-config freshness check, an invented login under its home (see `World.credentials`). */
+export const LOGIN = { domain: 'login.example.test', cookie: 'session', minHours: 2 };
 export const FAKE_TOKEN = 'ghp_' + 'A'.repeat(36);
 /** Secrets in the runner's environment that nothing the agent runs may inherit (S6). */
 export const RUNNER_SECRETS = { AWS_SECRET_ACCESS_KEY: 'AWS-SECRET-MUST-NOT-LEAK', SSH_AUTH_SOCK: '/tmp/agent.sock', ANTHROPIC_API_KEY: 'ANTHROPIC-KEY-MUST-NOT-LEAK' };
@@ -248,24 +250,27 @@ export class World {
   /** The files each commit changes; when empty, every diff is `changed`. */
   commitFiles = new Map<string, string[]>();
 
+  /** The check a local config would describe: the tests' runs check this login unless they pass `credentials: null`. */
+  readonly credentials: CredentialCheck = { cookieJar: join(this.home, '.login/cookies'), ...LOGIN };
+
   constructor() {
-    mkdirSync(join(this.home, '.toolbox/bin'), { recursive: true });
-    writeFileSync(join(this.home, '.toolbox/bin/claude'), '#!/bin/sh\nexit 1\n');
-    chmodSync(join(this.home, '.toolbox/bin/claude'), 0o755);
+    mkdirSync(join(this.home, '.local/bin'), { recursive: true });
+    writeFileSync(join(this.home, '.local/bin/claude'), '#!/bin/sh\nexit 1\n');
+    chmodSync(join(this.home, '.local/bin/claude'), 0o755);
     mkdirSync(this.commonDir, { recursive: true });
-    this.setCookieHours(12);
+    this.setCredentialHours(12);
   }
 
-  /** Writes a Midway jar whose session cookie expires `hours` after now (null = no jar). */
-  setCookieHours(hours: number | null): void {
-    mkdirSync(join(this.home, '.midway'), { recursive: true });
+  /** Writes the login's cookie jar with its session cookie expiring `hours` after now (null = no such cookie). */
+  setCredentialHours(hours: number | null): void {
+    mkdirSync(join(this.home, '.login'), { recursive: true });
     const exp = Math.floor(this.now / 1000 + (hours ?? 0) * 3600);
-    writeFileSync(join(this.home, '.midway/cookie'), hours === null ? '# Netscape HTTP Cookie File\n' :
-      `# Netscape HTTP Cookie File\n#HttpOnly_midway-auth.amazon.com\tFALSE\t/\tTRUE\t${exp}\tsession\t${COOKIE_VALUE}\n`);
+    writeFileSync(this.credentials.cookieJar, hours === null ? '# Netscape HTTP Cookie File\n' :
+      `# Netscape HTTP Cookie File\n#HttpOnly_${LOGIN.domain}\tFALSE\t/\tTRUE\t${exp}\t${LOGIN.cookie}\t${COOKIE_VALUE}\n`);
   }
 
   config(over: Partial<Config> = {}): Config {
-    return { ...defaults(this.home, this.repoDir, this.commonDir, SLUG), ...over };
+    return { ...defaults(this.home, this.repoDir, this.commonDir, SLUG), credentials: this.credentials, ...over };
   }
 
   /** One findings sweep with the real defaults, except a generous call cap. */

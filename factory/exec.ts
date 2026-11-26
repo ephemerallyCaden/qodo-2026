@@ -50,7 +50,7 @@ export function killAllChildren(signal: NodeJS.Signals): void {
 
 /**
  * Spawns each command in its own process group, so the kill timer also takes down anything it
- * started (a `mwinit` prompt under the claude wrapper, a test runner's workers). SIGTERM first,
+ * started (a login prompt under the agent CLI, a test runner's workers). SIGTERM first,
  * SIGKILL after `killGraceMs`.
  */
 export function realExec(killGraceMs = 5_000, schedule: Schedule = realSchedule): Exec {

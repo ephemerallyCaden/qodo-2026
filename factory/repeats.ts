@@ -16,7 +16,7 @@ import {
   prReviewedAt, prTickets, sources, THRESHOLD, unjudged, unsettled, type GroupState, type Ledger, type LedgerFinding, type LedgerPr, type Sources,
 } from './ledger.js';
 import { iso, redact, RunLog, stamp, type Clock } from './log.js';
-import { isExecutable, midwayHoursLeft } from './preflight.js';
+import { credentialsExpired, isExecutable } from './preflight.js';
 import {
   postedIds, proposalBody, proposalComment, proposalMarker, proposalTitle, scrubLocalPaths, type ProposalFinding, type QodoRule,
 } from './proposal.js';
@@ -557,9 +557,8 @@ class Sweep {
 
   private async llmReady(): Promise<boolean> {
     if (this.llm === undefined) {
-      const hours = await midwayHoursLeft(this.cfg.midwayCookie, this.deps.clock.now());
       this.llm = !(await isExecutable(this.cfg.claude)) ? 'claude is not installed'
-        : hours === null || hours <= 0 ? 'no live Midway session' : null;
+        : await credentialsExpired(this.cfg.credentials, this.deps.clock.now()) ? 'agent credentials expired' : null;
       if (this.llm) this.log.event('findings-judge-skipped', { why: this.llm, retry: 'next sweep' });
     }
     return this.llm === null;

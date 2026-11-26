@@ -8,11 +8,11 @@ import {
   agentEnv, agentRecord, claudeArgs, fixPrompt, fixResult, implementPrompt, implementResult, isPrTitle, readClaude,
   systemPrompt, type AgentCall, type Disposition, type FixInput, type ImplementResult,
 } from './agent.js';
-import { LABELS, machinePaths, ticksFile, type Config } from './config.js';
+import { LABELS, localDenies, machinePaths, ticksFile, type Config } from './config.js';
 import type { Exec, ExecResult } from './exec.js';
 import { guarded, GuardError } from './guard.js';
 import { redact, RunLog, stamp, type Clock } from './log.js';
-import { isExecutable, midwayHoursLeft, type Check } from './preflight.js';
+import { credentialCheck, credentialHoursLeft, credentialsExpired, isExecutable, type Check } from './preflight.js';
 import { dispositionsComment, prBody, summaryComment, type CheckResult } from './report.js';
 import {
   ciState, isBlocking, isHigh, parseQodo, unknownLevels, qodoMarker, qodoState, shortSha,
@@ -132,7 +132,7 @@ class Tick {
     this.log = new RunLog(cfg.dryRun ? null : ticksFile(cfg), deps.clock, deps.print, machinePaths(cfg));
     this.shell = new Shell(cfg, deps.exec, deps.clock, () => this.log, deps.env);
     this.env = this.shell.env;
-    this.sandbox = { home: cfg.home, stateDir: cfg.stateDir, env: deps.env };
+    this.sandbox = { home: cfg.home, stateDir: cfg.stateDir, env: deps.env, denyReads: localDenies(cfg) };
   }
 
   async run(): Promise<Outcome> {
@@ -330,7 +330,7 @@ class Tick {
   private async preflight(): Promise<Check[]> {
     const { cfg } = this;
     const [hours, claude, user, qodo, npm] = await Promise.all([
-      midwayHoursLeft(cfg.midwayCookie, this.deps.clock.now()),
+      cfg.credentials ? credentialHoursLeft(cfg.credentials, this.deps.clock.now()) : null,
       isExecutable(cfg.claude),
       this.gh(['api', 'user', '--jq', '.login']),
       this.qodo(['read', 'whoami', '--json']),
@@ -338,7 +338,7 @@ class Tick {
     ]);
     const login = user.code === 0 ? user.stdout.trim() : '';
     const checks: Check[] = [
-      { name: 'midway', ok: hours !== null && hours >= cfg.minCredHours, detail: hours === null ? 'no Midway session cookie' : `${hours.toFixed(1)} h left (need ${cfg.minCredHours})` },
+      credentialCheck(cfg.credentials, hours),
       { name: 'claude', ok: claude, detail: cfg.claude },
       { name: 'gh', ok: login === cfg.owner, detail: login ? `logged in as @${login}` : 'not logged in' },
       { name: 'qodo', ok: qodo.code === 0, detail: qodo.code === 0 ? 'logged in' : qodo.timedOut ? 'timed out' : `exit ${qodo.code}` },
@@ -425,8 +425,7 @@ class Tick {
     this.writeRunFile(`agent-${k}.json`, JSON.stringify({ ...record, block: call.ok ? call.block : null }, null, 2), false);
     this.log.event('agent-end', { call: k, ...record });
     if (call.ok) return call;
-    const hours = await midwayHoursLeft(cfg.midwayCookie, this.deps.clock.now());
-    throw new Stop(hours === null || hours <= 0 ? `Midway credentials expired (${call.reason})` : call.reason);
+    throw new Stop(await credentialsExpired(cfg.credentials, this.deps.clock.now()) ? `agent credentials expired (${call.reason})` : call.reason);
   }
 
   /** The runner's own checks on the agent's commits until they pass; failures go back as fix rounds. */

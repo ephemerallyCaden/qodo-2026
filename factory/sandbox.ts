@@ -19,6 +19,8 @@ export interface SandboxPaths {
   stateDir: string;
   /** The runner's environment, for where gh, Claude Code, npm and the temp dir keep their files. */
   env: NodeJS.ProcessEnv;
+  /** This machine's own credential paths, from the local config (`localDenies`), each denied with everything under it. */
+  denyReads?: readonly string[];
 }
 
 /** A path no agent-run process may read: a directory, a file, or every path that starts with it. */
@@ -28,18 +30,16 @@ export interface Denied {
 }
 
 /**
- * Credentials the agent never needs: the Midway, AWS and SSH stores, gh's and qodo's logins, the
- * Midway helper's config, the npm, netrc and git credential files (Qodo PR #93 f9a2cd5a), and
- * Claude Code's own credential and account files. npm and git run fine without them. The agent's model
- * calls still work: Claude Code fetches Bedrock credentials in its own process, outside the
- * sandbox and the permission rules (Research, S7).
+ * Credentials the agent never needs: the AWS and SSH stores, gh's and qodo's logins, the npm,
+ * netrc and git credential files (Qodo PR #93 f9a2cd5a), Claude Code's own credential and account
+ * files, and whatever this machine's local config adds. npm and git run fine without them. The
+ * agent's model calls still work: Claude Code fetches its model credentials in its own process,
+ * outside the sandbox and the permission rules (Research, S7).
  */
 export function deniedReads(p: SandboxPaths): Denied[] {
   const { home, env } = p;
   const claudeDir = env['CLAUDE_CONFIG_DIR'] || join(home, '.claude');
-  const dirs = [
-    '.midway', '.aws', '.ssh', '.qodo', '.config/ada', '.config/gh',
-  ].map((d) => join(home, d));
+  const dirs = ['.aws', '.ssh', '.qodo', '.config/gh'].map((d) => join(home, d));
   if (env['XDG_CONFIG_HOME']) dirs.push(join(env['XDG_CONFIG_HOME'], 'gh'));
   if (env['GH_CONFIG_DIR']) dirs.push(env['GH_CONFIG_DIR']);
   const files = ['.npmrc', '.netrc', '.git-credentials', '.config/git/credentials'].map((f) => join(home, f));
@@ -53,6 +53,7 @@ export function deniedReads(p: SandboxPaths): Denied[] {
     // ~/.claude.json and the .backup and .tmp.* copies Claude Code writes beside it.
     { path: join(home, '.claude.json'), kind: 'prefix' },
     { path: join(claudeDir, '.claude.json'), kind: 'prefix' },
+    ...(p.denyReads ?? []).map((path): Denied => ({ path, kind: 'dir' })),
   ];
   return list.filter((d, i) => list.findIndex((x) => x.path === d.path) === i);
 }

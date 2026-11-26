@@ -125,7 +125,7 @@ describe('refuse before any agent (R3, R12)', () => {
 
   it('refuses before pre-flight, so a bad ticket is refused even with expired credentials', async () => {
     const w = world();
-    w.setCookieHours(-1);
+    w.setCredentialHours(-1);
     w.addIssue(7, { body: 'no criteria' });
     expect(await w.tick()).toMatchObject({ state: 'refused' });
     expect(w.callsTo('qodo')).toHaveLength(0);
@@ -177,9 +177,9 @@ describe('a ticket revoked before the claim is left alone (Qodo PR37 d3e445f7)',
 
 describe('pre-flight (R13)', () => {
   const cases: [string, (w: World) => void, string][] = [
-    ['an expired Midway session', (w) => w.setCookieHours(-1), 'midway'],
-    ['a Midway session about to expire', (w) => w.setCookieHours(1), 'midway'],
-    ['no Midway cookie', (w) => w.setCookieHours(null), 'midway: no Midway session cookie'],
+    ['expired agent credentials', (w) => w.setCredentialHours(-1), 'credentials: -1.0 h left (need 2)'],
+    ['agent credentials about to expire', (w) => w.setCredentialHours(1), 'credentials: 1.0 h left (need 2)'],
+    ['no agent credential cookie', (w) => w.setCredentialHours(null), 'credentials: no agent credential cookie found'],
     ['gh logged out', (w) => { w.ghAuth = false; }, 'gh: not logged in'],
     ['gh logged in as someone else', (w) => { w.ghUser = 'other'; }, 'gh: logged in as @other'],
     ['qodo logged out', (w) => { w.qodoOk = false; }, 'qodo'],
@@ -197,6 +197,25 @@ describe('pre-flight (R13)', () => {
     const ticks = readFileSync(join(w.commonDir, 'factory/ticks.jsonl'), 'utf8');
     expect(ticks).toContain('preflight-failed');
     expect(ticks).not.toContain(COOKIE_VALUE);
+  });
+
+  it('with no freshness check configured, skips it and says so; an expired login then shows when the agent call fails', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.setCredentialHours(-1);
+    w.claude.push(agentError);
+    const out = await w.tick({ credentials: null });
+    expect(out).toEqual({ state: 'needs-help', issue: 24, reason: 'agent call failed: error_during_execution (is_error), exit 1' });
+    expect(runLog(w).find((e) => e['event'] === 'preflight')!['checks']).toContainEqual({ name: 'credentials', ok: true, detail: 'no freshness check configured' });
+  });
+
+  it('checks only the configured cookie of the configured domain', async () => {
+    const w = world();
+    w.addIssue(24);
+    const reasons = async (over: Partial<typeof w.credentials>) => (await w.tick({ credentials: { ...w.credentials, ...over } }) as { reasons?: string[] }).reasons;
+    expect(await reasons({ domain: 'other.example.test' })).toEqual(['credentials: no agent credential cookie found']);
+    expect(await reasons({ cookie: 'other' })).toEqual(['credentials: no agent credential cookie found']);
+    expect(await reasons({ minHours: 13 })).toEqual(['credentials: 12.0 h left (need 13)']);
   });
 });
 
@@ -275,14 +294,14 @@ describe('agent failures end in agent-needs-help (R7)', () => {
     expect(w.issues.get(24)!.comments.at(-1)).toContain(reason);
   });
 
-  it('names expired credentials when Midway ran out mid-run', async () => {
+  it('names expired agent credentials when the login ran out mid-run', async () => {
     const w = world();
     w.addIssue(24);
     w.claude.push((x) => {
-      x.setCookieHours(-0.1);
+      x.setCredentialHours(-0.1);
       return agentError();
     });
-    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: expect.stringMatching(/^Midway credentials expired/) });
+    expect(await w.tick()).toMatchObject({ state: 'needs-help', reason: 'agent credentials expired (agent call failed: error_during_execution (is_error), exit 1)' });
   });
 
   it('stops when the agent made no commits', async () => {
@@ -318,10 +337,10 @@ describe('agent failures end in agent-needs-help (R7)', () => {
 });
 
 /** Ticket #24, an agent that implements it in one commit, and whatever review the world gives. */
-async function happy(w: World) {
+async function happy(w: World, over: Parameters<World['tick']>[0] = {}) {
   w.addIssue(24);
   w.claude.push(implementDone());
-  return w.tick();
+  return w.tick(over);
 }
 
 describe('publish (R5)', () => {
@@ -747,7 +766,7 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
         enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false, autoAllowBashIfSandboxed: false,
         network: { allowedDomains: [], allowLocalBinding: true },
       });
-      for (const dir of ['.midway', '.aws', '.ssh', '.config/gh']) {
+      for (const dir of ['.aws', '.ssh', '.config/gh']) {
         expect(s.sandbox.filesystem.denyRead).toContain(join(w.home, dir));
         expect(s.permissions.deny).toContain(`Read(/${join(w.home, dir)}/**)`);
       }
@@ -762,6 +781,22 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
       expect(s.permissions.deny).toContain(`Edit(/${stateDir(w)}/**)`);
       expect(s.permissions.blockWritesOutsideWorkingDirectories).toBe(true);
     }
+  });
+
+  it("denies the local config's paths and the checked cookie jar in every sandbox: agent, self-test, npm and the worktree git", async () => {
+    const w = world();
+    const local = [join(w.root, 'machine/login'), join(w.home, '.config/login')];
+    await happy(w, { denyReads: local });
+    const extra = [...local, w.credentials.cookieJar];
+    for (const c of [...w.agentCalls(), ...selfTests(w)]) {
+      const s = settingsOf(c.args);
+      expect(s.sandbox.filesystem.denyRead).toEqual(expect.arrayContaining(extra));
+      for (const path of extra) expect(s.permissions.deny).toEqual(expect.arrayContaining([`Read(/${path})`, `Read(/${path}/**)`]));
+    }
+    const profiles = [...w.npmCalls(), ...w.callsTo('git').filter((c) => c.profile), w.callsTo('sandbox-exec').find((c) => c.args[2] === '/bin/sh')!]
+      .map((c) => c.profile ?? c.args[1]!);
+    expect(profiles.length).toBeGreaterThan(10);
+    for (const profile of profiles) for (const path of extra) expect(profile).toContain(`(subpath "${path}")`);
   });
 
   it("nothing the agent runs inherits the runner's secrets: an allowlisted environment (S6)", async () => {
@@ -782,7 +817,7 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
     expect(ci!.args).toEqual(['ci', '--ignore-scripts']);
     expect(rest.map((c) => c.args[0])).toEqual(['rebuild', 'run', 'run', 'run', 'test']);
     for (const c of [ci!, ...rest]) {
-      expect(c.profile).toContain(`(deny file-read* (subpath "${join(w.home, '.midway')}")`);
+      expect(c.profile).toContain(`(deny file-read* (subpath "${join(w.home, '.aws')}")`);
       expect(c.profile).toContain(`(deny file-write* (subpath "${stateDir(w)}")`);
     }
     expect(ci!.profile).not.toContain('network-outbound');
@@ -886,7 +921,7 @@ describe('the agent runs sandboxed (Qodo PR93 b274f225)', () => {
 });
 
 describe('dry run (task AC4)', () => {
-  // Anything but gh reads, pre-flight and the Midway cookie counts as a side effect here.
+  // Anything but gh reads, pre-flight and the credential cookie counts as a side effect here.
   const writes = (w: World) => w.calls.filter((c) => {
     const cmd = c.cmd.split('/').at(-1);
     if (cmd === 'gh') return ['edit', 'comment', 'create'].includes(c.args[1]!) || c.args[0] === 'label';
