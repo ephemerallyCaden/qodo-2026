@@ -1,0 +1,65 @@
+{
+  "head": "1111111111111111111111111111111111111111",
+  "needsRescan": false,
+  "placed": 3,
+  "schemaVersion": "drones.1",
+  "sessions": [
+    {
+      "agentType": null,
+      "branch": "main",
+      "endedAt": "2026-10-01T10:30:00Z",
+      "home": "d_00000000000a",
+      "inferred": false,
+      "key": "s_aaaaaaaaaaaa",
+      "kind": "main",
+      "model": "claude-opus-4",
+      "parentKey": null,
+      "seed": 2864434397,
+      "startedAt": "2026-10-01T09:00:00Z",
+      "tool": "claude-code"
+    },
+    {
+      "agentType": "Explore",
+      "branch": "main",
+      "endedAt": "2026-10-01T09:20:00Z",
+      "home": "d_00000000000a",
+      "inferred": false,
+      "key": "s_aaaaaaaaaaaa.sub1",
+      "kind": "subagent",
+      "model": null,
+      "parentKey": "s_aaaaaaaaaaaa",
+      "seed": 305419896,
+      "startedAt": "2026-10-01T09:10:00Z",
+      "tool": "claude-code"
+    },
+    {
+      "agentType": null,
+      "branch": null,
+      "endedAt": "2026-10-02T09:05:00Z",
+      "home": "star",
+      "inferred": false,
+      "key": "s_bbbbbbbbbbbb",
+      "kind": "main",
+      "model": null,
+      "parentKey": null,
+      "seed": 1,
+      "startedAt": "2026-10-02T09:00:00Z",
+      "tool": "claude-code"
+    },
+    {
+      "agentType": null,
+      "branch": "feature/x",
+      "endedAt": "2026-10-03T09:05:00Z",
+      "home": null,
+      "inferred": false,
+      "key": "s_cccccccccccc",
+      "kind": "main",
+      "model": null,
+      "parentKey": null,
+      "seed": 4294967295,
+      "startedAt": "2026-10-03T09:00:00Z",
+      "tool": "claude-code"
+    }
+  ],
+  "total": 4
+}

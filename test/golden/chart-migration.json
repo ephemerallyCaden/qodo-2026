@@ -1,0 +1,124 @@
+{
+  "fog": {
+    "baseline": null,
+    "charted": true,
+    "files": [
+      {
+        "fileId": "f_072fc23b941d",
+        "reasons": [],
+        "since": null,
+        "state": "haze"
+      },
+      {
+        "fileId": "f_15e6fde2f92f",
+        "reasons": [],
+        "since": null,
+        "state": "haze"
+      },
+      {
+        "fileId": "f_363f5941f4d8",
+        "reasons": [
+          "agent",
+          "self-committed-agent-written"
+        ],
+        "since": "e700c0628e1b60aedab9a59329ac74a75938cf42",
+        "state": "fogged"
+      },
+      {
+        "fileId": "f_a5102d02b1bf",
+        "reasons": [
+          "agent",
+          "self-committed-agent-written"
+        ],
+        "since": "0acef998631b0a8ff7a3d3a05f59dfd119134d44",
+        "state": "fogged"
+      },
+      {
+        "fileId": "f_b33563055168",
+        "reasons": [],
+        "since": null,
+        "state": "haze"
+      }
+    ],
+    "head": "e700c0628e1b60aedab9a59329ac74a75938cf42",
+    "planets": [
+      {
+        "clear": 0,
+        "dirId": "d_25a6634263c1",
+        "fogged": 1,
+        "haze": 2,
+        "total": 3
+      },
+      {
+        "clear": 0,
+        "dirId": "d_76b5a3573912",
+        "fogged": 1,
+        "haze": 0,
+        "total": 1
+      }
+    ],
+    "schemaVersion": "fog.2",
+    "star": {
+      "clear": 0,
+      "fogged": 0,
+      "haze": 1,
+      "total": 1
+    }
+  },
+  "migrated": {
+    "baselines": [],
+    "charts": [
+      {
+        "at": "e86f7456dca1354f150819fe111f28fef2e74c38",
+        "fileId": "f_072fc23b941d"
+      },
+      {
+        "at": "e86f7456dca1354f150819fe111f28fef2e74c38",
+        "fileId": "f_15e6fde2f92f"
+      },
+      {
+        "at": "e86f7456dca1354f150819fe111f28fef2e74c38",
+        "fileId": "f_363f5941f4d8"
+      }
+    ],
+    "clears": [],
+    "schemaVersion": "chart.2"
+  },
+  "old": {
+    "baselines": [],
+    "charts": [
+      {
+        "at": "e86f7456dca1354f150819fe111f28fef2e74c38",
+        "fileId": "f_072fc23b941d"
+      },
+      {
+        "at": "e86f7456dca1354f150819fe111f28fef2e74c38",
+        "fileId": "f_15e6fde2f92f"
+      },
+      {
+        "at": "e86f7456dca1354f150819fe111f28fef2e74c38",
+        "fileId": "f_363f5941f4d8"
+      }
+    ],
+    "schemaVersion": "chart.1"
+  },
+  "saved": {
+    "baselines": [],
+    "charts": [
+      {
+        "at": "e86f7456dca1354f150819fe111f28fef2e74c38",
+        "fileId": "f_072fc23b941d"
+      },
+      {
+        "at": "e86f7456dca1354f150819fe111f28fef2e74c38",
+        "fileId": "f_15e6fde2f92f"
+      },
+      {
+        "at": "e86f7456dca1354f150819fe111f28fef2e74c38",
+        "fileId": "f_363f5941f4d8"
+      }
+    ],
+    "clears": [],
+    "schemaVersion": "chart.2"
+  }
+}

@@ -1,0 +1,292 @@
+// The drones in the view (#80 AC 5, 6, 8, 9, 10), the parts that need no GPU: which sessions are drawn
+// and what the HUD says, the validator, the labels and panel rows, the orbits, the dev fixture and the palette.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import * as THREE from 'three';
+import { describe, expect, it } from 'vitest';
+import type { DroneView } from '../../src/core/contract/drones.js';
+import { palette } from '../../src/core/palette.js';
+import { parseDrones } from '../../web/src/data/client.js';
+import { checkDrones } from '../../web/src/drones/check.js';
+import { DRONE_PICK_RADIUS, DRONE_TURNS, homeBody, placeDrone } from '../../web/src/drones/place.js';
+import { pick } from '../../web/src/camera/pose.js';
+import { capLabels, DRONE_CAP, droneLabels, droneRows, droneStatus, entryOf, selectDrones } from '../../web/src/drones/select.js';
+import { FPS, LOOP_FRAMES, LOOP_SECONDS } from '../../web/src/model/motion.js';
+import { MOTION_LOOP, sessionParams } from '../../web/src/render/drone.js';
+import { FOG_SKY_TOP, layerTop, MIST } from '../../web/src/model/fog-cloud.js';
+import { fileFogAt, surfacePlan, type Level } from '../../web/src/model/fog.js';
+import { planetCentre, systemModel } from '../../web/src/model/system.js';
+import { FogClouds } from '../../web/src/render/fog.js';
+import { miniDrones, miniLayout } from '../fixtures/contract/mini.js';
+import { droneView, repoDrones, session, viewDrones } from '../fixtures/drones.js';
+import { selfLikeRoots } from '../fixtures/overview.js';
+
+const BLK_36: string[] = JSON.parse(readFileSync(join(import.meta.dirname, '../fixtures/blk-36.published.json'), 'utf8')).colors;
+const all = () => true;
+const HEAD = miniLayout.source.head;
+
+describe('which drones are drawn (AC 5)', () => {
+  const view = repoDrones(selfLikeRoots);
+  const known = new Set<string>([...selfLikeRoots.planets.map((p) => p.dirId), 'star']);
+  const sel = selectDrones(view, (h) => known.has(h));
+
+  it('draws at most the cap, the placed sessions that ended most recently', () => {
+    expect(DRONE_CAP).toBe(16);
+    expect(view.total).toBe(90);
+    expect(sel.shown).toHaveLength(16);
+    const placed = view.sessions.filter((s) => s.home !== null);
+    const newest = [...placed].sort((a, b) => (a.endedAt < b.endedAt ? 1 : a.endedAt > b.endedAt ? -1 : a.key < b.key ? -1 : 1)).slice(0, 16);
+    expect(sel.shown.map((s) => s.key)).toEqual(newest.map((s) => s.key));
+  });
+
+  it('counts what the cap hides and what has no home, and the three always add up', () => {
+    expect(sel.unplaced).toBe(view.total - view.placed);
+    expect(sel.hidden).toBe(view.placed - 16);
+    expect(sel.shown.length + sel.hidden + sel.unplaced).toBe(view.total);
+    expect(droneStatus(sel)).toBe(`16 drones shown, ${view.placed - 16} placed sessions hidden by the cap of 16, ${view.total - view.placed} sessions could not be placed`);
+  });
+
+  it('breaks an end-time tie by key, and never draws a session without a home', () => {
+    const v = droneView(HEAD, [session(3, 'star', { endedAt: '2026-11-10T12:00:00.000Z' }), session(1, 'star', { endedAt: '2026-11-10T12:00:00.000Z' }), session(2, null, { endedAt: '2026-11-11T12:00:00.000Z' })]);
+    expect(selectDrones(v, all, 1).shown.map((s) => s.key)).toEqual([session(1, 'star').key]);
+    expect(selectDrones(v, all).shown.every((s) => s.home !== null)).toBe(true);
+  });
+
+  it('counts a session whose home the drawn layout lacks as not placed (Rule 1)', () => {
+    const v = droneView(HEAD, [session(1, 'd_gone' as never), session(2, 'star')]);
+    const s = selectDrones(v, (h) => h === 'star');
+    expect(s.shown).toHaveLength(1);
+    expect(s.unplaced).toBe(1);
+  });
+
+  it('says "rescan to place drones" and draws none when the snapshot predates session files', () => {
+    const old = droneView(HEAD, [session(1, null), session(2, null)], true);
+    const s = selectDrones(old, all);
+    expect(s.shown).toEqual([]);
+    expect(droneStatus(s)).toBe('rescan to place drones (2 sessions not placed)');
+  });
+
+  it('orders by instant, whatever the fractional precision of the times', () => {
+    const v = droneView(HEAD, [
+      session(1, 'star', { endedAt: '2026-11-10T12:00:00Z' }), session(2, 'star', { endedAt: '2026-11-10T12:00:00.500Z' }), session(3, 'star', { endedAt: '2026-11-10T11:59:59.900Z' }),
+    ]);
+    expect(selectDrones(v, all).shown.map((s) => s.key)).toEqual([session(2, 'star').key, session(1, 'star').key, session(3, 'star').key]);
+  });
+
+  it('is a pure function of the view: the same view gives the same drones and entries', () => {
+    expect(selectDrones(structuredClone(view), (h) => known.has(h)).shown.map(entryOf)).toEqual(sel.shown.map(entryOf));
+  });
+});
+
+describe('labels and the panel (AC 6, 8, 10)', () => {
+  it('the Claude drone has no label; any other tool is named; an inferred session says so', () => {
+    expect(droneLabels(session(1, 'star')).label).toBeNull();
+    expect(droneLabels(session(1, 'star', { tool: 'codex' })).label).toBe('codex');
+    expect(droneLabels(session(1, 'star', { inferred: true })).label).toBe('inferred');
+    expect(droneLabels(session(1, 'star', { tool: 'codex', inferred: true })).label).toBe('codex inferred');
+    expect(droneLabels(session(1, 'star')).selectedLabel).toBe('claude-code');
+  });
+
+  it('shows the tool, main or subagent with its type, UTC times, branch, model, inferred and the home', () => {
+    const rows = Object.fromEntries(droneRows(session(1, 'star', { kind: 'subagent', agentType: 'Explore', inferred: true, branch: 'feature/x', model: null }), 'src/web'));
+    expect(rows).toEqual({
+      tool: 'claude-code', kind: 'subagent (Explore)', started: '2026-11-10 09:01:00 UTC', ended: '2026-11-10 10:01:00 UTC',
+      branch: 'feature/x', model: 'unknown', source: 'inferred', home: 'src/web',
+    });
+    expect(Object.fromEntries(droneRows(session(2, 'star'), 'the star'))['kind']).toBe('main');
+  });
+
+  it('strips bidirectional and other format characters, so a folder name cannot reorder the panel (Qodo)', () => {
+    const rows = Object.fromEntries(droneRows(session(1, 'star', { branch: 'a\u202Eb\u200Bc' }), 'src\u202Efdp.exe'));
+    expect(rows['home']).toBe('src fdp.exe');
+    expect(rows['branch']).toBe('a b c');
+  });
+
+  it('shows no line, file or commit count (Rule 6) and strips control characters from outside text', () => {
+    const text = droneRows(session(1, 'star', { branch: 'a\u001b[31mb\nc' }), 'x').flat().join(' ');
+    expect(text).not.toMatch(/\b(?:lines?|files?|commits?)\b/i);
+    expect(text).not.toMatch(/\p{Cc}/u);
+  });
+});
+
+describe('the validator (AC 10)', () => {
+  it('accepts the contract fixture and a session with inferred: true', () => {
+    expect(checkDrones(miniDrones).ok).toBe(true);
+    expect(checkDrones(viewDrones(miniLayout)).ok).toBe(true);
+    const v = droneView(HEAD, [session(1, 'star', { inferred: true })]);
+    const c = checkDrones(JSON.parse(JSON.stringify(v)));
+    expect(c.ok).toBe(true);
+    expect(droneLabels(session(1, 'star', { inferred: true })).label).toBe('inferred');
+  });
+
+  it('refuses a malformed document with reasons, never half-drawing it', () => {
+    const bad = (mutate: (v: DroneView) => void): string => {
+      const v = structuredClone(miniDrones);
+      mutate(v);
+      const c = checkDrones(v);
+      return c.ok ? 'ok' : c.errors.join('; ');
+    };
+    expect(bad((v) => { (v as { schemaVersion: string }).schemaVersion = 'drones.2'; })).toMatch(/schemaVersion/);
+    expect(bad((v) => { v.total = 99; })).toMatch(/total/);
+    expect(bad((v) => { v.placed = 0; })).toMatch(/placed/);
+    expect(bad((v) => { v.sessions[0]!.seed = -1; })).toMatch(/seed/);
+    expect(bad((v) => { v.sessions[0]!.startedAt = 'yesterday'; })).toMatch(/startedAt/);
+    expect(bad((v) => { v.sessions[0]!.endedAt = '2026-13-45T25:61:61Z'; })).toMatch(/endedAt/);
+    expect(bad((v) => { v.sessions[0]!.kind = 'x' as never; })).toMatch(/kind/);
+    expect(bad((v) => { v.sessions[0]!.tool = ''; })).toMatch(/tool/);
+    expect(bad((v) => { v.needsRescan = true; })).toMatch(/needsRescan/);
+    expect(checkDrones(null).ok).toBe(false);
+    expect(() => parseDrones('{', 'test')).toThrow(/not JSON/);
+    expect(() => parseDrones('{}', 'test')).toThrow(/invalid/);
+  });
+
+  it('the dev fixture file (the contract twin) passes the view\'s validator', () => {
+    const text = readFileSync(join(import.meta.dirname, '../fixtures/contract/mini.drones.json'), 'utf8');
+    expect(parseDrones(text, 'fixture')).toEqual(miniDrones);
+  });
+});
+
+describe('orbits (AC 5, Rule 4)', () => {
+  const model = systemModel(miniLayout);
+  const home = miniLayout.planets[0]!.dirId;
+  const at = (f: number, seed = 7) => placeDrone(model, home, seed, f)!;
+  const dist = (a: number[], b: number[]) => Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
+  /** Where the drone is relative to its home planet, which orbits the star itself (#60). */
+  const off = (f: number) => { const c = at(f).centre, h = planetCentre(model.planets[0]!, f); return c.map((x, i) => +(x - h[i]!).toFixed(6)); };
+
+  it('is a pure function of (seed, frame) and loops whole turns per loop round its planet: one turn per 24 s (#174)', () => {
+    expect(at(10)).toEqual(at(10));
+    expect(DRONE_TURNS).toBe(2);
+    expect(off(0)).toEqual(off(LOOP_FRAMES));
+    expect(off(0)).toEqual(off(LOOP_FRAMES / 2));
+    expect(LOOP_SECONDS / DRONE_TURNS).toBe(24);
+  });
+
+  it('draws each drone\'s idle phase within its own motion loop, so the scene loop\'s length never moves a drone at frame 0 (#174)', () => {
+    expect(LOOP_SECONDS % MOTION_LOOP).toBe(0); // the idle loop closes inside the scene's loop
+    for (const look of ['claude', 'generic'] as const) {
+      const times = Array.from({ length: 400 }, (_, seed) => sessionParams(look, seed).time);
+      for (const t of times) {
+        expect(t).toBeGreaterThanOrEqual(0);
+        expect(t).toBeLessThan(MOTION_LOOP);
+        expect(Math.abs(t * FPS - Math.round(t * FPS))).toBeLessThan(1e-9); // a whole number of frames
+      }
+      expect(Math.max(...times), 'spread over the whole idle loop').toBeGreaterThan(MOTION_LOOP * 0.9);
+    }
+  });
+
+  it('moves with its planet along the planet\'s orbit, so it never lags behind or drifts off (#60)', () => {
+    const h0 = planetCentre(model.planets[0]!, 0), h1 = planetCentre(model.planets[0]!, LOOP_FRAMES);
+    expect(dist(h0, h1)).toBeGreaterThan(0.1); // the planet has moved a loop on
+    expect(dist(at(0).centre, at(LOOP_FRAMES).centre)).toBeCloseTo(dist(h0, h1), 6); // and the drone exactly as far
+  });
+
+  it('turns at a constant rate: equal frame steps move it equal distances round its planet', () => {
+    const d = [0, 1, 2, 3].map((k) => dist(off(100 + k), off(101 + k)));
+    for (const x of d) expect(x).toBeCloseTo(d[0]!, 5);
+  });
+
+  it('keeps clear of its home and starts from a seeded phase, so seeds differ and a seed repeats', () => {
+    const planet = model.planets[0]!;
+    const c = planet.orbit; // frame 0 puts the planet at its phase-0 angle, (orbit, 0, 0)
+    expect(dist(at(0).centre, [c, 0, 0])).toBeGreaterThan(planet.radius);
+    expect(at(0, 1).centre).not.toEqual(at(0, 2).centre);
+    expect(placeDrone(model, 'd_nowhere', 1, 0)).toBeNull();
+  });
+});
+
+describe('drones clear the fog sky (#224, Qodo 1f87de0f; the weather\'s cloud since #228)', () => {
+  // The largest planet with no moons, so only its clouds set how far out its drones fly.
+  const layout = structuredClone(miniLayout);
+  const docs = layout.planets.find((p) => p.moons.length === 0)!;
+  docs.radiusMilli = layout.constants.maxPlanetRadiusMilli;
+  const model = systemModel(layout);
+  const planet = model.planets.find((p) => p.dirId === docs.dirId)!;
+  const plan = surfacePlan(planet.surface);
+  /** The farthest drawn vertex of the planet's fog sky from its centre, in planet radii, with every file at `level`. */
+  const skyTop = (level: Level, seed = planet.seed): number => {
+    const puff = new THREE.IcosahedronGeometry(1, 1); // render/planet.ts PUFF_NEAR, the finer of the two
+    const mat = new THREE.ShaderMaterial();
+    const sky = new FogClouds(plan, seed, { near: puff, far: puff, tiny: puff }, { cloud: mat, teal: mat, mist: mat, shadow: mat });
+    sky.set(plan.fileIds.map(() => fileFogAt(level, undefined, 0)));
+    const m = new THREE.Matrix4(), v = new THREE.Vector3(), pos = puff.getAttribute('position');
+    let top = 0;
+    for (const mesh of sky.group.children as THREE.InstancedMesh[]) {
+      for (let i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, m);
+        for (let j = 0; j < pos.count; j++) top = Math.max(top, v.fromBufferAttribute(pos, j).applyMatrix4(m).length());
+      }
+    }
+    sky.dispose();
+    return top;
+  };
+
+  it.each([{ level: 2, sky: 'cloud (fogged), its domes past the limb included' }, { level: 1, sky: 'mist (misted)' }] as const)('keeps every drone, its drift and bob included, outside a planet\'s $sky', ({ level }) => {
+    const top = skyTop(level) * planet.radius;
+    expect(top, 'the sky is drawn').toBeGreaterThan(planet.radius);
+    for (let seed = 0; seed < 64; seed++) {
+      for (const f of [0, LOOP_FRAMES / 4, LOOP_FRAMES / 2]) {
+        const d = Math.hypot(...placeDrone(model, planet.dirId, seed, f)!.centre.map((x, i) => x - planetCentre(planet, f)[i]!));
+        expect(d - DRONE_PICK_RADIUS, `seed ${seed}, frame ${f}`).toBeGreaterThan(top);
+      }
+    }
+  });
+
+  it("takes the reach a drone clears from the fog sky's own shape, which bounds the drawn puffs and is reached by them", () => {
+    expect(skyTop(2)).toBeLessThanOrEqual(FOG_SKY_TOP);
+    // not a padded number: a full core's dome (the weather's, #228) reaches it on some planets, if not on every one
+    const tops = Array.from({ length: 12 }, (_, s) => skyTop(2, planet.seed + s));
+    expect(Math.max(...tops)).toBeLessThanOrEqual(FOG_SKY_TOP);
+    expect(Math.max(...tops)).toBeGreaterThan(FOG_SKY_TOP * 0.99);
+    expect(skyTop(1)).toBeLessThanOrEqual(layerTop(MIST));
+    expect(homeBody(model, planet.dirId, 0)!.reach).toBe(planet.radius * FOG_SKY_TOP);
+  });
+});
+
+describe('drone labels and duplicate keys (Qodo PR #127 r2)', () => {
+  it("keeps the selected drone's label when more nearer drones have one than the budget allows", () => {
+    const placed = Array.from({ length: 12 }, (_, i) => ({ i }));
+    const got = capLabels(placed, (p) => p.i === 11, 8);
+    expect(got).toHaveLength(8);
+    expect(got.map((p) => p.i)).toEqual([0, 1, 2, 3, 4, 5, 6, 11]);
+    expect(capLabels(placed, () => false, 3).map((p) => p.i)).toEqual([0, 1, 2]);
+    expect(capLabels(placed, () => false, 0)).toEqual([]);
+  });
+
+  it('refuses a view with two sessions of one key, so a click never opens another session', () => {
+    const v = structuredClone(droneView(HEAD, [session(1, 'star'), session(2, 'star')]));
+    v.sessions[1]!.key = v.sessions[0]!.key;
+    const c = checkDrones(v);
+    expect(c.ok ? '' : c.errors.join(';')).toMatch(/unique/);
+  });
+});
+
+describe('picking a drone (Qodo PR #127 r1)', () => {
+  const pose = { target: [0, 0, 0] as [number, number, number], yaw: 0, pitch: 0, dist: 100 };
+  const small = [{ centre: [0, 0, 0] as [number, number, number], radius: 0.28 }];
+
+  it("a click well beside a far drone misses it with the drone floor but hit it with the planets' floor", () => {
+    const beside = { x: 0.015, y: 0 }; // 1.5% of half the width off: about 2 px at 320 x 180
+    expect(pick(pose, beside, small, [], 0.04)).toBe(0);
+    expect(pick(pose, beside, small, [], 0.015)).toBeNull();
+    expect(pick(pose, { x: 0.005, y: 0 }, small, [], 0.015)).toBe(0);
+  });
+});
+
+describe('the panel shows only the fields it names (Rule 2)', () => {
+  it('a path, prompt or command planted in the session object never reaches the rows or the labels', () => {
+    const canary = '/Users/someone/secret-project';
+    const hostile = { ...session(1, 'star'), cwd: canary, path: canary, prompt: canary, subject: canary, files: [canary] } as never;
+    const out = [...droneRows(hostile, 'src').flat(), droneLabels(hostile).label ?? '', droneLabels(hostile).selectedLabel].join('\n');
+    expect(out).not.toContain(canary);
+    expect(out).not.toContain('secret');
+  });
+});
+
+describe('palette (Rule 5)', () => {
+  it('draws the drones from BLK 36 only', () => {
+    const hexes = Object.values(palette.drone).flatMap((look) => Object.values(look).flat());
+    expect(hexes.length).toBeGreaterThan(20);
+    expect(hexes.filter((h) => !BLK_36.includes(h))).toEqual([]);
+  });
+});

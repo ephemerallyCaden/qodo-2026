@@ -17,11 +17,57 @@ const determinism = {
   ],
 };
 
+// The web view (#30, principle 3): the same bans, plus three.js's Clock (it reads performance.now)
+// and requestAnimationFrame outside web/src/loop.ts, the one place that turns display time into
+// frame numbers. (Colour literals in web/ are checked by test/palette.test.ts.)
+const rafProperties = ['window', 'globalThis'].map((object) =>
+  ({ object, property: 'requestAnimationFrame', message: 'Only web/src/loop.ts reads display time (determinism).' }));
+const webDeterminism = {
+  ...determinism,
+  'no-restricted-properties': ['error', ...determinism['no-restricted-properties'].slice(1), ...rafProperties],
+  'no-restricted-syntax': ['error',
+    ...determinism['no-restricted-syntax'].slice(1),
+    { selector: 'NewExpression[callee.property.name="Clock"], NewExpression[callee.name="Clock"]', message: 'THREE.Clock reads the wall clock; render from frame numbers (determinism).' },
+  ],
+  'no-restricted-globals': ['error',
+    { name: 'requestAnimationFrame', message: 'Only web/src/loop.ts reads display time (determinism).' },
+  ],
+};
+
+// NUL-framed git output (AGENTS.md Rule 7, #24): a path can hold any byte but NUL, so the scanner
+// and attribution code never frame git output with U+0001. Bans a string or template holding it
+// (`'\x01'`, `'\u0001'` or the raw byte) or a `%x01` git format, and a regex matching it.
+// esquery compiles each `/…/` below: in a value, U+0001 or `%x01`; in a regex's source, U+0001
+// itself or an escape for it.
+const CTRL_A = String.raw`\u0001|%x01`;
+const CTRL_A_IN_REGEX = String.raw`\u0001|\\x01|\\u0001|\\u\{0*1\}|\\c[Aa]`;
+const ctrlA = 'U+0001 can be part of a path: parse git output with -z on NUL, by position (AGENTS.md Rule 7).';
+const nulFraming = {
+  'no-restricted-syntax': ['error', ...determinism['no-restricted-syntax'].slice(1),
+    { selector: `Literal[value=/${CTRL_A}/]`, message: ctrlA },
+    { selector: `TemplateElement[value.cooked=/${CTRL_A}/]`, message: ctrlA },
+    { selector: `Literal[regex.pattern=/${CTRL_A_IN_REGEX}/]`, message: ctrlA },
+  ],
+};
+
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/', 'coverage/'] },
+  // .sandboxes/ holds agent and feature worktrees: each is its own checkout, linted there.
+  { ignores: ['dist/', 'factory/dist/', 'node_modules/', 'coverage/', '.sandboxes/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  { files: ['src/core/**', 'src/scan/**', 'src/attrib/**'], rules: determinism },
+  // The render stand-in (#31) is render code: a frame must be a pure function of (input, frame).
+  { files: ['src/core/**', 'src/scan/**', 'src/attrib/**', 'test/render/standin/**'], rules: determinism },
+  // Keeps the determinism selectors: a later no-restricted-syntax replaces the earlier one.
+  { files: ['src/scan/**', 'src/attrib/**'], rules: nulFraming },
+  { files: ['web/src/**'], rules: webDeterminism },
+  {
+    // loop.ts is the one clock read: it may call requestAnimationFrame, and nothing else changes.
+    files: ['web/src/loop.ts'],
+    rules: {
+      'no-restricted-globals': 'off',
+      'no-restricted-properties': ['error', ...webDeterminism['no-restricted-properties'].slice(1).filter((r) => !rafProperties.includes(r))],
+    },
+  },
   {
     // src/core is pure and isomorphic: no Node built-ins, nothing outside core (design §3).
     files: ['src/core/**'],
@@ -30,6 +76,16 @@ export default tseslint.config(
         { group: ['node:*', 'fs', 'path', 'os', 'child_process', 'crypto'], message: 'src/core must stay isomorphic (no Node built-ins).' },
         { group: ['**/scan/**', '**/attrib/**', '**/state/**', '**/cli', '**/cli.js', '**/server/**'], message: 'src/core imports nothing outside core.' },
       ] }],
+    },
+  },
+  {
+    // #53: a test's temp dirs come from tempDir() (test/fixtures/tmp.ts), which removes them after
+    // the file and lets the run check none is left. The run's own manifest dir is the one exception.
+    files: ['test/**'],
+    ignores: ['test/fixtures/tmp.ts', 'test/setup/temp-check.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: ['fs', 'node:fs', 'fs/promises', 'node:fs/promises'].map((name) => ({ name,
+        importNames: ['mkdtemp', 'mkdtempSync'], message: 'Make test temp dirs with tempDir() from test/fixtures/tmp.ts, which removes them (#53).' })) }],
     },
   },
 );

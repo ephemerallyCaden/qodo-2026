@@ -1,6 +1,6 @@
 # CONSTITUTION
 
-*Approved by the human on 2026-11-04. Only the human may change this document.*
+*Approved by the human on 2026-11-04. Principle 4 amended at the human's direction on 2026-11-09 (planet looks encode code health). Only the human may change this document.*
 
 ## Mission
 Build **Commet** (working title). It's a local-first, pixel-art 3D explorer that helps a solo developer working with AI coding agents keep a real mental model of their own codebase. Teammates can be shown too, but only ever on your own machine.
@@ -11,7 +11,7 @@ Build it with an agent software factory: coding agents, project standards, tests
 1. **Client-side only.** No remote server, no telemetry, no uploads, and nothing posted to GitHub. The only server is Commet's own hardened local one (see Requires human approval). The app only reads local git data and writes local files. Optional read-only GitHub API calls must be explicit opt-ins. *Roadmap exception, not v1:* opt-in peer-to-peer live presence, which needs a minimal signalling relay, would require amending this principle first.
 2. **Understanding, not output.** No XP for commits or PRs, no streaks, no leaderboards, no per-person scores. Fog clears through review and comprehension.
 3. **Deterministic.** The same repo always gives the same snapshot, layout and frame. A frame is a pure function of (snapshot, chart state, camera, frame number). `Math.random` is banned in pipeline, layout and render code.
-4. **Readable pixel art.** Visual properties either encode data or are explicitly decorative and seeded (planet biomes are decorative; fog, drones, size, constellations and debris encode data). Nothing decorative may look like a data signal. Labels and UI render crisp, outside the pixel pass.
+4. **Readable pixel art.** Visual properties either encode data or are seeded variety that stays inside one meaning. A planet's look encodes its code health in ordered bands; size, moons, fog, drones, debris and constellations encode the rest (the art direction §6 lists every channel). Nothing decorative may look like a data signal. Labels and UI render crisp, outside the pixel pass.
 
 ## Tech stack (pinned at scaffold, then locked by the lockfile)
 - TypeScript (strict), Node ≥ 20, npm.

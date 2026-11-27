@@ -1,10 +1,10 @@
 // Synthetic Claude Code transcripts (v2.1.31x key names) for Issue #5's edge cases. Synthetic
 // content only: no real transcript is read. Generated at test time because paths are absolute.
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { FixtureRepo } from '../build/basic.js';
 import { EDGE_CASES, EDGE_LINES, type EdgeCase } from '../build/never-human.js';
+import { realTempDir } from '../tmp.js';
 
 /** Over the parser's per-line cap (MAX_LINE) and the discovery head cap (HEAD_CAP), both 4 MiB. */
 const OVER_CAP = (4 << 20) + 1024;
@@ -26,8 +26,8 @@ export interface NeverHumanClaude {
 const sid = (n: number) => `${String(n).repeat(8)}-${String(n).repeat(4)}-4${String(n).repeat(3)}-8${String(n).repeat(3)}-${String(n).repeat(12)}`;
 
 export function writeNeverHumanClaude(repo: FixtureRepo): NeverHumanClaude {
-  const claudeDir = realpathSync(mkdtempSync(join(tmpdir(), 'commet-edge-claude-')));
-  const link = join(realpathSync(mkdtempSync(join(tmpdir(), 'commet-edge-link-'))), 'repo-link');
+  const claudeDir = realTempDir('commet-edge-claude-');
+  const link = join(realTempDir('commet-edge-link-'), 'repo-link');
   symlinkSync(repo.dir, link);
   const caseVariant = join(dirname(repo.dir), basename(repo.dir).toUpperCase());
   const caseInsensitiveFs = caseVariant !== repo.dir && existsSync(caseVariant);

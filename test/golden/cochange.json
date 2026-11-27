@@ -1,0 +1,53 @@
+{
+  "bulkCommits": 1,
+  "commits": 17,
+  "missing": [
+    {
+      "at": "6aea699f7674875b6ab8db8b328e5b63194280c8",
+      "fileId": "f_8c620f2438ac",
+      "strengthMilli": 666,
+      "with": "f_c75c1f20872b"
+    }
+  ],
+  "pairs": [
+    {
+      "a": "f_6e7a2610eaa4",
+      "b": "f_b33563055168",
+      "both": 2,
+      "strengthMilli": 1000
+    },
+    {
+      "a": "f_8c620f2438ac",
+      "b": "f_c1197c4abb5c",
+      "both": 2,
+      "strengthMilli": 400
+    },
+    {
+      "a": "f_8c620f2438ac",
+      "b": "f_c75c1f20872b",
+      "both": 4,
+      "strengthMilli": 666
+    },
+    {
+      "a": "f_c1197c4abb5c",
+      "b": "f_c75c1f20872b",
+      "both": 3,
+      "strengthMilli": 500
+    },
+    {
+      "a": "f_c75c1f20872b",
+      "b": "f_cf813f8d7d0a",
+      "both": 2,
+      "strengthMilli": 333
+    }
+  ],
+  "settings": {
+    "bulkFiles": 200,
+    "cap": 5,
+    "flagMilli": 500,
+    "flagMinBoth": 3,
+    "flagWindow": 10,
+    "minBoth": 2,
+    "thresholdMilli": 150
+  }
+}

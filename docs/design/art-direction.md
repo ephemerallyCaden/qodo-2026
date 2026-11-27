@@ -6,13 +6,13 @@
 
 Commet is **a calm, hand-held pocket universe of your codebase, with the code layer glitching through it.**
 
-You look down at a small, softly lit solar system that loops on its own. Clouds drift, moons swing past and rings shimmer, and the whole scene comes back to where it started without a seam. It reads like a toy you could hold. Over that natural world sits a thin, honest layer of *code*: glyphs, corrupted sectors and decoded labels. It never looks like decoration. It looks like the planet itself briefly showing its source.
+You look down at a small, softly lit solar system that loops on its own. Clouds drift, moons swing past and rings shimmer, and the whole scene comes back to where it started without a seam, while the planets themselves creep round the star far more slowly (§7). It reads like a toy you could hold. Over that natural world sits a thin, honest layer of *code*: glyphs, corrupted sectors and decoded labels. It never looks like decoration. It looks like the planet itself briefly showing its source.
 
 **Pillars**
 1. **Softness first.** The natural world is gentle, rounded and warm-lit. Nothing is harsh except the code layer, and that only in small doses.
 2. **Pixel honesty.** Everything is real 3D, then rendered small and blown up. Every pixel on screen is a real low-resolution pixel. No fake pixel art, no sub-pixel smoothing; surfaces are banded, and only distance is allowed to grade smoothly.
 3. **Readable at 180 pixels tall.** Every feature must survive the internal resolution: lines at least 2 px, faces as shapes rather than text, and clear value contrast. If it can't be read at 320×180, it doesn't ship.
-4. **Mesmerising loops.** Every moving layer completes a whole number of cycles per loop. The eye never catches a reset.
+4. **Mesmerising loops.** Every moving layer completes a whole number of cycles per loop. The eye never catches a reset. The one exception is the planets' slow orbits round the star (§7).
 5. **The code layer is a filter, not a sticker.** Glitches reuse the colours of whatever they cover. One accent colour, used sparingly, marks events.
 
 ## 2. Influences
@@ -70,9 +70,10 @@ All ramps run dark → light, and the shader picks a band per pixel from lightin
 | Gas giant | A: `#5a2e1c`→`#fff0d0`; B: `#481a18`→`#ffc6a0` | Jupiter-like cream zones and salmon-brown belts. |
 | Moon / barren | `#26262c` `#4a4a54` `#76767f` `#a4a4ac` `#d2d2d6` | Neutral regolith grey. Told apart by craters, not hue. |
 | Small orbiting moons | `#a8602c` `#d8944a` `#f0c27a` `#f2d8b8` | Warm peach spheres, as in the moodboard GIF. |
-| Toxic | growth `#1c3810`→`#e0ff7a`; sludge `#2e1c14`→`#f0c27a`; fungus `#381444`→`#c678d2` | Ochre sludge seas and acid growth, so it can never be mistaken for lush. |
-| Haze | ocean `#86ccff`, ice `#ffffff`, toxic `#c8f06a` | A thin lit-limb sliver, never an outline. |
+| Toxic (ember) | ground `#3a1c12`→`#e88a34`; slag seas `#150e0e`→`#643218`; crusts (fungus role) `#7a4a1e`→`#e8b45c`; smoke (spore role) `#2a2022`→`#b49680` | The second-worst health band, between lava and desert: cooled slag seas with ember veins, rust ground and dull smoke. Hues sit between lava glow and sand (#19). |
+| Haze | ocean `#86ccff`, ice `#ffffff`, toxic `#e07a48` | A thin lit-limb sliver, never an outline. |
 | Halo (optional) | `#30285a` | A 1–2 px dark back-shell, one step above space. Off by default. |
+| Star (the repo) | disc `#c9361a` `#ff761a` `#ffc93c` `#fff0b8` `#fffaf0`; corona crown `#c9361a`, halo `#481a18` | The Day 1 sun (human, 2026-11-11): five flat limb bands, hottest at the centre, with churning granulation; a flat undithered corona. Emissive; depth fade 0.15, so its cream core stays the hottest point at any distance. Built from the glow, sand, cloud and gas-giant ramps, so no new colours. |
 
 ### Rings
 `#141d5c` (in the planet's shadow) · `#f2d8b8` (most debris) · `#4ea3f7` · `#94dcff` (specks).
@@ -103,6 +104,8 @@ The crew palette is never retuned. Use the BLK 36 mapping as it is.
 - **Fade:** distant objects fade toward the space colour using the v2 depth tint `#1b1f4a`, at strengths 0 / 0.38 / 0.72, then toward `#17172f` at 0.88. Every object keeps its full colours.
 - **Per pixel:** the fade level is chosen **per pixel** from each fragment's own camera distance, with thresholds at **12 / 26 / 44**. A planet that straddles a threshold shades its near side and far side differently, and a ring's far arc fades more than its near arc.
 - **Smooth (default):** the fade is a **continuous per-pixel blend** toward the depth tint ("pixel-smooth"), so distance grades softly across every planet and ring. It's the one deliberate gradient in the style, chosen by the human over stepped bands for its smoothness. Object-level, 3-band and 6/8-band stepped fades remain as viewer options.
+- **Scaled to the system (human, 2026-11-11, #59):** the fade's reach grows with the system, so a whole system seen from its start pose isn't washed out. The first step (0 → 0.38, out to about 10 units, the hero's range) stays as tuned, so a focused planet and its moons fade exactly as in the viewer. Past an extent of 8.4 render units (the `mini` fixture's size), the 0.72 and 0.88 steps move out in proportion to the extent, and always at least as far as the farthest planet seen from the start pose. So the farthest planet of any system's start pose fades by 0.72 or less, the level up to which the health bands still read. The 0.88 step still applies to anything beyond the system, such as when flying out. Code: `web/src/model/depth.ts`.
+- **Overview readability:** at a system's start pose, the farthest planet on screen fades by at most 0.72, and its health band still separates from the next band (≥ 0.05 OKLab). Measured on Commet's own repo with `--root src`: before this change every planet sat at 0.84–0.88 and toxic, ash and healthy were 0.03 apart; after it they sit at 0.58–0.72 and 0.07 apart. Checked by `test/render/overview.spec.ts`.
 - **Lava** glow fades at half strength, so a distant lava world still glows.
 - **Rejected:** cutting colour counts with distance (5/3/2/1 tones). It clipped the look too hard.
 
@@ -112,19 +115,42 @@ The crew palette is never retuned. Use the BLK 36 mapping as it is.
 - **Shape:** a procedural shader sphere with noise-driven terrain, quantised into colour bands.
 - **Light:** a **lit directional terminator**, keyed top-left at about 40°, which gives soft concentric crescents. Its dark side uses each ramp's own darks.
 - **Framing:** the hero planet fills **42–50% of frame height** in close-ups, alone, with little clutter.
-- **Meaning:** **biomes are decorative.** Each is hashed from the planet's stable ID and carries no data. **Planet size = lines of code.** Data is carried by fog, drones, size, constellations and debris.
+- **Meaning:** a planet's look shows its **code health** (below). Cleaning code heals the planet. **Planet size = lines of code.**
+
+### What a planet tells you
+Every visual property of a planet either carries data or is seeded variety that stays inside one meaning (constitution principle 4; human, 2026-11-06 and 2026-11-09).
+
+| Channel | Encodes | Source |
+|---|---|---|
+| Look (health band) | Code health, worst to best: **lava → toxic → ash (the desert look) → healthy** | Debt markers per 1k LOC, plus open Qodo findings when opted in (#17/#18). Thresholds live in one constants file |
+| Healthy look | Nothing (seeded variety): **lush, ocean or ice**, all three meaning "healthy" | Hash of the planet's stable ID |
+| Size | Lines of code (clamped log) | #18 |
+| Moons | Test files | #18 |
+| Debris | Stale work: stale PRs and abandoned, merged-but-not-deleted or orphaned agent branches | R13; PRs only with the opt-in token |
+| Rings | **Open (human, 2026-11-09).** No longer unmerged branches. Rings need a new meaning or stay out of the product view | — |
+| Fog, drones, constellations, beacons | Charting (R5), agent sessions (R2b), co-change (R9), notes (R10) | — |
+
+Gas giant and barren moon are **asset-library extras**, never shown in the product view.
+
+**Legibility rules.** Health must inform, not decorate:
+1. **Ordered at a glance.** The bands read as one scale, from molten through smouldering and dry to living, so you can rank two planets without a legend. Each step is carried by at least one cue, and no cue runs backwards: lava → toxic by glow, toxic → ash by lightness (both are warm; ash is the lighter ground), ash → healthy by temperature (cool blues and greens under clouds). "Darker" means the ground: lava's glow stays bright with distance by design (§5).
+2. **Variety never crosses a band.** Seeded variation (continent shapes, cloud masses, crater layout, the lush/ocean/ice choice) stays recognisably inside its band. A healthy look must never read as a worse band; the known risk is ice reading as "frozen, stale".
+3. **Survives distance and size** (on charted land; fog hides health on purpose, see §9). The band stays identifiable on the smallest and farthest planets (about 10 px discs at full depth fade), with clouds, debris and artefacts on top. **Limit (human, 2026-11-10):** the 0.88 full fade stays, for depth. At that distance only lava still reads (measured in `mockups/health-looks/`), so a far planet's band is carried by its label and by selecting it (rule 5), and the look takes over as you fly closer. The bands must stay readable up to the 0.72 level.
+4. **Not by hue alone.** Bands also differ in value structure and texture (glowing fissures, slag seas, dunes and craters, clouds and water), so they stay distinct under common colour-vision deficiencies.
+5. **Explained on demand.** Selecting a planet shows its band in words and its inputs, e.g. "toxic: 14 debt markers per 1k LOC, Qodo findings unknown". Unknown inputs are labelled unknown (AGENTS.md Rule 1), never shown as healthy.
+6. **No look without a meaning.** A biome, modifier or effect enters the product view only with a row in the table above.
 
 ### Biomes
 | Biome | Look |
 |---|---|
-| Lush | Ocean plus green continents, polar caps, clustered cream clouds. |
-| Ocean | Mostly water with a few islands, thin clouds and a lit-limb haze. |
-| Ice | White strata over **open dark-blue water leads**, cut by bold jagged crevasses. |
-| Desert / crater | Wind-dune bands and Worley craters with a dark floor and bright rim. No clouds. |
-| Lava | Near-black, slightly blue-shaded crust broken by **open molten lava pools** and bold glowing fissures. Low, streaky ash smoke rises off the fissures. |
-| Gas giant (extra) | Turbulent alternating bands and a storm. Large sizes only. |
-| Barren moon (extra) | Small, grey, densely cratered. |
-| Toxic (extra) | Ochre sludge seas, acid-lime growth, purple fungus, spores and a lime haze. |
+| Lush (healthy) | Ocean plus green continents and polar caps (no weather of its own: its clouds are the fog, §9). |
+| Ocean (healthy) | Mostly water with a few islands and a lit-limb haze (no weather of its own: its clouds are the fog, §9). |
+| Ice (healthy) | White strata over **open dark-blue water leads**, cut by bold jagged crevasses. |
+| Desert / crater (ash band) | Wind-dune bands and Worley craters with a dark floor and bright rim. No clouds. |
+| Lava (worst band) | Near-black, slightly blue-shaded crust broken by **open molten lava pools** and bold glowing fissures. Low, streaky ash smoke rises off the fissures. |
+| Toxic (second-worst band) | Between lava and desert: cooled slag seas with ember veins, rust ground, oxidised orange crusts, dull rust smoke and a warm haze. |
+| Gas giant (library extra) | Turbulent alternating bands and a storm. Large sizes only. |
+| Barren moon (library extra) | Small, grey, densely cratered. |
 
 ### Cracks (lava fissures, ice crevasses)
 - **Shape:** Voronoi-edge cracks with straight segments, pointed junctions and branching. Never wobbly noise contours.
@@ -133,34 +159,60 @@ The crew palette is never retuned. Use the BLK 36 mapping as it is.
 - **Mix:** each planet balances three things: solid ground, crack networks, and open pools (lava) or water (ice).
 
 ### Clouds
+- **Meaning (human, 2026-11-16):** in the product, clouds are the fog of war (§9): they cover undiscovered code, and a fully discovered planet has none. The seeded weather below is the cloud layer's look, used by the fog exactly (#228), its cover set by the undiscovered share; lava's ash and toxic's rust smoke keep their own weather.
 - **Altitude:** clouds float as their own layer, with bases at r ≈ 1.05, and cast a faint shadow on the terrain, one band darker and offset along the light. Only clouds actually between the surface and the light cast shadows.
 - **Form:** clouds **blend into soft continuous clumps**. Each mass is shaded as a single dome, with a lumpy outline that bulges past the silhouette.
-- **Cover:** about **28%** of the visible disc on lush, ocean and toxic, and about **8%** ash on lava. Cover comes from a quantile of the weather density, so it's consistent across seeds.
+- **Cover:** the seeded weather now draws only toxic's rust smoke (about **28%** of the visible disc) and lava's ash (about **8%**); lush and ocean have no weather of their own (their clouds are the fog, §9, with cover set by the undiscovered share). Seeded cover comes from a quantile of the weather density, so it's consistent across seeds.
 - **Placement:** noise-clustered into merged masses and east–west streaks, with clear sky between them. Never an even polka-dot scatter.
-- **Colour:** two tones, cream plus a warm shadow.
+- **Colour:** two tones, cream plus a warm shadow. Exception: toxic's weather is dull rust smoke (the spore ramp, chroma under 0.05), so it never reads as desert cream.
 
 ### Rings
 - **Shape:** a thin band of chunky debris. At least 70% of particles are 2×2 or plus-shaped clumps forming clusters, and every dot stays exactly 1 internal pixel at every resolution.
 - **Depth sorting:** the front arc is drawn over the disc, and the back arc is hidden behind it.
 - **Colour:** the planet's own colours (§4).
-- **Meaning:** rings are a modifier on any biome, not a biome.
-- **Parameters:** ring **width** (thread → wide belt) and ring **distance** (hugging the surface → far out) are per-planet values with viewer sliders. They're a data channel reserved for codebase metrics (mapping TBD). Particle density scales with ring area.
+- **Meaning:** rings are a modifier on any biome, not a biome. **What they encode is open** (human, 2026-11-09): they no longer mean unmerged branches, because stale work is debris. Until rings get a meaning they stay in the asset library and out of the product view.
+- **Parameters:** ring **width** (thread → wide belt) and ring **distance** (hugging the surface → far out) are per-planet values with viewer sliders. Particle density scales with ring area.
+
+### Debris
+Stale work (R13) drifts near the planets it touches, as tumbling satellite parts on crooked orbits: a modifier on any planet, whatever its band (human, 2026-11-10; `docs/features/space-debris.md`).
+- **Kind by shape:** stale PR = a comms satellite (bus, solar wings, dish); abandoned branch = a snapped mast boom; merged but not deleted = a spent stage; orphaned agent branch = a loose solar array.
+- **Size** follows the diff on a log scale (8.5–16 px at hero range). Beyond a cap of 12, the rest is a "+N" count drawn outside the pixel pass.
+- **Colour (two debris-only exceptions, approved by the human):** neutral grey metal #3d3d3d #616161 #8e8c8a #b4b2b0, off BLK 36; and a **1 px red outline** #d83843, although outlines are banned everywhere else (§3). Two 2 px red nav lights #ff6866 blink 8 times per loop with staggered phases.
+- **Age:** intact (bright outline, lights on) → weathered (dim outline #872a38, one light out, scorch) → broken (fragments, lights dead).
+- **Sweep:** when the branch or PR is gone, the piece flashes teal and breaks apart in 1.2 s, leaving no trace.
 
 ### Moons
-Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on inclined elliptical orbits, passing in front at the bottom and fully behind the disc, depth-sorted. Their speed changes come only from circular projection, with no easing.
+Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on inclined elliptical orbits, passing in front at the bottom and fully behind the disc, depth-sorted. Their speed changes come only from circular projection, with no easing. Moons mean test files (#18, up to 24 per planet with the rest counted); how many moons read at a glance isn't designed yet.
+
+### Constellations (co-change)
+Files that usually change in the same commit (R9, #211; the human picked option B, "signal", from `mockups/cochange-lab/` on `feature/asset-library`, 2026-11-23). The view's code is `web/src/cochange/`.
+- **Only in focus:** lines are drawn only for the focused planet or file; an unfocused frame has none (no hairball). A planet draws one line per partner body, at most 4, at its strongest file pair there; a file one per body holding one of its 5 strongest partners. A partner on the file's own planet can't be drawn without crossing the disc, so it's named under the focused file ("with core/territory.ts"); file focus relies on labels, with no extra surface mark.
+- **The signal line:** a dim 2 px rail (`#3b3866`) with 1, 2 or 3 travelling beads by strength step (Jaccard from 0.15, 0.30, 0.50), each bead a `#fff8ff` head and a `#9a90e0` tail, running from the focus to the partner once every 3 s (16 trips a loop). These are the starfield's own three colours, never depth-faded: a constellation is drawn in starlight, as a HUD layer.
+- **Don't fight:** lines are whole 2 px stamps at the internal resolution, drawn only over empty space (space or a star) and stopping 1 px short of every body, cloud, moon, drone, beacon, the star and its corona, every label and every marker, then carrying on past it.
+- **Draw-in:** over 0.7 s from the focused end, strongest first, 0.1 s apart, easing out. Reduced motion draws them at once with the beads frozen (§7).
+- **Off screen:** a partner whose body is off the frame gets an edge arrow (a `#9a90e0` chevron) where its line leaves the frame, with the partner's name; clicking it focuses that partner (the star's: free flight).
+- **Missing-pair flag:** a flat teal 12×6 glyph, a filled `#00bc9c` dot linked to an empty `#00ffd5` ring (the pair's missing half), 2 px beside the flagged file's body at mid height, on the side with room for its text. It's an alert, so it's **always visible**, focused or not; its two lines of text ("<file>" / "usually changes with <file>") show while its pair is in focus, for at most 3 flags, strongest first, with the rest as one "+N more" line. Recent changes only (the human, 2026-11-23): a strong partner (3 or more shared commits) changed in the last 10 commits and the file didn't; an older skip is settled. It clears when a later change touches the file, or when the file is charted.
+- **Test pairs:** a file paired with its own test gets no line to the moon. The moon gets a 1 px teal tick (2 px tall, 1 px above it), and the planet's flag says "tests usually change with this".
 
 ## 7. Motion
 
-- **Loop lock:** every layer completes a whole number of cycles per loop. The default loop is **24 s**:
-  - the surface turns **2** times, right to left, at about 1 rad/s;
-  - clouds turn **3** times, drifting 1.5× faster than the surface so they visibly slide over the terrain;
-  - each moon orbits once per surface turn;
+- **Loop lock:** every layer except the planets' orbits completes a whole number of cycles per loop. The default loop is **48 s** (human, 2026-11-19, #174; it was 24 s, so every looped layer now runs at half that rate, with the same turns per loop and so the same ratios):
+  - the surface turns **2** times, right to left, once every 24 s (about 0.26 rad/s);
+  - clouds turn **3** times, once every 16 s, drifting 1.5× faster than the surface so they visibly slide over the terrain;
+  - each moon orbits once per surface turn, and so does each drone round its home;
+  - the molten lava field churns once per surface turn; the star turns once per loop and its granulation churns once;
   - ring debris flows 1/5 turn per surface turn;
-  - the crew's bob, sway and blink are locked to whole cycles.
-- **Alternative loop:** 36 s at 3:4.
+  - the crew's bob, sway and blink, and a drone's idle (its own 12 s loop: bob, drift, look-around, blink, working face and smoke), are locked to whole cycles. They are character animation, not planetary motion, so they kept their rate when the loop doubled (#174).
+- **Alternative loop:** 72 s at 3:4 (the old 36 s at 3:4, halved with the default, #174).
+- **Slow orbits (human, 2026-11-10, #60; 12 minutes since 2026-11-19, #174):** planets orbit the star very slowly, off the loop: one turn every **12 minutes** (0.5°/s, 15 loops; `ORBIT_SECONDS` in `web/src/model/motion.ts`). One whole turn per 24 s loop would have been 15°/s, which swept a large system past the camera and fought free flight and focus, so the orbits gave up the seamless loop. The 10-minute orbit of #60 isn't a whole number of 48 s loops, so #174 made it 12.
+  - Every planet turns at the same constant rate, with no easing, so the system turns as one: planets keep their places relative to each other (the layout's slots and phases), and a speed never reads as data (constitution principle 4).
+  - Seen from the start pose, no planet crosses more than 1.5% of the frame per second (over a minute to cross it), in a small system and a large one alike, because the start pose's distance grows with the system. Commet's own outermost planet moves 0.30 units/s, under the slowest free-flight speed (0.5 units/s).
+  - Moons, clouds, drones, fog and labels ride with their planet.
+  - Orbit position is a function of the frame number alone. Every 21 600 frames (one orbit, 15 loops) the whole scene is exactly frame 0 again.
+- **Focus follows the orbit:** clicking a planet, or `[` / `]`, locks the camera onto it. The camera glides in, then moves with the planet along its orbit without turning, so the planet stays centred at the angle and zoom the user chose while the star and the other planets turn past behind it. Escape, or any fly key, returns to free flight from wherever the camera is, and the planet orbits on out of the centre. Home returns to the start pose turned with the orbits, so it frames the system exactly as it first appeared, with every planet as far from the eye (the depth fade of §5 holds).
 - **Parallax order:** stars are static, then ring, surface, small moon and large moon, each moving faster.
-- **Seamless test:** the difference between the last frame and the first must be no more than a normal frame-to-frame difference.
-- **Reduced motion** freezes on a fixed frame.
+- **Seamless test:** the difference between the last frame and the first must be no more than a normal frame-to-frame difference, for every loop-locked layer. One loop on (frame 1440) is no longer frame 0 for planets, so render tests pin the frames they compare: they follow a planet with the camera, as focus does, or compare across one whole orbit (`test/render/orbits.spec.ts`).
+- **Reduced motion** freezes every layer, orbits included, on the frame where it was switched on (frame 0 when it is on from the start), and switching it off resumes from there, so switching it never moves a planet. Focus cuts instead of gliding.
 
 ## 8. Astronauts (the crew)
 
@@ -175,6 +227,8 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
   - At a distance the eyes shrink with the figure; that's accepted.
 - **Contributor identity:** shoulder bands, the backpack stripe and the eye glow.
 
+**Drones (agent sessions).** Each supported provider has its own variation of the base drone D-final, in BLK 36 only and with V2 eyes (`docs/features/agent-drones.md`, `feature/drone-lab`). Drones may also use two provider eye designs, approved by the human on 2026-11-10: **Pills** (Copilot) and a **`>_` prompt** (Codex). That makes 12 eye designs for drones; astronauts keep the 10 V2 designs. OpenCode's and Kiro's near-suit whites are approved too: they stay apart from the crew by size, shape and the dark screen.
+
 ## 9. The code layer (ASCII / cyberbrutalist)
 
 - **Glyphs:** custom hand-drawn pixel glyphs at 5–8 px, never font text.
@@ -187,8 +241,9 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
   - **Count:** scales with planet size, from **1 sector on the smallest planets to 5 on the biggest**, deterministic from the seed.
   - **Glyph clamp:** each sector holds a bounded number of glyph cells across it (lower and upper limits). Zooming in makes cells larger instead of multiplying them, and zooming out never shrinks a sector below the lower limit.
   - **Controls:** a viewer toggle, off by default, with teal as a sub-toggle and a manual sector override.
+- **Adopted: fog of war is cloud (human, 2026-11-16; `docs/features/fog-of-war-art.md`).** Undiscovered code is under **the planets' own cream weather** (#228; the human, 2026-11-25: "keep the same cloud visual language as before just make its coverage proportional… the puffs were smaller and blended into each other"): the asset viewer's `WEATHER.cloud` exactly (small puffs 0.058–0.108 R on 1500 sites, float 0.055, flat 0.6, edges lumpy with satellites, cores domed, each mass shaded as one dome, the offset shadow at the weather's 0.1 R reach), over each undiscovered file's territory (its share of the planet's surface cells, computed when drawing), locked to the ground rather than drifting. The cloud wears the weather's own noise pattern (merged masses and east–west streaks, clear sky between them) at density **0.35** of the planet's sites: a fully undiscovered planet is about 55–60% clouded (somewhat more on a planet of many files, its files' floors added), a partly discovered one carries the part of that pattern over its undiscovered files, and a **fully discovered planet has no clouds**. A site's cloud depends on its own file alone, so a planet's cloudiness is the sum of its undiscovered files' and tracks their share. **Every undiscovered file covers at least 0.35 of its own sites** (its highest in the noise) and no misted file more than that of its own, so fogged always reads cloudier than misted and no undiscovered file ever lies in clear sky (Rule 1; the human chose the full floor, 2026-11-25, accepting about 0.45 cover on a fully fogged planet of many files). **Health shows through the clear sky** between masses (about half of a fully fogged lava world's glow), by the human's choice of option C at the #228 checkpoint (2026-11-25), over A (0.9, an overcast ball that hid health but lost the weather's look) and B (0.5). The planets' own weather (lush, ocean) stays gone in the product, since it is the fog; lava's ash plumes and toxic's rust smoke stay, as health-band cues. Charting a file turns its cloud [OIII] teal while it thins away (about 0.6 s of the 1 s clear); a refog rolls cloud back in from the far edge, with no teal. The dark veil (D2d, adopted 2026-11-11) and #224's C6 storm front (big domed masses at 0.9 cover, bulging past the limb) are replaced, and kept in the asset library's history.
+  - **Three levels (#201, #224, #228; the human, 2026-11-25: "there should be no black area… it should be clouds for completely unknown, and misted for read but untested").** Fogged (never reviewed since someone else changed it) is the cloud above. **Misted** (stored `haze`: read, not yet tested) is "a little cloud" in the same language: the viewer's thin weather (`WEATHER.thin`: puffs 0.7× the cloud's on 3061 sites, lift 0.5, float 0.05), flatter (flat 0.4) and much sparser (density 0.07 against the cloud's 0.35; every misted file shows at least 0.07 of its own sites, so read never draws like understood, and never more than 0.35), the same placement rule over each misted file's territory, locked to the ground, no shadow, in `palette.fog.mist`: the cloud's white top on every lit band and its cream only on the night side, so it reads clearly lighter than fogged and is never dark. Clear (understood) has nothing over it. Unknown or damaged fog draws every file fogged, as cloud. Test moons: all cloud when fogged, a thin mist line round the equator when misted. Charting turns the file's cloud teal while it thins to mist; a passed quiz fades the mist site by site (no teal); a change rolls the new level in from the far edge (no teal). The human picked the cloud (C) and the lighter mist, then sparser still (0.07), at the #228 checkpoint (2026-11-25). Numbers: `web/src/model/fog-cloud.ts` (`CLOUD`, `MIST`; `FOG_SKY_TOP`, the cloud's reach, 1.204 R, which drones and the crew ship clear).
 - **Candidates, not yet adopted:**
-  - fog of war as a glyph field: scene-tile slabs, with an inverted-lightness wavefront where teal helps most;
   - glitch packets whose heads carry their source planet's colour;
   - terminal and drifting-band view modes;
   - a pixel↔glyph mosaic transition;
@@ -205,19 +260,20 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 | Camera | **Pending:** ortho snapped vs ortho free rotation vs perspective free flight (mockups in progress) |
 | Palette | Crew = **BLK 36** exactly; world = **v2**; rings = planet-family colours only |
 | Accent | **[OIII] teal**, events only, under 10% of pixels |
-| Depth | v2 fade with full colours; **pixel-smooth** per-pixel blend by distance (stepped and object modes as options) |
-| Planet meaning | Biomes decorative (hashed from stable ID); size = LOC; data via fog, drones, size, constellations, debris |
-| Planet types | Lush, ocean, ice, desert/crater, lava, plus gas giant, barren moon, toxic |
+| Depth | v2 fade with full colours; **pixel-smooth** per-pixel blend by distance (stepped and object modes as options); its reach scales with the system, so the farthest planet at the start pose fades ≤ 0.72 (#59) |
+| Planet meaning | Code-health bands lava → toxic → ash → healthy (lush, ocean or ice); size = LOC; moons = tests; debris = stale work; fog, drones and constellations carry the rest (§6 "What a planet tells you") |
+| Planet types | Healthy: lush, ocean, ice. Ash: desert/crater. Toxic. Lava. Library extras: gas giant, barren moon |
 | Shading | Quantised bands, lit directional terminator, hero at 42–50% of frame, optional moons and halo |
 | Cracks | ≥2 px jagged Voronoi cracks plus open lava pools / ice water |
-| Clouds | Float r≈1.05, offset shadow, 1.5× drift, blended clumps, ~28% cover (lava ash ~8%) |
-| Rings | Thin chunky clumps, 1 px dots, front arc over disc |
-| Motion | 24 s loop lock (surface 2 : clouds 3); 36 s 3:4 alternative; reduced motion freezes |
+| Clouds | Float r≈1.05, offset shadow, blended clumps. They are the fog (§9): the cream weather at 0.35 of the sites over undiscovered files, locked to the ground, health showing through its clear sky (#228); misted (read, untested) files get a little thin weather, white and never dark; seeded weather only as toxic's smoke (~28%, 1.5× drift) and lava's ash (~8%) |
+| Rings | Thin chunky clumps, 1 px dots, front arc over disc; meaning open, library only until it has one |
+| Motion | 48 s loop lock (surface 2 : clouds 3, #174); 72 s 3:4 alternative; planets orbit once per 12 min, off the loop, and focus follows them (#60, #174); reduced motion freezes |
 | Astronaut | Chibi SDF, 4:3 screen visor, ApprenticeHack V2 eyes, BLK 36 |
 | Code layer | Filter-style glyphs; planet artefacts adopted as a toggle |
 | Labels and UI | Bitmap pixel font at native resolution, outside the pixel pass |
+| Constellations | Option B "signal" (#211): focus only; a dim 2 px rail with 1–3 beads by strength in the starfield's colours, only over empty space, 1 px clear of everything; 0.7 s draw-in, at once under reduced motion; edge arrows; the teal missing-pair flag, always visible (§6 "Constellations") |
 
-**Not designed yet:** drones (one per agent session), fog of war (see §9 candidates), captain's log beacons, co-change constellations, the suspicious-silence flag, space debris, warp transitions, and the label/UI layout.
+**Not designed yet:** per-agent drones (the base drone D-final is picked on `feature/drone-lab`), captain's log beacons, the suspicious-silence flag, many moons at a glance, warp transitions, and the label/UI layout.
 
 **In progress:** lava and ice open areas, orange lava with yellow accents, and bluer lava rock (§6); the pixel-smooth default switch (§5).
 
@@ -225,7 +281,9 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 
 | Direction | Why it was rejected |
 |---|---|
-| Health-coded biomes (lush = healthy, lava = churn, …) | Biomes are now decorative; data lives in other channels. |
+| Decorative, hash-picked biomes | Planet looks now encode code health (human, 2026-11-06 and 2026-11-09). Seeded variety lives only inside a band. |
+| Rings as unmerged branches (#18) | Stale work is debris (R13; human, 2026-11-09). Rings' meaning is open. |
+| Acid-lime and violet toxic | Read as a different world, not as "less bad than lava", and the violet broke the ring hue rule. Replaced by ember for the health band (#19). |
 | Sprite sheets / pre-rendered 2D | Breaks live 3D and the per-pixel depth fade. |
 | Planetarium pastels (v1) | Too soft and flat for a world with depth. |
 | Research "true colour ×2" shared palette | Coherent but too muted. |
@@ -242,7 +300,7 @@ Two per featured planet (about 9 px and 5 px). They are 3-tone warm spheres on i
 The asset viewer is the reference implementation (`mockups/asset-viewer/`):
 - **`planet-ramps.js`:** `V2_PLANET_RAMPS` (the world palette).
 - **`palette-map.js`:** `mapPalette('blk-36')` (the crew).
-- **`viewer.js`:** `DEPTH_RANGES` (12/26/44), `LOOP` (24 s, 2:3), `WEATHER` (cover and float), `CRACKS` (crack frequency and cut).
+- **`viewer.js`:** `DEPTH_RANGES` (12/26/44), `LOOP` (24 s, 2:3; the mockup's own loop; the product's is §7), `WEATHER` (cover and float), `CRACKS` (crack frequency and cut).
 - **`npm test`** guards the solid clouds, the cloud shadow, crack width, per-pixel depth and loop seams.
 
 References live in `<main-checkout>/.archive/docs/design/refs/`. That folder is gitignored, so use absolute paths: `planetarium-teal-ring.png`, `moodboard-planet-gif/planet.gif`, `vibe-neon-ring-gif-frame.png`, `planet-variety-grid-64.png`, `ascii-cyberbrutalist-lime.png`, `ascii-glyph-mosaic.png`. The colour research is in `.archive/docs/design/colour-research/`.

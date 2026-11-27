@@ -1,0 +1,189 @@
+// visual-proof (R5): scans what a take saw (every frame's page text, every API response the view got,
+// the state files behind them) for what AGENTS.md Rule 2 keeps out of any output: absolute paths,
+// tokens and secrets, agent-log fields. Any hit stops the run. A hit says its rule and where it was, and
+// shows only the first characters of what it matched, so the report never repeats the private text.
+
+export interface Scanned { where: string; text: string }
+export interface Hit { rule: string; where: string; excerpt: string }
+/**
+ * This run's own private strings (the launch token, HOME, the scratch dir, the main checkout), found as
+ * they are; and, for the bundle scan only, the token-like runs that are library text (libraryRuns), which
+ * the token-like rule skips. Every other rule still applies to them.
+ */
+export interface PrivacyContext { literals: readonly { name: string; value: string }[]; library?: ReadonlySet<string> }
+
+/** The first folders of absolute paths on macOS, Linux and their containers. */
+const ROOTS = ['Users', 'home', 'private', 'tmp', 'var', 'Volumes', 'root', 'opt', 'etc', 'mnt', 'srv', 'usr', 'bin', 'sbin', 'lib', 'lib64',
+  'nix', 'snap', 'run', 'media', 'boot', 'proc', 'sys', 'Library', 'System', 'Applications', 'workspace', 'workspaces', 'data', 'app', 'cores'];
+
+/** Characters that can't start an absolute path, so `src/tmp/x` is relative and `(/tmp/x` isn't. */
+const PATH_START = String.raw`(?:^|(?<=[\s"'(=:,;<>\[{]))`;
+const PATTERNS: readonly { rule: string; re: RegExp }[] = [
+  // Every common system root (PR #199 e0914aea). A generic `/word/` rule would stop on every route (`/api/drones`) and every slash in prose.
+  { rule: 'absolute path', re: new RegExp(String.raw`${PATH_START}/(?:${ROOTS.join('|')})(?:/[^\s"'<>]*)?(?![A-Za-z0-9_.-])`, 'g') },
+  { rule: 'absolute path', re: new RegExp(String.raw`${PATH_START}~/[^\s"'<>]*`, 'g') },
+  { rule: 'absolute path', re: /\bfile:\/\/[^\s"'<>]*/g },
+  { rule: 'absolute path', re: /\b[A-Za-z]:\\[^\s"'<>]*/g },
+  { rule: 'absolute path', re: /\\\\[A-Za-z0-9._$-]+\\[^\s"'<>]*/g },
+  { rule: 'launch URL', re: /#t=[A-Za-z0-9_-]{6,}/g },
+  { rule: 'secret prefix', re: /\b(?:sk-ant-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,})/g },
+  { rule: 'secret prefix', re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/g },
+];
+/** A run of 32+ token characters with capitals, small letters and digits: a token's shape (a SHA or file id has no capitals). */
+const RUN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
+const tokenLike = (s: string) => /[A-Z]/.test(s) && /[a-z]/.test(s) && /[0-9]/.test(s);
+/** The token-like runs in `text`. */
+export const tokenRuns = (text: string): string[] => [...text.matchAll(RUN)].map((m) => m[0]).filter(tokenLike);
+/**
+ * Agent-log fields Rule 2 never reads (docs/research/agent-attribution.md): as a key in served JSON they
+ * mean log data got through. Only names no Commet contract uses (`message` or `text` could be a real answer).
+ */
+const LOG_FIELDS = new Set(['originalFile', 'last-prompt', 'lastPrompt', 'toolUseResult', 'attachment', 'api-request', 'apiRequest', 'file-history', 'sessionHistory']);
+
+const mask = (s: string) => `${[...s].slice(0, 6).join('')}… (${[...s].length} chars)`;
+
+export function privacyHits(items: readonly Scanned[], ctx: PrivacyContext): Hit[] {
+  const out: Hit[] = [];
+  const seen = new Set<string>();
+  const add = (h: Hit) => { const k = `${h.rule}\0${h.where}\0${h.excerpt}`; if (!seen.has(k)) { seen.add(k); out.push(h); } };
+  for (const { where, text } of items) {
+    for (const l of ctx.literals) if (l.value && text.includes(l.value)) add({ rule: l.name, where, excerpt: `(${l.name}, ${[...l.value].length} chars)` });
+    for (const { rule, re } of PATTERNS) for (const m of text.matchAll(re)) add({ rule, where, excerpt: mask(m[0]) });
+    for (const run of tokenRuns(text)) if (!ctx.library?.has(run)) add({ rule: 'token-like string', where, excerpt: mask(run) });
+    if (where.endsWith(' (keys)')) for (const key of text.split('\n')) if (LOG_FIELDS.has(key)) add({ rule: 'agent-log field', where: where.slice(0, -' (keys)'.length), excerpt: key });
+  }
+  return out;
+}
+
+/** A route the server answers: lowercase words only, so it can be printed as a hit's place. */
+const ROUTE = /^\/api\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/;
+
+/** A request path as text to scan (Qodo f3aa696b): as sent, its path decoded, and each query parameter decoded, so `%2FUsers…` is caught too. */
+export function requestText(path: string): string {
+  const q = path.indexOf('?');
+  const pathname = q < 0 ? path : path.slice(0, q);
+  let decoded = pathname;
+  try { decoded = decodeURIComponent(pathname); } catch { /* malformed: scanned as sent */ }
+  return [path, decoded, ...[...new URLSearchParams(q < 0 ? '' : path.slice(q + 1))].flat()].join('\n');
+}
+
+/**
+ * What one served response holds, to scan: a JSON body's decoded strings and, apart, its keys; any other
+ * body as it is; its request's query; and a request's path itself. A hit is placed by the path alone,
+ * since its place is printed unmasked and a query could hold anything (PR #199 r2), and only by a path
+ * that is a plain route: any other request is placed as one, unnamed (Qodo f3aa696b).
+ */
+export function servedTexts(r: { path: string; body: string }): Scanned[] {
+  const q = r.path.indexOf('?');
+  const pathname = q < 0 ? r.path : r.path.slice(0, q), request = pathname.startsWith('/');
+  const where = `GET ${!request || ROUTE.test(pathname) ? pathname : '(a request that is not a route)'}`;
+  const query: Scanned[] = [
+    ...(q < 0 ? [] : [{ where: `${where} (query)`, text: [r.path.slice(q + 1), ...[...new URLSearchParams(r.path.slice(q + 1))].flat()].join('\n') }]),
+    ...(request ? [{ where: `${where} (path)`, text: requestText(pathname) }] : []),
+  ];
+  let value: unknown;
+  try {
+    value = JSON.parse(r.body);
+  } catch {
+    return [{ where, text: r.body }, ...query];
+  }
+  const strings: string[] = [], keys: string[] = [];
+  const walk = (v: unknown): void => {
+    if (typeof v === 'string') strings.push(v);
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { keys.push(k); walk(x); }
+  };
+  walk(value);
+  return [{ where, text: strings.join('\n') }, { where: `${where} (keys)`, text: keys.join('\n') }, ...query];
+}
+
+/** What one take saw, to scan: every distinct page text, every API response, every static file request, the event stream and the scene's notes. */
+export function takeTexts(name: string, log: { texts: readonly [string, number][]; served: readonly { path: string; body: string }[]; assets: readonly { path: string }[]; events: string; notes: readonly string[]; errors: readonly string[] }): Scanned[] {
+  return [
+    // a static file's request (its path and query) is the page's own text too; placed by the take alone (Qodo f3aa696b)
+    { where: `take ${name} static file requests`, text: log.assets.map((a) => requestText(a.path)).join('\n') },
+    // page, console and server errors go into the record too (PR #199 10bde0e3)
+    { where: `take ${name} page errors`, text: log.errors.join('\n') },
+    ...log.texts.map(([text, k]) => ({ where: `take ${name} page text from frame ${k}`, text })),
+    ...log.served.flatMap((s) => servedTexts(s)),
+    { where: `take ${name} event stream`, text: log.events },
+    { where: `take ${name} notes`, text: log.notes.join('\n') },
+  ];
+}
+
+/** What the run itself writes into captions, the record and the summary: both commit subjects and the scene's own words (PR #199 5b136d3c). */
+export function runTexts(r: { base: { subject: string }; head: { subject: string }; scene: { name: string; summary: string }; refs?: readonly string[]; branch?: string; changed?: readonly string[] }): Scanned[] {
+  return [
+    { where: 'the base commit subject', text: r.base.subject },
+    { where: 'the head commit subject', text: r.head.subject },
+    { where: 'the scene', text: `${r.scene.name}\n${r.scene.summary}` },
+    // the refs as typed and the checkout's branch go into the record's first lines too (PR #199 r2)
+    ...(r.refs ? [{ where: 'the refs as given', text: r.refs.join('\n') }] : []),
+    ...(r.branch !== undefined ? [{ where: 'the branch', text: r.branch }] : []),
+    // and the paths that differ between base and head, which the record lists (Qodo 878c1941)
+    ...(r.changed ? [{ where: 'the changed paths', text: r.changed.join('\n') }] : []),
+  ];
+}
+
+/** What the data step writes into the record from the data repo: its commit subject, the layout's roots and the start state's file names (Qodo 878c1941). */
+export function dataTexts(r: { subject: string; roots: string; state: readonly string[] }): Scanned[] {
+  return [
+    { where: "the data repo's commit subject", text: r.subject },
+    { where: "the layout's roots", text: r.roots },
+    { where: 'the start state files', text: r.state.join('\n') },
+  ];
+}
+
+/**
+ * What a build wrote into dist/web, scanned before it is served, filmed or named in the record (Qodo
+ * 648df95e, 878c1941): a build can copy any file the sandbox lets it read into the view, and a take scans
+ * only what the page shows and the API answers. The file names first: a hit's place is printed unmasked,
+ * so a file is named by its path only once every path is clean.
+ */
+export function bundleHits(side: string, files: readonly { path: string; text: string }[], ctx: PrivacyContext): Hit[] {
+  const where = `the ${side} build's dist/web`;
+  const names = privacyHits([{ where: `${where} file names`, text: files.map((f) => f.path).join('\n') }], ctx);
+  if (names.length) return names;
+  return privacyHits(files.map((f) => ({ where: `${where}/${f.path}`, text: f.text })), ctx);
+}
+
+/** The dist/web file a static request names: `/` is index.html (the server's own bundleKey), null for bad percent-encoding. */
+export function assetPath(requestPath: string): string | null {
+  const q = requestPath.indexOf('?');
+  try {
+    const key = decodeURIComponent(q < 0 ? requestPath : requestPath.slice(0, q));
+    return key === '/' ? 'index.html' : key.replace(/^\//, '');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The static files a take was served that aren't byte for byte one the bundle scan read (Qodo 968ff513):
+ * a process the build left behind can change dist/web after the scan, and the take serves the build's
+ * own tree. A hit names the scanned file it should have been, never the request (printed unmasked). An
+ * answer other than 200 serves no bundle file; its body reaches only the page, whose text is scanned.
+ */
+export function assetHits(take: string, assets: readonly { path: string; status: number; sha256: string }[], scanned: ReadonlyMap<string, string>): Hit[] {
+  const out: Hit[] = [];
+  for (const a of assets) {
+    if (a.status !== 200) continue;
+    const file = assetPath(a.path);
+    const want = file === null ? undefined : scanned.get(file);
+    if (want === a.sha256) continue;
+    out.push({ rule: 'bytes the bundle scan never read', where: `take ${take} static files`, excerpt: want === undefined ? 'a file not in the scanned dist/web' : `dist/web/${file} changed after the scan` });
+  }
+  return out;
+}
+
+/**
+ * A command's output for the record: as it is when the scan finds nothing in it, else one line saying it
+ * was withheld and why (rules only, never the text). For build, scan and setup output, stop details and
+ * a failed take's tail (PR #199 r2).
+ */
+export function screen(lines: readonly string[], what: string, ctx: PrivacyContext): string[] {
+  const hits = privacyHits([{ where: what, text: lines.join('\n') }], ctx);
+  if (!hits.length) return [...lines];
+  const rules = [...new Set(hits.map((h) => h.rule))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return [`(${what} output withheld: ${rules.join(', ')} in it)`];
+}

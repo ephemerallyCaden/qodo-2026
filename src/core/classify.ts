@@ -20,17 +20,20 @@ export interface ClassifyInput {
   covered: boolean;
   /** Inside a transcript that dropped a record which could have held an edit. */
   partial: boolean;
+  /** Its patch couldn't be read completely (#38): added lines may be missing, so `counted` and `shareMilli` may be low. */
+  patchIncomplete: boolean;
 }
 
 /**
  * The commit class (design §5.2.7). "Unknown, never human": `human` needs a self-authored,
- * non-merge commit with countable lines under 300‰, inside fully parsed coverage, that no
- * agent session committed. Every other case without enough matched lines is `unknown`.
+ * non-merge commit with countable lines under 300‰, inside fully parsed coverage, whose patch
+ * was read completely and that no agent session committed. Every other case without enough
+ * matched lines is `unknown`.
  */
 export function classify(i: ClassifyInput): CommitClass {
   // Merges first: teammate lines arriving through one must never read as yours (#5 decision 3).
   if (i.isMerge || i.counted === 0) return 'unknown';
   if (i.shareMilli >= SHARE_AGENT) return 'agent';
   if (i.shareMilli >= SHARE_MIXED) return 'mixed';
-  return i.isSelf && i.covered && !i.partial && !i.ranCommit ? 'human' : 'unknown';
+  return i.isSelf && i.covered && !i.partial && !i.ranCommit && !i.patchIncomplete ? 'human' : 'unknown';
 }
