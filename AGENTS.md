@@ -76,7 +76,7 @@ Applies to every coding task, in the PR review loop above and in any local `qodo
 
 ## Agent runner (`factory/`)
 Dev tooling, not Commet: Rule 2's "no GitHub posts" covers the product, not this. The runner's only GitHub writes, all made with the human's own gh login:
-- labels on issues the owner opened and labelled (`ready-for-agent` → `agent-working` → `agent-done` / `agent-needs-help`);
+- labels on issues the owner opened and last labelled, re-checked just before the claim (`ready-for-agent` → `agent-working` → `agent-done` / `agent-needs-help`);
 - comments on that issue and on the PR the run opened;
 - pushes to `agent/<N>-<slug>` and one PR per run against the session branch;
 - `rule-proposal` issues for repeated findings (the only issues it creates) and comments on them (see "Working with Qodo").

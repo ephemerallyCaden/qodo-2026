@@ -5,7 +5,7 @@ import { DENIED_TOOLS, PASSED_ENV } from '../../factory/agent.js';
 import { LABELS } from '../../factory/config.js';
 import {
   agentDone, assertGuardrails, BASE, claudeOut, COOKIE_VALUE, FAKE_TOKEN, finding, firstHeadOnly, fixDone, implementDone, OWNER, promptOf,
-  RUNNER_SECRETS, T0, World,
+  RUNNER_SECRETS, T0, World, type FakeIssue,
 } from './world.js';
 
 const worlds: World[] = [];
@@ -172,6 +172,67 @@ describe('a ticket revoked before the claim is left alone (Qodo PR37 d3e445f7)',
     };
     expect(await w.tick({}, { exec })).toMatchObject({ state: 'skipped', reason: expect.stringContaining('changed') });
     expect(labels(w, 24)).toEqual([LABELS.ready]);
+  });
+});
+
+describe('a ticket re-labelled before the claim is claimed only on the owner\'s label (Qodo PR93 92b4bc06)', () => {
+  type At = (cmd: string, args: readonly string[]) => boolean;
+  const preflight: At = (cmd, args) => cmd.endsWith('qodo') && args[1] === 'whoami';
+  const selfTest: At = (cmd, args) => cmd.endsWith('claude') && args.includes('--no-session-persistence') && !args.includes('--json-schema');
+  /** Runs `change` on #24 once, as the first call `at` matches starts. */
+  const once = (w: World, at: At, change: (i: FakeIssue) => void): typeof w.exec => {
+    let done = false;
+    return async (cmd, args, opts) => {
+      if (!done && at(cmd, args)) {
+        done = true;
+        change(w.issues.get(24)!);
+      }
+      return w.exec(cmd, args, opts);
+    };
+  };
+  /** `by` takes `ready-for-agent` off and puts it back on, so the latest labelled event is theirs. */
+  const relabel = (by: string) => (i: FakeIssue) => {
+    i.labels.delete(LABELS.ready);
+    i.labels.add(LABELS.ready);
+    i.labeler = by;
+  };
+  const edits = (w: World) => w.callsTo('gh').filter((c) => c.args[0] === 'issue' && c.args[1] === 'edit');
+
+  it.each([['pre-flight', preflight], ['the sandbox self-test', selfTest]] as const)(
+    'another user re-applying it during %s is refused like a first labelling: no claim, no agent', async (_, at) => {
+      const w = world();
+      w.addIssue(24);
+      expect(await w.tick({}, { exec: once(w, at, relabel('collaborator')) }))
+        .toMatchObject({ state: 'refused', issue: 24, reason: expect.stringContaining('applied by @collaborator, not the repo owner') });
+      expect(labels(w, 24)).toEqual([LABELS.help]);
+      expect(edits(w).map((c) => c.args.at(-1))).toEqual([LABELS.help]);
+      expect(w.issues.get(24)!.comments).toEqual([expect.stringMatching(/^The agent runner refused this ticket: .*No agent was started/s)]);
+      expect(w.agentCalls()).toHaveLength(0);
+      expect(w.gitCalls('worktree')).toHaveLength(0);
+    });
+
+  it('the owner re-applying it during the self-test still claims, on a labeller read after the self-test and right before the claim', async () => {
+    const w = world();
+    w.addIssue(24);
+    w.claude.push(implementDone());
+    expect(await w.tick({}, { exec: once(w, selfTest, relabel(OWNER)) })).toMatchObject({ state: 'done', issue: 24 });
+    expect(w.issues.get(24)!.comments[0]).toMatch(/^Claimed by the agent runner/);
+    const claim = w.calls.indexOf(edits(w)[0]!);
+    expect(w.calls[claim]!.args.at(-1)).toBe(LABELS.working);
+    const lastGh = w.calls.slice(0, claim).filter((c) => c.cmd.endsWith('gh')).at(-1)!;
+    expect(lastGh.args).toContain('repos/owner/repo/issues/24/events');
+    expect(w.calls.indexOf(lastGh)).toBeGreaterThan(w.calls.findIndex((c) => selfTest(c.cmd, c.args)));
+  });
+
+  it('taken off during the self-test and not put back: skipped and untouched, as before', async () => {
+    const w = world();
+    w.addIssue(24);
+    expect(await w.tick({}, { exec: once(w, selfTest, (i) => i.labels.delete(LABELS.ready)) }))
+      .toMatchObject({ state: 'skipped', issue: 24, reason: expect.stringContaining(`no longer has ${LABELS.ready}`) });
+    expect(labels(w, 24)).toEqual([]);
+    expect(edits(w)).toHaveLength(0);
+    expect(w.issues.get(24)!.comments).toEqual([]);
+    expect(w.agentCalls()).toHaveLength(0);
   });
 });
 

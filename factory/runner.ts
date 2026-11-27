@@ -209,7 +209,8 @@ class Tick {
     const gone = cfg.previewIssue === null ? revoked(raw) : null;
     if (gone) return this.skip(n, gone);
     if (ticket.author !== cfg.owner) return this.refuse(`it was opened by @${ticket.author || 'unknown'}, not the repo owner @${cfg.owner}`);
-    if (labeler !== cfg.owner) return this.refuse(`\`${LABELS.ready}\` was applied by ${labeler ? `@${labeler}` : 'nobody visible'}, not the repo owner @${cfg.owner}`);
+    const untrusted = this.untrustedLabel(labeler);
+    if (untrusted) return this.refuse(untrusted);
     if (criteria === null) return this.refuse('it has no `## Acceptance criteria` section');
     if (!criteria.length) return this.refuse('its `## Acceptance criteria` section lists no criteria');
     this.criteria = criteria;
@@ -230,17 +231,17 @@ class Tick {
       ]);
     }
 
-    // Pre-flight takes seconds and the self-test up to minutes; re-read after each, so a revoke or an
-    // edit in that window wins and nothing is spent on a ticket that's gone.
-    const late = await this.changedSince(ticket);
-    if (late) return this.skip(n, late);
+    // Pre-flight takes seconds and the self-test up to minutes; re-check after each, so a revoke, an
+    // edit or someone else's re-label in that window wins and nothing is spent on a ticket that's gone.
+    const late = await this.recheck(ticket);
+    if (late) return late;
     // S4: no claim, and so no agent, until both sandboxes have proved themselves on this machine.
     const sandbox = await sandboxSelfTest({
       exec: (cmd, args, opts) => this.sh(cmd, args, opts), claude: cfg.claude, paths: this.sandbox, agentBaseEnv: this.env, tmpRoot: tmpdir(),
     });
     this.log.event('sandbox-selftest', { ...sandbox });
-    const later = await this.changedSince(ticket);
-    if (later) return this.skip(n, later);
+    const later = await this.recheck(ticket);
+    if (later) return later;
     if (!sandbox.ok) return this.handBack(`sandbox self-test failed: ${sandbox.failures.join('; ')}`);
 
     this.startRunLog();
@@ -270,11 +271,26 @@ class Tick {
       'number,title,body,author,url,state,labels'], `read #${n}`), `#${n}`);
   }
 
-  /** Why the ticket may no longer be claimed (revoked, or edited since `ticket` was read), or null. */
-  private async changedSince(ticket: Ticket): Promise<string | null> {
-    const again = await this.viewIssue(ticket.number);
-    return revoked(again) ?? (ticketHash(again.title, again.body ?? '') !== ticketHash(ticket.title, ticket.body)
-      ? `#${ticket.number} changed while it was being checked` : null);
+  /** Why `ready-for-agent`, last applied by `labeler`, gives no claim: anyone but the owner (R12). */
+  private untrustedLabel(labeler: string | null): string | null {
+    return labeler === this.cfg.owner ? null
+      : `\`${LABELS.ready}\` was applied by ${labeler ? `@${labeler}` : 'nobody visible'}, not the repo owner @${this.cfg.owner}`;
+  }
+
+  /**
+   * The ticket as it must still be at the claim: a revoke or an edit since `ticket` was read skips
+   * it; a label re-applied by anyone but the owner refuses it, as a first labelling would. Who
+   * labelled it is read last, after the issue, so no re-label before the claim goes unseen
+   * (Qodo PR93 92b4bc06). Null: claim it.
+   */
+  private async recheck(ticket: Ticket): Promise<Outcome | null> {
+    const n = ticket.number;
+    const again = await this.viewIssue(n);
+    const gone = revoked(again) ?? (ticketHash(again.title, again.body ?? '') !== ticketHash(ticket.title, ticket.body)
+      ? `#${n} changed while it was being checked` : null);
+    if (gone) return this.skip(n, gone);
+    const untrusted = this.untrustedLabel(await this.labeler(n));
+    return untrusted ? this.refuse(untrusted) : null;
   }
 
   private skip(n: number, reason: string): Outcome {
