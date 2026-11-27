@@ -12,32 +12,80 @@ const GH_ALLOWED = new Set([
   'pr create', 'pr view', 'pr comment', 'pr list',
   'run view', 'label create', 'api',
 ]);
-const GH_API_WRITE_FLAGS = new Set(['-X', '--method', '-f', '-F', '--field', '--raw-field', '--input']);
 const GH_EDIT_FLAGS = new Set(['--add-label', '--remove-label', '--repo']);
 
 export function assertGhAllowed(args: readonly string[]): void {
   const [a = '', b = ''] = args;
   const sub = a === 'api' ? 'api' : `${a} ${b}`;
   if (!GH_ALLOWED.has(sub)) throw new GuardError(`gh ${sub} is not allowed`);
-  if (a === 'api') {
-    const bad = args.find((x) => GH_API_WRITE_FLAGS.has(x) || /^--(method|field|raw-field|input)=/.test(x));
-    if (bad) throw new GuardError(`gh api is read-only here (${bad})`);
-    const path = args.find((x) => x.startsWith('repos/'));
-    if (path && /\/(secrets|variables|hooks|keys|collaborators|branches\/[^/]+\/protection|actions\/permissions)\b/.test(path)) {
-      throw new GuardError(`gh api ${path} touches repo settings`);
-    }
-  }
-  if (sub === 'issue edit') {
-    const bad = args.slice(3).filter((x) => x.startsWith('-')).find((x) => !GH_EDIT_FLAGS.has(x));
-    if (bad) throw new GuardError(`gh issue edit may only change labels (${bad})`);
-    // Only the human approves a ticket or a proposal, and a proposal stays one (repeat-findings R7).
-    if (flagValues(args, '--add-label').some((l) => l.split(',').includes(LABELS.ready))) throw new GuardError(`the runner never adds ${LABELS.ready}`);
-    if (flagValues(args, '--remove-label').some((l) => l.split(',').includes(LABELS.proposal))) throw new GuardError(`the runner never removes ${LABELS.proposal}`);
-  }
+  if (a === 'api') assertApiRead(args.slice(1));
+  if (sub === 'issue edit') assertRelabel(args.slice(2));
   if (sub === 'issue create') assertProposalCreate(args.slice(2));
 }
 
-const flagValues = (args: readonly string[], flag: string) => args.flatMap((x, i) => (x === flag ? [args[i + 1] ?? ''] : []));
+/** Every move runner.ts's relabel() makes. Only the human approves a ticket or a proposal, and a proposal stays one (repeat-findings R7). */
+const RELABELS = new Set([
+  `${LABELS.ready} → ${LABELS.working}`, `${LABELS.working} → ${LABELS.done}`, `${LABELS.working} → ${LABELS.help}`, `${LABELS.ready} → ${LABELS.help}`,
+]);
+
+/**
+ * The runner's only issue edit, its relabel: `<n> --repo <slug> --remove-label <l> --add-label <l>`,
+ * each flag spelled out once in any order. The number comes first, so no flag can sit in its place.
+ */
+function assertRelabel(rest: readonly string[]): void {
+  const [n = '', ...pairs] = rest;
+  if (!/^[1-9][0-9]*$/.test(n)) throw new GuardError('gh issue edit takes one issue number first');
+  const seen = new Map<string, string>();
+  for (let i = 0; i < pairs.length; i += 2) {
+    const [flag = '', value] = [pairs[i], pairs[i + 1]];
+    if (!GH_EDIT_FLAGS.has(flag) || seen.has(flag) || value === undefined) {
+      throw new GuardError(`gh issue edit may only relabel, with --repo, --remove-label and --add-label once each (argument ${i + 4})`);
+    }
+    seen.set(flag, value);
+  }
+  if (seen.size !== GH_EDIT_FLAGS.size) throw new GuardError('gh issue edit needs --repo, --remove-label and --add-label');
+  // One whole label each way, never a list: gh reads these as CSV, so '"ready-for-agent"' would add it.
+  if (!RELABELS.has(`${seen.get('--remove-label')} → ${seen.get('--add-label')}`)) {
+    throw new GuardError(`gh issue edit only moves a ticket ${[...RELABELS].join(', ')}: the runner never adds ${LABELS.ready} or removes ${LABELS.proposal}`);
+  }
+}
+
+
+// GitHub's owner and repo name characters; a repo of only dots would walk up the path.
+const SLUG = '[A-Za-z0-9-]+/(?!\\.\\.?/)[A-Za-z0-9._-]+';
+/** The only endpoints the runner reads: its login, an issue's events or comments, a commit's check runs. */
+const GH_API_ENDPOINTS = [
+  /^user$/,
+  new RegExp(`^repos/${SLUG}/issues/[1-9][0-9]*/(?:events|comments)$`),
+  new RegExp(`^repos/${SLUG}/commits/[0-9a-f]{40}/check-runs\\?per_page=100$`),
+];
+const GH_API_OPTIONS = new Set(['--paginate', '--slurp', '--jq']);
+
+/**
+ * `gh api` only in the shapes the runner makes (Qodo PR93 5543bffc): a GET of one listed endpoint
+ * with at most `--paginate`, `--slurp` and `--jq <expr>`, each spelled out once. An allowlist, because
+ * gh also takes `-XPOST`, `-X=POST`, `-fbody=x` and a leading slash, which a list of write flags missed.
+ * Errors name the reason, never an argument, which could hold a token.
+ */
+function assertApiRead(rest: readonly string[]): void {
+  const seen = new Set<string>();
+  const endpoints: string[] = [];
+  for (let i = 0; i < rest.length; i++) {
+    const x = rest[i]!;
+    if (!x.startsWith('-')) {
+      endpoints.push(x);
+      continue;
+    }
+    if (!GH_API_OPTIONS.has(x)) throw new GuardError(`gh api takes only --paginate, --slurp and --jq <expr>, spelled out (argument ${i + 2} is another option)`);
+    if (seen.has(x)) throw new GuardError(`gh api takes ${x} once`);
+    seen.add(x);
+    if (x === '--jq' && rest[++i] === undefined) throw new GuardError('gh api --jq needs an expression');
+  }
+  if (endpoints.length !== 1) throw new GuardError(`gh api takes exactly one endpoint (got ${endpoints.length})`);
+  if (!GH_API_ENDPOINTS.some((re) => re.test(endpoints[0]!))) {
+    throw new GuardError("gh api reads only user, an issue's events or comments, or a commit's check runs (?per_page=100), with no leading slash");
+  }
+}
 
 const CREATE_FLAGS = new Set(['--repo', '--title', '--body-file', '--label']);
 

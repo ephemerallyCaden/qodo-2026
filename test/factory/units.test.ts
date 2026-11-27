@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { fixPrompt, fixResult, implementResult, lastJsonBlock, readClaude, systemPrompt } from '../../factory/agent.js';
-import { configError, defaults, localDenies, parseLocalConfig, slugFromRemote, withLocalConfig } from '../../factory/config.js';
+import { configError, defaults, LABELS, localDenies, parseLocalConfig, slugFromRemote, withLocalConfig } from '../../factory/config.js';
 import { assertGhAllowed, assertGitAllowed, guarded, GuardError } from '../../factory/guard.js';
 import type { Exec } from '../../factory/exec.js';
 import { redact, RunLog } from '../../factory/log.js';
@@ -320,9 +320,75 @@ describe('guardrails (R8)', () => {
   ])('refuses gh %j', (args) => expect(() => assertGhAllowed(args)).toThrow(GuardError));
 
   it.each([
-    [['issue', 'list', '--label', 'x']], [['issue', 'edit', '1', '--repo', 'o/r', '--remove-label', 'a', '--add-label', 'b']],
+    [['issue', 'list', '--label', 'x']], [['issue', 'edit', '1', '--repo', 'o/r', '--remove-label', 'agent-working', '--add-label', 'agent-done']],
     [['api', '--paginate', 'repos/o/r/issues/1/events', '--jq', '.']], [['pr', 'create', '--base', 'session/week1']], [['label', 'create', 'x', '--force']],
   ])('allows gh %j', (args) => expect(() => assertGhAllowed(args)).not.toThrow());
+
+  // gh api is an allowlist of the runner's own reads, not a denylist of write flags (Qodo PR93 5543bffc):
+  // gh parses attached (-XPOST, -fbody=x) and `=` (-X=POST) forms, and a leading slash, like the spelled-out ones.
+  const head = 'c'.repeat(40);
+  const comments = 'repos/o/r/issues/1/comments';
+  it.each([
+    [['api', '-XPOST', comments]], [['api', '-X=POST', comments]], [['api', '--method=POST', comments]], [['api', '-X', 'POST', comments]],
+    [['api', '-X', 'GET', comments]], [['api', '-iXPUT', 'repos/o/r/pulls/1/merge']],
+    [['api', comments, '-fbody=x']], [['api', comments, '-Fkey=@f']], [['api', comments, '--input', 'f']], [['api', comments, '--raw-field=body=x']],
+    [['api', 'graphql', '-fquery=mutation{deleteIssue(input:{issueId:"x"}){clientMutationId}}']],
+    [['api', '/repos/o/r/hooks/1']], [['api', '-XDELETE', '/repos/o/r/hooks/1']], [['api', '/repos/o/r/issues/1/events']], [['api', '/user']],
+    [['api', 'repos/o/r/pulls/1/merge']], [['api', 'repos/o/r/actions/secrets']], [['api', 'repos/o/r/issues/1']], [['api', 'https://api.github.com/user']],
+    [['api', 'repos/o/../issues/1/events']], [['api', 'repos/o/r/issues/1/events?per_page=100']], [['api', 'repos/o/r/issues/0/events']],
+    [['api', `repos/o/r/commits/${head}/check-runs`]], [['api', `repos/o/r/commits/${head}/check-runs?per_page=100&filter=all`]],
+    [['api', 'repos/o/r/commits/abc123/check-runs?per_page=100']], [['api', 'repos/{owner}/{repo}/issues/1/events']],
+    [['api', 'repos/o/r/issues/1/events', 'extra']], [['api', 'user', comments]], [['api']], [['api', '--paginate']],
+    [['api', '--jq=.login', 'user']], [['api', '-q', '.login', 'user']], [['api', 'user', '--jq']], [['api', '--paginate', '--paginate', comments]],
+    [['api', '-H', 'Accept: x', 'user']], [['api', '--hostname', 'example.com', 'user']], [['api', '--', 'user']], [['api', '--cache', '1h', 'user']],
+  ])('gh api refuses every write spelling, other endpoint and extra argument (Qodo PR93 5543bffc): %j', (args) => {
+    expect(() => assertGhAllowed(args)).toThrow(GuardError);
+  });
+
+  // Copied from each call site, with the runner's constants filled in.
+  it.each([
+    ['runner labeler', ['api', '--paginate', 'repos/ephemerallyCaden/qodo-2026/issues/233/events', '--jq',
+      `.[] | select(.event == "labeled" and .label.name == "${LABELS.ready}") | .actor.login`]],
+    ['runner preflight, sweep ownerLogin', ['api', 'user', '--jq', '.login']],
+    ['runner review poll', ['api', '--paginate', '--slurp', `repos/o/r/commits/${head}/check-runs?per_page=100`]],
+    ['runner Qodo marker', ['api', '--paginate', 'repos/o/r.js/issues/101/comments', '--jq', '.[] | select(.user.login == "qodo-code-review[bot]") | .body']],
+    ['sweep commentedIds', ['api', '--paginate', 'repos/o-1/r_2/issues/12/comments', '--jq', '.[] | select(.user.login == "o-1") | .body']],
+  ])('gh api allows each read the runner makes, as its call site spells it: %s', (_, args) => {
+    expect(() => assertGhAllowed(args)).not.toThrow();
+  });
+
+  const relabel = (n: string, from: string, to: string) => ['issue', 'edit', n, '--repo', 'o/r', '--remove-label', from, '--add-label', to];
+  // gh issue edit is the runner's relabel in its exact shape: the flag check used to start at args[3],
+  // so a flag in the issue number's place went unchecked.
+  it.each([
+    [['issue', 'edit', '--add-label=ready-for-agent', '7', '--repo', 'o/r']], [['issue', 'edit', '--remove-label=rule-proposal', '7']],
+    [['issue', 'edit', '--body', 'pwned', '7']], [['issue', 'edit', '--title=x', '7']],
+    [relabel('0', 'agent-working', 'agent-done')], [[...relabel('7', 'agent-working', 'agent-done'), '8']],
+    [['issue', 'edit', '7', '--repo', 'o/r', '--add-label', 'agent-done']], [[...relabel('7', 'agent-working', 'agent-done'), '--add-label', 'agent-needs-help']],
+    // gh reads the labels as CSV: a quoted or listed label is still that label.
+    [relabel('7', 'agent-working', '"ready-for-agent"')], [relabel('7', '"rule-proposal"', 'agent-done')],
+    [relabel('7', 'agent-working', 'agent-done,ready-for-agent')], [relabel('7', 'agent-working', 'bug')], [relabel('7', 'agent-done', 'agent-working')],
+  ])('gh issue edit refuses anything but the relabel shape: %j', (args) => {
+    expect(() => assertGhAllowed(args)).toThrow(GuardError);
+  });
+
+  // Every transition runner.ts's relabel() makes, as it spells the call.
+  it.each([
+    [LABELS.ready, LABELS.working], [LABELS.working, LABELS.done], [LABELS.working, LABELS.help], [LABELS.ready, LABELS.help],
+  ])('gh issue edit allows the runner relabel %s → %s', (from, to) => {
+    expect(() => assertGhAllowed(['issue', 'edit', '233', '--repo', 'ephemerallyCaden/qodo-2026', '--remove-label', from, '--add-label', to])).not.toThrow();
+  });
+
+  it('gh api refusals name the reason, never the argument', () => {
+    for (const args of [['api', '-HAuthorization: token ghp_SECRET', 'user'], ['api', 'repos/o/r/issues/1/comments?access_token=ghp_SECRET']]) {
+      expect(() => assertGhAllowed(args)).toThrow(GuardError);
+      try {
+        assertGhAllowed(args);
+      } catch (e) {
+        expect((e as Error).message).not.toContain('ghp_SECRET');
+      }
+    }
+  });
 
   it.each([
     [['push', 'origin', 'HEAD:refs/heads/main']], [['push', 'origin', 'HEAD:refs/heads/session/week1']], [['push', '--force', 'origin', 'HEAD:refs/heads/agent/1-x']],
