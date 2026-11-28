@@ -67,12 +67,16 @@ async function main(): Promise<void> {
     hud.error(err.title, err.detail);
     return;
   }
-  const onResize = () => { void drawStill(); };
+  // Redraws run one after another, and Play waits for the last: a still drawn after live mode started
+  // would put the hook's own settings (no help line, motion on) back over the live view's.
+  let drawing = Promise.resolve();
+  const onResize = () => { drawing = drawing.then(drawStill, drawStill); };
   addEventListener('resize', onResize);
 
   await played;
 
   removeEventListener('resize', onResize);
+  await drawing.catch(() => {});
   still = null;
   view.showHelp = true; // the still hid the help line; live mode shows it
   byId('stage').inert = false;

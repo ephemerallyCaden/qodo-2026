@@ -61,4 +61,9 @@ describe.skipIf(!existsSync(join(DIST, 'index.html')))('built bundle (dist/web, 
   it('carries no dev fixture data', () => {
     for (const f of assets) expect(read(f)).not.toMatch(/r_000000000001|f_00000000000a|feature\/web-ui/);
   });
+
+  it('carries none of the public demo (live-demo L2: dist/demo is its own build)', () => {
+    expect(assets.length).toBeGreaterThan(0);
+    for (const f of assets) expect(read(f)).not.toMatch(/commet-demo\.1|invented data|demo-legend/);
+  });
 });
