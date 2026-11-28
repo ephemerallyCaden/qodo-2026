@@ -119,9 +119,19 @@ export class Legend {
     this.release();
   }
 
-  /** Rebuilds for a new device pixel ratio (its pictures are drawn at whole device pixels). */
+  /**
+   * Rebuilds for a new device pixel ratio (its pictures are drawn at whole device pixels). Keyboard focus
+   * inside the legend stays on the same control, or on the legend itself, so Escape still reaches it
+   * (Qodo PR249 f215e7b5).
+   */
   rescale(): void {
-    if (this.built !== 0) { this.built = 0; this.build(); }
+    if (this.built === 0) return;
+    const active = document.activeElement;
+    const held = active instanceof HTMLElement && this.root.contains(active) ? active.dataset['key'] ?? '' : null;
+    this.built = 0;
+    this.build();
+    if (held === null) return;
+    (this.root.querySelector<HTMLElement>(`[data-key="${CSS.escape(held)}"]`) ?? this.root).focus({ preventScroll: true });
   }
 
   private build(): void {

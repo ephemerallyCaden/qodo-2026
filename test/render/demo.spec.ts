@@ -234,5 +234,23 @@ test.describe('demo site', () => {
     await page.keyboard.press('Escape');
     notBlank(await shot(page));
   });
+
+  test('a display change while the legend is open keeps its keyboard focus, so Escape still closes it (Qodo PR249 f215e7b5)', async ({ page }) => {
+    const v = await visit(page);
+    await play(v);
+    const legend = page.locator('#demo-legend');
+    const close = legend.locator('[data-key="close"]');
+    await expect(close).toBeFocused();
+    // browser zoom changes the device pixel ratio, which redraws the legend's pictures
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 640, height: 360, deviceScaleFactor: 2, mobile: false }); // as a 200% zoom does
+    await expect.poll(() => page.evaluate(() => devicePixelRatio)).toBe(2);
+    await expect.poll(() => legend.locator('canvas.icon').first().evaluate((c) => (c as HTMLCanvasElement).width)).toBe(2 * 13 * 2); // rebuilt at the new ratio
+    await expect(close).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(legend).toBeHidden();
+    await expect(page.locator('#view')).toBeFocused();
+    expect(v.errors).toEqual([]);
+  });
 });
 
