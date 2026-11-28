@@ -275,7 +275,9 @@ export function siteHits(dir: string): Hit[] {
   // API answer (servedTexts). Placed by the file's name, which the scan above has passed.
   const parsed = files.filter((f) => f.path.endsWith('.json')).flatMap((f) => servedTexts({ path: f.path, body: f.text })
     .map((t) => ({ where: `${place}/${t.where.replace(/^GET /, '')} (as read)`.replace(' (keys) (as read)', ' (as read) (keys)'), text: t.text })));
-  return [...raw, ...privacyHits(parsed, ctx)];
+  // The data gets no library exemption (Qodo PR249 40218c65): three.js's own text is only ever in the bundle, so a
+  // data value that matches a run of it is a token-like string like any other.
+  return [...raw, ...privacyHits(parsed, { literals })];
 }
 
 /**
