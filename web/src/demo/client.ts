@@ -41,7 +41,8 @@ export function demoClient(source: DemoSource): DemoClient {
   const baked = <T>(route: string, parse: (text: string) => T): Promise<T> => {
     let p = cache.get(route) as Promise<T> | undefined;
     if (!p) {
-      p = source.read(route).then(parse);
+      // a file the site couldn't serve is said as the view's own errors are, with what went wrong
+      p = source.read(route).then(parse, (e: unknown) => { throw new ViewError('Some of the demo data couldn\'t be read.', [e instanceof Error ? e.message : String(e)]); });
       p.catch(() => cache.delete(route)); // tried again on the next ask
       cache.set(route, p);
     }
@@ -85,7 +86,7 @@ export function demoClient(source: DemoSource): DemoClient {
     }
     return {
       ...base,
-      baseline: baselines.at(-1) ?? null,
+      baseline: baselines.at(-1) ?? base.baseline, // the visit's newest, else the dataset's own
       charted: base.charted || everCharted.size > 0,
       files: base.files.map((f) => (f.state === 'fogged' && seen(f.fileId) ? { fileId: f.fileId, state: 'haze', reasons: [], since: null } : f)),
       planets,
@@ -123,7 +124,8 @@ export function demoClient(source: DemoSource): DemoClient {
     return null;
   };
 
-  const headNow = async (): Promise<Sha> => (await baseFog()).head;
+  /** The head the dataset was baked at: its layout's, which every view needs (a missing fog fails only what needs the fog). */
+  const headNow = async (): Promise<Sha> => (await layoutOf()).source.head;
   const cochangeBase = () => baked(API.cochange, (t) => parseCoChange(t, SOURCE));
   const beaconsBase = () => baked(API.beacons, (t) => parseBeacons(t, SOURCE));
   const filesOf = () => baked(API.snapshot, (t) => parseTreeSource(t, SOURCE));
@@ -139,7 +141,9 @@ export function demoClient(source: DemoSource): DemoClient {
     if (action.at !== head) return unknownHead(head);
     if (action.kind === 'baseline') baselines.push(action.at);
     else if (action.kind === 'baseline-undo') {
-      if (baselines.length === 0) return { ok: false, error: 'no baseline to undo' };
+      // Only a baseline set this visit can be undone: the dataset's own is baked into its fog, which the demo
+      // can't replay without it. Refused, so nothing is shown as fogged or seen that the server wouldn't.
+      if (baselines.length === 0) return { ok: false, error: (await baseFog()).baseline === null ? 'no baseline to undo' : 'the demo can\'t undo the baseline its invented data starts with' };
       baselines.pop();
     } else {
       const file = (await baseFog()).files.find((f) => f.fileId === action.fileId);
@@ -203,8 +207,8 @@ export function demoClient(source: DemoSource): DemoClient {
   };
 
   const cochange = async (): Promise<CoChangeView> => {
-    const head = await headNow();
-    if (!has(API.cochange)) return { schemaVersion: 'cochange.1', head, needsRescan: false, links: [], flags: [], dismissed: 0, files: [] };
+    // No co-change in the dataset is said, never drawn as a complete view with nothing in it (Rule 1).
+    if (!has(API.cochange)) throw missing('co-change data');
     const base = await cochangeBase();
     // A flag clears once its file is charted at or after the change that raised it; the dataset has one head, so any chart or baseline does.
     const standing = base.flags.filter((f) => baselines.length === 0 && !everCharted.has(f.fileId));

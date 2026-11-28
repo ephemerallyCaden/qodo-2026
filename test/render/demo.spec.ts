@@ -45,7 +45,7 @@ function reviewable(): { index: number; path: string; dirId: string; file: Unsee
 interface Visit { page: Page; offsite: string[]; requests: { method: string; path: string }[]; errors: string[] }
 
 /** Opens the site at its base path. Records every request, refuses any off the site's own origin, and collects page and console errors (a CSP refusal is one). */
-async function visit(page: Page): Promise<Visit> {
+async function visit(page: Page, opts: { missing?: readonly string[] } = {}): Promise<Visit> {
   const v: Visit = { page, offsite: [], requests: [], errors: [] };
   page.on('pageerror', (e) => v.errors.push(`page error: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') v.errors.push(`console.error: ${m.text()}`); });
@@ -56,6 +56,7 @@ async function visit(page: Page): Promise<Visit> {
     v.requests.push({ method: req.method(), path: url.pathname });
     if (!url.pathname.startsWith(DEFAULT_BASE)) return route.fulfill({ status: 404, body: 'not found' });
     const rel = decodeURIComponent(url.pathname.slice(DEFAULT_BASE.length)) || 'index.html';
+    if (opts.missing?.includes(rel)) return route.fulfill({ status: 404, body: 'not found' }); // a data file the host lost
     const file = resolve(SITE, rel);
     if (!file.startsWith(SITE + sep) || !existsSync(file)) return route.fulfill({ status: 404, body: 'not found' });
     return route.fulfill({ contentType: MIME[extname(file)] ?? 'application/octet-stream', body: readFileSync(file) });
@@ -222,4 +223,16 @@ test.describe('demo site', () => {
     for (let i = 0; i <= r!.index; i++) await page.locator('#view').press(']');
     await expect(page.locator('#summary')).toContainText(fogLine(r!.counts.fogged, r!.counts.haze));
   });
+
+  test('a fog file that fails to load still plays: the still and the live view draw it all fogged, and say so (Qodo PR249 b8b8d925)', async ({ page }) => {
+    const manifest = JSON.parse(readFileSync(join(SITE, 'data/manifest.json'), 'utf8')) as { routes: Record<string, string> };
+    const v = await visit(page, { missing: [`data/${manifest.routes['/api/fog']!}`] });
+    await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
+    await expect(page.locator('#error')).toBeHidden();
+    await play(v);
+    await expect(page.locator('#status')).toContainText('fog view unavailable');
+    await page.keyboard.press('Escape');
+    notBlank(await shot(page));
+  });
 });
+

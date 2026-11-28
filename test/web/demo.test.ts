@@ -207,6 +207,28 @@ describe('demo client', () => {
     expect(countsOf(undone.fog, WEB)).toEqual(countsOf(miniFog, WEB));
   });
 
+  it('keeps the dataset\'s own baseline, and says it can\'t undo it (Qodo PR249 08ce85c8)', async () => {
+    const BASELINE = '9'.repeat(40);
+    const d = dataset();
+    const c = demoClient(memorySource(d.manifest, { ...d.files, 'fog.json': JSON.stringify({ ...miniFog, baseline: BASELINE }) }));
+    expect((await c.fog()).baseline).toBe(BASELINE);
+    // the dataset's baseline is its chart state, which the demo can't replay without it: refused, nothing changes
+    expect(await c.chart({ kind: 'baseline-undo', at: HEAD })).toEqual({ ok: false, error: 'the demo can\'t undo the baseline its invented data starts with' });
+    expect((await c.fog()).baseline).toBe(BASELINE);
+    // a baseline set this visit is undone back to the dataset's
+    await c.chart({ kind: 'baseline', at: HEAD });
+    expect((await c.fog()).baseline).toBe(HEAD);
+    expect(await c.chart({ kind: 'baseline-undo', at: HEAD })).toMatchObject({ ok: true, fog: { baseline: BASELINE } });
+    expect(fogOf(await c.fog(), WEB_FILE).state).toBe('fogged');
+  });
+
+  it('says the dataset has no co-change data, rather than answering an empty, complete view (Qodo PR249 34b5fb4a)', async () => {
+    const d = dataset();
+    const routes = Object.fromEntries(Object.entries(d.manifest.routes).filter(([k]) => k !== API.cochange));
+    const c = demoClient(memorySource(checkManifest({ schemaVersion: MANIFEST_SCHEMA, routes }), d.files));
+    await expect(c.cochange()).rejects.toThrow(/no co-change data/);
+  });
+
   it('leaves a beacon in memory, one per file, with its path and body; refuses a bad note', async () => {
     const c = client();
     const events: LiveEvent[] = [];

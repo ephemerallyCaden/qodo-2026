@@ -20,10 +20,14 @@ const viewport = () => ({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio |
 const describe = (e: unknown): ViewError =>
   e instanceof ViewError ? e : new ViewError('The demo hit an internal error.', [e instanceof Error ? e.message : String(e)]);
 
-/** What the still behind the title shows: the dataset's first frame, with everything the live view would draw on it. */
+/**
+ * What the still behind the title shows: the dataset's first frame, with everything the live view would draw
+ * on it. Only the layout is needed; without a usable fog the still draws every file fogged, as the live view
+ * does (Rule 1), and live mode says why after Play.
+ */
 async function stillInput(client: DemoClient): Promise<RenderInput> {
   const optional = <T>(p: Promise<T>) => p.then((v) => v, () => null);
-  const [layout, fog, drones, crew, beacons, cochange] = await Promise.all([client.layout(), client.fog(),
+  const [layout, fog, drones, crew, beacons, cochange] = await Promise.all([client.layout(), optional(client.fog()),
     optional(client.drones()), optional(client.crew()), optional(client.beacons()), optional(client.cochange())]);
   return { layout, fog, drones, crew, beacons, cochange };
 }
