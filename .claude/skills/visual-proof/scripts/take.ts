@@ -401,6 +401,7 @@ type BeaconsModule = typeof import('../../../../src/state/beacons.js');
 type DiffModule = typeof import('../../../../src/state/diff.js');
 type CoChangeModule = typeof import('../../../../src/state/cochange.js');
 type CrewModule = typeof import('../../../../src/state/crew.js');
+type DebrisModule = typeof import('../../../../src/state/debris.js');
 
 /** The build's own module (its dist/), so each side is served by its own code. */
 async function fromBuild<T>(build: string, rel: string): Promise<T> {
@@ -426,6 +427,8 @@ export async function takeMain(cfg: TakeConfig, scenes: Readonly<Record<string, 
   const cochange = existsSync(join(cfg.build, 'dist', 'state', 'cochange.js')) ? await fromBuild<CoChangeModule>(cfg.build, 'state/cochange.js') : null;
   // #207: the crew routes, as `commet open` serves them, for a build that has them (an older one answers 501)
   const crew = existsSync(join(cfg.build, 'dist', 'state', 'crew.js')) ? await fromBuild<CrewModule>(cfg.build, 'state/crew.js') : null;
+  // R13: the debris routes, as `commet open` serves them, for a build that has them (an older one answers 501)
+  const debris = existsSync(join(cfg.build, 'dist', 'state', 'debris.js')) ? await fromBuild<DebrisModule>(cfg.build, 'state/debris.js') : null;
   const files = JSON.parse(readFileSync(cfg.filesJson, 'utf8')) as string[];
   const repo = cfg.clone;
   const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg.claudeDir };
@@ -456,6 +459,7 @@ export async function takeMain(cfg: TakeConfig, scenes: Readonly<Record<string, 
         unseen: (q) => diff.readUnseen(repo, q), diff: (q, s) => diff.readDiff(repo, q, s),
         ...(cochange ? { cochange: () => cochange.readCoChange(repo) } : {}),
         ...(crew ? { crew: () => crew.readCrew(repo), crewDetail: (q) => crew.readCrewDetail(repo, q) } : {}),
+        ...(debris ? { debris: () => debris.readDebrisView(repo), debrisDetail: (q) => debris.readDebrisDetail(repo, q) } : {}),
         // A 500's route and message, never the request (open.ts's COMMET_DEBUG); into the take's errors
         onError: (e, route) => { serverErrors.push(`server: ${route} failed: ${e instanceof Error ? e.message : String(e)}`); },
       });
