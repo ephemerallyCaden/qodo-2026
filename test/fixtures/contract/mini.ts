@@ -3,6 +3,7 @@
 // Three planets: src (healthy, no partner), web (toxic, partner src, moon overflow), docs
 // (ash, debt partly unknown, surface overflow). Root files and an unmatched test are moonlets.
 import type { CrewView } from '../../../src/core/contract/crew.js';
+import type { DebrisView } from '../../../src/core/contract/debris.js';
 import type { DroneView } from '../../../src/core/contract/drones.js';
 import type { FogView } from '../../../src/core/contract/fog.js';
 import type { Health, LayoutV1 } from '../../../src/core/contract/layout.js';
@@ -155,5 +156,37 @@ export const miniCrew: CrewView = {
   ],
   total: 6,
   bots: 2,
+  needsRescan: false,
+};
+
+/**
+ * A debris view (R13) on this layout's head, so the dev fixture and the render tests draw stale work over mini:
+ * every class git can find (abandoned, merged and not deleted, orphaned agent), all three age steps, sizes across
+ * the range, pieces round three planets and the star, and one with no file at HEAD (counted, not drawn). Invented,
+ * like the crew: no real branch is named anywhere.
+ */
+export const miniDebris: DebrisView = {
+  schemaVersion: 'debris.1',
+  head: HEAD,
+  pieces: [
+    { id: 'x_05d1a7c3e902', cls: 'branch', home: 'd_00000000000a', ageStep: 0, lines: 2400, seed: 1828307911 },
+    { id: 'x_1b7e2f40c6a1', cls: 'agent', home: 'd_00000000000a', ageStep: 1, lines: 860, seed: 3061195318 },
+    { id: 'x_24c9e0b18d37', cls: 'merged', home: 'd_00000000000a', ageStep: 0, lines: 0, seed: 694522017 },
+    { id: 'x_3f60a2d9b415', cls: 'branch', home: 'd_00000000000a', ageStep: 2, lines: 5200, seed: 2747130981 },
+    { id: 'x_4a2c81e7f053', cls: 'agent', home: 'd_00000000000a', ageStep: 0, lines: 140, seed: 412887360 },
+    { id: 'x_58e3b6014ca9', cls: 'merged', home: 'd_00000000000a', ageStep: 2, lines: 0, seed: 3989130475 },
+    { id: 'x_6c04d97a2e18', cls: 'branch', home: 'd_00000000000c', ageStep: 1, lines: 980, seed: 1540286223 },
+    { id: 'x_7d15e3c08b62', cls: 'merged', home: 'd_00000000000c', ageStep: 1, lines: 0, seed: 2216935562 },
+    { id: 'x_8e27f1a49c30', cls: 'agent', home: 'd_00000000000c', ageStep: 2, lines: 3100, seed: 872315496 },
+    { id: 'x_9f38a2b5d071', cls: 'branch', home: 'd_00000000000d', ageStep: 0, lines: 45, seed: 3356418209 },
+    { id: 'x_a049b3c6e182', cls: 'merged', home: 'd_00000000000d', ageStep: 0, lines: 0, seed: 1167254803 },
+    { id: 'x_b15ac4d7f293', cls: 'agent', home: 'star', ageStep: 1, lines: 320, seed: 2590331754 },
+    { id: 'x_c26bd5e803a4', cls: 'branch', home: null, ageStep: 2, lines: 75, seed: 4012678195 },
+  ],
+  total: 13,
+  placed: 12,
+  mass: 13120,
+  unreadable: 0,
+  prs: 'not-read',
   needsRescan: false,
 };

@@ -7,6 +7,7 @@ import type { CameraPose, RenderStats } from '../../../src/core/contract/api.js'
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
 import { fromCameraPose, type OrbitPose } from '../../../web/src/camera/pose.js';
 import type { FleetEntry } from '../../../web/src/render/drone-fleet.js';
+import type { Drawable } from '../../../web/src/debris/place.js';
 import { View } from '../../../web/src/view.js';
 
 const view = new View(document.getElementById('view') as HTMLCanvasElement, document.getElementById('labels') as HTMLCanvasElement);
@@ -26,6 +27,18 @@ const api = {
   /** View.setDrones: draws these drones of the scan `head`, as the live view's drone controller does (#80). */
   drones(entries: FleetEntry[], head: string): Promise<boolean> {
     return view.setDrones(entries, head);
+  },
+  /** R13: View.setDebris, as the live view's debris controller does; `animate` lets a piece gone since the last frame drawn sweep. */
+  debris(items: Drawable[], head: string, animate: boolean): boolean {
+    return view.setDebris(items, head, { animate });
+  },
+  /** R13: selects a piece of debris (its id, or null), as a click does: drawn with a teal lit band. */
+  selectDebris(id: string | null): void {
+    view.debris.selected = id;
+  },
+  /** Draws frame `n` (unread): the last frame drawn, which a later change sweeps from. */
+  at(n: number): void {
+    view.draw(n, pose!, null);
   },
   /** View.load alone, as the live view's rescan does before it fetches the new scan's drones: the camera stays. */
   reload(layout: LayoutV1, fog: FogView): Promise<void> {

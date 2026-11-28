@@ -71,6 +71,12 @@ export interface SystemModel {
   planets: PlanetModel[];
   /** Radius of the smallest sphere around the star that holds every body, moons included. */
   extent: number;
+  /**
+   * The bodies drawing debris (R13; a planet's DirId or 'star'), sorted: each has a debris shell that its drones,
+   * the crew's ship and the start pose clear (drones/place.ts homeBody). Not from the layout: the view sets it
+   * with the debris it draws (debris/place.ts withDebrisHomes). Absent: none.
+   */
+  debrisHomes?: readonly string[];
 }
 
 /** Moons are all one size: a test file's moon carries no size data, so none may look bigger (principle 4). */

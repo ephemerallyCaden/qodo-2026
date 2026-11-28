@@ -3,6 +3,7 @@
 // event can arrive for a layout not drawn yet; the view then keeps the fog it had (or none), says
 // so in the HUD status line, and picks up the matching fog on a later live event. Driven through
 // runLive with a fake view, HUD and data client, since the real ones need WebGL and a DOM.
+import { DebrisState } from '../../../web/src/debris/state.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LiveEvent } from '../../../src/core/contract/api.js';
 import type { FogView } from '../../../src/core/contract/fog.js';
@@ -28,6 +29,8 @@ const detailShown = vi.hoisted(() => [] as { kind: string; text?: string; detail
 vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} showDetail(s: { kind: string }) { detailShown.push(s); } } }));
 // The crew panel (#207) has its own DOM test (crew-panel.test.ts).
 vi.mock('../../../web/src/crew/panel.js', () => ({ CrewPanel: class { onClose = () => {}; open = false; show() {} hide() {} showDetail() {} } }));
+// The debris panel (R13) needs a DOM: a no-op here.
+vi.mock('../../../web/src/debris/panel.js', () => ({ DebrisPanel: class { onClose = () => {}; onCopy = () => {}; open = false; show() {} hide() {} showDetail() {} } }));
 // The directory view (#209) has its own DOM test (tree.test.ts).
 vi.mock('../../../web/src/tree/panel.js', () => ({ TreePanel: class { scale() {} setLayout() {} setFog() {} } }));
 
@@ -98,7 +101,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     drones: () => { droneCalls++; return (droneAnswers.shift() ?? (async () => droneView(head, [])))(); },
     droneDetail: (key, at) => { detailAsked.push({ key, at }); return (detailAnswers.shift() ?? (async () => emptyDetail(key, at)))(); },
     crew: async () => ({ schemaVersion: 'crew.1', head, members: [], total: 0, bots: 0, needsRescan: false }), // #207: nobody aboard
-    crewDetail: async () => ({ ok: false, error: 'no-such-person' }),
+    crewDetail: async () => ({ ok: false, error: 'no-such-person' }), debris: async () => ({ schemaVersion: 'debris.1', head: head, pieces: [], total: 0, placed: 0, mass: 0, unreadable: 0, prs: 'not-read', needsRescan: false }), debrisDetail: async () => ({ ok: false, error: 'no-such-item' }),
     unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }),
     chart: async () => ({ ok: false, error: 'not used' }),
@@ -148,7 +151,7 @@ async function live(first: { layout: LayoutV1; fog: FogView | Error }) {
     arrowAt: () => view.arrowTo,
     droneAt: null as string | null,
     planetAt: null as number | null,
-    pickDroneAt: () => view.droneAt,
+    pickDroneAt: () => view.droneAt, debris: new DebrisState(), setDebris: () => true, pickDebrisAt: () => null, debrisPiece: () => null,
     pickAt: () => view.planetAt,
     resize: () => {},
     draw: () => ({}),

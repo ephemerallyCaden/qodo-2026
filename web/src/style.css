@@ -14,8 +14,8 @@ canvas.bitmap, #error canvas { display: block; image-rendering: pixelated; }
 /* Drones (#80): the HUD's count line, top centre (the review panel owns the right edge, the planet info the left) and the selected session's panel, DOM text outside the pixel pass. */
 /* The drones and crew lines (#80, #207), stacked at the top centre: repo totals only, never a per-person number. */
 #counts { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; width: max-content; max-width: min(44ch, 40vw); pointer-events: none; }
-#drones-hud, #crew-hud { margin: 0; text-align: center; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink); }
-#drones-hud:empty, #crew-hud:empty { display: none; }
+#drones-hud, #crew-hud, #debris-hud { margin: 0; text-align: center; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink); }
+#drones-hud:empty, #crew-hud:empty, #debris-hud:empty { display: none; }
 #drone-panel { position: fixed; left: 8px; bottom: 40px; box-sizing: border-box; width: min(40ch, 90vw); padding: 6px; background: var(--space); border: 1px solid var(--rule); color: var(--ink); font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 #drone-panel[hidden] { display: none; }
 #drone-panel h2 { margin: 0; font-size: 12px; }
@@ -114,3 +114,19 @@ canvas.bitmap, #error canvas { display: block; image-rendering: pixelated; }
   font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 #panel .log input::placeholder { color: var(--dim); }
 #panel .log input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The selected piece of debris's panel (R13): the crew panel's look; its commands are copied, never run. */
+#debris-panel { position: fixed; left: 8px; bottom: 40px; box-sizing: border-box; width: min(48ch, 90vw); padding: 6px; background: var(--space); border: 1px solid var(--rule); color: var(--ink); font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+#debris-panel[hidden] { display: none; }
+#debris-panel h2 { margin: 0; font-size: 12px; }
+#debris-panel .top { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px; }
+#debris-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 8px; margin: 0; }
+#debris-panel dt { color: var(--dim); }
+#debris-panel dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; } /* a branch name's spaces are part of it */
+#debris-panel button { background: var(--space); color: var(--ink); border: 1px solid var(--rule); padding: 2px 5px; cursor: pointer; font: inherit; }
+#debris-panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#debris-panel .detail { margin-top: 6px; border-top: 1px solid var(--rule); padding-top: 4px; max-height: 50vh; overflow-y: auto; }
+#debris-panel .command { display: grid; grid-template-columns: 1fr max-content; gap: 2px 6px; align-items: start; margin-top: 6px; }
+#debris-panel .command .label { grid-column: 1 / -1; color: var(--dim); }
+#debris-panel .command code { overflow-wrap: anywhere; white-space: pre-wrap; border: 1px solid var(--rule); padding: 2px 4px; user-select: all; }
+#debris-panel .warning { margin: 6px 0 0; overflow-wrap: anywhere; }
+#debris-panel .note { margin: 4px 0 0; color: var(--dim); overflow-wrap: anywhere; }

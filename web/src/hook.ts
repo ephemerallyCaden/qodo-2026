@@ -4,6 +4,8 @@
 import type { RenderHook, RenderInput, RenderStats } from '../../src/core/contract/api.js';
 import { fromCameraPose, type OrbitPose } from './camera/pose.js';
 import { checkCrew } from './crew/check.js';
+import { checkDebris } from './debris/check.js';
+import { drawables } from './debris/select.js';
 import { riderOf, seatCrew } from './crew/select.js';
 import { checkDrones } from './drones/check.js';
 import { checkBeacons } from './model/beacons.js';
@@ -54,11 +56,19 @@ export function renderHook(view: View, viewport: () => { w: number; h: number; d
         if (c.value.head !== head) throw new Error(`crew is of ${c.value.head.slice(0, 7)} but the layout of ${head.slice(0, 7)} (different scans)`);
         seating = seatCrew(c.value);
       }
+      let debris: ReturnType<typeof drawables> = [];
+      if (next.debris) {
+        const d = checkDebris(next.debris);
+        if (!d.ok) throw new Error(`invalid debris: ${d.errors.join('; ')}`);
+        if (d.value.head !== head) throw new Error(`debris is of ${d.value.head.slice(0, 7)} but the layout of ${head.slice(0, 7)} (different scans)`);
+        debris = drawables(d.value);
+      }
       const focusAt = next.focus ? checked.value.planets.findIndex((p) => p.dirId === next.focus!.dirId) : -1;
       if (next.focus && focusAt < 0) throw new Error('invalid focus: dirId is not a planet of the layout');
       await view.load(checked.value, next.fog ?? null, { animate: false }); // no fronts: a frame is a pure function of (input, n)
       await view.setDrones(drones.map(entryOf), head);
       await view.setCrew(seating ? seating.seats.map(riderOf) : [], seating?.extra ?? 0, head); // this input's crew, never a previous load's
+      view.setDebris(debris, head, { animate: false }); // R13: this input's debris, never a previous load's; no sweep
       view.setBeacons(next.beacons ?? null, head); // this input's beacons, never a previous load's
       view.setCoChange(next.cochange ?? null, head); // #211: and its co-change, the same
       view.reducedMotion = next.reducedMotion ?? false; // the constellation draws at once, its beads frozen (#211)

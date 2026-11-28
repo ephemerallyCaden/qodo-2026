@@ -8,7 +8,9 @@ import type { DroneView } from '../../src/core/contract/drones.js';
 import { palette } from '../../src/core/palette.js';
 import { parseDrones } from '../../web/src/data/client.js';
 import { checkDrones } from '../../web/src/drones/check.js';
-import { DRONE_PICK_RADIUS, DRONE_TURNS, homeBody, placeDrone } from '../../web/src/drones/place.js';
+import { DRONE_PICK_RADIUS, DRONE_TURNS, homeBase, homeBody, placeDrone } from '../../web/src/drones/place.js';
+import { debrisShell } from '../../web/src/debris/shell.js';
+import { withDebrisHomes } from '../../web/src/debris/place.js';
 import { pick } from '../../web/src/camera/pose.js';
 import { capLabels, DRONE_CAP, droneLabels, droneRows, droneStatus, entryOf, selectDrones } from '../../web/src/drones/select.js';
 import { FPS, LOOP_FRAMES, LOOP_SECONDS } from '../../web/src/model/motion.js';
@@ -240,6 +242,9 @@ describe('drones clear the fog sky (#224, Qodo 1f87de0f; the weather\'s cloud si
     expect(Math.max(...tops)).toBeGreaterThan(FOG_SKY_TOP * 0.99);
     expect(skyTop(1)).toBeLessThanOrEqual(layerTop(MIST));
     expect(homeBody(model, planet.dirId, 0)!.reach).toBe(planet.radius * FOG_SKY_TOP);
+    // drawing debris (R13), its drones clear the debris shell past it too (debris/shell.ts)
+    expect(homeBase(model, planet.dirId, 0)!.reach).toBe(planet.radius * FOG_SKY_TOP);
+    expect(homeBody(withDebrisHomes(model, [planet.dirId]), planet.dirId, 0)!.reach).toBe(debrisShell(planet.radius * FOG_SKY_TOP, planet.radius).outer);
   });
 });
 
