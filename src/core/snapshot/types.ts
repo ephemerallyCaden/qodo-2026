@@ -213,7 +213,7 @@ export interface Person {
   isBot?: boolean;
 }
 
-/** R13: an item's id, `'x_' + sha256(key)[:12]`, its key the item's full refname (`refs/heads/x`, `refs/remotes/o/x`), or `HEAD <sha>` for a detached worktree. Stable across scans. */
+/** R13: an item's id, `'x_' + sha256(key)[:12]`, its key the item's full refname (`refs/heads/x`, `refs/remotes/o/x`), or `HEAD <sha>` and the folder name for a detached worktree (`worktreeKeys`). Stable across scans. */
 export type DebrisId = `x_${string}`;
 
 /**

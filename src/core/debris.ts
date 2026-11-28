@@ -18,7 +18,7 @@ const DAY_S = 86_400;
 const HEADS = 'refs/heads/';
 const REMOTES = 'refs/remotes/';
 
-/** An item's id: `'x_' + sha256(key)[:12]`, its key a full refname or `HEAD <sha>` (a detached worktree). */
+/** An item's id: `'x_' + sha256(key)[:12]`, its key a full refname or a detached worktree's `worktreeKeys` key. */
 export const debrisId = (key: string): DebrisId => `x_${sha256Hex(key).slice(0, 12)}`;
 
 /** Whole days from the tip's committer time to HEAD's (seconds), never below 0 (a tip newer than HEAD). */
@@ -133,15 +133,19 @@ export function planDebris(g: DebrisGit, settings: Debris['settings'] = { ...DEB
 
   const groups = new Map<string, RefRow[]>();
   const byUpstream = new Map<string, string>();
+  const upstreamOf = new Map<string, string>();
   for (const r of rows) {
     if (!r.ref.startsWith(HEADS)) continue;
     groups.set(r.ref, [r]);
+    upstreamOf.set(r.ref, r.upstream);
     if (r.upstream) byUpstream.set(r.upstream, r.ref);
   }
   for (const r of rows) {
     if (!r.ref.startsWith(REMOTES)) continue;
     const sameName = `${HEADS}${splitRemote(r.ref, g.remotes).branch}`;
-    const local = byUpstream.get(r.ref) ?? (groups.has(sameName) ? sameName : undefined);
+    // `<remote>/<name>` folds into a local `<name>` only when that branch tracks nothing else: one tracking another
+    // ref keeps it apart, as its own item, so its cleanup never deletes a remote branch it isn't (Qodo PR248 f8ddbdff).
+    const local = byUpstream.get(r.ref) ?? (upstreamOf.get(sameName) === '' ? sameName : undefined);
     if (local !== undefined) groups.get(local)!.push(r);
     else groups.set(r.ref, [r]);
   }
@@ -193,14 +197,30 @@ export interface DebrisCommit { sha: string; ct: number; name: string; email: st
  */
 export interface DebrisRead { commits: DebrisCommit[]; aheadCount: number; lines: number; paths: string[]; cherryMerged: boolean }
 
-/** A worktree item's id key: its branch's refname (the id it would have as a branch item), or `HEAD <sha>` when detached. */
-export const worktreeKey = (w: Pick<WorktreeRow, 'ref' | 'head'>): string => w.ref ?? `HEAD ${w.head}`;
+/**
+ * Each prunable worktree's item key, in listing order: its branch's refname (the id it would have as a branch
+ * item), or `HEAD <sha>`, NUL, its folder name (empty when not unique) when detached; a repeat (two detached on one
+ * commit with no unique folder, or a branch checked out twice) adds NUL and `#<n>`, so every one is shown and
+ * counted (Qodo PR248 3dd56f8d). No refname or folder holds a NUL.
+ */
+export function worktreeKeys(worktrees: readonly WorktreeRow[]): Map<WorktreeRow, string> {
+  const out = new Map<WorktreeRow, string>();
+  const seen = new Map<string, number>();
+  for (const w of worktrees) {
+    if (!w.prunable) continue;
+    const base = w.ref ?? `HEAD ${w.head}\0${w.folder ?? ''}`;
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    out.set(w, n === 1 ? base : `${base}\0#${n}`);
+  }
+  return out;
+}
 
 /**
  * The key a worktree's read is filed under: never a group's (a refname holds no space), so a prunable
  * worktree's tip-only read can't replace its branch's own read (Qodo PR248 6a6df300).
  */
-export const worktreeReadKey = (w: Pick<WorktreeRow, 'ref' | 'head'>): string => `worktree ${worktreeKey(w)}`;
+export const worktreeReadKey = (key: string): string => `worktree ${key}`;
 
 export interface DebrisContext {
   /** HEAD's committer time, in seconds. */
@@ -281,7 +301,7 @@ export function buildDebris(plan: DebrisPlan, reads: ReadonlyMap<string, DebrisR
     if (local) byLocal.set(local.ref, item);
   }
 
-  const seen = new Set<string>();
+  const keys = worktreeKeys(plan.worktrees);
   for (const w of plan.worktrees) {
     const into = w.ref === null ? undefined : byLocal.get(w.ref);
     if (into) {
@@ -289,10 +309,8 @@ export function buildDebris(plan: DebrisPlan, reads: ReadonlyMap<string, DebrisR
       continue;
     }
     if (!w.prunable || (w.ref !== null && unreadableRefs.has(w.ref))) continue;
-    const key = worktreeKey(w);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const read = reads.get(worktreeReadKey(w));
+    const key = keys.get(w)!;
+    const read = reads.get(worktreeReadKey(key));
     if (!read || read.commits.length === 0) {
       unreadable++;
       continue;

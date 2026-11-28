@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DEBRIS, DEBRIS_WARNINGS, debrisAgeStep } from '../src/core/contract/debris.js';
 import {
-  buildDebris, debrisCommands, debrisDetail, debrisId, debrisProblem, debrisView, defaultBranches, planDebris, shellQuote, worktreeKey,
-  worktreeReadKey, type DebrisGit, type DebrisRead, type RefRow, type WorktreeRow,
+  buildDebris, debrisCommands, debrisDetail, debrisId, debrisProblem, debrisView, defaultBranches, planDebris, shellQuote,
+  worktreeKeys, worktreeReadKey, type DebrisGit, type DebrisRead, type RefRow, type WorktreeRow,
 } from '../src/core/debris.js';
 import { sha256Hex } from '../src/core/hash.js';
 import type { Debris, DebrisItem, DirId, FileId, Session, SnapshotV02 } from '../src/core/snapshot/types.js';
@@ -56,7 +56,7 @@ function run(c: Case): Debris {
       cherryMerged: c.cherry?.[key] ?? false };
   };
   for (const gr of plan.groups) reads.set(gr.key, read(gr.key, gr.best.sha, gr.best.ct));
-  for (const w of plan.worktrees) if (w.prunable) reads.set(worktreeReadKey(w), read(worktreeKey(w), w.head, HEAD_CT - 20 * DAY));
+  for (const [w, key] of worktreeKeys(plan.worktrees)) reads.set(worktreeReadKey(key), read(key, w.head, HEAD_CT - 20 * DAY));
   return buildDebris(plan, reads, { headCt: HEAD_CT, sessions: c.sessions ?? [], fileIds: new Map([['src/a.ts', 'f_00000000000a' as FileId]]),
     selfEmails: new Set(['me@x.test']) });
 }
@@ -145,7 +145,7 @@ describe('which refs are debris (one row per input)', () => {
     expect(Object.keys(by).sort()).toEqual(['detached', 'refs/heads/a', 'refs/heads/young']);
     expect(by['refs/heads/a']).toMatchObject({ cls: 'branch', worktreeOnly: false, worktree: { prunable: false, locked: false, folder: 'a-dir' } });
     expect(by['refs/heads/young']).toMatchObject({ cls: 'agent', worktreeOnly: true, aheadCount: 0, lines: 0, id: debrisId('refs/heads/young') });
-    expect(by['detached']).toMatchObject({ cls: 'agent', worktreeOnly: true, ref: null, tip: 'd'.repeat(40), id: debrisId(`HEAD ${'d'.repeat(40)}`),
+    expect(by['detached']).toMatchObject({ cls: 'agent', worktreeOnly: true, ref: null, tip: 'd'.repeat(40), id: debrisId(`HEAD ${'d'.repeat(40)}\0det`),
       worktree: { prunable: true, locked: true, folder: 'det' } });
   });
 
@@ -173,6 +173,26 @@ describe('which refs are debris (one row per input)', () => {
     expect(Object.fromEntries(d.items.map((i) => [i.ref, i.remotes]))).toEqual({
       'refs/heads/x': [{ name: 'a', ref: 'refs/heads/renamed', sha: sha('refs/remotes/a/x') }],
       'refs/remotes/a/b/y': [{ name: 'a/b', ref: 'refs/heads/y', sha: sha('refs/remotes/a/b/y') }], 'refs/remotes/odd/z': [] });
+  });
+
+  it("folds a same-name remote copy only into a local branch with no other upstream (Qodo PR248 f8ddbdff)", () => {
+    const d = run({ refs: [row('refs/heads/feature', { age: 10, merged: true, upstream: 'refs/remotes/origin/release' }),
+      row('refs/remotes/origin/release', { age: 10, merged: true }), row('refs/remotes/origin/feature', { age: 10, merged: true }),
+      row('refs/heads/plain', { age: 10, merged: true }), row('refs/remotes/origin/plain', { age: 10, merged: true })] });
+    expect(Object.fromEntries(d.items.map((i) => [i.ref, i.remotes.map((r) => r.ref)]))).toEqual({
+      'refs/heads/feature': ['refs/heads/release'], 'refs/remotes/origin/feature': ['refs/heads/feature'], 'refs/heads/plain': ['refs/heads/plain'] });
+    const cleanup = (ref: string) => debrisCommands(d.items.find((i) => i.ref === ref)!).cleanup!;
+    expect(cleanup('refs/heads/feature')).not.toContain("'refs/heads/feature'");
+  });
+
+  it('shows and counts every prunable detached worktree, two on one commit included, each with its own command (Qodo PR248 3dd56f8d)', () => {
+    const det = (folder: string | null): WorktreeRow => ({ head: 'd'.repeat(40), ref: null, locked: false, prunable: true, folder });
+    const d = run({ refs: [], worktrees: [det('a'), det('b'), det(null), det(null)] });
+    expect(d.items).toHaveLength(4);
+    expect(new Set(d.items.map((i) => i.id)).size).toBe(4);
+    expect(d.items.map((i) => debrisCommands({ ...i, aheadCount: 0 }).cleanup).sort()).toEqual(["git worktree remove -- 'a'", "git worktree remove -- 'b'", null, null]);
+    // Stable: the same worktrees give the same ids on every scan.
+    expect(run({ refs: [], worktrees: [det('a'), det('b'), det(null), det(null)] }).items.map((i) => i.id)).toEqual(d.items.map((i) => i.id));
   });
 
   it('takes the defaults from every remote HEAD, init.defaultBranch, and main and master always, sorted', () => {

@@ -4,7 +4,7 @@
 import { redactPaths } from '../attrib/parsers/claude.js';
 import { byCodepoint } from '../core/canonical-json.js';
 import type { DebrisCommit, DebrisGit, DebrisPlan, DebrisRead, RefRow, RemoteRow, WorktreeRow } from '../core/debris.js';
-import { worktreeKey, worktreeReadKey } from '../core/debris.js';
+import { worktreeKeys, worktreeReadKey } from '../core/debris.js';
 import { exclusionOf } from './exclusions.js';
 import { tryGit, type Git } from './git.js';
 import type { RefWork } from './structure.js';
@@ -154,12 +154,8 @@ export async function readDebris(git: Git, plan: DebrisPlan, work: ReadonlyMap<s
       return { commits: parsed.commits, aheadCount: w.aheadCount, lines: w.lines, paths: [...w.paths], cherryMerged: cherry };
     }]);
   }
-  const keys = new Set<string>();
-  for (const w of plan.worktrees) {
-    const key = worktreeKey(w);
-    if (!w.prunable || keys.has(key)) continue;
-    keys.add(key);
-    jobs.push([worktreeReadKey(w), async () => {
+  for (const [w, key] of worktreeKeys(plan.worktrees)) {
+    jobs.push([worktreeReadKey(key), async () => {
       if (!SHA.test(w.head)) return null;
       const [r, ahead] = await Promise.all([tipRead(git, w.head, emptyTree),
         w.ref === null ? tryGit(git, ['rev-list', '--count', `${head}..${w.head}`, '--']) : '0']);

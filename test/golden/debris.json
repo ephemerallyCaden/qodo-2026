@@ -1,43 +1,6 @@
 {
   "panels": [
     {
-      "ageDays": 36,
-      "aheadCount": 1,
-      "cleanup": null,
-      "cls": "agent",
-      "creator": {
-        "agent": false,
-        "captain": false,
-        "displayName": "Pip Okafor"
-      },
-      "filesOutside": 0,
-      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
-      "home": "d_69c6fa4ac535",
-      "id": "x_14a64a08c18a",
-      "inspect": "git log --oneline HEAD..1338868684f4ad35382326b5f1dc825aae8b1c01 --",
-      "lastCommit": {
-        "date": "2026-09-25T10:00:00Z",
-        "sha": "1338868684f4ad35382326b5f1dc825aae8b1c01",
-        "short": "1338868",
-        "subject": "detached: lost work"
-      },
-      "lines": 0,
-      "name": null,
-      "ok": true,
-      "planets": [
-        "d_69c6fa4ac535"
-      ],
-      "rebased": false,
-      "remoteOnly": false,
-      "schemaVersion": "debris-detail.1",
-      "sessions": [],
-      "warning": "a detached worktree with commits on no branch: pruning would drop their last reference; keep them with git branch <name> <sha> first",
-      "worktree": {
-        "locked": false,
-        "prunable": true
-      }
-    },
-    {
       "ageDays": 72,
       "aheadCount": 1,
       "cleanup": "git branch -d -- 'rebased'",
@@ -240,6 +203,43 @@
       "sessions": [],
       "warning": null,
       "worktree": null
+    },
+    {
+      "ageDays": 36,
+      "aheadCount": 1,
+      "cleanup": null,
+      "cls": "agent",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_69c6fa4ac535",
+      "id": "x_89dc34aa39f6",
+      "inspect": "git log --oneline HEAD..1338868684f4ad35382326b5f1dc825aae8b1c01 --",
+      "lastCommit": {
+        "date": "2026-09-25T10:00:00Z",
+        "sha": "1338868684f4ad35382326b5f1dc825aae8b1c01",
+        "short": "1338868",
+        "subject": "detached: lost work"
+      },
+      "lines": 0,
+      "name": null,
+      "ok": true,
+      "planets": [
+        "d_69c6fa4ac535"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "a detached worktree with commits on no branch: pruning would drop their last reference; keep them with git branch <name> <sha> first",
+      "worktree": {
+        "locked": false,
+        "prunable": true
+      }
     },
     {
       "ageDays": 51,
@@ -529,14 +529,6 @@
     "needsRescan": false,
     "pieces": [
       {
-        "ageStep": 0,
-        "cls": "agent",
-        "home": "d_69c6fa4ac535",
-        "id": "x_14a64a08c18a",
-        "lines": 0,
-        "seed": 2874793770
-      },
-      {
         "ageStep": 1,
         "cls": "merged",
         "home": "d_b7c04fef35e2",
@@ -583,6 +575,14 @@
         "id": "x_75bb843cf843",
         "lines": 0,
         "seed": 329889654
+      },
+      {
+        "ageStep": 0,
+        "cls": "agent",
+        "home": "d_69c6fa4ac535",
+        "id": "x_89dc34aa39f6",
+        "lines": 0,
+        "seed": 3240881678
       },
       {
         "ageStep": 0,
