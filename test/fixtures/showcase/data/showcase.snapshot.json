@@ -1512,6 +1512,101 @@
       "tool": "claude-code"
     }
   ],
+  "debris": {
+    "defaults": [
+      "main",
+      "master"
+    ],
+    "items": [
+      {
+        "ageDays": 112,
+        "aheadCount": 2,
+        "cls": "branch",
+        "creator": {
+          "agent": false,
+          "name": "Felix Moreau",
+          "self": false
+        },
+        "files": [
+          "f_394a5bdfe331"
+        ],
+        "filesOutside": 1,
+        "id": "x_3b8ba8162dd0",
+        "lastCommitDate": "2026-07-28T14:00:00Z",
+        "lines": 36,
+        "rebased": false,
+        "ref": "refs/heads/feature/csv-export",
+        "remotes": [],
+        "seed": 3072658344,
+        "sessions": [],
+        "subject": "wip: csv quoting",
+        "tip": "23fbd44d90a5191e67cd15dac604ce632cf79a4e",
+        "worktree": null,
+        "worktreeOnly": false
+      },
+      {
+        "ageDays": 61,
+        "aheadCount": 0,
+        "cls": "merged",
+        "creator": {
+          "agent": false,
+          "name": "Juno Abara",
+          "self": false
+        },
+        "files": [
+          "f_0ef1938598db",
+          "f_aa2833cd23c2"
+        ],
+        "filesOutside": 0,
+        "id": "x_54cb4eccd535",
+        "lastCommitDate": "2026-09-18T11:00:00Z",
+        "lines": 0,
+        "rebased": false,
+        "ref": "refs/heads/fix/tax-rounding",
+        "remotes": [],
+        "seed": 3319552741,
+        "sessions": [],
+        "subject": "fix(billing): tax rounding",
+        "tip": "60a7e827de6987cd8c9b43d36bcb1e5e5ef3f261",
+        "worktree": null,
+        "worktreeOnly": false
+      },
+      {
+        "ageDays": 59,
+        "aheadCount": 2,
+        "cls": "agent",
+        "creator": {
+          "agent": false,
+          "name": "Mara Lindqvist",
+          "self": true
+        },
+        "files": [
+          "f_aa17e0ec638b"
+        ],
+        "filesOutside": 1,
+        "id": "x_5d1ecd3693e7",
+        "lastCommitDate": "2026-09-20T11:00:00Z",
+        "lines": 35,
+        "rebased": false,
+        "ref": "refs/heads/claude/legacy-cleanup",
+        "remotes": [],
+        "seed": 1436259269,
+        "sessions": [
+          "s_530c0fb9dd8be2"
+        ],
+        "subject": "refactor(legacy): chunked reads",
+        "tip": "f97f050fd2e76b46882bc963932b025ae9b2ce10",
+        "worktree": null,
+        "worktreeOnly": false
+      }
+    ],
+    "settings": {
+      "abandonedDays": 30,
+      "agentDays": 7,
+      "mergedGraceDays": 3
+    },
+    "unreadable": 0
+  },
   "dirs": [
     {
       "bornDate": "2026-06-18T15:00:00Z",
