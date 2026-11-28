@@ -7,6 +7,7 @@ import { beaconTextProblem } from '../core/beacons.js';
 import type { BeaconAction, BeaconResult, BeaconView } from '../core/contract/beacons.js';
 import type { CoChangeView } from '../core/contract/cochange.js';
 import type { CrewDetailQuery, CrewDetailResult, CrewView } from '../core/contract/crew.js';
+import type { DebrisDetailQuery, DebrisDetailResult, DebrisView } from '../core/contract/debris.js';
 import type { DroneDetailQuery, DroneDetailResult, DroneView } from '../core/contract/drones.js';
 import type { ChartAction, FogView } from '../core/contract/fog.js';
 import { CommetError } from '../core/errors.js';
@@ -15,7 +16,7 @@ import { CHART_FILE } from '../state/chart.js';
 import { readStateBytes } from '../state/io.js';
 import { bundleKey, contentType, loadBundle, NO_SNAPSHOT, readBundleFile, STATE_FILES } from './files.js';
 import {
-  BIND_HOST, hostAllowed, parseBeaconAction, parseChartAction, parseCrewDetailQuery, parseDiffQuery, parseDroneDetailQuery, parseUnseenQuery, sameOrigin, tokenMatches,
+  BIND_HOST, hostAllowed, parseBeaconAction, parseChartAction, parseCrewDetailQuery, parseDebrisDetailQuery, parseDiffQuery, parseDroneDetailQuery, parseUnseenQuery, sameOrigin, tokenMatches,
 } from './guard.js';
 import { watchState, type StateWatcher } from './watch.js';
 
@@ -52,6 +53,10 @@ export interface ServerOptions {
   crew?: () => Promise<CrewView>;
   /** #207: one crew member's panel, from the same pair. Without it, `GET /api/crew-detail` answers 501. */
   crewDetail?: (q: CrewDetailQuery) => Promise<CrewDetailResult>;
+  /** R13: the debris, from the same pair as the fog. Without it, `GET /api/debris` answers 501. */
+  debris?: () => Promise<DebrisView>;
+  /** R13: one piece's panel, from the same pair. Without it, `GET /api/debris-detail` answers 501. */
+  debrisDetail?: (q: DebrisDetailQuery) => Promise<DebrisDetailResult>;
   /** #75: a planet's or the star's fogged files. Without it, `GET /api/unseen` answers 501. */
   unseen?: (q: UnseenQuery) => Promise<UnseenResult>;
   /**
@@ -162,13 +167,20 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
         : sendJson(res, 501, { error: 'crew view not available' }),
     }],
     [API.crewDetail, { method: 'GET', handle: (req, res) => crewDetail(req, res) }],
+    [API.debris, {
+      method: 'GET',
+      handle: async (_req, res) => o.debris
+        ? sendJson(res, 200, await o.debris())
+        : sendJson(res, 501, { error: 'debris view not available' }),
+    }],
+    [API.debrisDetail, { method: 'GET', handle: (req, res) => debrisDetail(req, res) }],
     [API.events, { method: 'GET', handle: async (req, res) => events(req, res) }],
     [API.unseen, { method: 'GET', handle: (req, res) => unseen(req, res) }],
     [API.diff, { method: 'GET', handle: (req, res) => diff(req, res) }],
   ]);
 
   /** 200, 409 for a head that isn't the current one (refetch the fog), 404 for an id it doesn't have. */
-  const readStatus = (r: UnseenResult | DiffResult | DroneDetailResult | CrewDetailResult) => (r.ok ? 200 : r.head !== undefined ? 409 : 404);
+  const readStatus = (r: UnseenResult | DiffResult | DroneDetailResult | CrewDetailResult | DebrisDetailResult) => (r.ok ? 200 : r.head !== undefined ? 409 : 404);
 
   /** #148: one session's detail. The query is checked before anything is read; refusals are fixed text. */
   async function droneDetail(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -185,6 +197,15 @@ export async function startServer(o: ServerOptions): Promise<CommetServer> {
     if (!q) return sendJson(res, 400, { ok: false, error: 'expected exactly person=<person id> and at=<full commit id>' });
     if (!o.crewDetail) return sendJson(res, 501, { ok: false, error: 'not available' });
     const r = await o.crewDetail(q);
+    sendJson(res, readStatus(r), r);
+  }
+
+  /** R13: one piece's panel. The query is checked before anything is read; refusals are fixed text. */
+  async function debrisDetail(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const q = parseDebrisDetailQuery(req.url ?? '');
+    if (!q) return sendJson(res, 400, { ok: false, error: 'expected exactly id=<debris id> and at=<full commit id>' });
+    if (!o.debrisDetail) return sendJson(res, 501, { ok: false, error: 'not available' });
+    const r = await o.debrisDetail(q);
     sendJson(res, readStatus(r), r);
   }
 

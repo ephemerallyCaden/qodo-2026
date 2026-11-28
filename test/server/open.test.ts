@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { runOpen } from '../../src/cli/open.js';
 import { API, TOKEN_HEADER, type DiffView } from '../../src/core/contract/api.js';
 import type { CrewView } from '../../src/core/contract/crew.js';
+import type { DebrisView } from '../../src/core/contract/debris.js';
 import type { FogView } from '../../src/core/contract/fog.js';
 import { fileIdOf } from '../../src/core/fog/index.js';
 import { EXIT } from '../../src/core/errors.js';
@@ -84,6 +85,18 @@ describe('commet open', () => {
     expect(d.status).toBe(200);
     expect(JSON.parse(d.body)).toMatchObject({ person: me.person, files: [{ path: 'src/a.ts', touches: 1 }] });
     expect((await get(`${API.crewDetail}?person=${me.person}&at=${'f'.repeat(40)}`)).status).toBe(409);
+    expect(await s.stop()).toBe(0);
+  });
+
+  it('serves the debris of the repo it was opened in, and refuses another head or an id it lacks (R13)', async () => {
+    const repo = oneCommitRepo();
+    expect((await cli(['scan', '--no-ingest', '--no-root'], repo.dir, env)).code).toBe(0);
+    const s = await launch(repo.dir, ['--no-open'], join(repo.dir, 'no-web'));
+    const get = (path: string) => req(s.port, { path, headers: { [TOKEN_HEADER]: s.token } });
+    const debris = JSON.parse((await get(API.debris)).body) as DebrisView;
+    expect(debris).toMatchObject({ schemaVersion: 'debris.1', total: 0, pieces: [], prs: 'not-read', needsRescan: false });
+    expect((await get(`${API.debrisDetail}?id=x_0123456789ab&at=${debris.head}`)).status).toBe(404);
+    expect((await get(`${API.debrisDetail}?id=x_0123456789ab&at=${'f'.repeat(40)}`)).status).toBe(409);
     expect(await s.stop()).toBe(0);
   });
 

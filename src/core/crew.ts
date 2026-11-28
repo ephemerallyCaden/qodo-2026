@@ -58,6 +58,35 @@ export function isBotAuthor(name: string, email: string): boolean {
   return /\[bot\]$/i.test(name.trim());
 }
 
+/**
+ * The no-reply addresses that are an agent's (docs/research/agent-providers.md): Claude (web, and the local
+ * trailer), Codex, Antigravity and Continue. GitHub's own `noreply@github.com` is the web UI, not an agent.
+ */
+const AGENT_NOREPLY: ReadonlySet<string> = new Set(['noreply@anthropic.com', 'noreply@openai.com', 'noreply@google.com', 'noreply@continue.dev']);
+
+/**
+ * GitHub App logins that are coding agents (docs/research/agent-providers.md), as `<login>[bot]`: unlike
+ * Dependabot, Renovate or GitHub Actions, they write code for someone.
+ */
+const AGENT_APPS: ReadonlySet<string> = new Set(['copilot-swe-agent', 'devin-ai-integration', 'cursor', 'claude', 'chatgpt-codex-connector',
+  'google-labs-jules', 'opencode-agent', 'kiloconnect', 'kilo-code-bot', 'roomote-v0', 'kiro-agent', 'amazon-q-developer', 'factory-droid',
+  'augmentcode', 'qodo-code-review']);
+
+/**
+ * R13: an agent author, a subset of isBotAuthor: a known agent's email or no-reply address, an agent's GitHub
+ * noreply login, or an agent app's `[bot]` account (its noreply login or its name). Dependabot and other
+ * bots aren't agents. A new agent identity in agent-providers.md gets a row here and in test/crew.test.ts.
+ */
+export function isAgentAuthor(name: string, email: string): boolean {
+  const e = email.toLowerCase();
+  if (AGENT_EMAILS.has(e) || AGENT_NOREPLY.has(e)) return true;
+  const login = GITHUB_NOREPLY.exec(e)?.[1];
+  const app = (s: string) => /\[bot\]$/i.test(s) && AGENT_APPS.has(s.slice(0, -'[bot]'.length).toLowerCase());
+  // A plain login (`claude@users.noreply…`) is a person's account; an app's has `[bot]`.
+  if (login !== undefined && (AGENT_LOGINS.has(login) || app(login))) return true;
+  return app(name.trim());
+}
+
 /** One commit's author as `git log --use-mailmap` gives it: `%aN`, and `%aE` lowercased. */
 export interface Author { name: string; email: string }
 

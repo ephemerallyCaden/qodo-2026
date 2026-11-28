@@ -10,7 +10,7 @@ import type { DirId, FileId, Session, SessionKey, SnapshotV02 } from './snapshot
 type Home = DroneSession['home'];
 
 /** The body holding most of the files, ties by codepoint; null when none of them is in the map. */
-function homeOfFiles(files: readonly FileId[], home: ReadonlyMap<FileId, DirId | null>): Home {
+export function homeOfFiles(files: readonly FileId[], home: ReadonlyMap<FileId, DirId | null>): Home {
   const counts = new Map<DirId | 'star', number>();
   for (const id of files) {
     const h = home.get(id);

@@ -61,6 +61,8 @@ export interface DebrisView {
   placed: number;
   /** The sum of `lines`: the repo's rough mass figure (R13). A repo total, never per person (Rule 6). */
   mass: number;
+  /** Refs and worktrees whose reads failed, left out of `pieces` and counted (Rule 1): the view says so. 0 when `needsRescan`. */
+  unreadable: number;
   /**
    * Stale PRs need GitHub and aren't read in v1 (no opt-in yet): the view says "stale PRs: not read",
    * never 0 (Rule 1). No piece has class `pr` while this is `'not-read'`.
@@ -86,7 +88,7 @@ export const DEBRIS_WARNINGS = {
   unmerged: "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
   rebased: 'rebased and merged: HEAD has every change (git cherry), but git branch -d refuses it; inspect it first',
   remoteUnmerged: "HEAD doesn't have this work and it's only on the remote: inspect it; Commet shows no delete for it",
-  detached: 'a detached worktree: its commits are on no branch, and pruning drops their last reference; inspect it first',
+  detached: 'a detached worktree with commits on no branch: pruning would drop their last reference; keep them with git branch <name> <sha> first',
   worktreeAmbiguous: "its worktree's folder name isn't unique: find it with git worktree list",
   worktreeLocked: 'its worktree is locked: git worktree unlock it first, if you mean to',
   hiddenCharacters: 'the name holds invisible or direction-changing characters: no command is shown; inspect it with git branch --list',
@@ -140,7 +142,8 @@ export interface DebrisDetail {
    * The cleanup, for the user to copy; Commet never runs it. Every name is POSIX single-quoted after `--`:
    * `git worktree remove -- '<folder>'`, `git worktree prune`, `git branch -d -- '<name>'` (git refuses an
    * unmerged branch; never `-D`), `git push --delete -- '<remote>' '<ref>'` (a merged remote copy only),
-   * joined by ` && `. Null when no safe command exists (an unmerged remote-only branch, a hidden character).
+   * joined by ` && `. Null when no safe command exists: an unmerged remote-only branch, a detached worktree's
+   * own commits, a locked worktree or one whose folder name isn't unique, a hidden character.
    */
   cleanup: string | null;
   /** For work HEAD doesn't have: `git log --oneline HEAD..'<full ref>' --` (or `git cherry -v`, `git worktree list`). Else null. */

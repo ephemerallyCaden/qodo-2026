@@ -1106,6 +1106,74 @@
     }
   ],
   "coverage": [],
+  "debris": {
+    "defaults": [
+      "feature/remote",
+      "main",
+      "master"
+    ],
+    "items": [
+      {
+        "ageDays": 175,
+        "aheadCount": 1,
+        "cls": "branch",
+        "creator": {
+          "agent": false,
+          "name": "Ada Self",
+          "self": true
+        },
+        "files": [
+          "f_362826af8b17"
+        ],
+        "filesOutside": 0,
+        "id": "x_445cde8acee3",
+        "lastCommitDate": "2026-01-06T10:00:00Z",
+        "lines": 2,
+        "rebased": false,
+        "ref": "refs/heads/old-fork",
+        "remotes": [],
+        "seed": 3063316317,
+        "sessions": [],
+        "subject": "test: b-old",
+        "tip": "34e1a53c30f2ce69d5f961902aafc327ef7766b8",
+        "worktree": null,
+        "worktreeOnly": false
+      },
+      {
+        "ageDays": 10,
+        "aheadCount": 0,
+        "cls": "merged",
+        "creator": {
+          "agent": false,
+          "name": "Ada Self",
+          "self": true
+        },
+        "files": [
+          "f_3bb5e133ae02",
+          "f_732b045d6c8d"
+        ],
+        "filesOutside": 0,
+        "id": "x_8b0594e996bd",
+        "lastCommitDate": "2026-06-20T10:00:00Z",
+        "lines": 0,
+        "rebased": false,
+        "ref": "refs/heads/merged",
+        "remotes": [],
+        "seed": 3479536566,
+        "sessions": [],
+        "subject": "test: s20",
+        "tip": "de7a52d396059232bddf15b73cd5089c38fa7b20",
+        "worktree": null,
+        "worktreeOnly": false
+      }
+    ],
+    "settings": {
+      "abandonedDays": 30,
+      "agentDays": 7,
+      "mergedGraceDays": 3
+    },
+    "unreadable": 0
+  },
   "dirs": [
     {
       "bornDate": "2026-06-01T10:00:00Z",

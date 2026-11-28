@@ -13,6 +13,7 @@ import { applyBeacon, readBeacons } from '../state/beacons.js';
 import { readCoChange } from '../state/cochange.js';
 import { applyChart, readDroneDetail, readDrones, readFog } from '../state/chart.js';
 import { readCrew, readCrewDetail } from '../state/crew.js';
+import { readDebrisDetail, readDebrisView } from '../state/debris.js';
 import { readDiff, readUnseen } from '../state/diff.js';
 import { readStateBytes } from '../state/io.js';
 import { defaultPaths } from './hook.js';
@@ -73,6 +74,8 @@ export async function runOpen(argv: string[], io: Io, ctl: OpenControl = {}): Pr
       cochange: () => readCoChange(io.cwd),
       // #207: the crew (human authors in the window) and one member's own panel.
       crew: () => readCrew(io.cwd), crewDetail: (q) => readCrewDetail(io.cwd, q),
+      // R13: the stale work and one piece's own panel.
+      debris: () => readDebrisView(io.cwd), debrisDetail: (q) => readDebrisDetail(io.cwd, q),
       // #75: reviewing from the view. Diffs come from local git on demand and are never stored.
       unseen: (q) => readUnseen(io.cwd, q), diff: (q, signal) => readDiff(io.cwd, q, signal) };
     if (ctl.pollMs !== undefined) opts.pollMs = ctl.pollMs;

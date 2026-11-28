@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs';
+import type { WorktreeRow } from '../core/debris.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import { sha256Hex } from '../core/hash.js';
 import { DIFF_OPTS, LOG_OPTS, tryGit, type Git } from './git.js';
@@ -26,6 +27,8 @@ export interface RepoInfo {
    */
   selfEmails: string[];
   worktreeRoots: string[];
+  /** R13: the linked worktrees (not the main one), with no path kept. */
+  worktrees: WorktreeRow[];
 }
 
 /** A repo's id: the hash of its root commits (`rev-list --max-parents=0` output), so every clone agrees. */
@@ -34,6 +37,32 @@ export const repoIdOf = (rootCommits: string) => sha256Hex(rootCommits.split('\n
 /** Worktree paths from `git worktree list --porcelain -z`. */
 export const worktreePaths = (porcelainZ: string) =>
   porcelainZ.split('\0').filter((t) => t.startsWith('worktree ')).map((t) => t.slice('worktree '.length));
+
+/**
+ * R13: the linked worktrees from `git worktree list --porcelain -z`, the main one (listed first) and bare ones
+ * left out. Each record is NUL-terminated attribute lines ending in an empty token. Only its HEAD, branch and
+ * the locked and prunable flags are kept, plus `folder`, its path's last component when no other worktree's
+ * (the main one's too) is the same; never the path or a lock or prune reason.
+ */
+export function parseWorktrees(porcelainZ: string): WorktreeRow[] {
+  const records: string[][] = [[]];
+  for (const t of porcelainZ.split('\0')) {
+    if (t === '') records.push([]);
+    else records.at(-1)!.push(t);
+  }
+  const all = records.filter((r) => r[0]?.startsWith('worktree ')).map((r) => {
+    const path = r[0]!.slice('worktree '.length);
+    const value = (k: string) => r.find((a) => a === k || a.startsWith(`${k} `));
+    const branch = value('branch');
+    return { folder: path.slice(path.lastIndexOf('/') + 1), head: value('HEAD')?.slice('HEAD '.length) ?? '',
+      ref: branch === undefined ? null : branch.slice('branch '.length), bare: value('bare') !== undefined,
+      locked: value('locked') !== undefined, prunable: value('prunable') !== undefined };
+  });
+  const seen = new Map<string, number>();
+  for (const w of all) seen.set(w.folder, (seen.get(w.folder) ?? 0) + 1);
+  return all.slice(1).filter((w) => !w.bare).map(({ folder, head, ref, locked, prunable }) => ({
+    head, ref, locked, prunable, folder: folder !== '' && seen.get(folder) === 1 ? folder : null }));
+}
 
 export async function readRepo(git: Git): Promise<RepoInfo> {
   const first = await tryGit(git, ['rev-parse', '--is-shallow-repository', '--show-object-format',
@@ -66,6 +95,7 @@ export async function readRepo(git: Git): Promise<RepoInfo> {
     repoId: repoIdOf(roots),
     selfEmails: await selfEmails(git, name?.trim() ?? '', configValues(emails), configValues(extra)),
     worktreeRoots: worktreePaths(worktrees),
+    worktrees: parseWorktrees(worktrees),
   };
 }
 

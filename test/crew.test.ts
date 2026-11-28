@@ -3,7 +3,7 @@
 // fixture repo is test/crew-scan.test.ts.
 import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/core/canonical-json.js';
-import { crewDetail, crewOf, crewProblem, crewView, isBotAuthor, type Author } from '../src/core/crew.js';
+import { crewDetail, crewOf, crewProblem, crewView, isAgentAuthor, isBotAuthor, type Author } from '../src/core/crew.js';
 import { fileIdOf, fogBase } from '../src/core/fog/index.js';
 import { personId, u32 } from '../src/core/hash.js';
 import type { Commit, CommitFile, Person, PersonId, SnapshotV02 } from '../src/core/snapshot/types.js';
@@ -52,6 +52,30 @@ describe('isBotAuthor (#207 C1: bots and agent authors are never crew)', () => {
     ['Agent Smith', 'agent@example.com'],
   ];
   for (const [name, email] of people) it(`${name} <${email}> is a person`, () => expect(isBotAuthor(name, email)).toBe(false));
+
+  // R13: an agent's branch is an orphaned agent branch; a bot's (Dependabot's) is only abandoned.
+  const notAgents = new Set(['dependabot[bot]', 'github-actions', 'Renovate Bot', 'some-tool[bot]', 'GitHub', 'CI', 'Builds']);
+  for (const [name, email] of bots) {
+    const agent = !notAgents.has(name);
+    it(`${name} <${email}> is ${agent ? 'an agent' : 'a bot, not an agent'} (isAgentAuthor, R13)`, () => expect(isAgentAuthor(name, email)).toBe(agent));
+  }
+  const agentApps: [string, string][] = [
+    ['copilot-swe-agent[bot]', '198982749+Copilot@users.noreply.github.com'],
+    ['claude[bot]', '41898282+claude[bot]@users.noreply.github.com'],
+    ['Codex', '199175422+chatgpt-codex-connector[bot]@users.noreply.github.com'],
+    ['google-labs-jules[bot]', '161369871+google-labs-jules[bot]@users.noreply.github.com'],
+    ['opencode-agent[bot]', 'opencode-agent[bot]@users.noreply.github.com'],
+    ['amazon-q-developer[bot]', '208079219+amazon-q-developer[bot]@users.noreply.github.com'],
+    ['factory-droid[bot]', '138933559+factory-droid[bot]@users.noreply.github.com'],
+    ['qodo-code-review[bot]', '151058649+qodo-code-review[bot]@users.noreply.github.com'],
+    ['cursor[bot]', 'cursor@example.com'],
+  ];
+  for (const [name, email] of agentApps) {
+    it(`${name} <${email}> is an agent app (R13)`, () => expect([isAgentAuthor(name, email), isBotAuthor(name, email)]).toEqual([true, true]));
+  }
+  for (const [name, email] of [...people, ['claude', '7700002+claude@users.noreply.github.com'], ['cursor', 'cursor@example.com']] as [string, string][]) {
+    it(`${name} <${email}> is no agent (R13)`, () => expect(isAgentAuthor(name, email)).toBe(false));
+  }
 });
 
 const a = (name: string, email: string): Author => ({ name, email });

@@ -213,16 +213,24 @@ const BRANCH_READS = 8;
 /** A branch as read from git: `tops` are the top-level path segments its commits touch. */
 export type RawBranch = Omit<Branch, 'dirIds'> & { tops: Set<string> };
 
-interface Tip { aheadCount: number; ct: number; tops: Set<string>; remote: boolean }
+interface Tip { aheadCount: number; ct: number; tops: Set<string>; remote: boolean; lines: number; paths: Set<string> }
+
+/**
+ * R13: what one unmerged ref's own commits change (from the reads below, no extra git call): `lines`, the
+ * added plus removed lines of its non-merge commits HEAD lacks, binaries and excluded paths left out; `paths`,
+ * every path they (and its merges' own resolutions) change, the same ones `tops` comes from.
+ */
+export interface RefWork { aheadCount: number; lines: number; paths: ReadonlySet<string> }
 
 /**
  * Unmerged local and remote-tracking branches, from refs already on disk (no fetch), except HEAD's
  * own branch and symbolic refs such as `origin/HEAD`. A remote-tracking ref that is a local
  * branch's upstream, or is `<remote>/<name>` for a local `<name>`, folds into that branch's entry,
  * which then uses the most advanced tip (#16 AC11). A branch whose commits can't be read is
- * counted in `unreadable`.
+ * counted in `unreadable`. `work` holds each readable ref's own work by full refname, for debris (R13).
  */
-export async function unmergedBranches(git: Git, head: string, headRef: string): Promise<{ branches: RawBranch[]; unreadable: number }> {
+export async function unmergedBranches(git: Git, head: string, headRef: string):
+  Promise<{ branches: RawBranch[]; unreadable: number; work: Map<string, RefWork> }> {
   const refs = await git(['for-each-ref', `--no-merged=${head}`,
     '--format=%(refname)%00%(symref)%00%(objectname)%00%(committerdate:unix)%00%(upstream)', 'refs/heads', 'refs/remotes']);
   const rows = refs.split('\n').filter(Boolean).map((line) => line.split('\0') as [string, string, string, string, string])
@@ -263,17 +271,27 @@ export async function unmergedBranches(git: Git, head: string, headRef: string):
     if (count === null || log === null || stat === null) return null;
     const binary = new Set<string>();
     const text = new Set<string>();
+    let lines = 0;
     for (const row of stat.split('\0')) {
-      const t2 = row.indexOf('\t', row.indexOf('\t') + 1);
+      const t1 = row.indexOf('\t');
+      const t2 = row.indexOf('\t', t1 + 1);
       if (t2 < 0) continue; // the empty token after the last row
-      (row.startsWith('-\t-\t') ? binary : text).add(row.slice(t2 + 1));
+      const path = row.slice(t2 + 1);
+      if (row.startsWith('-\t-\t')) binary.add(path);
+      else {
+        text.add(path);
+        if (exclusionOf(path) === null) lines += (Number(row.slice(0, t1)) || 0) + (Number(row.slice(t1 + 1, t2)) || 0);
+      }
     }
     const tops = new Set<string>();
+    const paths = new Set<string>();
     for (const path of log.split('\0')) {
+      if (path === '' || exclusionOf(path) !== null || (!text.has(path) && binary.has(path))) continue;
+      paths.add(path);
       const slash = path.indexOf('/');
-      if (slash > 0 && exclusionOf(path) === null && (text.has(path) || !binary.has(path))) tops.add(path.slice(0, slash));
+      if (slash > 0) tops.add(path.slice(0, slash));
     }
-    return { aheadCount: Number(count.trim()), ct: Number(ct), tops, remote: ref.startsWith('refs/remotes/') };
+    return { aheadCount: Number(count.trim()), ct: Number(ct), tops, remote: ref.startsWith('refs/remotes/'), lines, paths };
   };
   const tips = new Map<string, Tip | null>();
   for (let i = 0; i < rows.length; i += BRANCH_READS) {
@@ -299,5 +317,7 @@ export async function unmergedBranches(git: Git, head: string, headRef: string):
       lastCommitDate: isoUtc(best.ct * 1000), tops: best.tops });
   }
   branches.sort((a, b) => byCodepoint(a.name, b.name) || Number(a.remote) - Number(b.remote));
-  return { branches, unreadable };
+  const work = new Map<string, RefWork>();
+  for (const [ref, tip] of tips) if (tip) work.set(ref, { aheadCount: tip.aheadCount, lines: tip.lines, paths: tip.paths });
+  return { branches, unreadable, work };
 }

@@ -3,6 +3,7 @@ import { discoverClaude, mergeIntervals, parseClaude, redactPaths, searchOutside
 import { byCodepoint, canonicalJson } from '../core/canonical-json.js';
 import { coChangeOf } from '../core/cochange.js';
 import { crewOf } from '../core/crew.js';
+import { buildDebris, planDebris } from '../core/debris.js';
 import type { LayoutV1 } from '../core/contract/layout.js';
 import { CommetError, EXIT } from '../core/errors.js';
 import { fogBase, unrowedChanges } from '../core/fog/index.js';
@@ -22,6 +23,7 @@ import { VERSION } from '../core/version.js';
 import { exclusionOf, RULES, RULESET_VERSION } from './exclusions.js';
 import { gitRunner, tryGit, type Git } from './git.js';
 import { fetchQodo, readQodoCache } from './qodo.js';
+import { readDebris, readDebrisGit } from './debris.js';
 import { addedLines, headFiles, PatchLines, readRepo, windowCommits, type NumstatRow, type RawCommit } from './repo.js';
 import { debtCounts, lineageLog, mergeSides, unmergedBranches } from './structure.js';
 
@@ -151,13 +153,15 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   // A git failure surfaces once, through rawP below; discovery may never await this copy, so it
   // must not reject unhandled and crash the CLI past its error path (Qodo PR10 #8).
   selfTimes.catch(() => undefined);
-  const [head, raw, found, history, debt, rawBranches] = await Promise.all([
+  const headRef = repo.branch === 'HEAD' ? '' : `refs/heads/${repo.branch}`;
+  const [head, raw, found, history, debt, rawBranches, debrisGit] = await Promise.all([
     headFiles(git, repo.head, repo.emptyTree),
     rawP,
     o.ingest ? discoverClaude(o.claudeProjectsDir, repo.commonDir, repo.worktreeRoots, o.maxTranscriptBytes, selfTimes) : null,
     lineageLog(git, repo.head),
     debtCounts(git, repo.head),
-    unmergedBranches(git, repo.head, repo.branch === 'HEAD' ? '' : `refs/heads/${repo.branch}`),
+    unmergedBranches(git, repo.head, headRef),
+    readDebrisGit(git, repo.head, repo.headMs / 1000, headRef, repo.worktrees),
   ]);
   const kept: [string, NumstatRow][] = [];
   for (const [path, row] of head) {
@@ -193,12 +197,15 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   const knownPaths = new Set([...head.keys(), ...raw.flatMap((c) => [...c.files.keys()])]);
   // The patch log runs while the transcripts parse (and any Qodo fetch finishes); it starts no
   // earlier than the window, so every record it holds is a window commit's.
-  const [patches, ingest, qodo] = await Promise.all([
+  // R13: the refs that could be debris, read while the transcripts parse.
+  const debrisPlan = planDebris(debrisGit);
+  const [patches, ingest, qodo, debrisReads] = await Promise.all([
     fromMs !== undefined && fromMs <= repo.headMs
       ? addedLines(git, repo.head, isoUtc(Math.max(sinceMs, fromMs - DAY_MS)), new Set(raw.map((c) => c.sha)))
       : new PatchLines(),
     found ? parseClaude(found, knownPaths, hash) : null,
     readQodo(o, git, repo.commonDir, repo.head, headPaths, qodoP),
+    readDebris(git, debrisPlan, rawBranches.work, repo.head, repo.emptyTree),
   ]);
   const files: SnapshotV02['files'] = kept.map(([path, row]) => {
     const target = testOf.get(path);
@@ -285,6 +292,9 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   // #211: co-change by file at HEAD, renames followed through the same path history the fog uses.
   const paths = pathHistory(history, 0, lineageExcluded);
   snapshot.cochange = coChangeOf(fogBase(snapshot, { ...paths, unrowed: unrowedChanges(snapshot, history, 0, lineageExcluded) }));
+  // R13: stale branches and worktrees, classified against HEAD's date and the sessions on them.
+  snapshot.debris = buildDebris(debrisPlan, debrisReads, { headCt: repo.headMs / 1000, sessions: snapshot.sessions,
+    fileIds: new Map(files.map((f) => [f.path, f.id])), selfEmails: mine });
   const unreadable = ingest?.unreadable.length ?? 0;
   const logs = found && { transcripts: found.transcripts.length - unreadable, tooLarge: found.stats.tooLarge,
     unavailable: found.stats.unavailable + unreadable, dropped: ingest?.dropped ?? 0, unattributed: found.stats.unattributed,

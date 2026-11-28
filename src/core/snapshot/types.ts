@@ -233,8 +233,17 @@ export interface DebrisItem {
   cls: Exclude<DebrisClass, 'pr'>;
   /** The full refname (`refs/heads/x`, or `refs/remotes/origin/x` for a remote-only one); null for a detached worktree's HEAD. */
   ref: string | null;
-  /** A remote copy a cleanup may delete: its remote's name and its refname there (`refs/heads/x`). Null when none, or the remote isn't configured. */
-  remote: { name: string; ref: string } | null;
+  /**
+   * Its remote-tracking copies (or, remote-only, itself) as a cleanup may delete them: the remote's name and
+   * the refname there (`refs/heads/x`), sorted. A copy whose remote isn't configured with the standard fetch
+   * refspec (`+refs/heads/*:refs/remotes/<name>/*`) isn't listed: its refname there can't be known.
+   */
+  remotes: { name: string; ref: string }[];
+  /**
+   * The item is a prunable worktree entry itself, not its branch (detached, or on a branch that isn't
+   * debris): `ref` is the branch it was on, `aheadCount` the commits HEAD lacks only when detached, `lines` 0.
+   */
+  worktreeOnly: boolean;
   tip: Sha;
   /** The tip's committer date. */
   lastCommitDate: IsoUtc;
@@ -268,7 +277,7 @@ export interface DebrisItem {
 /** R13: the stale work, its settings recorded beside it (contract `DEBRIS`). Absent in a snapshot scanned before R13. */
 export interface Debris {
   settings: { abandonedDays: number; mergedGraceDays: number; agentDays: number };
-  /** The default branch names never counted (the remotes' HEADs, else `init.defaultBranch`, else `main` and `master`), sorted. */
+  /** The default branch names never counted (the remotes' HEADs, `init.defaultBranch`, `main` and `master`), sorted. */
   defaults: string[];
   /** Sorted by id. */
   items: DebrisItem[];

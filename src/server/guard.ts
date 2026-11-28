@@ -4,9 +4,10 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { STAR_HOME, type DiffQuery, type UnseenQuery } from '../core/contract/api.js';
 import type { BeaconAction } from '../core/contract/beacons.js';
 import type { CrewDetailQuery } from '../core/contract/crew.js';
+import type { DebrisDetailQuery } from '../core/contract/debris.js';
 import type { DroneDetailQuery } from '../core/contract/drones.js';
 import type { ChartAction } from '../core/contract/fog.js';
-import type { DirId, FileId, PersonId, SessionKey } from '../core/snapshot/types.js';
+import type { DebrisId, DirId, FileId, PersonId, SessionKey } from '../core/snapshot/types.js';
 
 /** The only address the server binds. Deliberately not configurable (CONSTITUTION, "Requires human approval"). */
 export const BIND_HOST = '127.0.0.1';
@@ -56,6 +57,8 @@ const DIR_ID = /^d_[0-9a-f]{12,64}$/;
 const SESSION_KEY = /^s_[0-9a-f]{12,64}$/;
 /** A person id: `p_` and hex (12 from the scanner). */
 const PERSON_ID = /^p_[0-9a-f]{12,64}$/;
+/** A debris item id: `x_` and 12 hex (R13). */
+const DEBRIS_ID = /^x_[0-9a-f]{12}$/;
 /** A full commit SHA: 40 hex, or 64 in a SHA-256 repo. */
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 /** Longest query string the read routes take; theirs are two ids. */
@@ -99,6 +102,12 @@ export function parseDroneDetailQuery(target: string): DroneDetailQuery | null {
 export function parseCrewDetailQuery(target: string): CrewDetailQuery | null {
   const q = exactQuery(target, ['person', 'at']);
   return q && PERSON_ID.test(q.person) && SHA.test(q.at) ? { person: q.person as PersonId, at: q.at } : null;
+}
+
+/** `GET /api/debris-detail` parameters (R13): a debris id and the head the view shows. Null for anything else. */
+export function parseDebrisDetailQuery(target: string): DebrisDetailQuery | null {
+  const q = exactQuery(target, ['id', 'at']);
+  return q && DEBRIS_ID.test(q.id) && SHA.test(q.at) ? { id: q.id as DebrisId, at: q.at } : null;
 }
 
 /**

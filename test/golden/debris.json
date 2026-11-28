@@ -1,0 +1,658 @@
+{
+  "panels": [
+    {
+      "ageDays": 36,
+      "aheadCount": 1,
+      "cleanup": null,
+      "cls": "agent",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_69c6fa4ac535",
+      "id": "x_14a64a08c18a",
+      "inspect": "git log --oneline HEAD..1338868684f4ad35382326b5f1dc825aae8b1c01 --",
+      "lastCommit": {
+        "date": "2026-09-25T10:00:00Z",
+        "sha": "1338868684f4ad35382326b5f1dc825aae8b1c01",
+        "short": "1338868",
+        "subject": "detached: lost work"
+      },
+      "lines": 0,
+      "name": null,
+      "ok": true,
+      "planets": [
+        "d_69c6fa4ac535"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "a detached worktree with commits on no branch: pruning would drop their last reference; keep them with git branch <name> <sha> first",
+      "worktree": {
+        "locked": false,
+        "prunable": true
+      }
+    },
+    {
+      "ageDays": 72,
+      "aheadCount": 1,
+      "cleanup": "git branch -d -- 'rebased'",
+      "cls": "merged",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_b7c04fef35e2",
+      "id": "x_20047d745c14",
+      "inspect": "git cherry -v HEAD 'refs/heads/rebased'",
+      "lastCommit": {
+        "date": "2026-08-20T10:00:00Z",
+        "sha": "358c70dc452d102c2e08e6f03b7958b84ad7660a",
+        "short": "358c70d",
+        "subject": "rebased: panel copy"
+      },
+      "lines": 0,
+      "name": "rebased",
+      "ok": true,
+      "planets": [
+        "d_b7c04fef35e2"
+      ],
+      "rebased": true,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "rebased and merged: HEAD has every change (git cherry), but git branch -d refuses it; inspect it first",
+      "worktree": null
+    },
+    {
+      "ageDays": 244,
+      "aheadCount": 1,
+      "cleanup": "git branch -d -- 'ancient'",
+      "cls": "branch",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_b7c04fef35e2",
+      "id": "x_2bd8b252f301",
+      "inspect": "git log --oneline HEAD..'refs/heads/ancient' --",
+      "lastCommit": {
+        "date": "2026-03-01T10:00:00Z",
+        "sha": "79a3cd4e358713a7957a6b5057729dd2390495a3",
+        "short": "79a3cd4",
+        "subject": "ancient: a panel idea"
+      },
+      "lines": 1,
+      "name": "ancient",
+      "ok": true,
+      "planets": [
+        "d_b7c04fef35e2"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "worktree": null
+    },
+    {
+      "ageDays": 41,
+      "aheadCount": 1,
+      "cleanup": "git branch -d -- 'deps/bump'",
+      "cls": "branch",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "dependabot[bot]"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "star",
+      "id": "x_30d76145eef0",
+      "inspect": "git log --oneline HEAD..'refs/heads/deps/bump' --",
+      "lastCommit": {
+        "date": "2026-09-20T10:00:00Z",
+        "sha": "3af1d1d61789ac91c43d6d242c6491968de0226e",
+        "short": "3af1d1d",
+        "subject": "deps: bump"
+      },
+      "lines": 1,
+      "name": "deps/bump",
+      "ok": true,
+      "planets": [
+        "star"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "worktree": null
+    },
+    {
+      "ageDays": 10,
+      "aheadCount": 1,
+      "cleanup": "git branch -d -- 'agent/claude-fix'",
+      "cls": "agent",
+      "creator": {
+        "agent": true,
+        "captain": false,
+        "displayName": "Claude"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_69c6fa4ac535",
+      "id": "x_4f95f1a9d3e2",
+      "inspect": "git log --oneline HEAD..'refs/heads/agent/claude-fix' --",
+      "lastCommit": {
+        "date": "2026-10-21T10:00:00Z",
+        "sha": "346fe52e56e6f46603a6bfaac22d553274069c16",
+        "short": "346fe52",
+        "subject": "agent: fix core"
+      },
+      "lines": 1,
+      "name": "agent/claude-fix",
+      "ok": true,
+      "planets": [
+        "d_69c6fa4ac535"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "worktree": null
+    },
+    {
+      "ageDays": 59,
+      "aheadCount": 1,
+      "cleanup": null,
+      "cls": "branch",
+      "creator": {
+        "agent": false,
+        "captain": true,
+        "displayName": "Nova Reyes"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_00178f31922e",
+      "id": "x_5be002a4f98d",
+      "inspect": null,
+      "lastCommit": {
+        "date": "2026-09-02T10:00:00Z",
+        "sha": "afef5694809819cbbbc6bf023ba9999f2887b00f",
+        "short": "afef569",
+        "subject": "bidi name"
+      },
+      "lines": 1,
+      "name": "rtl‮evil",
+      "ok": true,
+      "planets": [
+        "d_00178f31922e"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "the name holds invisible or direction-changing characters: no command is shown; inspect it with git branch --list",
+      "worktree": null
+    },
+    {
+      "ageDays": 30,
+      "aheadCount": 0,
+      "cleanup": "git branch -d -- 'shipped' && git push --delete -- 'origin' 'refs/heads/shipped'",
+      "cls": "merged",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_b7c04fef35e2",
+      "id": "x_75bb843cf843",
+      "inspect": null,
+      "lastCommit": {
+        "date": "2026-10-01T10:00:00Z",
+        "sha": "562e65230ffa706af91fb64efb9b8da4d29f3bc4",
+        "short": "562e652",
+        "subject": "shipped: odd file"
+      },
+      "lines": 0,
+      "name": "shipped",
+      "ok": true,
+      "planets": [
+        "d_b7c04fef35e2"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": null,
+      "worktree": null
+    },
+    {
+      "ageDays": 51,
+      "aheadCount": 1,
+      "cleanup": null,
+      "cls": "branch",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_00178f31922e",
+      "id": "x_a39f8585bd07",
+      "inspect": "git log --oneline HEAD..'refs/heads/locked-old' --",
+      "lastCommit": {
+        "date": "2026-09-10T10:00:00Z",
+        "sha": "80a0ffffcb9c3d1737df222175743967b2700380",
+        "short": "80a0fff",
+        "subject": "locked-old: parked"
+      },
+      "lines": 1,
+      "name": "locked-old",
+      "ok": true,
+      "planets": [
+        "d_00178f31922e"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "its worktree is locked: git worktree unlock it first, if you mean to",
+      "worktree": {
+        "locked": true,
+        "prunable": false
+      }
+    },
+    {
+      "ageDays": 60,
+      "aheadCount": 1,
+      "cleanup": "git branch -d -- '-x;touch${IFS}pwned;$(touch${IFS}pwned2)'\\''q`touch${IFS}pwned3`'",
+      "cls": "branch",
+      "creator": {
+        "agent": false,
+        "captain": true,
+        "displayName": "Nova Reyes"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_69c6fa4ac535",
+      "id": "x_b3faadcd890b",
+      "inspect": "git log --oneline HEAD..'refs/heads/-x;touch${IFS}pwned;$(touch${IFS}pwned2)'\\''q`touch${IFS}pwned3`' --",
+      "lastCommit": {
+        "date": "2026-09-01T10:00:00Z",
+        "sha": "d7ab9ae7308e5c948240525ae1a368119a2be8a2",
+        "short": "d7ab9ae",
+        "subject": "hostile name"
+      },
+      "lines": 1,
+      "name": "-x;touch${IFS}pwned;$(touch${IFS}pwned2)'q`touch${IFS}pwned3`",
+      "ok": true,
+      "planets": [
+        "d_69c6fa4ac535"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "worktree": null
+    },
+    {
+      "ageDays": 91,
+      "aheadCount": 1,
+      "cleanup": "git branch -d -- 'old-feature'",
+      "cls": "branch",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 1,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_69c6fa4ac535",
+      "id": "x_c3adf572f6f7",
+      "inspect": "git log --oneline HEAD..'refs/heads/old-feature' --",
+      "lastCommit": {
+        "date": "2026-08-01T10:00:00Z",
+        "sha": "5601743543cff4e93ba16d65a49c74cdf264c708",
+        "short": "5601743",
+        "subject": "old-feature: new engine part"
+      },
+      "lines": 2,
+      "name": "old-feature",
+      "ok": true,
+      "planets": [
+        "d_69c6fa4ac535"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "worktree": null
+    },
+    {
+      "ageDays": 2,
+      "aheadCount": 0,
+      "cleanup": "git worktree prune",
+      "cls": "agent",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_b7c04fef35e2",
+      "id": "x_d1fc99484585",
+      "inspect": null,
+      "lastCommit": {
+        "date": "2026-10-29T10:00:00Z",
+        "sha": "32c093f5e7ccbfe594299c0c008ba35252a880ea",
+        "short": "32c093f",
+        "subject": "gone-wt: fresh work"
+      },
+      "lines": 0,
+      "name": "gone-wt",
+      "ok": true,
+      "planets": [
+        "d_b7c04fef35e2"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": null,
+      "worktree": {
+        "locked": false,
+        "prunable": true
+      }
+    },
+    {
+      "ageDays": 60,
+      "aheadCount": 1,
+      "cleanup": null,
+      "cls": "branch",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_69c6fa4ac535",
+      "id": "x_d2cb17182561",
+      "inspect": "git log --oneline HEAD..'refs/remotes/origin/stale-remote' --",
+      "lastCommit": {
+        "date": "2026-09-01T10:00:00Z",
+        "sha": "7ab38d53701d02b9c468016ee209ef3175a70cb5",
+        "short": "7ab38d5",
+        "subject": "stale-remote: an experiment"
+      },
+      "lines": 1,
+      "name": "origin/stale-remote",
+      "ok": true,
+      "planets": [
+        "d_69c6fa4ac535"
+      ],
+      "rebased": false,
+      "remoteOnly": true,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "HEAD doesn't have this work and it's only on the remote: inspect it; Commet shows no delete for it",
+      "worktree": null
+    },
+    {
+      "ageDays": 46,
+      "aheadCount": 2,
+      "cleanup": "git branch -d -- 'half-rebased'",
+      "cls": "branch",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 1,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_00178f31922e",
+      "id": "x_dd1913afe574",
+      "inspect": "git log --oneline HEAD..'refs/heads/half-rebased' --",
+      "lastCommit": {
+        "date": "2026-09-15T11:00:00Z",
+        "sha": "9de80d6c223555463d4647ae4a296cfaf037fe30",
+        "short": "9de80d6",
+        "subject": "half-rebased: engine"
+      },
+      "lines": 2,
+      "name": "half-rebased",
+      "ok": true,
+      "planets": [
+        "d_00178f31922e"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "worktree": null
+    },
+    {
+      "ageDays": 15,
+      "aheadCount": 1,
+      "cleanup": "git worktree remove -- 'wt-agent-dir' && git branch -d -- 'wt-agent'",
+      "cls": "agent",
+      "creator": {
+        "agent": true,
+        "captain": false,
+        "displayName": "Cursor Agent"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_00178f31922e",
+      "id": "x_eb8e47d6c00d",
+      "inspect": "git log --oneline HEAD..'refs/heads/wt-agent' --",
+      "lastCommit": {
+        "date": "2026-10-16T10:00:00Z",
+        "sha": "1010f0259cbd8e28cc6484c26a6b540ddea3ff38",
+        "short": "1010f02",
+        "subject": "agent: guide"
+      },
+      "lines": 1,
+      "name": "wt-agent",
+      "ok": true,
+      "planets": [
+        "d_00178f31922e"
+      ],
+      "rebased": false,
+      "remoteOnly": false,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "worktree": {
+        "locked": false,
+        "prunable": false
+      }
+    },
+    {
+      "ageDays": 45,
+      "aheadCount": 0,
+      "cleanup": "git push --delete -- 'origin' 'refs/heads/old-release'",
+      "cls": "merged",
+      "creator": {
+        "agent": false,
+        "captain": false,
+        "displayName": "Pip Okafor"
+      },
+      "filesOutside": 0,
+      "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+      "home": "d_00178f31922e",
+      "id": "x_ff008d4dc34a",
+      "inspect": null,
+      "lastCommit": {
+        "date": "2026-09-16T10:00:00Z",
+        "sha": "7015f73d2d913e213b2ce5c07f4de236f1487956",
+        "short": "7015f73",
+        "subject": "half-rebased: guide"
+      },
+      "lines": 0,
+      "name": "origin/old-release",
+      "ok": true,
+      "planets": [
+        "d_00178f31922e"
+      ],
+      "rebased": false,
+      "remoteOnly": true,
+      "schemaVersion": "debris-detail.1",
+      "sessions": [],
+      "warning": null,
+      "worktree": null
+    }
+  ],
+  "view": {
+    "head": "2433f5a262229f337934d92c5470225ad83a7c8f",
+    "mass": 12,
+    "needsRescan": false,
+    "pieces": [
+      {
+        "ageStep": 0,
+        "cls": "agent",
+        "home": "d_69c6fa4ac535",
+        "id": "x_14a64a08c18a",
+        "lines": 0,
+        "seed": 2874793770
+      },
+      {
+        "ageStep": 1,
+        "cls": "merged",
+        "home": "d_b7c04fef35e2",
+        "id": "x_20047d745c14",
+        "lines": 0,
+        "seed": 2519248122
+      },
+      {
+        "ageStep": 2,
+        "cls": "branch",
+        "home": "d_b7c04fef35e2",
+        "id": "x_2bd8b252f301",
+        "lines": 1,
+        "seed": 2742140375
+      },
+      {
+        "ageStep": 0,
+        "cls": "branch",
+        "home": "star",
+        "id": "x_30d76145eef0",
+        "lines": 1,
+        "seed": 3008408834
+      },
+      {
+        "ageStep": 0,
+        "cls": "agent",
+        "home": "d_69c6fa4ac535",
+        "id": "x_4f95f1a9d3e2",
+        "lines": 1,
+        "seed": 3884756940
+      },
+      {
+        "ageStep": 0,
+        "cls": "branch",
+        "home": "d_00178f31922e",
+        "id": "x_5be002a4f98d",
+        "lines": 1,
+        "seed": 1411614877
+      },
+      {
+        "ageStep": 0,
+        "cls": "merged",
+        "home": "d_b7c04fef35e2",
+        "id": "x_75bb843cf843",
+        "lines": 0,
+        "seed": 329889654
+      },
+      {
+        "ageStep": 0,
+        "cls": "branch",
+        "home": "d_00178f31922e",
+        "id": "x_a39f8585bd07",
+        "lines": 1,
+        "seed": 3277680588
+      },
+      {
+        "ageStep": 1,
+        "cls": "branch",
+        "home": "d_69c6fa4ac535",
+        "id": "x_b3faadcd890b",
+        "lines": 1,
+        "seed": 2917689242
+      },
+      {
+        "ageStep": 1,
+        "cls": "branch",
+        "home": "d_69c6fa4ac535",
+        "id": "x_c3adf572f6f7",
+        "lines": 2,
+        "seed": 2854202155
+      },
+      {
+        "ageStep": 0,
+        "cls": "agent",
+        "home": "d_b7c04fef35e2",
+        "id": "x_d1fc99484585",
+        "lines": 0,
+        "seed": 1061434122
+      },
+      {
+        "ageStep": 1,
+        "cls": "branch",
+        "home": "d_69c6fa4ac535",
+        "id": "x_d2cb17182561",
+        "lines": 1,
+        "seed": 513732143
+      },
+      {
+        "ageStep": 0,
+        "cls": "branch",
+        "home": "d_00178f31922e",
+        "id": "x_dd1913afe574",
+        "lines": 2,
+        "seed": 24704127
+      },
+      {
+        "ageStep": 0,
+        "cls": "agent",
+        "home": "d_00178f31922e",
+        "id": "x_eb8e47d6c00d",
+        "lines": 1,
+        "seed": 3298882863
+      },
+      {
+        "ageStep": 0,
+        "cls": "merged",
+        "home": "d_00178f31922e",
+        "id": "x_ff008d4dc34a",
+        "lines": 0,
+        "seed": 3497656026
+      }
+    ],
+    "placed": 15,
+    "prs": "not-read",
+    "schemaVersion": "debris.1",
+    "total": 15,
+    "unreadable": 0
+  }
+}

@@ -335,6 +335,19 @@
       "tool": "claude-code"
     }
   ],
+  "debris": {
+    "defaults": [
+      "main",
+      "master"
+    ],
+    "items": [],
+    "settings": {
+      "abandonedDays": 30,
+      "agentDays": 7,
+      "mergedGraceDays": 3
+    },
+    "unreadable": 0
+  },
   "dirs": [
     {
       "bornDate": "2026-10-09T10:00:00Z",
