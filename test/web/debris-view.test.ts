@@ -101,6 +101,8 @@ describe('what is drawn and said', () => {
     expect(debrisStatus({ ...miniDebris, pieces: [], total: 0, placed: 0, mass: 0, unreadable: 1 }, 0)).toBe('debris: none (1 unreadable); PRs not read');
     expect(debrisStatus({ ...miniDebris, pieces: [], total: 0, placed: 0, mass: 0, unreadable: 0, needsRescan: true }, 0)).toBe('rescan to see debris');
     expect(debrisStatus(miniDebris, 0)).not.toMatch(/%|score|rank/);
+    // a piece whose body isn't on the map drawn is counted too, never dropped (Rule 1; Qodo PR257 eb7e0f73)
+    expect(debrisStatus(miniDebris, 0, 2)).toBe('debris: 13 stale branches, 13120 lines (1 with no file at HEAD, 2 on no planet of this map); PRs not read');
   });
 
   it("shows one piece's rows: its name, kind, age as of HEAD, last commit, creator, what HEAD lacks and the bodies it touches", () => {
@@ -177,7 +179,8 @@ describe("the view's debris state", () => {
     const left = items.filter((it) => it.home !== docs);
     st.set(s, HEAD, left, HEAD, 100, true);
     expect(s.model.debrisHomes).toContain(docs); // its pieces are still breaking apart
-    st.prepare(s, HEAD, 100 + SWEEP_FRAMES);
+    expect(st.prepare(s, HEAD, 100 + SWEEP_FRAMES - 1), 'still sweeping: nothing moved').toBe(false);
+    expect(st.prepare(s, HEAD, 100 + SWEEP_FRAMES), 'the shell went: Home must reframe (Qodo PR257 790dda54)').toBe(true);
     expect(s.model.debrisHomes).not.toContain(docs);
     st.set(s, HEAD, [], HEAD, 200, false);
     expect(s.model.debrisHomes).toEqual([]);

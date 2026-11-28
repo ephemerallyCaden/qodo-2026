@@ -26,8 +26,6 @@ export interface DebrisHost {
   release(): void;
   /** The other panels laid over the view, which the debris panel docks clear of when they're open. */
   others(): readonly HTMLElement[];
-  /** The bodies drawing debris changed: the start pose that frames their shells moved. */
-  reframe(): void;
 }
 
 const short = (head: string) => head.slice(0, 7);
@@ -75,14 +73,13 @@ export class Debris {
       this.host.announce(`debris not applied: it is of ${short(got.head)} but the layout of ${short(head)} (different scans); waiting for the next update`);
     } else {
       this.note = '';
-      const homes = (this.host.view.model?.debrisHomes ?? []).join();
+      // a body's first piece or its last moves Home's framing: the view says so (View.onHomeMoved)
       if (!this.host.view.setDebris(drawables(got), head)) return; // the layout moved on meanwhile: its own refresh follows
       this.data = got;
-      if ((this.host.view.model?.debrisHomes ?? []).join() !== homes) this.host.reframe(); // Home's framing follows the shells
     }
     const kept = this.data?.head === head ? this.data : null;
-    const overCap = [...(this.host.view.debris.plan?.overflow.values() ?? [])].reduce((a, b) => a + b, 0);
-    this.line.textContent = (kept ? debrisStatus(kept, overCap) : 'debris: none loaded') + (this.note ? ` (${this.note})` : '');
+    const plan = this.host.view.debris.plan, overCap = [...(plan?.overflow.values() ?? [])].reduce((a, b) => a + b, 0);
+    this.line.textContent = (kept ? debrisStatus(kept, overCap, plan?.unplaced ?? 0) : 'debris: none loaded') + (this.note ? ` (${this.note})` : '');
     const open = this.selected();
     if (open !== null) this.showDetail(open, false);
     else this.deselect();

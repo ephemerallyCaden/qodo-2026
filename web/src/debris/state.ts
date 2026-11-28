@@ -62,11 +62,16 @@ export class DebrisState {
     this.plan = plan;
   }
 
-  /** Before drawing `frame`: a sweep that has ended leaves the scene (rebuilt without it), and the selection is drawn. */
-  prepare(scene: SystemScene, layoutHead: string, frame: number): void {
+  /**
+   * Before drawing `frame`: a sweep that has ended leaves the scene (rebuilt without it), and the selection is drawn.
+   * True when that took a body's last piece, so its shell went: Home's framing moved (Qodo PR257 790dda54).
+   */
+  prepare(scene: SystemScene, layoutHead: string, frame: number): boolean {
+    const before = scene.model;
     const running = runningSweeps(this.sweeps, frame);
     if (running.length !== this.sweeps.length) { this.sweeps = running; this.attach(scene, layoutHead); }
     scene.debrisSelected = this.selected;
+    return scene.model !== before;
   }
 
   /** Reduced motion came on: sweeps cut to their end. */

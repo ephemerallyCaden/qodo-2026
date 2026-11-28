@@ -165,9 +165,10 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     reframe: () => { if (atHome !== null && rig.pose() === atHome && !rig.focused() && !rig.moving()) { goHome(); redraw(); } } });
   // R13: the stale work drifting round its planets, refetched with every layout load and snapshot event; one
   // selection at a time with the drones and the crew.
-  const reframe = () => { if (atHome !== null && rig.pose() === atHome && !rig.focused() && !rig.moving()) { goHome(); redraw(); } };
   const debris = new Debris({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }),
-    others: () => [byId('panel'), byId('tree')], reframe });
+    others: () => [byId('panel'), byId('tree')] });
+  // the bodies drawing debris changed (a first piece came, a last one was swept): a camera still at Home follows
+  view.onHomeMoved = () => { if (atHome !== null && rig.pose() === atHome && !rig.focused() && !rig.moving()) { goHome(); redraw(); } };
   const deselect = () => { drones.deselect(); crew.deselect(); debris.deselect(); };
 
   const fetchFog = (): Promise<Fetched> => client.fog().then((fog) => ({ fog }), (error: unknown) => ({ error }));

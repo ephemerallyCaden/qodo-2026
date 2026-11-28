@@ -64,6 +64,11 @@ export class View {
   private readonly fogs = new FogLedger();
   private lastFrame = 0;
   private reduced = false;
+  /**
+   * R13: the bodies drawing debris changed (a body's first piece came, or its last one was swept), so the start pose
+   * that frames their shells moved: a camera still at Home should go there again.
+   */
+  onHomeMoved?: () => void;
   /** Called once each time a fog is applied (applyFog, or load()'s own fog when it wins), never for a stale one. */
   onFog?: (fog: FogView | null) => void;
   /** The drones drawn (#80), kept across layout reloads, and the selected one's session key. */
@@ -275,7 +280,10 @@ export class View {
    * false, changing nothing, when the drawn layout is of another scan; the debris shader is built with the scene.
    */
   setDebris(items: readonly Drawable[], head: string, opts: { animate?: boolean } = {}): boolean {
-    return this.debris.set(this.system, this.layoutHead, items, head, this.lastFrame, opts.animate !== false && !this.reduced);
+    const before = this.system?.model;
+    const ok = this.debris.set(this.system, this.layoutHead, items, head, this.lastFrame, opts.animate !== false && !this.reduced);
+    if (ok && this.system && this.system.model !== before) this.onHomeMoved?.();
+    return ok;
   }
 
   /**
@@ -349,7 +357,7 @@ export class View {
     SHARED.uDepthOn.value = this.depthFade;
     this.lastFrame = frame;
     if (this.fogs.prune(frame)) this.pushFog();
-    this.debris.prepare(s, this.layoutHead!, frame);
+    if (this.debris.prepare(s, this.layoutHead!, frame)) this.onHomeMoved?.(); // a body's last piece swept: its shell went
     s.pose(frame, pose, this.pass.height);
     // #211: the constellation's geometry first (its labels go with the others), then the scene, then the
     // overlay fitted around what the scene drew and every label, then the labels.

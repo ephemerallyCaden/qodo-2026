@@ -13,15 +13,16 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /**
  * The HUD line, short enough for the top centre: how much stale work the repo holds and its rough mass, what isn't
- * drawn and why, the refs the scan couldn't read, and that stale PRs aren't read (R13, Rule 1: counted or "not read",
+ * drawn and why (`overCap` past a body's cap, `offMap` homed on a body the drawn map lacks), the refs the scan couldn't read, and that stale PRs aren't read (R13, Rule 1: counted or "not read",
  * never a quiet 0). Each piece's kind is its own silhouette (D1) and its panel's words.
  */
-export function debrisStatus(view: DebrisView, overCap: number): string {
+export function debrisStatus(view: DebrisView, overCap: number, offMap = 0): string {
   if (view.needsRescan) return 'rescan to see debris';
   const extra: string[] = [];
   if (overCap > 0) extra.push(`${overCap} past a planet's 12 (+N)`);
   const unplaced = view.total - view.placed;
   if (unplaced > 0) extra.push(`${unplaced} with no file at HEAD`);
+  if (offMap > 0) extra.push(`${offMap} on no planet of this map`); // placed by the server, on a body the layout drawn lacks (Rule 1)
   if (view.unreadable > 0) extra.push(`${view.unreadable} unreadable`);
   const head = view.total === 0 ? 'debris: none' : `debris: ${plural(view.total, 'stale branch', 'stale branches')}, ${plural(view.mass, 'line', 'lines')}`;
   return `${head}${extra.length ? ` (${extra.join(', ')})` : ''}; PRs not read`;
