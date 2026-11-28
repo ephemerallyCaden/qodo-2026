@@ -358,6 +358,19 @@ describe("the scan's parsers", () => {
     expect(JSON.stringify(out)).not.toMatch(/secret|non-existent|\/w\//);
   });
 
+  it("lists a branch's worktree at the branch's own tip, even after a forced move: no other commits to lose (Qodo PR248 23119256)", () => {
+    const root = realTempDir('commet-debris-wt-');
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: join(root, 'r'), encoding: 'utf8', stdio: 'pipe' });
+    execFileSync('git', ['init', '-q', '-b', 'main', 'r'], { cwd: root });
+    for (const [k, v] of [['user.name', 'P'], ['user.email', 'p@x.test'], ['commit.gpgsign', 'false']]) git('config', k!, v!);
+    git('commit', '-q', '--allow-empty', '-m', 'one');
+    git('worktree', 'add', '-q', join(root, 'live'), '-b', 'lv');
+    execFileSync('git', ['commit', '-q', '--allow-empty', '-m', 'worktree work'], { cwd: join(root, 'live') });
+    git('update-ref', 'refs/heads/lv', 'main');
+    const [wt] = parseWorktrees(git('worktree', 'list', '--porcelain', '-z'));
+    expect(wt).toMatchObject({ ref: 'refs/heads/lv', head: git('rev-parse', 'refs/heads/lv').trim() });
+  });
+
   it('reads remotes and whether their fetch refspec is the standard one', () => {
     expect(remotesOf('remote.origin.fetch\n+refs/heads/*:refs/remotes/origin/*\0remote.a.b.fetch\n+refs/heads/*:refs/remotes/a.b/*\0'
       + 'remote.mirror.fetch\n+refs/heads/*:refs/remotes/mirror/x/*\0remote.two.fetch\n+refs/heads/*:refs/remotes/two/*\0remote.two.fetch\n+refs/tags/*:refs/tags/*\0'))
