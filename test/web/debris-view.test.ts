@@ -60,6 +60,8 @@ describe('checkDebrisDetail', () => {
   it('accepts a panel and both refusals', () => {
     expect(checkDebrisDetail(detail()).ok).toBe(true);
     expect(checkDebrisDetail(detail({ name: null, cls: 'agent', worktree: { prunable: true, locked: false }, cleanup: 'git worktree prune', inspect: 'git worktree list', warning: DEBRIS_WARNINGS.detached })).ok).toBe(true);
+    // a merged remote copy's leased delete (debris-data, PR #248 r2) is one printable line like any other command
+    expect(checkDebrisDetail(detail({ cls: 'merged', cleanup: "git branch -d -- 'x' && git push --delete '--force-with-lease=refs/heads/x:abcdef1234567890abcdef1234567890abcdef12' -- 'origin' 'refs/heads/x'" })).ok).toBe(true);
     expect(checkDebrisDetail({ ok: false, error: 'no-such-item' }).ok).toBe(true);
     expect(checkDebrisDetail({ ok: false, error: 'unknown-head', head: HEAD }).ok).toBe(true);
     expect(checkDebrisDetail({ ok: false, error: 'unknown-head' }).ok).toBe(false);
