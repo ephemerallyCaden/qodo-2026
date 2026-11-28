@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { bundleHits, tokenRuns, type Hit } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 import { API } from '../../src/core/contract/api.js';
 import { palette } from '../../src/core/palette.js';
+import { checkCrewDetail } from '../src/crew/check.js';
+import { parseBeacons, parseChecked, parseCoChange, parseCrew, parseDrones, parseFog, parseLayout, parseTreeSource } from '../src/data/client.js';
 import { checkManifest, MANIFEST_SCHEMA, routeKey, type DemoManifest } from '../src/demo/source.js';
+import { checkDroneDetail } from '../src/drones/check.js';
+import { checkDiff, checkUnseen } from '../src/model/validate.js';
 
 export const ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/[\\/]$/, '');
 /** Where `npm run build:demo` writes the site: the folder the lead publishes to the gh-pages branch. */
@@ -78,7 +82,73 @@ export function dataset(dir?: string): Dataset {
     else throw new Error(`demo data: ${dir} has no manifest.json or ${SHOWCASE_INDEX}`);
   }
   for (const file of new Set(Object.values(d.manifest.routes))) dataFile(d, file);
+  const problems = datasetProblems(d);
+  if (problems.length) throw new Error(`demo data: ${d.name} has answers the view would refuse:\n  ${problems.join('\n  ')}`);
   return d;
+}
+
+/** How the demo client names its data in errors (web/src/demo/client.ts), so a refusal here reads as it would in the page. */
+const SOURCE = 'the demo data';
+
+/**
+ * Every answer the dataset bakes, checked here as the page's client checks it (the view's own parsers and
+ * validators), and all of one head: the layout's. A per-item answer must be a success, since the client
+ * serves an absent item as the server's refusal itself. Empty when the site can serve it.
+ */
+export function datasetProblems(d: Dataset): string[] {
+  const problems: string[] = [];
+  const read = <T>(route: string, parse: (text: string) => T): T | null => {
+    try {
+      return parse(dataFile(d, d.manifest.routes[route]!));
+    } catch (e) {
+      problems.push(`${route}: ${(e instanceof Error ? e.message : String(e)).split('\n').join(' ')}`);
+      return null;
+    }
+  };
+  const head = read(API.layout, (t) => parseLayout(t, SOURCE))?.source.head;
+  const same = (route: string, at: unknown) => { if (head !== undefined && at !== head) problems.push(`${route}: is of ${String(at)}, but the layout of ${head}`); };
+  const success = (route: string, what: string, v: { ok: boolean } | null) => { if (v && !v.ok) problems.push(`${route}: the ${what} is a refusal; leave the item out instead`); };
+  for (const route of Object.keys(d.manifest.routes)) {
+    const path = route.split('?', 1)[0];
+    if (path === API.layout) continue;
+    if (path === API.fog) same(route, read(route, (t) => parseFog(t, SOURCE))?.head);
+    else if (path === API.drones) same(route, read(route, (t) => parseDrones(t, SOURCE))?.head);
+    else if (path === API.crew) same(route, read(route, (t) => parseCrew(t, SOURCE))?.head);
+    else if (path === API.beacons) same(route, read(route, (t) => parseBeacons(t, SOURCE))?.head);
+    else if (path === API.cochange) same(route, read(route, (t) => parseCoChange(t, SOURCE))?.head);
+    else if (path === API.snapshot) same(route, read(route, (t) => parseTreeSource(t, SOURCE))?.head);
+    else if (path === API.unseen) {
+      const v = read(route, (t) => parseChecked(t, 'unseen list', SOURCE, checkUnseen));
+      success(route, 'unseen list', v);
+      if (v?.ok) same(route, v.at);
+    } else if (path === API.diff) {
+      const v = read(route, (t) => parseChecked(t, 'diff', SOURCE, checkDiff));
+      success(route, 'diff', v);
+      if (v?.ok) same(route, v.at);
+    } else if (path === API.droneDetail) {
+      const v = read(route, (t) => parseChecked(t, 'session detail', SOURCE, checkDroneDetail));
+      success(route, 'session detail', v);
+      if (v?.ok) same(route, v.head);
+    } else if (path === API.crewDetail) {
+      const v = read(route, (t) => parseChecked(t, 'crew detail', SOURCE, checkCrewDetail));
+      success(route, 'crew detail', v);
+      if (v?.ok) same(route, v.head);
+    }
+  }
+  return problems;
+}
+
+/**
+ * The folder a build writes, `DEMO_OUT` or dist/demo, resolved from the checkout. The build removes it
+ * before anything else, so it may never be the checkout, a folder holding it, the home folder or the root.
+ */
+export function siteOut(raw: string | undefined): string {
+  const out = resolve(ROOT, raw ?? DEMO_DIST);
+  const home = homedir();
+  if (out === ROOT || ROOT.startsWith(out + sep) || out === home || home.startsWith(out + sep) || out === resolve('/')) {
+    throw new Error(`DEMO_OUT must be a folder of its own, not ${out === ROOT ? 'the checkout' : 'a folder holding the checkout or your home'}`);
+  }
+  return out;
 }
 
 /** One file of a dataset, read only when it's a plain file in the dataset's own folder (no symlink) and JSON. */
