@@ -1,9 +1,9 @@
 {
   "ok": true,
   "fileId": "f_aa2833cd23c2",
-  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
-  "since": "1210e52a35c2b7cb11f63a14dfaff3f091f5b422",
-  "base": "d3377161f4ef9456617313761bae76ca99455f07",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "60a7e827de6987cd8c9b43d36bcb1e5e5ef3f261",
+  "base": "cd86cf45eea6fbdab74a1ea00710e6602faef315",
   "sections": [
     {
       "status": "modified",
@@ -11,6 +11,19 @@
       "oldPath": null,
       "binary": false,
       "hunks": [
+        {
+          "header": "@@ -12,7 +12,7 @@ export interface InvoiceActive { id: string; label: string }",
+          "lines": [
+            " const invoiceActiveStore = new Map<string, InvoiceActive>();",
+            " export function loadInvoiceActive(id: string): InvoiceActive | undefined { return invoiceActiveStore.get(id); }",
+            " export function saveInvoiceActive(item: InvoiceActive): void { invoiceActiveStore.set(item.id, item); }",
+            "-export const invoiceActiveLimit = 24;",
+            "+export const invoiceActiveLimit = 60;",
+            " export interface InvoiceArchived { id: string; label: string }",
+            " const invoiceArchivedStore = new Map<string, InvoiceArchived>();",
+            " export function loadInvoiceArchived(id: string): InvoiceArchived | undefined { return invoiceArchivedStore.get(id); }"
+          ]
+        },
         {
           "header": "@@ -88,3 +88,8 @@ const invoiceWeeklyStore = new Map<string, InvoiceWeekly>();",
           "lines": [
@@ -28,5 +41,5 @@
     }
   ],
   "truncated": false,
-  "shownLines": 8
+  "shownLines": 16
 }

@@ -166,6 +166,14 @@ export async function buildShowcaseRepo(work: string): Promise<ShowcaseRepo> {
     files.set(path, lines);
     write(path);
   };
+  /** Changes the limit in block `k` of a source file to `value`: a changed line, so its diff shows a removal too. */
+  const tweak = (path: string, k: number, value: number) => {
+    const lines = [...files.get(path)!];
+    const i = lines.findIndex((l, j) => j >= k * 5 && /^export const \w+Limit = \d+;$/.test(l));
+    if (i < 0) throw new Error(`no limit in block ${k} of ${path}`);
+    lines[i] = lines[i]!.replace(/= \d+;$/, `= ${value};`);
+    set(path, lines);
+  };
 
   const shas: string[] = [];
   const commit = async (who: Who, date: string, subject: string) => {
@@ -349,10 +357,12 @@ export async function buildShowcaseRepo(work: string): Promise<ShowcaseRepo> {
   grow('src/api/routes/users.ts', 1);
   grow('src/api/schema/users.ts', 1);
   grow('src/api/routes/users.test.ts', 1);
+  tweak('src/api/routes/users.ts', 0, 25);
   await commit(THEO_ALIAS, '2026-09-10T10:00:00Z', 'feat(api): user avatars');
   grow('src/billing/invoice.ts', 1);
   grow('src/billing/tax.ts', 1);
   mark('src/billing/tax.ts', 'TODO', 'round per line, not per invoice, for the new tax rules');
+  tweak('src/billing/invoice.ts', 2, 60);
   await commit(JUNO, '2026-09-18T11:00:00Z', 'fix(billing): tax rounding');
   // Merged but never deleted: the branch still points at the fix, which main has.
   await git(['branch', 'fix/tax-rounding']);
@@ -368,6 +378,7 @@ export async function buildShowcaseRepo(work: string): Promise<ShowcaseRepo> {
   });
   grow('src/ui/theme.ts', 1);
   grow('src/ui/components/button.ts', 1);
+  tweak('src/ui/components/button.ts', 1, 32);
   await commit(IRIS, '2026-10-02T13:00:00Z', 'feat(ui): dark theme buttons');
 
   // Orders work by an agent with a subagent, then a small change of your own while its log covers the time.
@@ -400,6 +411,7 @@ export async function buildShowcaseRepo(work: string): Promise<ShowcaseRepo> {
 
   grow('src/legacy/export.ts', 1);
   mark('src/legacy/export.ts', 'HACK', 'skips rows the old reader rejects instead of fixing them');
+  tweak('src/legacy/export.ts', 3, 80);
   await commit(FELIX, '2026-10-28T14:00:00Z', 'fix(legacy): hotfix the export for the old reader');
 
   const s4 = newSession('a1b2c300-0000-4000-8000-000000000004', 'claude-sonnet-4-5', 'main', '2026-11-03T10:00:00.000Z');
@@ -426,10 +438,12 @@ export async function buildShowcaseRepo(work: string): Promise<ShowcaseRepo> {
 
   // Users route without its schema: usually they change together, so the schema gets a missing-pair flag.
   grow('src/api/routes/users.ts', 1);
+  tweak('src/api/routes/users.ts', 2, 40);
   await commit(THEO, '2026-11-12T10:00:00Z', 'feat(api): user search');
   set('package.json', files.get('package.json')!.map((l) => (l === '  "version": "0.1.0",' ? '  "version": "0.2.0",' : l)));
   await commit(BOT, '2026-11-14T08:00:00Z', 'chore(release): 0.2.0');
   grow('src/ui/pages/home.ts', 1);
+  tweak('src/ui/pages/home.ts', 0, 12);
   const head = await commit(IRIS, '2026-11-18T13:00:00Z', 'feat(ui): home page activity card');
 
   // The logs: every transcript (and subagent meta) written with its last record's time as its mtime.

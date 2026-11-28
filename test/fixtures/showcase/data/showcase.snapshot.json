@@ -26,13 +26,13 @@
     "commits": 39,
     "missing": [
       {
-        "at": "3de54447dbd9d8893807ac06b102af79b98afec3",
+        "at": "9c83f099b837e2d3b2332c1abd277f0f9330b4e7",
         "fileId": "f_044e16a3d231",
         "strengthMilli": 750,
         "with": "f_593d80a0699a"
       },
       {
-        "at": "55085d94294838c72e612154f8454256966a3175",
+        "at": "74053f59176ef0531d4a2584ce326c3f4ad549f4",
         "fileId": "f_0ae3ab276502",
         "strengthMilli": 750,
         "with": "f_25664083d8d6"
@@ -1026,8 +1026,8 @@
         ],
         [
           "src/api/routes/users.ts",
-          5,
-          0,
+          6,
+          1,
           0
         ],
         [
@@ -1038,7 +1038,7 @@
         ]
       ],
       "seq": 25,
-      "sha": "d3377161f4ef9456617313761bae76ca99455f07",
+      "sha": "cd86cf45eea6fbdab74a1ea00710e6602faef315",
       "subject": "feat(api): user avatars"
     },
     {
@@ -1056,8 +1056,8 @@
       "files": [
         [
           "src/billing/invoice.ts",
-          5,
-          0,
+          6,
+          1,
           0
         ],
         [
@@ -1068,7 +1068,7 @@
         ]
       ],
       "seq": 26,
-      "sha": "1210e52a35c2b7cb11f63a14dfaff3f091f5b422",
+      "sha": "60a7e827de6987cd8c9b43d36bcb1e5e5ef3f261",
       "subject": "fix(billing): tax rounding"
     },
     {
@@ -1086,8 +1086,8 @@
       "files": [
         [
           "src/ui/components/button.ts",
-          5,
-          0,
+          6,
+          1,
           0
         ],
         [
@@ -1098,7 +1098,7 @@
         ]
       ],
       "seq": 27,
-      "sha": "78c294a5962f5bcea6a770ebc9887926dcb46be6",
+      "sha": "d29225b8cfc5db6a66b49ab9ed5523b231de97ec",
       "subject": "feat(ui): dark theme buttons"
     },
     {
@@ -1148,7 +1148,7 @@
         ]
       ],
       "seq": 28,
-      "sha": "156af810a0ecc6f51f48ef7e2c3fbd2959853ea5",
+      "sha": "f29fd87db568c442e05536b7211a016a853e1b9b",
       "subject": "feat(api): order status filters"
     },
     {
@@ -1172,7 +1172,7 @@
         ]
       ],
       "seq": 29,
-      "sha": "cf04d73584ed32eb84df218a60ef27b496390992",
+      "sha": "97552b1522e7c7fe6f1b3138076cb94f4beb40f4",
       "subject": "fix(api): login rate limit"
     },
     {
@@ -1212,7 +1212,7 @@
         ]
       ],
       "seq": 30,
-      "sha": "55085d94294838c72e612154f8454256966a3175",
+      "sha": "74053f59176ef0531d4a2584ce326c3f4ad549f4",
       "subject": "feat(sync): retry with backoff"
     },
     {
@@ -1258,7 +1258,7 @@
         ]
       ],
       "seq": 31,
-      "sha": "9f6a29a49d6c448e511e1acaafd42ee611e32091",
+      "sha": "8be7dd76529499f12cfab58dfcfcc826bc31d8df",
       "subject": "feat(ui): sortable tables"
     },
     {
@@ -1276,13 +1276,13 @@
       "files": [
         [
           "src/legacy/export.ts",
-          6,
-          0,
+          7,
+          1,
           0
         ]
       ],
       "seq": 32,
-      "sha": "2c02ca6f9ca258789ed23c4af70e3b2e03cd55c8",
+      "sha": "e50efce88b51b2e74afaab344cd6097426cb87c6",
       "subject": "fix(legacy): hotfix the export for the old reader"
     },
     {
@@ -1328,7 +1328,7 @@
         ]
       ],
       "seq": 33,
-      "sha": "0907f39979a09aa02c6268a4d114b784dc6f3af2",
+      "sha": "60a74273ef3c21b1765e49f173b2df130fe662ed",
       "subject": "feat(auth): rotate refresh tokens"
     },
     {
@@ -1358,7 +1358,7 @@
         ]
       ],
       "seq": 34,
-      "sha": "e691d6070d451253783c4aa6ca89336f7b3ded51",
+      "sha": "281f81132df0a24488f5b2f6b8b331e1a9fae567",
       "subject": "docs: offline mode in the guide"
     },
     {
@@ -1404,7 +1404,7 @@
         ]
       ],
       "seq": 35,
-      "sha": "499a58b1c304231af441509b59e7cdb23eddf73f",
+      "sha": "eb298f00f67882b5c6c1c641ce910c4c143d975a",
       "subject": "chore: lint script and offline notes"
     },
     {
@@ -1422,13 +1422,13 @@
       "files": [
         [
           "src/api/routes/users.ts",
-          5,
-          0,
+          6,
+          1,
           0
         ]
       ],
       "seq": 36,
-      "sha": "3de54447dbd9d8893807ac06b102af79b98afec3",
+      "sha": "9c83f099b837e2d3b2332c1abd277f0f9330b4e7",
       "subject": "feat(api): user search"
     },
     {
@@ -1452,7 +1452,7 @@
         ]
       ],
       "seq": 37,
-      "sha": "6c4cea8e749c257c4de2a21dcfed8d375a2c1c4a",
+      "sha": "7b018b087dfa6cec6f83165c0580125635244a4d",
       "subject": "chore(release): 0.2.0"
     },
     {
@@ -1470,13 +1470,13 @@
       "files": [
         [
           "src/ui/pages/home.ts",
-          5,
-          0,
+          6,
+          1,
           0
         ]
       ],
       "seq": 38,
-      "sha": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+      "sha": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
       "subject": "feat(ui): home page activity card"
     }
   ],
@@ -2431,7 +2431,7 @@
   },
   "repo": {
     "branch": "main",
-    "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+    "head": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
     "headDate": "2026-11-18T13:00:00Z",
     "repoId": "dcecfb0fde85c20a",
     "selfPersonIds": [
@@ -2497,7 +2497,7 @@
     {
       "branch": "main",
       "commits": [
-        "156af810a0ecc6f51f48ef7e2c3fbd2959853ea5"
+        "f29fd87db568c442e05536b7211a016a853e1b9b"
       ],
       "editBuckets": [
         1,
@@ -2559,7 +2559,7 @@
       "agentType": "general-purpose",
       "branch": "main",
       "commits": [
-        "156af810a0ecc6f51f48ef7e2c3fbd2959853ea5"
+        "f29fd87db568c442e05536b7211a016a853e1b9b"
       ],
       "editBuckets": [
         1,
@@ -2616,7 +2616,7 @@
     {
       "branch": "main",
       "commits": [
-        "55085d94294838c72e612154f8454256966a3175"
+        "74053f59176ef0531d4a2584ce326c3f4ad549f4"
       ],
       "editBuckets": [
         1,
@@ -2677,7 +2677,7 @@
     {
       "branch": "main",
       "commits": [
-        "9f6a29a49d6c448e511e1acaafd42ee611e32091"
+        "8be7dd76529499f12cfab58dfcfcc826bc31d8df"
       ],
       "editBuckets": [
         1,
@@ -2743,7 +2743,7 @@
     {
       "branch": "main",
       "commits": [
-        "0907f39979a09aa02c6268a4d114b784dc6f3af2"
+        "60a74273ef3c21b1765e49f173b2df130fe662ed"
       ],
       "editBuckets": [
         1,
@@ -2809,7 +2809,7 @@
     {
       "branch": "main",
       "commits": [
-        "499a58b1c304231af441509b59e7cdb23eddf73f"
+        "eb298f00f67882b5c6c1c641ce910c4c143d975a"
       ],
       "editBuckets": [
         1,

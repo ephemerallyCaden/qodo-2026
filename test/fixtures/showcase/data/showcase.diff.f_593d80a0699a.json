@@ -1,8 +1,8 @@
 {
   "ok": true,
   "fileId": "f_593d80a0699a",
-  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
-  "since": "d3377161f4ef9456617313761bae76ca99455f07",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "cd86cf45eea6fbdab74a1ea00710e6602faef315",
   "base": "560d45f50e0efa57140f3aeee29d78e18f6087ef",
   "sections": [
     {
@@ -11,6 +11,32 @@
       "oldPath": null,
       "binary": false,
       "hunks": [
+        {
+          "header": "@@ -2,7 +2,7 @@ export interface UserRouteDraft { id: string; label: string }",
+          "lines": [
+            " const userRouteDraftStore = new Map<string, UserRouteDraft>();",
+            " export function loadUserRouteDraft(id: string): UserRouteDraft | undefined { return userRouteDraftStore.get(id); }",
+            " export function saveUserRouteDraft(item: UserRouteDraft): void { userRouteDraftStore.set(item.id, item); }",
+            "-export const userRouteDraftLimit = 10;",
+            "+export const userRouteDraftLimit = 25;",
+            " export interface UserRoutePending { id: string; label: string }",
+            " const userRoutePendingStore = new Map<string, UserRoutePending>();",
+            " export function loadUserRoutePending(id: string): UserRoutePending | undefined { return userRoutePendingStore.get(id); }"
+          ]
+        },
+        {
+          "header": "@@ -12,7 +12,7 @@ export interface UserRouteActive { id: string; label: string }",
+          "lines": [
+            " const userRouteActiveStore = new Map<string, UserRouteActive>();",
+            " export function loadUserRouteActive(id: string): UserRouteActive | undefined { return userRouteActiveStore.get(id); }",
+            " export function saveUserRouteActive(item: UserRouteActive): void { userRouteActiveStore.set(item.id, item); }",
+            "-export const userRouteActiveLimit = 24;",
+            "+export const userRouteActiveLimit = 40;",
+            " export interface UserRouteArchived { id: string; label: string }",
+            " const userRouteArchivedStore = new Map<string, UserRouteArchived>();",
+            " export function loadUserRouteArchived(id: string): UserRouteArchived | undefined { return userRouteArchivedStore.get(id); }"
+          ]
+        },
         {
           "header": "@@ -28,3 +28,13 @@ const userRouteCachedStore = new Map<string, UserRouteCached>();",
           "lines": [
@@ -33,5 +59,5 @@
     }
   ],
   "truncated": false,
-  "shownLines": 13
+  "shownLines": 29
 }
