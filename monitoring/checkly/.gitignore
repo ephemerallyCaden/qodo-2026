@@ -1,0 +1,3 @@
+# Never commit a key file: the key lives in ~/.config/commet/checkly.env (see README.md).
+*.env
+.checkly/
