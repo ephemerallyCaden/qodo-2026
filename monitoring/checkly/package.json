@@ -1,0 +1,25 @@
+{
+  "name": "commet-monitoring-checkly",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Checkly monitor for the public Commet demo (live-demo L7): one Playwright browser check, as code",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "test:local": "DEMO_LOCAL=1 playwright test",
+    "typecheck": "tsc --noEmit",
+    "deploy": "sh scripts/checkly.sh deploy",
+    "drill": "sh scripts/checkly.sh drill",
+    "restore": "sh scripts/checkly.sh restore",
+    "env-check": "sh scripts/checkly.sh env-check"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "22.20.7",
+    "checkly": "10.5.0",
+    "typescript": "~6.0.3"
+  }
+}

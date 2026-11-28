@@ -1,0 +1,17 @@
+{
+  // The monitor's own project (live-demo L7): its config, checks and tests. `npm run typecheck` here; the
+  // repo's typecheck doesn't cover this folder, whose packages are only installed here.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["checkly.config.ts", "playwright.config.ts", "__checks__/**/*.ts", "tests/**/*.ts"]
+}

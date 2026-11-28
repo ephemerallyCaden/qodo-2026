@@ -16,5 +16,7 @@
   },
   "include": ["src", "test", "factory", "eslint.config.js", "vitest.config.ts", "web/vite.config.ts", "web/vite.demo.config.ts", "web/demo/*.ts"],
   // Render tests and test/web/dom run browser code too: their own tsconfig.json adds the DOM lib.
-  "exclude": ["test/render", "test/web/dom"]
+  // monitoring/checkly is its own npm project, whose packages (checkly, its Playwright) install only there:
+  // `npm run typecheck` in that folder checks it (live-demo L7).
+  "exclude": ["test/render", "test/web/dom", "monitoring"]
 }
