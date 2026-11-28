@@ -94,6 +94,8 @@ export class View {
   /** The per-pixel depth fade (RenderInput.depthFade); off leaves only palette colours. */
   depthFade = true;
   showHelp = true;
+  /** The info lines in the top left (the system's or the focused planet's). The public demo hides them under its title screen. */
+  showInfo = true;
   /** The parts of the label canvas the open panels cover (#169), read every frame: note and drone labels move out from under them. */
   covered: () => readonly Rect[] = () => [];
   constructor(viewCanvas: HTMLCanvasElement, labelCanvas: HTMLCanvasElement) {
@@ -358,7 +360,7 @@ export class View {
     const out: Label[] = [];
     const beacons = this.beacons;
     const covers = this.covered();
-    infoLines(s.model, focus, this.fogs.fog, beacons).forEach((text, k) => out.push({ text, x: 2 * px, y: 2 * px + k * lh, align: 'left', colour: k === 0 && focus !== null ? mark : ink }));
+    if (this.showInfo) infoLines(s.model, focus, this.fogs.fog, beacons).forEach((text, k) => out.push({ text, x: 2 * px, y: 2 * px + k * lh, align: 'left', colour: k === 0 && focus !== null ? mark : ink }));
     if (this.showHelp) out.push({ text: HELP, x: 2 * px, y: H - lh, align: 'left', colour: dim });
     out.push(...this.clear(this.noteLabels(s, frame, pose, focus, beacons, H, lh), covers, W, H));
     // drone labels come first in the budget (a few at most), so a busy system never drops a selected drone's name

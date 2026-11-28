@@ -11,9 +11,10 @@ import { renderHook } from '../hook.js';
 import { runLive } from '../live.js';
 import { byId } from '../ui/dom.js';
 import { Hud } from '../ui/hud.js';
-import { View } from '../view.js';
+import type { View } from '../view.js';
 import { demoClient, type DemoClient } from './client.js';
 import { Legend, paintAll, showBadge, titleScreen } from './page.js';
+import { DemoView } from './view.js';
 import { staticSource } from './source.js';
 
 const viewport = () => ({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1 });
@@ -38,7 +39,7 @@ async function main(): Promise<void> {
   const hud = new Hud();
   let view: View;
   try {
-    view = new View(byId<HTMLCanvasElement>('view'), byId<HTMLCanvasElement>('labels'));
+    view = new DemoView(byId<HTMLCanvasElement>('view'), byId<HTMLCanvasElement>('labels'));
   } catch (e) {
     byId('demo-title').hidden = true;
     hud.error('The demo could not start.', [`WebGL 2 isn't available in this browser, so the 3D view can't run (${e instanceof Error ? e.message : String(e)}).`]);
@@ -54,6 +55,8 @@ async function main(): Promise<void> {
   }
 
   // The still: frame 0 from the start pose, as Play will start it, drawn once (and again on a resize).
+  // The info lines stay off under the title card; the planets' names stay.
+  view.showInfo = false;
   const hook = renderHook(view, viewport);
   let still: RenderInput | null = null;
   const drawStill = async () => {
@@ -82,7 +85,8 @@ async function main(): Promise<void> {
   removeEventListener('resize', onResize);
   await drawing.catch(() => {});
   still = null;
-  view.showHelp = true; // the still hid the help line; live mode shows it
+  view.showHelp = true; // the still hid the help line and the info lines; live mode shows them
+  view.showInfo = true;
   byId('stage').inert = false;
   const legend = new Legend();
   legend.release = () => view.pass.canvas.focus({ preventScroll: true });
