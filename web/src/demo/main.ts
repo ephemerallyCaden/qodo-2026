@@ -86,6 +86,10 @@ async function main(): Promise<void> {
     legend.rescale();
   });
   hud.show();
+  // The review panel sits below the HUD's controls, however tall the text scale makes them (demo.css
+  // --hud-bottom): the product's fixed 56 px puts the directory view's button under an open panel.
+  const hudBox = byId('hud');
+  new ResizeObserver(() => document.documentElement.style.setProperty('--hud-bottom', `${Math.ceil(hudBox.getBoundingClientRect().bottom)}px`)).observe(hudBox);
   showBadge();
   await runLive(view, hud, client); // it hands keyboard focus to the map once the system is in
   legend.open(); // then the legend takes it, and gives it back to the map when it closes
