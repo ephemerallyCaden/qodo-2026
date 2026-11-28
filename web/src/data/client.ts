@@ -79,8 +79,8 @@ export const httpError = (path: string, status: number, body = ''): ViewError =>
   return new ViewError(`${path} answered ${status}.`, ok ? [message as string] : []);
 };
 
-/** Parses and checks a document; throws a ViewError that lists what is wrong. */
-function parseChecked<T>(text: string, what: string, source: string, check: (v: unknown) => Checked<T>): T {
+/** Parses and checks a document; throws a ViewError that lists what is wrong. Shared with the demo client (web/src/demo). */
+export function parseChecked<T>(text: string, what: string, source: string, check: (v: unknown) => Checked<T>): T {
   let v: unknown;
   try { v = JSON.parse(text); } catch { throw new ViewError(`The ${what} from ${source} is not JSON.`); }
   const c = check(v);

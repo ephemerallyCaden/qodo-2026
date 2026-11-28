@@ -1,0 +1,54 @@
+/* The demo's own parts (live-demo L3): the title screen, the badge and the legend. Crisp DOM outside the
+   pixel pass, in the palette's UI roles only (custom properties from virtual:commet-palette.css, AGENTS.md
+   Rule 5): space for every backing, one rule colour for frames, the [OIII] teal only for the demo label,
+   Play and keyboard focus. No translucency, gradient, shadow or transition. */
+.demo-mono, #demo-title .lede, #demo-title .fine, #demo-legend dd, #demo-legend .how, #demo-legend .cap {
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+#demo-title canvas.bitmap, #demo-badge canvas.bitmap, #demo-legend canvas.bitmap { display: block; image-rendering: pixelated; }
+#demo-title a, #demo-legend a, #demo-badge a { color: var(--ink); text-decoration-color: var(--dim); text-underline-offset: 2px; }
+#demo-title a:focus-visible, #demo-badge a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Title screen: a card over the still first frame, which stays visible around it. */
+#demo-title { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; box-sizing: border-box; z-index: 2; }
+#demo-title[hidden] { display: none; }
+#demo-title .card { box-sizing: border-box; width: min(52ch, 100%); max-height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center;
+  gap: 14px; padding: 28px 24px 18px; background: var(--space); border: 1px solid var(--rule); text-align: center; }
+#demo-title h1, #demo-title p { margin: 0; }
+#demo-title .lede { color: var(--ink); max-width: 46ch; }
+#demo-title .fine { color: var(--dim); max-width: 46ch; }
+#demo-label { padding: 4px 6px; border: 1px solid var(--accent); }
+#demo-play { margin: 4px 0; padding: 8px 18px; background: var(--space); border: 2px solid var(--accent); cursor: pointer; line-height: 0; }
+#demo-play:hover { border-color: var(--ink); }
+#demo-play:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+/* The permanent badge, bottom centre, clear of the help line (bottom left) and the review panel (right). */
+#demo-badge { position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px;
+  padding: 3px 6px; background: var(--space); border: 1px solid var(--accent); z-index: 1; }
+#demo-badge[hidden] { display: none; }
+#demo-badge button { background: var(--space); border: 1px solid var(--rule); padding: 2px 4px; cursor: pointer; line-height: 0; }
+#demo-badge button[aria-expanded=true] { border-color: var(--accent); }
+#demo-badge button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#demo-badge a { line-height: 0; padding: 2px 0; }
+
+/* The legend: bottom centre above the badge, so the star stays in view; it scrolls on a short screen. */
+#demo-legend { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); box-sizing: border-box; width: min(88ch, calc(100vw - 16px));
+  max-height: min(62vh, calc(100vh - 96px)); overflow: auto; padding: 10px 12px; background: var(--space); border: 1px solid var(--rule); color: var(--ink); z-index: 1; }
+#demo-legend[hidden] { display: none; }
+#demo-legend:focus-visible { outline: 2px solid var(--accent); }
+#demo-legend .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+#demo-legend h2 { margin: 0; }
+#demo-legend .top button { background: var(--space); border: 1px solid var(--rule); padding: 2px 5px; cursor: pointer; line-height: 0; }
+#demo-legend .top button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#demo-legend dl { display: grid; grid-template-columns: minmax(16ch, max-content) 1fr; gap: 8px 14px; margin: 0; align-items: start; }
+#demo-legend dt { display: flex; flex-direction: column; gap: 4px; }
+#demo-legend dd { margin: 0; color: var(--ink); }
+#demo-legend .pics { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; }
+#demo-legend .pic { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+#demo-legend canvas.icon { display: block; image-rendering: pixelated; }
+#demo-legend .cap { color: var(--dim); font-size: 10px; line-height: 1; }
+#demo-legend .how { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--dim); }
+@media (max-width: 720px) {
+  #demo-legend dl { grid-template-columns: 1fr; }
+  #demo-legend { bottom: 40px; max-height: 50vh; }
+}

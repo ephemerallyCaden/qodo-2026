@@ -13,7 +13,7 @@ const at = (path: string) => fileURLToPath(new URL(path, new URL('..', import.me
 // Rule 5) and the page never flashes another background before the script runs. A stylesheet, not
 // an inline <style>, so the server's CSP needs no 'unsafe-inline'.
 const PALETTE_CSS = 'virtual:commet-palette.css';
-function paletteCss(): Plugin {
+export function paletteCss(): Plugin {
   const css = `:root {\n${Object.entries(UI_COLOURS).map(([role, hex]) => `  --${role}: ${hex};`).join('\n')}\n}\n`;
   return {
     name: 'commet-palette-css',
