@@ -15,7 +15,7 @@ import { loopPhase } from '../model/motion.js';
 import { mulberry32 } from '../model/prng.js';
 import type { SystemModel } from '../model/system.js';
 import type { Vec3 } from '../model/vec.js';
-import { DEBRIS_SHELL, debrisShell } from './shell.js';
+import { DEBRIS_SHELL, debrisShell, shellBase } from './shell.js';
 
 /** How worn a piece looks (D2): 0 intact, 1 weathered, 2 broken (the contract's `debrisAgeStep`, 60 and 180 days). */
 export type AgeStep = DebrisPiece['ageStep'];
@@ -105,7 +105,7 @@ export function shellPoints(model: SystemModel): Vec3[] {
   return (model.debrisHomes ?? []).flatMap((home) => {
     const b = homeBase(model, home, 0);
     if (!b) return [];
-    const r = debrisShell(b.reach, b.radius).outer, [x, y, z] = b.centre;
+    const r = debrisShell(shellBase(home, b.reach, b.radius), b.radius).outer, [x, y, z] = b.centre;
     return [[x + r, y, z], [x - r, y, z], [x, y + r, z], [x, y - r, z], [x, y, z + r], [x, y, z - r]] as Vec3[];
   });
 }
@@ -113,7 +113,7 @@ export function shellPoints(model: SystemModel): Vec3[] {
 /** The body debris of `home` drifts round, or null when it isn't in this layout. */
 export function debrisBody(model: SystemModel, home: string): DebrisBody | null {
   const b = homeBase(model, home, 0);
-  return b ? { radius: b.radius, ...debrisShell(b.reach, b.radius) } : null;
+  return b ? { radius: b.radius, ...debrisShell(shellBase(home, b.reach, b.radius), b.radius) } : null;
 }
 
 const byCodepoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);

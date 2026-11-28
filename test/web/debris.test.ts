@@ -17,12 +17,12 @@ import {
   BLINK, DEBRIS_CAP, debrisBody, fragPoses, lightOn, orbitPoint, placePiece, planDebris, qmul, quat, ranked, rotate, shellPoints, SWEEP, sweepAt, withDebrisHomes,
   type Drawable, type Piece,
 } from '../../web/src/debris/place.js';
-import { debrisShell } from '../../web/src/debris/shell.js';
+import { debrisShell, shellBase } from '../../web/src/debris/shell.js';
 import { debrisEntries, runningSweeps, sweepsAfter, SWEEP_FRAMES } from '../../web/src/debris/sweep.js';
 import { FOG_SKY_TOP } from '../../web/src/model/fog-cloud.js';
 import { FPS, LOOP_FRAMES } from '../../web/src/model/motion.js';
 import { CORONA } from '../../web/src/model/star.js';
-import { MOON_RADIUS, planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
+import { MOON_RADIUS, MOONLET_RADIUS, planetCentre, planetReach, systemModel } from '../../web/src/model/system.js';
 import type { Vec3 } from '../../web/src/model/vec.js';
 import { buildKit, CLASSES, dims, extent, FOCUS_PX, isSolid, MAX_BOUND, MIN_FEATURE_PX, sizeNorm, type SolidPart } from '../../web/src/render/debris-kits.js';
 import { miniLayout } from '../fixtures/contract/mini.js';
@@ -196,6 +196,14 @@ describe('the plan (D5)', () => {
 });
 
 describe('the debris shell (R13: clear of moons, the fog sky and the corona; inside the drones\' lanes)', () => {
+  it("leaves a repo with no debris exactly as it was: the star's reach is its moonlets' orbit, or its radius (Qodo PR257 9b0711a6)", () => {
+    const bare = systemModel({ ...miniLayout, star: { ...miniLayout.star, moonlets: [] } });
+    expect(homeBody(bare, 'star', 0)!.reach).toBe(bare.star.radius);
+    expect(homeBody(mini, 'star', 0)!.reach).toBe(mini.star.moonlets[0]!.orbit + MOONLET_RADIUS);
+    // with debris round it, the star's shell starts past its corona
+    expect(debrisBody(withDebrisHomes(bare, ['star']), 'star')!.inner).toBeGreaterThan(bare.star.radius * CORONA.reach);
+  });
+
   const bodies = [...model.planets.map((p) => p.dirId), 'star', ...mini.planets.map((p) => p.dirId)];
   const modelOf = (home: string) => (mini.planets.some((p) => p.dirId === home) ? mini : model);
 
@@ -234,7 +242,7 @@ describe('the debris shell (R13: clear of moons, the fog sky and the corona; ins
       const m0 = modelOf(home), base = homeBase(m0, home, 0)!;
       expect(homeBody(m0, home, 0)!.reach, `${home}: no debris, no shell`).toBe(base.reach);
       const m = withDebrisHomes(m0, [home]);
-      expect(homeBody(m, home, 0)!.reach).toBe(debrisShell(base.reach, base.radius).outer);
+      expect(homeBody(m, home, 0)!.reach).toBe(debrisShell(shellBase(home, base.reach, base.radius), base.radius).outer);
       for (const seed of [1, 77, 4242, 0xdeadbeef]) for (const f of [0, 300, 900]) {
         const at = placeDrone(m, home, seed, f)!, c = homeBase(m, home, f)!.centre;
         expect(Math.hypot(at.centre[0] - c[0], at.centre[1] - c[1], at.centre[2] - c[2]) - DRONE_PICK_RADIUS).toBeGreaterThan(debrisBody(m, home)!.outer);

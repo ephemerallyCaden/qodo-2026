@@ -1,11 +1,10 @@
 // Where a drone is, as a pure function of (model, session seed and home, frame): it circles its home
 // body at a constant rate, starting from a seeded phase on a seeded, slightly tilted orbit (art-direction
 // §6 / AGENTS.md Rule 4: a fixed rate times time, no easing). No clock, no random: a frame number only.
-import { debrisShell } from '../debris/shell.js';
+import { debrisShell, shellBase } from '../debris/shell.js';
 import { FOG_SKY_TOP } from '../model/fog-cloud.js';
 import { turnAngle } from '../model/motion.js';
 import { mulberry32 } from '../model/prng.js';
-import { CORONA } from '../model/star.js';
 import { MOONLET_RADIUS, planetCentre, planetReach, type SystemModel } from '../model/system.js';
 import { type Vec3 } from '../model/vec.js';
 
@@ -34,16 +33,16 @@ export interface DronePlacement {
 }
 
 /**
- * A body as it draws itself, before its debris: its centre, its radius, and the reach of everything it draws, which
- * its debris shell clears (debris/shell.ts). A planet's reach is its moons and weather or its fog sky's top
- * (model/fog-cloud.ts FOG_SKY_TOP: the cloud, its domes past the limb included, or the mist), whichever is further,
- * on every planet whatever its fog now (#224, Qodo 1f87de0f); the star's is its moonlets' orbit, or its corona
- * (model/star.ts CORONA). Null when the home isn't in this layout.
+ * A body as it draws itself, before its debris: its centre, its radius, and the reach of everything its drones
+ * clear. A planet's reach is its moons and weather or its fog sky's top (model/fog-cloud.ts FOG_SKY_TOP: the cloud,
+ * its domes past the limb included, or the mist), whichever is further, on every planet whatever its fog now (#224,
+ * Qodo 1f87de0f); the star's is its moonlets' orbit, or its radius. Its debris shell starts past that, and past the
+ * star's corona (debris/shell.ts shellBase). Null when the home isn't in this layout.
  */
 export function homeBase(model: SystemModel, home: string, frame: number): { centre: Vec3; radius: number; reach: number } | null {
   if (home === 'star') {
     const { moonlets, radius } = model.star;
-    return { centre: [0, 0, 0], radius, reach: Math.max(moonlets.length > 0 ? moonlets[0]!.orbit + MOONLET_RADIUS : radius, radius * CORONA.reach) };
+    return { centre: [0, 0, 0], radius, reach: moonlets.length > 0 ? moonlets[0]!.orbit + MOONLET_RADIUS : radius };
   }
   const p = model.planets.find((x) => x.dirId === home);
   return p ? { centre: planetCentre(p, frame), radius: p.radius, reach: Math.max(planetReach(p), p.radius * FOG_SKY_TOP) } : null;
@@ -59,7 +58,7 @@ export function homeBase(model: SystemModel, home: string, frame: number): { cen
 export function homeBody(model: SystemModel, home: string, frame: number): { centre: Vec3; reach: number } | null {
   const b = homeBase(model, home, frame);
   if (!b) return null;
-  return { centre: b.centre, reach: model.debrisHomes?.includes(home) ? debrisShell(b.reach, b.radius).outer : b.reach };
+  return { centre: b.centre, reach: model.debrisHomes?.includes(home) ? debrisShell(shellBase(home, b.reach, b.radius), b.radius).outer : b.reach };
 }
 
 export function placeDrone(model: SystemModel, home: string, seed: number, frame: number): DronePlacement | null {

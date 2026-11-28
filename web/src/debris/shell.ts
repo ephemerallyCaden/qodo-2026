@@ -7,6 +7,7 @@
 // frames it. A body's pieces are placed in it the same way whatever else is drawn, so no piece ever moves when
 // another comes or goes. All its sizes are in the body's radii, as a piece's size is, so it looks the same against
 // a body of any size in focus.
+import { CORONA } from '../model/star.js';
 import { MAX_BOUND } from '../render/debris-kits.js';
 
 /**
@@ -17,6 +18,12 @@ import { MAX_BOUND } from '../render/debris-kits.js';
  * its fragments drifting apart), so a smaller piece has a wider band to drift in.
  */
 export const DEBRIS_SHELL = { gap: 0.08, ecc: 0.05, band: 0.2 } as const;
+
+/**
+ * What a body's debris clears: the reach of what it draws (drones/place.ts homeBase), and round the star its corona
+ * too (model/star.ts CORONA), which its drones never needed to clear. World units.
+ */
+export const shellBase = (home: string, reach: number, radius: number): number => (home === 'star' ? Math.max(reach, radius * CORONA.reach) : reach);
 
 /**
  * The shell round a body whose drawn reach is `base` (world units) and whose radius is `radius`: no point of any
