@@ -20,7 +20,13 @@ esac
 
 [ -L "$FILE" ] && refuse "the key file is a symlink; it must be a plain file"
 [ -f "$FILE" ] || refuse "no key file at $FILE: create it (mode 0600) with $KEYS"
-mode=$(stat -f %Lp "$FILE" 2>/dev/null || stat -c %a "$FILE")
+# GNU stat first: on Linux `stat -f` is the filesystem's status, which succeeds and says nothing of the
+# file's mode; BSD stat (macOS) refuses `-c`, so it falls through to its own `-f %Lp`.
+mode=$(stat -c %a "$FILE" 2>/dev/null || stat -f %Lp "$FILE" 2>/dev/null || true)
+case $mode in
+  [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
+  *) refuse "couldn't read the key file's mode" ;;
+esac
 [ "$mode" = 600 ] || refuse "the key file's mode is $mode; it must be 600 (chmod 600 \"$FILE\")"
 
 # Each wanted key from its KEY=value line, quotes around the value dropped; anything else in the file is

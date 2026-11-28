@@ -3,7 +3,7 @@
 // checkly.sh). A canary over every file in monitoring/ (its own node_modules and run output aside) for
 // anything shaped like them, and the key file's mode check, which runs without a key.
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { privacyHits } from '../.claude/skills/visual-proof/scripts/privacy.js';
@@ -76,6 +76,34 @@ describe('monitoring/checkly/scripts/checkly.sh', () => {
       expect(r.stderr).toMatch(/must be 600/);
     }
     expect(run(join(tempDir('commet-checkly-'), 'none.env')).status).toBe(2);
+  });
+
+  /**
+   * A folder holding a fake `stat` in GNU's manner (`-c %a` is the mode; `-f` is the filesystem's status, and
+   * succeeds) or BSD's (`-f %Lp` is the mode; `-c` is an illegal option), so both are tried on any host.
+   */
+  const fakeStat = (kind: 'gnu' | 'bsd') => {
+    const bin = join(tempDir('commet-stat-'), 'bin');
+    mkdirSync(bin);
+    const mode = `node -e 'process.stdout.write((require("fs").statSync(process.argv[1]).mode & 0o777).toString(8) + "\\n")' "$3"`;
+    const body = kind === 'gnu'
+      ? `case $1 in -c) ${mode} ;; -f) echo '  File: "'"$3"'"'; echo '    ID: 0 Namelen: 255 Type: ext2/ext3' ;; *) exit 1 ;; esac`
+      : `case $1 in -f) ${mode} ;; *) echo "stat: illegal option -- \${1#-}" >&2; exit 1 ;; esac`;
+    writeFileSync(join(bin, 'stat'), `#!/bin/sh\n${body}\n`);
+    chmodSync(join(bin, 'stat'), 0o755);
+    return bin;
+  };
+
+  it('reads the mode with GNU stat (Linux, CI) and BSD stat (macOS) alike (CI e53efa6)', () => {
+    for (const kind of ['gnu', 'bsd'] as const) {
+      const env = { ...process.env, PATH: `${fakeStat(kind)}:${process.env['PATH'] ?? ''}` };
+      const go = (file: string) => spawnSync('sh', [SCRIPT, 'env-check'], { encoding: 'utf8', env: { ...env, CHECKLY_ENV_FILE: file } });
+      const ok = go(keyFile(0o600));
+      expect(ok.status, `${kind}: ${ok.stderr}`).toBe(0);
+      const open = go(keyFile(0o644));
+      expect(open.status, kind).toBe(2);
+      expect(open.stderr, kind).toMatch(/mode is 644; it must be 600/);
+    }
   });
 
   it('takes a 0600 key file and names what it sets, never printing a value', () => {
