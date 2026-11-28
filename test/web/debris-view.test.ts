@@ -14,6 +14,9 @@ import { SWEEP_FRAMES } from '../../web/src/debris/sweep.js';
 import { planetCentre, systemModel } from '../../web/src/model/system.js';
 import { focusPose, project, projectedRadius, startPose } from '../../web/src/camera/pose.js';
 import { SystemScene } from '../../web/src/render/scene.js';
+import { DebrisField } from '../../web/src/render/debris.js';
+import { debrisEntries } from '../../web/src/debris/sweep.js';
+import type * as THREE from 'three';
 import { ViewError } from '../../web/src/data/client.js';
 import { miniDebris, miniLayout } from '../fixtures/contract/mini.js';
 import { debrisViewOf } from '../fixtures/debris-view.js';
@@ -179,6 +182,18 @@ describe("the view's debris state", () => {
     st.set(s, HEAD, [], HEAD, 200, false);
     expect(s.model.debrisHomes).toEqual([]);
     s.dispose();
+  });
+
+  it('builds new geometry for each new set of pieces and releases the old, so no GPU buffer is left behind (Qodo PR257 83f3b0d6)', () => {
+    const field = new DebrisField();
+    const geometries = () => field.group.children.map((o) => (o as THREE.Mesh | THREE.Points).geometry);
+    const before = geometries();
+    let released = 0;
+    for (const g of new Set(before)) g.addEventListener('dispose', () => { released++; });
+    field.set(debrisEntries(systemModel(miniLayout), items, []).entries);
+    expect(released, 'the old body and light geometries are disposed').toBe(2);
+    expect(geometries().every((g) => !before.includes(g))).toBe(true);
+    field.dispose();
   });
 
   it('drops the selection when its piece is gone, and caps each body at 12 with the rest counted for its "+N"', () => {

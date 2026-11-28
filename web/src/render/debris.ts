@@ -201,8 +201,10 @@ function matrix(q: readonly number[]): number[] {
 export class DebrisField {
   readonly group = new THREE.Group();
   private slots: Slot[] = [];
-  private readonly geometry = new THREE.BufferGeometry();
-  private readonly lightGeometry = new THREE.BufferGeometry();
+  /** The merged body and outline geometry and the lights', new for every set of pieces (set: the old ones' GPU buffers are released). */
+  private geometry = new THREE.BufferGeometry();
+  private lightGeometry = new THREE.BufferGeometry();
+  private readonly meshes: { body: THREE.Mesh; outline: THREE.Mesh; lights: THREE.Points };
   private readonly bodyMat: THREE.ShaderMaterial;
   private readonly outlineMat: THREE.ShaderMaterial;
   private readonly lightMat: THREE.ShaderMaterial;
@@ -227,6 +229,7 @@ export class DebrisField {
     const outline = new THREE.Mesh(this.geometry, this.outlineMat);
     const lights = new THREE.Points(this.lightGeometry, this.lightMat);
     for (const o of [body, outline, lights]) { o.frustumCulled = false; o.matrixAutoUpdate = false; this.group.add(o); }
+    this.meshes = { body, outline, lights };
     this.set([]);
   }
 
@@ -274,8 +277,9 @@ export class DebrisField {
         return { light: l, frag: k, rel: [l.pos[0] - c[0], l.pos[1] - c[1], l.pos[2] - c[2]] as Vec3, at: at++ };
       });
     }
-    const n = pos.length / 3, g = this.geometry;
-    for (const name of Object.keys(g.attributes)) g.deleteAttribute(name);
+    // New geometry, and the old disposed: three.js frees a geometry's GPU buffers only on dispose, never when an
+    // attribute is replaced (Qodo PR257 83f3b0d6)
+    const n = pos.length / 3, g = new THREE.BufferGeometry(), lg = new THREE.BufferGeometry();
     g.setIndex(index);
     g.setAttribute('position', dynamic(n, 3));
     g.setAttribute('normal', dynamic(n, 3));
@@ -287,10 +291,15 @@ export class DebrisField {
     g.setAttribute('aLocal', new THREE.Float32BufferAttribute(local, 3));
     g.setAttribute('aGrid', new THREE.Float32BufferAttribute(grid, 4));
     g.setAttribute('aStyle', new THREE.Float32BufferAttribute(style, 4));
-    const lg = this.lightGeometry;
-    for (const name of Object.keys(lg.attributes)) lg.deleteAttribute(name);
     lg.setAttribute('position', dynamic(at, 3));
     lg.setAttribute('aOn', dynamic(at, 1));
+    this.geometry.dispose();
+    this.lightGeometry.dispose();
+    this.geometry = g;
+    this.lightGeometry = lg;
+    this.meshes.body.geometry = g;
+    this.meshes.outline.geometry = g;
+    this.meshes.lights.geometry = lg;
     this.group.visible = this.slots.length > 0;
   }
 
