@@ -2,9 +2,9 @@
 // built site. Used by web/vite.demo.config.ts (the build refuses to finish on a hit) and by the tests.
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bundleHits, tokenRuns, type Hit } from '../../.claude/skills/visual-proof/scripts/privacy.js';
+import { bundleHits, privacyHits, servedTexts, tokenRuns, type Hit } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 import { API } from '../../src/core/contract/api.js';
 import { palette } from '../../src/core/palette.js';
 import { checkCrewDetail } from '../src/crew/check.js';
@@ -138,28 +138,71 @@ export function datasetProblems(d: Dataset): string[] {
   return problems;
 }
 
-/** What a built site holds at its top: the only names a folder the build removes may hold. */
+/** What a built site holds at its top, and in its two folders: the only things a folder the build removes may hold. */
 const SITE_ENTRIES = new Set(['index.html', 'assets', 'data', 'favicon.svg', '.nojekyll']);
+const SITE_FOLDERS: Readonly<Record<string, RegExp>> = { assets: /^[\w.-]+\.(?:js|css)$/, data: /^[\w.-]+\.json$/ };
+
+/**
+ * The real path of `p`: its nearest existing ancestor resolved through every link (realpath), then the rest
+ * of `p`, which doesn't exist yet. Throws when an existing part is a link that leads nowhere.
+ */
+function realPathOf(p: string): string {
+  let cur = p;
+  const rest: string[] = [];
+  while (!lstatSync(cur, { throwIfNoEntry: false })) {
+    const up = dirname(cur);
+    if (up === cur) break;
+    rest.unshift(basename(cur));
+    cur = up;
+  }
+  return join(realpathSync(cur), ...rest);
+}
+
+/** Why a folder that exists isn't a site this build may remove, or null: anything but a build's own entries. */
+function notASite(dir: string): string | null {
+  const stray: string[] = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const folder = SITE_FOLDERS[e.name];
+    if (!SITE_ENTRIES.has(e.name) || (folder ? !e.isDirectory() : !e.isFile())) { stray.push(e.name); continue; }
+    if (!folder) continue;
+    for (const f of readdirSync(join(dir, e.name), { withFileTypes: true })) if (!f.isFile() || !folder.test(f.name)) stray.push(`${e.name}/${f.name}`);
+  }
+  return stray.length ? `DEMO_OUT holds files that aren't a demo site (${stray.slice(0, 3).join(', ')}); empty it or pick another folder` : null;
+}
 
 /**
  * The folder a build writes, `DEMO_OUT` or dist/demo, resolved from the checkout. The build removes it
  * before anything else, so it's an allowlist (Qodo PR249 31482891): in the checkout, only a folder under
  * dist/ whose name starts with `demo`; outside it, only one inside the temp folder (the tests'); never a
- * folder holding the checkout or home. A folder that exists must be a plain folder holding nothing but a
- * site's own files, so a mistyped path never empties someone's work.
+ * folder holding the checkout or home. The allowlist holds for the real path too, and no part of the path
+ * below the checkout or the temp folder may be a link (Qodo PR249 864cf87e), so a link can't point the
+ * removal anywhere else. A folder that exists must hold only a build's own output, so a mistyped path
+ * never empties someone's work.
  */
 export function siteOut(raw: string | undefined): string {
   const out = resolve(ROOT, raw ?? DEMO_DIST);
-  const inside = (dir: string) => out.startsWith(dir + sep);
+  const realRoot = realpathSync(ROOT);
   const temps = [...new Set([tmpdir(), realpathSync(tmpdir())])];
-  const allowed = out === ROOT || inside(ROOT)
-    ? inside(join(ROOT, 'dist')) && /^demo[A-Za-z0-9._-]*$/.test(relative(join(ROOT, 'dist'), out).split(sep)[0]!)
-    : temps.some(inside) && !ROOT.startsWith(out + sep) && !homedir().startsWith(out + sep);
-  if (!allowed) throw new Error(`DEMO_OUT must be dist/demo… in the checkout, or a folder inside the temp folder (got ${relative(ROOT, out) || 'the checkout'})`);
+  /** Whether `p` may be removed, with `root` the checkout and `tmp` the temp folders, all in the same form. */
+  const allowed = (p: string, root: string, tmp: readonly string[]) => {
+    const inside = (dir: string) => p.startsWith(dir + sep);
+    return p === root || inside(root)
+      ? inside(join(root, 'dist')) && /^demo[A-Za-z0-9._-]*$/.test(relative(join(root, 'dist'), p).split(sep)[0]!)
+      : tmp.some(inside) && !root.startsWith(p + sep) && !homedir().startsWith(p + sep) && !realpathSync(homedir()).startsWith(p + sep);
+  };
+  if (!allowed(out, ROOT, temps)) throw new Error(`DEMO_OUT must be dist/demo… in the checkout, or a folder inside the temp folder (got ${relative(ROOT, out) || 'the checkout'})`);
+  // The base the path is allowed under (the checkout, or the temp folder it's in): below it, the real path
+  // must be the same path, so nothing on the way is a link.
+  const base = out.startsWith(ROOT + sep) ? ROOT : temps.find((t) => out.startsWith(t + sep))!;
+  let real: string;
+  try { real = realPathOf(out); } catch { throw new Error('DEMO_OUT goes through a symlink that leads nowhere'); }
+  if (real !== join(realpathSync(base), relative(base, out)) || !allowed(real, realRoot, [realpathSync(tmpdir())])) {
+    throw new Error('DEMO_OUT must not go through a symlink: the build removes the folder, so it must be the folder it names');
+  }
   const st = lstatSync(out, { throwIfNoEntry: false });
   if (st && !st.isDirectory()) throw new Error('DEMO_OUT must be a folder, not a file or a link');
-  const stray = st ? readdirSync(out).filter((name) => !SITE_ENTRIES.has(name)) : [];
-  if (stray.length) throw new Error(`DEMO_OUT holds files that aren't a demo site (${stray.slice(0, 3).join(', ')}); empty it or pick another folder`);
+  const problem = st ? notASite(out) : null;
+  if (problem) throw new Error(problem);
   return out;
 }
 
@@ -212,8 +255,18 @@ export function libraryRuns(): Set<string> {
  */
 export function siteHits(dir: string): Hit[] {
   const literals = [{ name: 'home folder', value: homedir() }, { name: 'checkout path', value: ROOT }].filter((l) => l.value.length > 1);
+  const ctx = { literals, library: libraryRuns() };
+  const files = siteFiles(dir);
+  const place = `the demo build's ${DEMO_DIST}`;
   // bundleHits names the product's folder in each hit's place; this scan is of the demo's
-  return bundleHits('demo', siteFiles(dir), { literals, library: libraryRuns() }).map((h) => ({ ...h, where: h.where.replace("build's dist/web", `build's ${DEMO_DIST}`) }));
+  const raw = bundleHits('demo', files, ctx).map((h) => ({ ...h, where: h.where.replace("build's dist/web", `build's ${DEMO_DIST}`) }));
+  if (raw.some((h) => h.where.endsWith('file names'))) return raw; // a hit's place is printed: names first, as bundleHits does
+  // Each JSON file also as the page reads it (Qodo PR249 dc9c36d7): its decoded strings, so an escaped
+  // `\/Users\/…` is a path, and apart its keys, so an agent-log field is a hit, as visual-proof scans an
+  // API answer (servedTexts). Placed by the file's name, which the scan above has passed.
+  const parsed = files.filter((f) => f.path.endsWith('.json')).flatMap((f) => servedTexts({ path: f.path, body: f.text })
+    .map((t) => ({ where: `${place}/${t.where.replace(/^GET /, '')} (as read)`.replace(' (keys) (as read)', ' (as read) (keys)'), text: t.text })));
+  return [...raw, ...privacyHits(parsed, ctx)];
 }
 
 /**
