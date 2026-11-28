@@ -1,15 +1,18 @@
 // R13 space debris, the pure parts: which refs are debris (one row per input, AGENTS.md Rule 1), the cleanup
 // commands' quoting, the view and panel, the stored-debris check, and the scan's git-output parsers (Rule 7).
 import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DEBRIS, DEBRIS_WARNINGS, debrisAgeStep } from '../src/core/contract/debris.js';
 import {
   buildDebris, debrisCommands, debrisDetail, debrisId, debrisProblem, debrisView, defaultBranches, planDebris, shellQuote, worktreeKey,
-  type DebrisGit, type DebrisRead, type RefRow, type WorktreeRow,
+  worktreeReadKey, type DebrisGit, type DebrisRead, type RefRow, type WorktreeRow,
 } from '../src/core/debris.js';
 import { sha256Hex } from '../src/core/hash.js';
 import type { Debris, DebrisItem, DirId, FileId, Session, SnapshotV02 } from '../src/core/snapshot/types.js';
-import { numstatPaths, parseCommits, remotesOf } from '../src/scan/debris.js';
+import { numstatPaths, parseCommits, readDebris, remotesOf } from '../src/scan/debris.js';
+import type { Git } from '../src/scan/git.js';
+import { realTempDir } from './fixtures/tmp.js';
 import { parseWorktrees } from '../src/scan/repo.js';
 
 const DAY = 86_400;
@@ -37,12 +40,14 @@ interface Case {
   cherry?: Record<string, boolean>;
   failed?: string[];
   sessions?: Pick<Session, 'key' | 'branch' | 'endedAt'>[];
+  /** Commits ahead of HEAD per unmerged ref, as the branch reads give them. */
+  ahead?: Record<string, number>;
 }
 
 function run(c: Case): Debris {
   const g: DebrisGit = { head: HEAD, headCt: HEAD_CT, headRef: c.headRef ?? 'refs/heads/session', refs: c.refs, remotes: c.remotes ?? [{ name: 'origin', standard: true }],
     initDefault: c.initDefault ?? null, worktrees: c.worktrees ?? [] };
-  const plan = planDebris(g);
+  const plan = planDebris(g, DEBRIS, new Map(Object.entries(c.ahead ?? {})));
   const reads = new Map<string, DebrisRead | null>();
   const read = (key: string, tip: string, ct: number): DebrisRead | null => {
     if (c.failed?.includes(key)) return null;
@@ -51,7 +56,7 @@ function run(c: Case): Debris {
       cherryMerged: c.cherry?.[key] ?? false };
   };
   for (const gr of plan.groups) reads.set(gr.key, read(gr.key, gr.best.sha, gr.best.ct));
-  for (const w of plan.worktrees) if (w.prunable) reads.set(worktreeKey(w), read(worktreeKey(w), w.head, HEAD_CT - 20 * DAY));
+  for (const w of plan.worktrees) if (w.prunable) reads.set(worktreeReadKey(w), read(worktreeKey(w), w.head, HEAD_CT - 20 * DAY));
   return buildDebris(plan, reads, { headCt: HEAD_CT, sessions: c.sessions ?? [], fileIds: new Map([['src/a.ts', 'f_00000000000a' as FileId]]),
     selfEmails: new Set(['me@x.test']) });
 }
@@ -62,6 +67,9 @@ describe('which refs are debris (one row per input)', () => {
     ["HEAD's own branch", { refs: [row('refs/heads/session', { age: 90 })] }, {}],
     ["HEAD's upstream, folded into HEAD's branch", {
       refs: [row('refs/heads/session', { upstream: 'refs/remotes/origin/session' }), row('refs/remotes/origin/session', { age: 40, merged: true })] }, {}],
+    ["an old branch tracking HEAD's upstream too: still debris (Qodo PR248 89adcd24)", {
+      refs: [row('refs/heads/session', { upstream: 'refs/remotes/origin/base' }), row('refs/heads/old', { age: 40, upstream: 'refs/remotes/origin/base' }),
+        row('refs/remotes/origin/base', { age: 40, merged: true })] }, { 'refs/heads/old': 'branch' }],
     ["HEAD's upstream as a local branch (branch.<x>.remote = .)", {
       refs: [row('refs/heads/session', { upstream: 'refs/heads/base' }), row('refs/heads/base', { age: 40, merged: true })] }, {}],
     ['the default branch, local and remote, by the remote HEAD', {
@@ -141,6 +149,13 @@ describe('which refs are debris (one row per input)', () => {
       worktree: { prunable: true, locked: true, folder: 'det' } });
   });
 
+  it('reads the group from its most advanced tip: most commits ahead first, then the newer (Qodo PR248 782839a3)', () => {
+    const refs = [row('refs/heads/x', { age: 30 }), row('refs/remotes/origin/x', { age: 35 })];
+    const d = run({ refs, ahead: { 'refs/heads/x': 1, 'refs/remotes/origin/x': 4 } });
+    expect(d.items).toMatchObject([{ ref: 'refs/heads/x', tip: sha('refs/remotes/origin/x'), ageDays: 35 }]);
+    expect(run({ refs, ahead: { 'refs/heads/x': 4, 'refs/remotes/origin/x': 4 } }).items).toMatchObject([{ tip: sha('refs/heads/x'), ageDays: 30 }]);
+  });
+
   it('records sizes, files, creator and seed; merged items have no lines', () => {
     const d = run({ refs: [row('refs/heads/u', { age: 40 }), row('refs/heads/m', { age: 40, merged: true })], authors: { 'refs/heads/m': { name: 'Me', email: 'me@x.test' } } });
     const [m, u] = [d.items.find((i) => i.ref === 'refs/heads/m')!, d.items.find((i) => i.ref === 'refs/heads/u')!];
@@ -203,14 +218,21 @@ describe('cleanup and inspect commands (shown, never run)', () => {
     ['live worktree, folder not unique', { worktree: { prunable: false, locked: false, folder: null } },
       [null, "git log --oneline HEAD..'refs/heads/x' --", W.worktreeAmbiguous]],
     ['locked worktree', { worktree: { prunable: true, locked: true, folder: 'x' } }, [null, "git log --oneline HEAD..'refs/heads/x' --", W.worktreeLocked]],
-    ['prunable worktree on the branch', { cls: 'merged', aheadCount: 0, worktree: { prunable: true, locked: false, folder: null } },
-      ["git worktree prune && git branch -d -- 'x'", null, null]],
-    ['worktree-only on a branch', { cls: 'agent', worktreeOnly: true, aheadCount: 0, worktree: { prunable: true, locked: false, folder: null } },
-      ['git worktree prune', null, null]],
+    // One worktree at a time, never the repository-wide `git worktree prune` (Qodo PR248 2d231f91).
+    ['prunable worktree on the branch', { cls: 'merged', aheadCount: 0, worktree: { prunable: true, locked: false, folder: 'gone' } },
+      ["git worktree remove -- 'gone' && git branch -d -- 'x'", null, null]],
+    ['prunable worktree, folder not unique', { cls: 'merged', aheadCount: 0, worktree: { prunable: true, locked: false, folder: null } },
+      [null, null, W.worktreeAmbiguous]],
+    ['worktree-only on a branch', { cls: 'agent', worktreeOnly: true, aheadCount: 0, worktree: { prunable: true, locked: false, folder: 'gone' } },
+      ["git worktree remove -- 'gone'", null, null]],
+    ['worktree-only, folder not unique', { cls: 'agent', worktreeOnly: true, aheadCount: 0, worktree: { prunable: true, locked: false, folder: null } },
+      [null, null, W.worktreeAmbiguous]],
     ['worktree-only, detached with its own commits: no prune', { cls: 'agent', worktreeOnly: true, ref: null, worktree: { prunable: true, locked: false, folder: null } },
       [null, `git log --oneline HEAD..${'b'.repeat(40)} --`, W.detached]],
     ['worktree-only, detached at a merged commit', { cls: 'agent', worktreeOnly: true, ref: null, aheadCount: 0,
-      worktree: { prunable: true, locked: false, folder: null } }, ['git worktree prune', null, null]],
+      worktree: { prunable: true, locked: false, folder: 'det' } }, ["git worktree remove -- 'det'", null, null]],
+    ['worktree-only, detached with its own commits, locked: the lost-work warning first', { cls: 'agent', worktreeOnly: true, ref: null,
+      worktree: { prunable: true, locked: true, folder: 'det' } }, [null, `git log --oneline HEAD..${'b'.repeat(40)} --`, W.detached]],
     ['worktree-only, locked', { cls: 'agent', worktreeOnly: true, aheadCount: 0, worktree: { prunable: true, locked: true, folder: null } }, [null, null, W.worktreeLocked]],
   ];
   it.each(rows)('%s', (_n, o, [cleanup, inspect, warning]) => expect(debrisCommands(item(o))).toEqual({ cleanup, inspect, warning }));
@@ -221,6 +243,23 @@ describe('cleanup and inspect commands (shown, never run)', () => {
     expect(debrisCommands(item({ ref: `refs/heads/${s}` }))).toEqual(none);
     expect(debrisCommands(item({ cls: 'merged', remotes: [{ name: s, ref: 'refs/heads/x' }] }))).toEqual(none);
     expect(debrisCommands(item({ worktree: { prunable: false, locked: false, folder: s } }))).toEqual(none);
+  });
+
+  it("says what git branch -d really does: it deletes a branch its upstream holds, merged into HEAD or not (Qodo PR248 5195ff78)", () => {
+    const root = realTempDir('commet-debris-d-');
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: join(root, 'r'), encoding: 'utf8', stdio: 'pipe' });
+    execFileSync('git', ['init', '-q', '--bare', 'o.git'], { cwd: root });
+    execFileSync('git', ['init', '-q', '-b', 'main', 'r'], { cwd: root });
+    for (const [k, v] of [['user.name', 'P'], ['user.email', 'p@x.test'], ['commit.gpgsign', 'false']]) git('config', k!, v!);
+    git('commit', '-q', '--allow-empty', '-m', 'one');
+    git('remote', 'add', 'origin', join(root, 'o.git'));
+    git('checkout', '-q', '-b', 'pushed');
+    git('commit', '-q', '--allow-empty', '-m', 'work HEAD lacks');
+    git('push', '-q', '-u', 'origin', 'pushed');
+    git('checkout', '-q', 'main');
+    git('branch', '-d', '--', 'pushed');
+    expect(git('branch', '--list', 'pushed')).toBe('');
+    expect(W.unmerged).toMatch(/unless HEAD or its upstream has every commit/);
   });
 
   it('never offers a forced delete', () => {
@@ -324,6 +363,32 @@ describe("the scan's parsers", () => {
       + 'remote.mirror.fetch\n+refs/heads/*:refs/remotes/mirror/x/*\0remote.two.fetch\n+refs/heads/*:refs/remotes/two/*\0remote.two.fetch\n+refs/tags/*:refs/tags/*\0'))
       .toEqual([{ name: 'a.b', standard: true }, { name: 'mirror', standard: false }, { name: 'origin', standard: true }, { name: 'two', standard: false }]);
     expect(remotesOf('')).toEqual([]);
+  });
+
+  it('sorts remotes by codepoint, as every other order is (Qodo PR248 ec6f9b05)', () => {
+    const [bmp, astral] = ['z\uFFFF', 'z\u{1F600}'];
+    expect(remotesOf(`remote.${astral}.fetch\nx\0remote.${bmp}.fetch\ny\0`).map((r) => r.name)).toEqual([bmp, astral]);
+  });
+
+  it("keeps a branch's own read apart from its prunable worktree's (Qodo PR248 6a6df300)", async () => {
+    const tip = sha('refs/heads/a');
+    const rec = (s: string, subject: string, extra: string[] = []) => [s, String(HEAD_CT - 10 * DAY), 'Claude', 'noreply@anthropic.com', subject, ...extra].join('\0');
+    const git = (async (args: string[]) => {
+      if (args[0] === 'log' && args.includes('-1')) return `${rec(tip, 'tip', ['e'.repeat(40)])}\0`;
+      if (args[0] === 'log') return `${rec(tip, 'tip')}\0${rec('e'.repeat(40), 'first')}\0`;
+      if (args[0] === 'diff-tree') return '1\t0\tsrc/a.ts\0';
+      if (args[0] === 'rev-list') return '0\n';
+      if (args[0] === 'cherry') return '';
+      throw new Error(`unexpected git ${args.join(' ')}`);
+    }) as Git;
+    const wt: WorktreeRow = { head: tip, ref: 'refs/heads/a', locked: false, prunable: true, folder: 'a-dir' };
+    const plan = planDebris({ head: HEAD, headCt: HEAD_CT, headRef: 'refs/heads/session', refs: [row('refs/heads/a', { age: 10 })],
+      remotes: [], initDefault: null, worktrees: [wt] });
+    const work = new Map([['refs/heads/a', { aheadCount: 2, lines: 9, paths: new Set(['src/a.ts']) }]]);
+    const reads = await readDebris(git, plan, work, HEAD, '4b825dc642cb6eb9a060e54bf8d69288fbee4904');
+    const d = buildDebris(plan, reads, { headCt: HEAD_CT, sessions: [], fileIds: new Map(), selfEmails: new Set() });
+    expect(d.items).toMatchObject([{ ref: 'refs/heads/a', cls: 'agent', aheadCount: 2, lines: 9, subject: 'tip', worktreeOnly: false,
+      worktree: { prunable: true, folder: 'a-dir' } }]);
   });
 
   it('reads diff-tree numstat on NUL only (Rule 7: U+0001, newline and tab in a path), leaving out binaries and excluded paths', () => {

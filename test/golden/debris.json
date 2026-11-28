@@ -102,7 +102,7 @@
       "remoteOnly": false,
       "schemaVersion": "debris-detail.1",
       "sessions": [],
-      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "warning": "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first",
       "worktree": null
     },
     {
@@ -136,7 +136,7 @@
       "remoteOnly": false,
       "schemaVersion": "debris-detail.1",
       "sessions": [],
-      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "warning": "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first",
       "worktree": null
     },
     {
@@ -170,7 +170,7 @@
       "remoteOnly": false,
       "schemaVersion": "debris-detail.1",
       "sessions": [],
-      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "warning": "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first",
       "worktree": null
     },
     {
@@ -309,7 +309,7 @@
       "remoteOnly": false,
       "schemaVersion": "debris-detail.1",
       "sessions": [],
-      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "warning": "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first",
       "worktree": null
     },
     {
@@ -343,13 +343,13 @@
       "remoteOnly": false,
       "schemaVersion": "debris-detail.1",
       "sessions": [],
-      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "warning": "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first",
       "worktree": null
     },
     {
       "ageDays": 2,
       "aheadCount": 0,
-      "cleanup": "git worktree prune",
+      "cleanup": "git worktree remove -- 'gone-dir'",
       "cls": "agent",
       "creator": {
         "agent": false,
@@ -448,7 +448,7 @@
       "remoteOnly": false,
       "schemaVersion": "debris-detail.1",
       "sessions": [],
-      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "warning": "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first",
       "worktree": null
     },
     {
@@ -482,7 +482,7 @@
       "remoteOnly": false,
       "schemaVersion": "debris-detail.1",
       "sessions": [],
-      "warning": "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+      "warning": "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first",
       "worktree": {
         "locked": false,
         "prunable": false

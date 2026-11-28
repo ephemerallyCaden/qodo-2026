@@ -120,12 +120,16 @@ export function defaultBranches(g: Pick<DebrisGit, 'refs' | 'initDefault'>): str
  * own branch and its upstream (with their copies), a group whose tip is HEAD's commit, and the default branches
  * as a local branch or `<remote>/<name>`. A merged group is read once past the grace; an unmerged one once it
  * could be an agent's or abandoned, or, with its upstream gone, once a rebase-then-merge could make it merged.
+ * `ahead` holds each unmerged ref's commits ahead of HEAD (the branch reads'), so a group is read from its most
+ * advanced tip, as `branches[]` is.
  */
-export function planDebris(g: DebrisGit, settings: Debris['settings'] = { ...DEBRIS }): DebrisPlan {
+export function planDebris(g: DebrisGit, settings: Debris['settings'] = { ...DEBRIS }, ahead: ReadonlyMap<string, number> = new Map()): DebrisPlan {
   const defaults = defaultBranches(g);
-  const rows = g.refs.filter((r) => !r.symref);
-  const present = new Set(rows.map((r) => r.ref));
-  const headUpstream = rows.find((r) => r.ref === g.headRef)?.upstream ?? '';
+  const headUpstream = g.refs.find((r) => r.ref === g.headRef && !r.symref)?.upstream ?? '';
+  // HEAD's upstream is never debris, and leaves before grouping: another branch tracking it too keeps its own
+  // group, rather than going with it (Qodo PR248 89adcd24).
+  const rows = g.refs.filter((r) => !r.symref && r.ref !== headUpstream);
+  const present = new Set(g.refs.map((r) => r.ref));
 
   const groups = new Map<string, RefRow[]>();
   const byUpstream = new Map<string, string>();
@@ -145,9 +149,10 @@ export function planDebris(g: DebrisGit, settings: Debris['settings'] = { ...DEB
   const out: DebrisGroup[] = [];
   const isDefault = (r: RefRow) => defaults.includes(r.ref.startsWith(HEADS) ? shortRef(r.ref) : splitRemote(r.ref, g.remotes).branch);
   for (const [key, members] of groups) {
-    if (members.some((m) => m.ref === g.headRef || m.ref === headUpstream || isDefault(m))) continue;
-    // Unmerged members first (they're the ones ahead), then the newer tip, then the local one.
-    const best = [...members].sort((a, b) => Number(a.merged) - Number(b.merged) || b.ct - a.ct
+    if (members.some((m) => m.ref === g.headRef || isDefault(m))) continue;
+    // Most commits ahead of HEAD, then unmerged, then the newer tip, then the local one (Qodo PR248 782839a3).
+    const aheadOf = (m: RefRow) => (m.merged ? 0 : ahead.get(m.ref) ?? 0);
+    const best = [...members].sort((a, b) => aheadOf(b) - aheadOf(a) || Number(a.merged) - Number(b.merged) || b.ct - a.ct
       || Number(a.ref.startsWith(REMOTES)) - Number(b.ref.startsWith(REMOTES)))[0]!;
     if (best.sha === g.head) continue;
     const merged = members.every((m) => m.merged);
@@ -188,8 +193,14 @@ export interface DebrisCommit { sha: string; ct: number; name: string; email: st
  */
 export interface DebrisRead { commits: DebrisCommit[]; aheadCount: number; lines: number; paths: string[]; cherryMerged: boolean }
 
-/** The key a worktree's read is filed under. */
+/** A worktree item's id key: its branch's refname (the id it would have as a branch item), or `HEAD <sha>` when detached. */
 export const worktreeKey = (w: Pick<WorktreeRow, 'ref' | 'head'>): string => w.ref ?? `HEAD ${w.head}`;
+
+/**
+ * The key a worktree's read is filed under: never a group's (a refname holds no space), so a prunable
+ * worktree's tip-only read can't replace its branch's own read (Qodo PR248 6a6df300).
+ */
+export const worktreeReadKey = (w: Pick<WorktreeRow, 'ref' | 'head'>): string => `worktree ${worktreeKey(w)}`;
 
 export interface DebrisContext {
   /** HEAD's committer time, in seconds. */
@@ -202,7 +213,7 @@ export interface DebrisContext {
 }
 
 /**
- * The snapshot's debris from the plan and its reads (keyed by group key, or `worktreeKey` for worktrees; null:
+ * The snapshot's debris from the plan and its reads (keyed by group key, or `worktreeReadKey` for worktrees; null:
  * the read failed, counted in `unreadable`, never guessed). An active branch (an agent session on it ended
  * within `agentDays` of HEAD) is never debris. Classes: merged by ancestry or by `git cherry` (`rebased`), then
  * `agent` (its oldest own commit's author is an agent, or a session was on it, and idle `agentDays`), then
@@ -275,7 +286,7 @@ export function buildDebris(plan: DebrisPlan, reads: ReadonlyMap<string, DebrisR
     const key = worktreeKey(w);
     if (seen.has(key)) continue;
     seen.add(key);
-    const read = reads.get(key);
+    const read = reads.get(worktreeReadKey(w));
     if (!read || read.commits.length === 0) {
       unreadable++;
       continue;
@@ -319,16 +330,17 @@ export function debrisCommands(item: DebrisItem): DebrisCommands {
   const steps: string[] = [];
   let blocked: DebrisWarning | null = null;
   const wt = item.worktree;
+  // One worktree by its folder name, live or prunable (git removes a missing one's entry too); never the
+  // repository-wide `git worktree prune`, which would also drop a detached worktree's commits (Qodo PR248 2d231f91).
   if (wt?.locked) blocked = DEBRIS_WARNINGS.worktreeLocked;
-  else if (wt?.prunable) steps.push('git worktree prune');
   else if (wt && wt.folder === null) blocked = DEBRIS_WARNINGS.worktreeAmbiguous;
   else if (wt) steps.push(`git worktree remove -- ${shellQuote(wt.folder!)}`);
 
   if (item.worktreeOnly) {
     const detachedWork = item.ref === null && item.aheadCount > 0;
-    // Pruning a detached worktree with commits of its own would leave them on no ref at all: no cleanup until they're kept.
+    // Removing a detached worktree with commits of its own would leave them on no ref at all: no cleanup until they're kept.
     return { cleanup: blocked || detachedWork ? null : steps.join(' && '), inspect: detachedWork ? `git log --oneline HEAD..${item.tip} --` : null,
-      warning: blocked ?? (detachedWork ? DEBRIS_WARNINGS.detached : null) };
+      warning: detachedWork ? DEBRIS_WARNINGS.detached : blocked };
   }
   const ref = item.ref!;
   const inspect = item.rebased ? `git cherry -v HEAD ${shellQuote(ref)}`

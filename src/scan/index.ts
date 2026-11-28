@@ -198,7 +198,7 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   // The patch log runs while the transcripts parse (and any Qodo fetch finishes); it starts no
   // earlier than the window, so every record it holds is a window commit's.
   // R13: the refs that could be debris, read while the transcripts parse.
-  const debrisPlan = planDebris(debrisGit);
+  const debrisPlan = planDebris(debrisGit, undefined, new Map([...rawBranches.work].map(([ref, w]) => [ref, w.aheadCount])));
   const [patches, ingest, qodo, debrisReads] = await Promise.all([
     fromMs !== undefined && fromMs <= repo.headMs
       ? addedLines(git, repo.head, isoUtc(Math.max(sinceMs, fromMs - DAY_MS)), new Set(raw.map((c) => c.sha)))

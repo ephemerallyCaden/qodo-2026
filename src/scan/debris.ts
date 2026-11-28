@@ -2,8 +2,9 @@
 // remotes' fetch refspecs and the default branch, then, for the refs planDebris() keeps, their own commits and
 // changes. Local refs only: nothing is fetched. The pure logic is src/core/debris.ts.
 import { redactPaths } from '../attrib/parsers/claude.js';
+import { byCodepoint } from '../core/canonical-json.js';
 import type { DebrisCommit, DebrisGit, DebrisPlan, DebrisRead, RefRow, RemoteRow, WorktreeRow } from '../core/debris.js';
-import { worktreeKey } from '../core/debris.js';
+import { worktreeKey, worktreeReadKey } from '../core/debris.js';
 import { exclusionOf } from './exclusions.js';
 import { tryGit, type Git } from './git.js';
 import type { RefWork } from './structure.js';
@@ -51,7 +52,7 @@ export function remotesOf(out: string): RemoteRow[] {
     specs.set(name, [...(specs.get(name) ?? []), nl < 0 ? '' : entry.slice(nl + 1)]);
   }
   return [...specs].map(([name, values]) => ({ name, standard: values.length === 1 && values[0] === `+refs/heads/*:refs/remotes/${name}/*` }))
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    .sort((a, b) => byCodepoint(a.name, b.name));
 }
 
 const COMMIT_FORMAT = '--format=%H%x00%ct%x00%aN%x00%aE%x00%s';
@@ -145,7 +146,7 @@ export async function readDebris(git: Git, plan: DebrisPlan, work: ReadonlyMap<s
     const key = worktreeKey(w);
     if (!w.prunable || keys.has(key)) continue;
     keys.add(key);
-    jobs.push([key, async () => {
+    jobs.push([worktreeReadKey(w), async () => {
       if (!SHA.test(w.head)) return null;
       const [r, ahead] = await Promise.all([tipRead(git, w.head, emptyTree),
         w.ref === null ? tryGit(git, ['rev-list', '--count', `${head}..${w.head}`, '--']) : '0']);

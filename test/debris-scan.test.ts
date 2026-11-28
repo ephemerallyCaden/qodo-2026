@@ -2,7 +2,7 @@
 // panel through the server's readers, from the same snapshot/layout pair as the fog. Golden (update deliberately
 // with UPDATE_GOLDEN=1 and a Golden-Update: reason).
 import { execFile, execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -110,7 +110,7 @@ describe('the debris of the fixture repo', () => {
     expect(cmd('origin/stale-remote')).toEqual([null, "git log --oneline HEAD..'refs/remotes/origin/stale-remote' --", W.remoteUnmerged]);
     expect(cmd('wt-agent')).toEqual(["git worktree remove -- 'wt-agent-dir' && git branch -d -- 'wt-agent'",
       "git log --oneline HEAD..'refs/heads/wt-agent' --", W.unmerged]);
-    expect(cmd('gone-wt')).toEqual(['git worktree prune', null, null]);
+    expect(cmd('gone-wt')).toEqual(["git worktree remove -- 'gone-dir'", null, null]);
     expect(cmd('null')).toEqual([null, `git log --oneline HEAD..${repo.shas['detached']} --`, W.detached]);
     expect(cmd('locked-old')).toEqual([null, "git log --oneline HEAD..'refs/heads/locked-old' --", W.worktreeLocked]);
     expect(cmd(BIDI)).toEqual([null, null, W.hiddenCharacters]);
@@ -125,6 +125,17 @@ describe('the debris of the fixture repo', () => {
     await expect(sh('sh', ['-c', d.cleanup!], { cwd: repo.dir, encoding: 'utf8' })).rejects.toMatchObject({ stderr: expect.stringContaining('not fully merged') });
     expect(readdirSync(repo.dir).filter((f) => f.startsWith('pwned'))).toEqual([]);
     expect(execFileSync('git', ['rev-parse', '--verify', `refs/heads/${HOSTILE}`], { cwd: repo.dir, encoding: 'utf8' }).trim()).toBe(repo.shas[HOSTILE]);
+  });
+
+  it("a prunable worktree's cleanup, pasted, removes only that worktree, never the detached one whose commits are on no branch (Qodo PR248 2d231f91)", async () => {
+    const d = (await byName()).get('gone-wt')!;
+    await sh('sh', ['-c', d.cleanup!], { cwd: repo.dir, encoding: 'utf8' });
+    const list = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: repo.dir, encoding: 'utf8' });
+    expect(list).not.toContain('gone-dir');
+    expect(list).toContain(`HEAD ${repo.shas['detached']}`);
+    // Put it back as it was (a prunable worktree on gone-wt), for the tests after this one.
+    execFileSync('git', ['worktree', 'add', '-q', join(repo.root, 'wt', 'gone-dir'), 'gone-wt'], { cwd: repo.dir });
+    rmSync(join(repo.root, 'wt', 'gone-dir'), { recursive: true, force: true });
   });
 
   it('holds no email, absolute path, worktree path or lock reason in the snapshot, the view or any panel (Rule 2)', async () => {

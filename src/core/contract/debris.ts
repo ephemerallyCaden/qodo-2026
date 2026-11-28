@@ -85,7 +85,7 @@ export interface DebrisSession { key: SessionKey; model: string | null; startedA
  * Fixed warnings the panel shows beside the commands. The server only ever sends one of these texts.
  */
 export const DEBRIS_WARNINGS = {
-  unmerged: "HEAD doesn't have this work: git branch -d refuses it until it's merged; inspect it first",
+  unmerged: "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first",
   rebased: 'rebased and merged: HEAD has every change (git cherry), but git branch -d refuses it; inspect it first',
   remoteUnmerged: "HEAD doesn't have this work and it's only on the remote: inspect it; Commet shows no delete for it",
   detached: 'a detached worktree with commits on no branch: pruning would drop their last reference; keep them with git branch <name> <sha> first',
@@ -140,8 +140,8 @@ export interface DebrisDetail {
   rebased: boolean;
   /**
    * The cleanup, for the user to copy; Commet never runs it. Every name is POSIX single-quoted after `--`:
-   * `git worktree remove -- '<folder>'`, `git worktree prune`, `git branch -d -- '<name>'` (git refuses an
-   * unmerged branch; never `-D`), `git push --delete -- '<remote>' '<ref>'` (a merged remote copy only),
+   * `git worktree remove -- '<folder>'` (one worktree, live or prunable; never the repository-wide `git worktree
+   * prune`), `git branch -d -- '<name>'` (git refuses a branch neither HEAD nor its upstream has; never `-D`), `git push --delete -- '<remote>' '<ref>'` (a merged remote copy only),
    * joined by ` && `. Null when no safe command exists: an unmerged remote-only branch, a detached worktree's
    * own commits, a locked worktree or one whose folder name isn't unique, a hidden character.
    */
