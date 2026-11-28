@@ -55,6 +55,37 @@ jobs:
           name: render-goldens
           path: test/golden/render/
 
+  monitoring:
+    # The public demo's Checkly monitor (monitoring/checkly, live-demo L7), its own npm project: its typecheck,
+    # and its check's spec and the drill's test against a fresh dist/demo on 127.0.0.1 (never the live site,
+    # so a PR never depends on what's published). No Checkly key here: nothing is deployed from CI.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
+    defaults:
+      run:
+        working-directory: monitoring/checkly
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # the checkly CLI needs 22.13 or later
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            monitoring/checkly/package-lock.json
+      # The repo's own packages: the demo build (vite) that test:local serves.
+      - run: npm ci
+        working-directory: .
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run test:local
+
   goldens:
     # Every commit that changes test/golden/ needs a `Golden-Update: <reason>` line (AGENTS.md Testing).
     if: github.event_name == 'pull_request'

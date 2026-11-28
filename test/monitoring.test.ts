@@ -114,3 +114,20 @@ describe('monitoring/checkly/scripts/checkly.sh', () => {
     expect(`${r.stdout}${r.stderr}`).not.toContain('acct-test');
   });
 });
+
+describe('CI', () => {
+  it('runs the monitor\'s own typecheck, and its spec and drill test against a local build (Qodo PR256 39fd103c)', () => {
+    const ci = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+    const job = /\n {2}monitoring:\n([\s\S]*?)(?=\n {2}[a-z][\w-]*:\n|$)/.exec(ci)?.[1] ?? '';
+    expect(job, 'a monitoring job in .github/workflows/ci.yml').not.toBe('');
+    expect(job).toMatch(/working-directory: monitoring\/checkly/);
+    for (const step of ['npm ci', 'npm run typecheck', 'npm run test:local']) expect(job, step).toContain(`run: ${step}`);
+    expect(job, 'never against the live site from CI').not.toMatch(/run: npm test\b|DEMO_URL/);
+    // the repo's CI rules (#234): read-only, no secrets, every checkout without the token
+    expect(job).toMatch(/\n {4}permissions:\n {6}contents: read\n(?! {6})/);
+    expect(job).not.toMatch(/secrets\./);
+    expect(job).toMatch(/uses: actions\/checkout@v4\n {8}with:\n {10}persist-credentials: false/);
+    expect(job, 'the render job\'s pinned container').toContain(/image: (\S+@sha256:[0-9a-f]{64})/.exec(ci.slice(ci.indexOf('\n  render:')))![1]);
+  });
+});
+
