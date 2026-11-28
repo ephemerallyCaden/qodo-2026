@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "home": "d_dc81d89a0568",
+  "files": [
+    {
+      "fileId": "f_3485ef5adba8",
+      "path": "src/sync/offline.ts",
+      "since": "55085d94294838c72e612154f8454256966a3175",
+      "reasons": [
+        "agent",
+        "self-committed-agent-written"
+      ]
+    },
+    {
+      "fileId": "f_25664083d8d6",
+      "path": "src/sync/queue.ts",
+      "since": "55085d94294838c72e612154f8454256966a3175",
+      "reasons": [
+        "agent",
+        "self-committed-agent-written"
+      ]
+    }
+  ]
+}

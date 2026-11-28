@@ -1,0 +1,55 @@
+{
+  "ok": true,
+  "schemaVersion": "drone-detail.1",
+  "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "key": "s_0295f07886d79d",
+  "startedAt": "2026-11-10T16:10:00Z",
+  "endedAt": "2026-11-10T16:35:00Z",
+  "files": [
+    {
+      "fileId": "f_b33563055168",
+      "path": "README.md",
+      "edits": 1
+    },
+    {
+      "fileId": "f_7ae45ad102ea",
+      "path": "package.json",
+      "edits": 1
+    },
+    {
+      "fileId": "f_a2a171449d86",
+      "path": "src/index.ts",
+      "edits": 1
+    }
+  ],
+  "otherFiles": 0,
+  "otherEdits": 0,
+  "buckets": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "spanMs": 1500000,
+  "needsRescan": false
+}

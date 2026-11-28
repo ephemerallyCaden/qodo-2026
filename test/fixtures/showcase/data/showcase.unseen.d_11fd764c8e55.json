@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "home": "d_11fd764c8e55",
+  "files": [
+    {
+      "fileId": "f_394a5bdfe331",
+      "path": "src/legacy/export.ts",
+      "since": "2c02ca6f9ca258789ed23c4af70e3b2e03cd55c8",
+      "reasons": [
+        "unknown"
+      ]
+    }
+  ]
+}

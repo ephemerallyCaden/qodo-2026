@@ -1,0 +1,42 @@
+{
+  "ok": true,
+  "fileId": "f_25664083d8d6",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "55085d94294838c72e612154f8454256966a3175",
+  "base": "cf04d73584ed32eb84df218a60ef27b496390992",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/sync/queue.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -43,3 +43,18 @@ const jobLocalStore = new Map<string, JobLocal>();",
+          "lines": [
+            " export function loadJobLocal(id: string): JobLocal | undefined { return jobLocalStore.get(id); }",
+            " export function saveJobLocal(item: JobLocal): void { jobLocalStore.set(item.id, item); }",
+            " export const jobLocalLimit = 66;",
+            "+export interface JobRecent { id: string; label: string }",
+            "+const jobRecentStore = new Map<string, JobRecent>();",
+            "+export function loadJobRecent(id: string): JobRecent | undefined { return jobRecentStore.get(id); }",
+            "+export function saveJobRecent(item: JobRecent): void { jobRecentStore.set(item.id, item); }",
+            "+export const jobRecentLimit = 73;",
+            "+export interface JobSigned { id: string; label: string }",
+            "+const jobSignedStore = new Map<string, JobSigned>();",
+            "+export function loadJobSigned(id: string): JobSigned | undefined { return jobSignedStore.get(id); }",
+            "+export function saveJobSigned(item: JobSigned): void { jobSignedStore.set(item.id, item); }",
+            "+export const jobSignedLimit = 80;",
+            "+export interface JobQueued { id: string; label: string }",
+            "+const jobQueuedStore = new Map<string, JobQueued>();",
+            "+export function loadJobQueued(id: string): JobQueued | undefined { return jobQueuedStore.get(id); }",
+            "+export function saveJobQueued(item: JobQueued): void { jobQueuedStore.set(item.id, item); }",
+            "+export const jobQueuedLimit = 87;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 18
+}

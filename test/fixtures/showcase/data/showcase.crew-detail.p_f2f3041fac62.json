@@ -1,0 +1,207 @@
+{
+  "ok": true,
+  "schemaVersion": "crew-detail.1",
+  "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "person": "p_f2f3041fac62",
+  "displayName": "Mara Lindqvist",
+  "captain": true,
+  "lastActive": "2026-11-10T16:50:00Z",
+  "planets": [
+    {
+      "home": "d_3588a76b7da8",
+      "touches": 4
+    },
+    {
+      "home": "d_959196e6c98c",
+      "touches": 4
+    },
+    {
+      "home": "d_ac56211a9387",
+      "touches": 5
+    },
+    {
+      "home": "d_c21415684b81",
+      "touches": 1
+    },
+    {
+      "home": "d_dc81d89a0568",
+      "touches": 4
+    },
+    {
+      "home": "star",
+      "touches": 3
+    }
+  ],
+  "files": [
+    {
+      "fileId": "f_cfe707d77468",
+      "path": ".mailmap",
+      "home": "star",
+      "touches": 1
+    },
+    {
+      "fileId": "f_b33563055168",
+      "path": "README.md",
+      "home": "star",
+      "touches": 2
+    },
+    {
+      "fileId": "f_7ae45ad102ea",
+      "path": "package.json",
+      "home": "star",
+      "touches": 2
+    },
+    {
+      "fileId": "f_b55cdbef4907",
+      "path": "tsconfig.json",
+      "home": "star",
+      "touches": 1
+    },
+    {
+      "fileId": "f_a2a171449d86",
+      "path": "src/index.ts",
+      "home": "star",
+      "touches": 2
+    },
+    {
+      "fileId": "f_5355663a9861",
+      "path": "src/api/routes/login.ts",
+      "home": "d_3588a76b7da8",
+      "touches": 3
+    },
+    {
+      "fileId": "f_e493eb049f9f",
+      "path": "src/api/routes/orders.ts",
+      "home": "d_3588a76b7da8",
+      "touches": 1
+    },
+    {
+      "fileId": "f_c97cf5d4896a",
+      "path": "src/api/routes/users.test.ts",
+      "home": "d_3588a76b7da8",
+      "touches": 1
+    },
+    {
+      "fileId": "f_bdd3e6d94214",
+      "path": "src/api/schema/orders.ts",
+      "home": "d_3588a76b7da8",
+      "touches": 1
+    },
+    {
+      "fileId": "f_f16db3a38a73",
+      "path": "src/auth/password.test.ts",
+      "home": "d_ac56211a9387",
+      "touches": 1
+    },
+    {
+      "fileId": "f_421fedcf0738",
+      "path": "src/auth/password.ts",
+      "home": "d_ac56211a9387",
+      "touches": 1
+    },
+    {
+      "fileId": "f_ede861bc6f91",
+      "path": "src/auth/roles.test.ts",
+      "home": "d_ac56211a9387",
+      "touches": 1
+    },
+    {
+      "fileId": "f_33286ea64642",
+      "path": "src/auth/roles.ts",
+      "home": "d_ac56211a9387",
+      "touches": 1
+    },
+    {
+      "fileId": "f_4a5dcf6c9fd4",
+      "path": "src/auth/session.test.ts",
+      "home": "d_ac56211a9387",
+      "touches": 1
+    },
+    {
+      "fileId": "f_947e1ee9f63e",
+      "path": "src/auth/session.ts",
+      "home": "d_ac56211a9387",
+      "touches": 4
+    },
+    {
+      "fileId": "f_596fa4315bc0",
+      "path": "src/auth/tokens.test.ts",
+      "home": "d_ac56211a9387",
+      "touches": 2
+    },
+    {
+      "fileId": "f_a04ae49e1a85",
+      "path": "src/auth/tokens.ts",
+      "home": "d_ac56211a9387",
+      "touches": 2
+    },
+    {
+      "fileId": "f_980d3ba91f4d",
+      "path": "src/core/config.ts",
+      "home": "d_959196e6c98c",
+      "touches": 1
+    },
+    {
+      "fileId": "f_210b2012c980",
+      "path": "src/core/errors.ts",
+      "home": "d_959196e6c98c",
+      "touches": 1
+    },
+    {
+      "fileId": "f_aa6b223a20e7",
+      "path": "src/core/events.test.ts",
+      "home": "d_959196e6c98c",
+      "touches": 1
+    },
+    {
+      "fileId": "f_0ae3ab276502",
+      "path": "src/core/events.ts",
+      "home": "d_959196e6c98c",
+      "touches": 3
+    },
+    {
+      "fileId": "f_765c97cf2342",
+      "path": "src/sync/conflict.ts",
+      "home": "d_dc81d89a0568",
+      "touches": 1
+    },
+    {
+      "fileId": "f_3485ef5adba8",
+      "path": "src/sync/offline.ts",
+      "home": "d_dc81d89a0568",
+      "touches": 2
+    },
+    {
+      "fileId": "f_25664083d8d6",
+      "path": "src/sync/queue.ts",
+      "home": "d_dc81d89a0568",
+      "touches": 4
+    },
+    {
+      "fileId": "f_a22dbe4e69ac",
+      "path": "src/ui/components/table.test.ts",
+      "home": "d_c21415684b81",
+      "touches": 1
+    },
+    {
+      "fileId": "f_cc1ff6b04e25",
+      "path": "src/ui/components/table.ts",
+      "home": "d_c21415684b81",
+      "touches": 1
+    },
+    {
+      "fileId": "f_8c2b8d96568b",
+      "path": "src/ui/pages/settings.ts",
+      "home": "d_c21415684b81",
+      "touches": 1
+    },
+    {
+      "fileId": "f_4c98aa80b676",
+      "path": "test/e2e/smoke.test.ts",
+      "home": "star",
+      "touches": 1
+    }
+  ],
+  "otherFiles": 0,
+  "needsRescan": false
+}

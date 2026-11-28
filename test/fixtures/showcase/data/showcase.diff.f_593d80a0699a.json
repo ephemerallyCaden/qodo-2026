@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "fileId": "f_593d80a0699a",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "d3377161f4ef9456617313761bae76ca99455f07",
+  "base": "560d45f50e0efa57140f3aeee29d78e18f6087ef",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/api/routes/users.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -28,3 +28,13 @@ const userRouteCachedStore = new Map<string, UserRouteCached>();",
+          "lines": [
+            " export function loadUserRouteCached(id: string): UserRouteCached | undefined { return userRouteCachedStore.get(id); }",
+            " export function saveUserRouteCached(item: UserRouteCached): void { userRouteCachedStore.set(item.id, item); }",
+            " export const userRouteCachedLimit = 45;",
+            "+export interface UserRouteBatch { id: string; label: string }",
+            "+const userRouteBatchStore = new Map<string, UserRouteBatch>();",
+            "+export function loadUserRouteBatch(id: string): UserRouteBatch | undefined { return userRouteBatchStore.get(id); }",
+            "+export function saveUserRouteBatch(item: UserRouteBatch): void { userRouteBatchStore.set(item.id, item); }",
+            "+export const userRouteBatchLimit = 52;",
+            "+export interface UserRouteRemote { id: string; label: string }",
+            "+const userRouteRemoteStore = new Map<string, UserRouteRemote>();",
+            "+export function loadUserRouteRemote(id: string): UserRouteRemote | undefined { return userRouteRemoteStore.get(id); }",
+            "+export function saveUserRouteRemote(item: UserRouteRemote): void { userRouteRemoteStore.set(item.id, item); }",
+            "+export const userRouteRemoteLimit = 59;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 13
+}

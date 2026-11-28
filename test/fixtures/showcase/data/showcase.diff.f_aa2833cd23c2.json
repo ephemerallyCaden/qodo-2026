@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "fileId": "f_aa2833cd23c2",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "1210e52a35c2b7cb11f63a14dfaff3f091f5b422",
+  "base": "d3377161f4ef9456617313761bae76ca99455f07",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/billing/invoice.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -88,3 +88,8 @@ const invoiceWeeklyStore = new Map<string, InvoiceWeekly>();",
+          "lines": [
+            " export function loadInvoiceWeekly(id: string): InvoiceWeekly | undefined { return invoiceWeeklyStore.get(id); }",
+            " export function saveInvoiceWeekly(item: InvoiceWeekly): void { invoiceWeeklyStore.set(item.id, item); }",
+            " export const invoiceWeeklyLimit = 39;",
+            "+export interface InvoiceManual { id: string; label: string }",
+            "+const invoiceManualStore = new Map<string, InvoiceManual>();",
+            "+export function loadInvoiceManual(id: string): InvoiceManual | undefined { return invoiceManualStore.get(id); }",
+            "+export function saveInvoiceManual(item: InvoiceManual): void { invoiceManualStore.set(item.id, item); }",
+            "+export const invoiceManualLimit = 46;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 8
+}

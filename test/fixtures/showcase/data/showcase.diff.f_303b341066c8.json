@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "fileId": "f_303b341066c8",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "78c294a5962f5bcea6a770ebc9887926dcb46be6",
+  "base": "1210e52a35c2b7cb11f63a14dfaff3f091f5b422",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/ui/theme.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -13,3 +13,8 @@ const paletteActiveStore = new Map<string, PaletteActive>();",
+          "lines": [
+            " export function loadPaletteActive(id: string): PaletteActive | undefined { return paletteActiveStore.get(id); }",
+            " export function savePaletteActive(item: PaletteActive): void { paletteActiveStore.set(item.id, item); }",
+            " export const paletteActiveLimit = 24;",
+            "+export interface PaletteArchived { id: string; label: string }",
+            "+const paletteArchivedStore = new Map<string, PaletteArchived>();",
+            "+export function loadPaletteArchived(id: string): PaletteArchived | undefined { return paletteArchivedStore.get(id); }",
+            "+export function savePaletteArchived(item: PaletteArchived): void { paletteArchivedStore.set(item.id, item); }",
+            "+export const paletteArchivedLimit = 31;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 8
+}

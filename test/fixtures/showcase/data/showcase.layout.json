@@ -1,0 +1,941 @@
+{
+  "constants": {
+    "maxPlanetRadiusMilli": 12000,
+    "moonCap": 24,
+    "slotSpacingMilli": 24000
+  },
+  "planets": [
+    {
+      "biomeSeed": 59599577,
+      "bornSeq": 0,
+      "dirId": "d_959196e6c98c",
+      "health": {
+        "band": "healthy",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 0,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 50,
+      "moonOverflow": 0,
+      "moons": [
+        {
+          "fileId": "f_aa6b223a20e7",
+          "slot": 0,
+          "testOf": "f_0ae3ab276502"
+        }
+      ],
+      "partner": null,
+      "path": "src/core",
+      "radiusMilli": 4254,
+      "slot": {
+        "index": 0,
+        "phaseMilliturn": 0,
+        "radiusMilli": 30000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_959196e6c98c",
+            "parent": null,
+            "seedCell": 0
+          }
+        ],
+        "grid": {
+          "cells": 256,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_959196e6c98c",
+            "fileId": "f_980d3ba91f4d",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 15,
+            "size": 1
+          },
+          {
+            "cell": 1,
+            "dirId": "d_959196e6c98c",
+            "fileId": "f_210b2012c980",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 10,
+            "size": 1
+          },
+          {
+            "cell": 2,
+            "dirId": "d_959196e6c98c",
+            "fileId": "f_0ae3ab276502",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 25,
+            "size": 1
+          }
+        ]
+      },
+      "zone": "content"
+    },
+    {
+      "biomeSeed": 153185941,
+      "bornSeq": 1,
+      "dirId": "d_dc81d89a0568",
+      "health": {
+        "band": "toxic",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 7633,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 131,
+      "moonOverflow": 0,
+      "moons": [],
+      "partner": "d_959196e6c98c",
+      "path": "src/sync",
+      "radiusMilli": 5283,
+      "slot": {
+        "index": 1,
+        "phaseMilliturn": 618,
+        "radiusMilli": 54000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_dc81d89a0568",
+            "parent": null,
+            "seedCell": 0
+          }
+        ],
+        "grid": {
+          "cells": 256,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_dc81d89a0568",
+            "fileId": "f_25664083d8d6",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 60,
+            "size": 2
+          },
+          {
+            "cell": 1,
+            "dirId": "d_dc81d89a0568",
+            "fileId": "f_765c97cf2342",
+            "health": {
+              "band": "lava",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 32258,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 31,
+            "size": 1
+          },
+          {
+            "cell": 2,
+            "dirId": "d_dc81d89a0568",
+            "fileId": "f_3485ef5adba8",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 40,
+            "size": 1
+          }
+        ]
+      },
+      "zone": "content"
+    },
+    {
+      "biomeSeed": 4237365868,
+      "bornSeq": 2,
+      "dirId": "d_3588a76b7da8",
+      "health": {
+        "band": "healthy",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 0,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 180,
+      "moonOverflow": 0,
+      "moons": [
+        {
+          "fileId": "f_c97cf5d4896a",
+          "slot": 0,
+          "testOf": "f_593d80a0699a"
+        }
+      ],
+      "partner": null,
+      "path": "src/api",
+      "radiusMilli": 5624,
+      "slot": {
+        "index": 2,
+        "phaseMilliturn": 236,
+        "radiusMilli": 78000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_3588a76b7da8",
+            "parent": null,
+            "seedCell": 0
+          },
+          {
+            "dirId": "d_36e8975fc4c7",
+            "parent": "d_3588a76b7da8",
+            "seedCell": 255
+          },
+          {
+            "dirId": "d_eb3d3e4d791c",
+            "parent": "d_3588a76b7da8",
+            "seedCell": 127
+          }
+        ],
+        "grid": {
+          "cells": 256,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_3588a76b7da8",
+            "fileId": "f_4f5348f6211c",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 25,
+            "size": 1
+          },
+          {
+            "cell": 127,
+            "dirId": "d_eb3d3e4d791c",
+            "fileId": "f_044e16a3d231",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 25,
+            "size": 1
+          },
+          {
+            "cell": 148,
+            "dirId": "d_eb3d3e4d791c",
+            "fileId": "f_bdd3e6d94214",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 20,
+            "size": 1
+          },
+          {
+            "cell": 253,
+            "dirId": "d_36e8975fc4c7",
+            "fileId": "f_e493eb049f9f",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 45,
+            "size": 1
+          },
+          {
+            "cell": 254,
+            "dirId": "d_36e8975fc4c7",
+            "fileId": "f_5355663a9861",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 25,
+            "size": 1
+          },
+          {
+            "cell": 255,
+            "dirId": "d_36e8975fc4c7",
+            "fileId": "f_593d80a0699a",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 40,
+            "size": 1
+          }
+        ]
+      },
+      "zone": "content"
+    },
+    {
+      "biomeSeed": 1028870972,
+      "bornSeq": 3,
+      "dirId": "d_bf025371b7a3",
+      "health": {
+        "band": "ash",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 4149,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 241,
+      "moonOverflow": 0,
+      "moons": [
+        {
+          "fileId": "f_421498fcee17",
+          "slot": 0,
+          "testOf": "f_aa2833cd23c2"
+        }
+      ],
+      "partner": null,
+      "path": "src/billing",
+      "radiusMilli": 5938,
+      "slot": {
+        "index": 3,
+        "phaseMilliturn": 854,
+        "radiusMilli": 102000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_bf025371b7a3",
+            "parent": null,
+            "seedCell": 0
+          }
+        ],
+        "grid": {
+          "cells": 256,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_bf025371b7a3",
+            "fileId": "f_aa2833cd23c2",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 95,
+            "size": 2
+          },
+          {
+            "cell": 1,
+            "dirId": "d_bf025371b7a3",
+            "fileId": "f_0ef1938598db",
+            "health": {
+              "band": "lava",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 13157,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 76,
+            "size": 2
+          },
+          {
+            "cell": 2,
+            "dirId": "d_bf025371b7a3",
+            "fileId": "f_0b4afe7d4e0f",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 70,
+            "size": 2
+          }
+        ]
+      },
+      "zone": "content"
+    },
+    {
+      "biomeSeed": 2377230999,
+      "bornSeq": 4,
+      "dirId": "d_11fd764c8e55",
+      "health": {
+        "band": "lava",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 33018,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 212,
+      "moonOverflow": 0,
+      "moons": [],
+      "partner": null,
+      "path": "src/legacy",
+      "radiusMilli": 5800,
+      "slot": {
+        "index": 4,
+        "phaseMilliturn": 472,
+        "radiusMilli": 126000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_11fd764c8e55",
+            "parent": null,
+            "seedCell": 0
+          }
+        ],
+        "grid": {
+          "cells": 256,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_11fd764c8e55",
+            "fileId": "f_394a5bdfe331",
+            "health": {
+              "band": "lava",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 50632,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 79,
+            "size": 2
+          },
+          {
+            "cell": 1,
+            "dirId": "d_11fd764c8e55",
+            "fileId": "f_e861b5a2e81f",
+            "health": {
+              "band": "lava",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 25974,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 77,
+            "size": 2
+          },
+          {
+            "cell": 2,
+            "dirId": "d_11fd764c8e55",
+            "fileId": "f_aa17e0ec638b",
+            "health": {
+              "band": "lava",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 17857,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 56,
+            "size": 2
+          }
+        ]
+      },
+      "zone": "content"
+    },
+    {
+      "biomeSeed": 105375294,
+      "bornSeq": 5,
+      "dirId": "d_c21415684b81",
+      "health": {
+        "band": "healthy",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 0,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 170,
+      "moonOverflow": 0,
+      "moons": [
+        {
+          "fileId": "f_a22dbe4e69ac",
+          "slot": 0,
+          "testOf": "f_cc1ff6b04e25"
+        }
+      ],
+      "partner": null,
+      "path": "src/ui",
+      "radiusMilli": 5562,
+      "slot": {
+        "index": 5,
+        "phaseMilliturn": 90,
+        "radiusMilli": 150000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_c21415684b81",
+            "parent": null,
+            "seedCell": 0
+          },
+          {
+            "dirId": "d_0a984bad6c97",
+            "parent": "d_c21415684b81",
+            "seedCell": 255
+          },
+          {
+            "dirId": "d_d425447b10d0",
+            "parent": "d_c21415684b81",
+            "seedCell": 127
+          }
+        ],
+        "grid": {
+          "cells": 256,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_c21415684b81",
+            "fileId": "f_303b341066c8",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 20,
+            "size": 1
+          },
+          {
+            "cell": 127,
+            "dirId": "d_d425447b10d0",
+            "fileId": "f_dc203112eb44",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 30,
+            "size": 1
+          },
+          {
+            "cell": 148,
+            "dirId": "d_d425447b10d0",
+            "fileId": "f_8c2b8d96568b",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 30,
+            "size": 1
+          },
+          {
+            "cell": 253,
+            "dirId": "d_0a984bad6c97",
+            "fileId": "f_cc1ff6b04e25",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 45,
+            "size": 1
+          },
+          {
+            "cell": 254,
+            "dirId": "d_0a984bad6c97",
+            "fileId": "f_c959dec5dbe2",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 20,
+            "size": 1
+          },
+          {
+            "cell": 255,
+            "dirId": "d_0a984bad6c97",
+            "fileId": "f_3b35d7c818c8",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 25,
+            "size": 1
+          }
+        ]
+      },
+      "zone": "content"
+    },
+    {
+      "biomeSeed": 427838727,
+      "bornSeq": 6,
+      "dirId": "d_ac56211a9387",
+      "health": {
+        "band": "healthy",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 0,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 100,
+      "moonOverflow": 0,
+      "moons": [
+        {
+          "fileId": "f_4a5dcf6c9fd4",
+          "slot": 0,
+          "testOf": "f_947e1ee9f63e"
+        },
+        {
+          "fileId": "f_596fa4315bc0",
+          "slot": 1,
+          "testOf": "f_a04ae49e1a85"
+        },
+        {
+          "fileId": "f_f16db3a38a73",
+          "slot": 2,
+          "testOf": "f_421fedcf0738"
+        },
+        {
+          "fileId": "f_ede861bc6f91",
+          "slot": 3,
+          "testOf": "f_33286ea64642"
+        }
+      ],
+      "partner": "d_3588a76b7da8",
+      "path": "src/auth",
+      "radiusMilli": 4993,
+      "slot": {
+        "index": 6,
+        "phaseMilliturn": 708,
+        "radiusMilli": 174000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_ac56211a9387",
+            "parent": null,
+            "seedCell": 0
+          }
+        ],
+        "grid": {
+          "cells": 256,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_ac56211a9387",
+            "fileId": "f_947e1ee9f63e",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 35,
+            "size": 1
+          },
+          {
+            "cell": 1,
+            "dirId": "d_ac56211a9387",
+            "fileId": "f_a04ae49e1a85",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 30,
+            "size": 1
+          },
+          {
+            "cell": 2,
+            "dirId": "d_ac56211a9387",
+            "fileId": "f_421fedcf0738",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 20,
+            "size": 1
+          },
+          {
+            "cell": 3,
+            "dirId": "d_ac56211a9387",
+            "fileId": "f_33286ea64642",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 15,
+            "size": 1
+          }
+        ]
+      },
+      "zone": "content"
+    },
+    {
+      "biomeSeed": 284253756,
+      "bornSeq": 7,
+      "dirId": "d_00178f31922e",
+      "health": {
+        "band": "healthy",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 0,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 45,
+      "moonOverflow": 0,
+      "moons": [],
+      "partner": null,
+      "path": "docs",
+      "radiusMilli": 4142,
+      "slot": {
+        "index": 9,
+        "phaseMilliturn": 562,
+        "radiusMilli": 246000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_00178f31922e",
+            "parent": null,
+            "seedCell": 0
+          }
+        ],
+        "grid": {
+          "cells": 256,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_00178f31922e",
+            "fileId": "f_140eef3ba41b",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 18,
+            "size": 1
+          },
+          {
+            "cell": 1,
+            "dirId": "d_00178f31922e",
+            "fileId": "f_07fdd026b11c",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 15,
+            "size": 1
+          },
+          {
+            "cell": 2,
+            "dirId": "d_00178f31922e",
+            "fileId": "f_77f023b99d3d",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 12,
+            "size": 1
+          }
+        ]
+      },
+      "zone": "outer"
+    },
+    {
+      "biomeSeed": 2308118655,
+      "bornSeq": 14,
+      "dirId": "d_bba907628fb5",
+      "health": {
+        "band": "healthy",
+        "debtUnknownFiles": 0,
+        "markersPerKlocMilli": 0,
+        "qodoOpen": null,
+        "qodoUnknown": true
+      },
+      "loc": 25,
+      "moonOverflow": 0,
+      "moons": [],
+      "partner": "d_00178f31922e",
+      "path": "scripts",
+      "radiusMilli": 3525,
+      "slot": {
+        "index": 10,
+        "phaseMilliturn": 180,
+        "radiusMilli": 270000
+      },
+      "surface": {
+        "continents": [
+          {
+            "dirId": "d_bba907628fb5",
+            "parent": null,
+            "seedCell": 0
+          }
+        ],
+        "grid": {
+          "cells": 256,
+          "kind": "fibonacci"
+        },
+        "overflow": 0,
+        "settlements": [
+          {
+            "cell": 0,
+            "dirId": "d_bba907628fb5",
+            "fileId": "f_21f9896491d7",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 15,
+            "size": 1
+          },
+          {
+            "cell": 1,
+            "dirId": "d_bba907628fb5",
+            "fileId": "f_dc31c45b12f0",
+            "health": {
+              "band": "healthy",
+              "debtUnknownFiles": 0,
+              "markersPerKlocMilli": 0,
+              "qodoOpen": null,
+              "qodoUnknown": true
+            },
+            "loc": 10,
+            "size": 1
+          }
+        ]
+      },
+      "zone": "outer"
+    }
+  ],
+  "schemaVersion": "layout.1",
+  "source": {
+    "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+    "repoId": "dcecfb0fde85c20a",
+    "roots": [
+      "src"
+    ]
+  },
+  "star": {
+    "moonletOverflow": 0,
+    "moonlets": [
+      {
+        "fileId": "f_cfe707d77468",
+        "kind": "root-file",
+        "slot": 0
+      },
+      {
+        "fileId": "f_b33563055168",
+        "kind": "root-file",
+        "slot": 1
+      },
+      {
+        "fileId": "f_7ae45ad102ea",
+        "kind": "root-file",
+        "slot": 2
+      },
+      {
+        "fileId": "f_a2a171449d86",
+        "kind": "root-file",
+        "slot": 3
+      },
+      {
+        "fileId": "f_b55cdbef4907",
+        "kind": "root-file",
+        "slot": 4
+      },
+      {
+        "fileId": "f_4c98aa80b676",
+        "kind": "unmatched-test",
+        "slot": 5
+      }
+    ],
+    "repoId": "dcecfb0fde85c20a",
+    "testData": 2
+  }
+}

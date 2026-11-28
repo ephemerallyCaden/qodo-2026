@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "schemaVersion": "crew-detail.1",
+  "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "person": "p_13896572004f",
+  "displayName": "Felix Moreau",
+  "captain": false,
+  "lastActive": "2026-10-28T14:00:00Z",
+  "planets": [
+    {
+      "home": "d_11fd764c8e55",
+      "touches": 4
+    }
+  ],
+  "files": [
+    {
+      "fileId": "f_394a5bdfe331",
+      "path": "src/legacy/export.ts",
+      "home": "d_11fd764c8e55",
+      "touches": 3
+    },
+    {
+      "fileId": "f_e861b5a2e81f",
+      "path": "src/legacy/importer.ts",
+      "home": "d_11fd764c8e55",
+      "touches": 2
+    },
+    {
+      "fileId": "f_aa17e0ec638b",
+      "path": "src/legacy/xml.ts",
+      "home": "d_11fd764c8e55",
+      "touches": 2
+    }
+  ],
+  "otherFiles": 0,
+  "needsRescan": false
+}

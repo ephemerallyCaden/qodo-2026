@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "fileId": "f_3b35d7c818c8",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "78c294a5962f5bcea6a770ebc9887926dcb46be6",
+  "base": "1210e52a35c2b7cb11f63a14dfaff3f091f5b422",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/ui/components/button.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -18,3 +18,8 @@ const buttonArchivedStore = new Map<string, ButtonArchived>();",
+          "lines": [
+            " export function loadButtonArchived(id: string): ButtonArchived | undefined { return buttonArchivedStore.get(id); }",
+            " export function saveButtonArchived(item: ButtonArchived): void { buttonArchivedStore.set(item.id, item); }",
+            " export const buttonArchivedLimit = 31;",
+            "+export interface ButtonShared { id: string; label: string }",
+            "+const buttonSharedStore = new Map<string, ButtonShared>();",
+            "+export function loadButtonShared(id: string): ButtonShared | undefined { return buttonSharedStore.get(id); }",
+            "+export function saveButtonShared(item: ButtonShared): void { buttonSharedStore.set(item.id, item); }",
+            "+export const buttonSharedLimit = 38;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 8
+}

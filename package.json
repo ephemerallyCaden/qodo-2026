@@ -19,6 +19,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:render": "playwright test",
+    "fixture:showcase": "vite-node test/fixtures/showcase/make.ts",
     "factory:build": "tsc -p factory/tsconfig.json",
     "factory": "npm run -s factory:build && node factory/dist/bin.js"
   },

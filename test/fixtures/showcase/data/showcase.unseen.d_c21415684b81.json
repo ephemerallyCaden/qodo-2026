@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "home": "d_c21415684b81",
+  "files": [
+    {
+      "fileId": "f_3b35d7c818c8",
+      "path": "src/ui/components/button.ts",
+      "since": "78c294a5962f5bcea6a770ebc9887926dcb46be6",
+      "reasons": [
+        "unknown"
+      ]
+    },
+    {
+      "fileId": "f_a22dbe4e69ac",
+      "path": "src/ui/components/table.test.ts",
+      "since": "9f6a29a49d6c448e511e1acaafd42ee611e32091",
+      "reasons": [
+        "agent",
+        "self-committed-agent-written"
+      ]
+    },
+    {
+      "fileId": "f_cc1ff6b04e25",
+      "path": "src/ui/components/table.ts",
+      "since": "9f6a29a49d6c448e511e1acaafd42ee611e32091",
+      "reasons": [
+        "agent",
+        "self-committed-agent-written"
+      ]
+    },
+    {
+      "fileId": "f_dc203112eb44",
+      "path": "src/ui/pages/home.ts",
+      "since": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+      "reasons": [
+        "unknown"
+      ]
+    },
+    {
+      "fileId": "f_303b341066c8",
+      "path": "src/ui/theme.ts",
+      "since": "78c294a5962f5bcea6a770ebc9887926dcb46be6",
+      "reasons": [
+        "unknown"
+      ]
+    }
+  ]
+}

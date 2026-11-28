@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "fileId": "f_a2a171449d86",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "499a58b1c304231af441509b59e7cdb23eddf73f",
+  "base": "e691d6070d451253783c4aa6ca89336f7b3ded51",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/index.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -8,3 +8,8 @@ const appPendingStore = new Map<string, AppPending>();",
+          "lines": [
+            " export function loadAppPending(id: string): AppPending | undefined { return appPendingStore.get(id); }",
+            " export function saveAppPending(item: AppPending): void { appPendingStore.set(item.id, item); }",
+            " export const appPendingLimit = 17;",
+            "+export interface AppActive { id: string; label: string }",
+            "+const appActiveStore = new Map<string, AppActive>();",
+            "+export function loadAppActive(id: string): AppActive | undefined { return appActiveStore.get(id); }",
+            "+export function saveAppActive(item: AppActive): void { appActiveStore.set(item.id, item); }",
+            "+export const appActiveLimit = 24;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 8
+}

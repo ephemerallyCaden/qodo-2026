@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "fileId": "f_dc203112eb44",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "base": "6c4cea8e749c257c4de2a21dcfed8d375a2c1c4a",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/ui/pages/home.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -23,3 +23,8 @@ const homeCardSharedStore = new Map<string, HomeCardShared>();",
+          "lines": [
+            " export function loadHomeCardShared(id: string): HomeCardShared | undefined { return homeCardSharedStore.get(id); }",
+            " export function saveHomeCardShared(item: HomeCardShared): void { homeCardSharedStore.set(item.id, item); }",
+            " export const homeCardSharedLimit = 38;",
+            "+export interface HomeCardCached { id: string; label: string }",
+            "+const homeCardCachedStore = new Map<string, HomeCardCached>();",
+            "+export function loadHomeCardCached(id: string): HomeCardCached | undefined { return homeCardCachedStore.get(id); }",
+            "+export function saveHomeCardCached(item: HomeCardCached): void { homeCardCachedStore.set(item.id, item); }",
+            "+export const homeCardCachedLimit = 45;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 8
+}

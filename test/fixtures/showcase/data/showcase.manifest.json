@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "showcase.1",
+  "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "routes": {
+    "/api/snapshot": "showcase.snapshot.json",
+    "/api/layout": "showcase.layout.json",
+    "/api/fog": "showcase.fog.json",
+    "/api/drones": "showcase.drones.json",
+    "/api/crew": "showcase.crew.json",
+    "/api/cochange": "showcase.cochange.json",
+    "/api/beacons": "showcase.beacons.json"
+  },
+  "droneDetail": {
+    "s_0295f07886d79d": "showcase.drone-detail.s_0295f07886d79d.json",
+    "s_368a86c40335f1": "showcase.drone-detail.s_368a86c40335f1.json",
+    "s_4b181c5aedd9a8": "showcase.drone-detail.s_4b181c5aedd9a8.json",
+    "s_516f839b0ff6e9": "showcase.drone-detail.s_516f839b0ff6e9.json",
+    "s_530c0fb9dd8be2": "showcase.drone-detail.s_530c0fb9dd8be2.json",
+    "s_9acd284cecc27a": "showcase.drone-detail.s_9acd284cecc27a.json",
+    "s_b035a87d0a32f8": "showcase.drone-detail.s_b035a87d0a32f8.json"
+  },
+  "crewDetail": {
+    "p_13896572004f": "showcase.crew-detail.p_13896572004f.json",
+    "p_22c0ac0ea593": "showcase.crew-detail.p_22c0ac0ea593.json",
+    "p_2402d3b4c57d": "showcase.crew-detail.p_2402d3b4c57d.json",
+    "p_6dcd19a841dc": "showcase.crew-detail.p_6dcd19a841dc.json",
+    "p_700f3911cf39": "showcase.crew-detail.p_700f3911cf39.json",
+    "p_f2f3041fac62": "showcase.crew-detail.p_f2f3041fac62.json"
+  },
+  "unseen": {
+    "d_959196e6c98c": "showcase.unseen.d_959196e6c98c.json",
+    "d_dc81d89a0568": "showcase.unseen.d_dc81d89a0568.json",
+    "d_3588a76b7da8": "showcase.unseen.d_3588a76b7da8.json",
+    "d_bf025371b7a3": "showcase.unseen.d_bf025371b7a3.json",
+    "d_11fd764c8e55": "showcase.unseen.d_11fd764c8e55.json",
+    "d_c21415684b81": "showcase.unseen.d_c21415684b81.json",
+    "d_ac56211a9387": "showcase.unseen.d_ac56211a9387.json",
+    "d_00178f31922e": "showcase.unseen.d_00178f31922e.json",
+    "d_bba907628fb5": "showcase.unseen.d_bba907628fb5.json",
+    "star": "showcase.unseen.star.json"
+  },
+  "diff": {
+    "f_3485ef5adba8": "showcase.diff.f_3485ef5adba8.json",
+    "f_25664083d8d6": "showcase.diff.f_25664083d8d6.json",
+    "f_e493eb049f9f": "showcase.diff.f_e493eb049f9f.json",
+    "f_c97cf5d4896a": "showcase.diff.f_c97cf5d4896a.json",
+    "f_593d80a0699a": "showcase.diff.f_593d80a0699a.json",
+    "f_bdd3e6d94214": "showcase.diff.f_bdd3e6d94214.json",
+    "f_044e16a3d231": "showcase.diff.f_044e16a3d231.json",
+    "f_aa2833cd23c2": "showcase.diff.f_aa2833cd23c2.json",
+    "f_0ef1938598db": "showcase.diff.f_0ef1938598db.json",
+    "f_394a5bdfe331": "showcase.diff.f_394a5bdfe331.json",
+    "f_3b35d7c818c8": "showcase.diff.f_3b35d7c818c8.json",
+    "f_a22dbe4e69ac": "showcase.diff.f_a22dbe4e69ac.json",
+    "f_cc1ff6b04e25": "showcase.diff.f_cc1ff6b04e25.json",
+    "f_dc203112eb44": "showcase.diff.f_dc203112eb44.json",
+    "f_303b341066c8": "showcase.diff.f_303b341066c8.json",
+    "f_596fa4315bc0": "showcase.diff.f_596fa4315bc0.json",
+    "f_a04ae49e1a85": "showcase.diff.f_a04ae49e1a85.json",
+    "f_07fdd026b11c": "showcase.diff.f_07fdd026b11c.json",
+    "f_b33563055168": "showcase.diff.f_b33563055168.json",
+    "f_7ae45ad102ea": "showcase.diff.f_7ae45ad102ea.json",
+    "f_a2a171449d86": "showcase.diff.f_a2a171449d86.json"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "fileId": "f_596fa4315bc0",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "0907f39979a09aa02c6268a4d114b784dc6f3af2",
+  "base": "2c02ca6f9ca258789ed23c4af70e3b2e03cd55c8",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/auth/tokens.test.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -7,3 +7,9 @@ test('token pending has a positive limit', () => { expect(tokenPendingLimit).toB",
+          "lines": [
+            " test('token active is empty for a missing id', () => { expect(loadTokenActive('missing')).toBeUndefined(); });",
+            " test('token active saves and loads', () => { saveTokenActive({ id: 'a', label: 'A' }); expect(loadTokenActive('a')?.label).toBe('A'); });",
+            " test('token active has a positive limit', () => { expect(tokenActiveLimit).toBeGreaterThan(0); });",
+            "+test('token archived is empty for a missing id', () => { expect(loadTokenArchived('missing')).toBeUndefined(); });",
+            "+test('token archived saves and loads', () => { saveTokenArchived({ id: 'a', label: 'A' }); expect(loadTokenArchived('a')?.label).toBe('A'); });",
+            "+test('token archived has a positive limit', () => { expect(tokenArchivedLimit).toBeGreaterThan(0); });",
+            "+test('token shared is empty for a missing id', () => { expect(loadTokenShared('missing')).toBeUndefined(); });",
+            "+test('token shared saves and loads', () => { saveTokenShared({ id: 'a', label: 'A' }); expect(loadTokenShared('a')?.label).toBe('A'); });",
+            "+test('token shared has a positive limit', () => { expect(tokenSharedLimit).toBeGreaterThan(0); });"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 9
+}

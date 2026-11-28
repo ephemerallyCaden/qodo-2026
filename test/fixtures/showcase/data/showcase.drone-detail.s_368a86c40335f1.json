@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "schemaVersion": "drone-detail.1",
+  "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "key": "s_368a86c40335f1",
+  "startedAt": "2026-10-06T09:55:00Z",
+  "endedAt": "2026-10-06T09:55:00Z",
+  "files": [
+    {
+      "fileId": "f_c97cf5d4896a",
+      "path": "src/api/routes/users.test.ts",
+      "edits": 1
+    }
+  ],
+  "otherFiles": 0,
+  "otherEdits": 0,
+  "buckets": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "spanMs": 0,
+  "needsRescan": false
+}

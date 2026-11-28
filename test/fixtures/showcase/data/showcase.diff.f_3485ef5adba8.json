@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "fileId": "f_3485ef5adba8",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "55085d94294838c72e612154f8454256966a3175",
+  "base": "cf04d73584ed32eb84df218a60ef27b496390992",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/sync/offline.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -28,3 +28,13 @@ const outboxCachedStore = new Map<string, OutboxCached>();",
+          "lines": [
+            " export function loadOutboxCached(id: string): OutboxCached | undefined { return outboxCachedStore.get(id); }",
+            " export function saveOutboxCached(item: OutboxCached): void { outboxCachedStore.set(item.id, item); }",
+            " export const outboxCachedLimit = 45;",
+            "+export interface OutboxBatch { id: string; label: string }",
+            "+const outboxBatchStore = new Map<string, OutboxBatch>();",
+            "+export function loadOutboxBatch(id: string): OutboxBatch | undefined { return outboxBatchStore.get(id); }",
+            "+export function saveOutboxBatch(item: OutboxBatch): void { outboxBatchStore.set(item.id, item); }",
+            "+export const outboxBatchLimit = 52;",
+            "+export interface OutboxRemote { id: string; label: string }",
+            "+const outboxRemoteStore = new Map<string, OutboxRemote>();",
+            "+export function loadOutboxRemote(id: string): OutboxRemote | undefined { return outboxRemoteStore.get(id); }",
+            "+export function saveOutboxRemote(item: OutboxRemote): void { outboxRemoteStore.set(item.id, item); }",
+            "+export const outboxRemoteLimit = 59;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 13
+}

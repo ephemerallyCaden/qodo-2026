@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "fileId": "f_7ae45ad102ea",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "499a58b1c304231af441509b59e7cdb23eddf73f",
+  "base": "e691d6070d451253783c4aa6ca89336f7b3ded51",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "package.json",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -1,10 +1,11 @@",
+          "lines": [
+            " {",
+            "   \"name\": \"harbor\",",
+            "-  \"version\": \"0.1.0\",",
+            "+  \"version\": \"0.2.0\",",
+            "   \"private\": true,",
+            "   \"type\": \"module\",",
+            "   \"scripts\": {",
+            "     \"build\": \"tsc\",",
+            "+    \"lint\": \"eslint .\",",
+            "     \"test\": \"vitest run\"",
+            "   }",
+            " }"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 12
+}

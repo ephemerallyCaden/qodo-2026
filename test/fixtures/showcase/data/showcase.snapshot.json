@@ -1,0 +1,2888 @@
+{
+  "branches": [
+    {
+      "aheadCount": 2,
+      "alsoRemote": false,
+      "dirIds": [
+        "d_3b82254b3c87"
+      ],
+      "lastCommitDate": "2026-09-20T11:00:00Z",
+      "name": "claude/legacy-cleanup",
+      "remote": false
+    },
+    {
+      "aheadCount": 2,
+      "alsoRemote": false,
+      "dirIds": [
+        "d_3b82254b3c87"
+      ],
+      "lastCommitDate": "2026-07-28T14:00:00Z",
+      "name": "feature/csv-export",
+      "remote": false
+    }
+  ],
+  "cochange": {
+    "bulkCommits": 0,
+    "commits": 39,
+    "missing": [
+      {
+        "at": "3de54447dbd9d8893807ac06b102af79b98afec3",
+        "fileId": "f_044e16a3d231",
+        "strengthMilli": 750,
+        "with": "f_593d80a0699a"
+      },
+      {
+        "at": "55085d94294838c72e612154f8454256966a3175",
+        "fileId": "f_0ae3ab276502",
+        "strengthMilli": 750,
+        "with": "f_25664083d8d6"
+      }
+    ],
+    "pairs": [
+      {
+        "a": "f_044e16a3d231",
+        "b": "f_593d80a0699a",
+        "both": 3,
+        "strengthMilli": 750
+      },
+      {
+        "a": "f_044e16a3d231",
+        "b": "f_c97cf5d4896a",
+        "both": 2,
+        "strengthMilli": 500
+      },
+      {
+        "a": "f_0ae3ab276502",
+        "b": "f_25664083d8d6",
+        "both": 3,
+        "strengthMilli": 750
+      },
+      {
+        "a": "f_0ef1938598db",
+        "b": "f_aa2833cd23c2",
+        "both": 3,
+        "strengthMilli": 1000
+      },
+      {
+        "a": "f_25664083d8d6",
+        "b": "f_3485ef5adba8",
+        "both": 2,
+        "strengthMilli": 500
+      },
+      {
+        "a": "f_303b341066c8",
+        "b": "f_3b35d7c818c8",
+        "both": 2,
+        "strengthMilli": 1000
+      },
+      {
+        "a": "f_5355663a9861",
+        "b": "f_947e1ee9f63e",
+        "both": 2,
+        "strengthMilli": 400
+      },
+      {
+        "a": "f_593d80a0699a",
+        "b": "f_c97cf5d4896a",
+        "both": 2,
+        "strengthMilli": 400
+      },
+      {
+        "a": "f_596fa4315bc0",
+        "b": "f_947e1ee9f63e",
+        "both": 2,
+        "strengthMilli": 500
+      },
+      {
+        "a": "f_596fa4315bc0",
+        "b": "f_a04ae49e1a85",
+        "both": 2,
+        "strengthMilli": 1000
+      },
+      {
+        "a": "f_7ae45ad102ea",
+        "b": "f_a2a171449d86",
+        "both": 2,
+        "strengthMilli": 666
+      },
+      {
+        "a": "f_7ae45ad102ea",
+        "b": "f_b33563055168",
+        "both": 2,
+        "strengthMilli": 500
+      },
+      {
+        "a": "f_8c2b8d96568b",
+        "b": "f_a22dbe4e69ac",
+        "both": 2,
+        "strengthMilli": 1000
+      },
+      {
+        "a": "f_947e1ee9f63e",
+        "b": "f_a04ae49e1a85",
+        "both": 2,
+        "strengthMilli": 500
+      },
+      {
+        "a": "f_a2a171449d86",
+        "b": "f_b33563055168",
+        "both": 2,
+        "strengthMilli": 666
+      },
+      {
+        "a": "f_bdd3e6d94214",
+        "b": "f_e493eb049f9f",
+        "both": 2,
+        "strengthMilli": 666
+      }
+    ],
+    "settings": {
+      "bulkFiles": 200,
+      "cap": 5,
+      "flagMilli": 500,
+      "flagMinBoth": 3,
+      "flagWindow": 10,
+      "minBoth": 2,
+      "thresholdMilli": 150
+    }
+  },
+  "commits": [
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-06-01T09:00:00Z",
+      "date": "2026-06-01T09:00:00Z",
+      "files": [
+        [
+          ".mailmap",
+          1,
+          0,
+          0
+        ],
+        [
+          "README.md",
+          8,
+          0,
+          0
+        ],
+        [
+          "package.json",
+          10,
+          0,
+          0
+        ],
+        [
+          "src/core/config.ts",
+          15,
+          0,
+          0
+        ],
+        [
+          "src/core/errors.ts",
+          10,
+          0,
+          0
+        ],
+        [
+          "src/index.ts",
+          10,
+          0,
+          0
+        ],
+        [
+          "tsconfig.json",
+          8,
+          0,
+          0
+        ]
+      ],
+      "seq": 0,
+      "sha": "552f9c1d942bf3f620c70725389923110c61760d",
+      "subject": "chore: scaffold harbor"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-06-03T09:00:00Z",
+      "date": "2026-06-03T09:00:00Z",
+      "files": [
+        [
+          "src/core/events.test.ts",
+          6,
+          0,
+          0
+        ],
+        [
+          "src/core/events.ts",
+          15,
+          0,
+          0
+        ],
+        [
+          "src/sync/queue.ts",
+          25,
+          0,
+          0
+        ]
+      ],
+      "seq": 1,
+      "sha": "3c5a6b0441813ab98608d545969522a3ce6697cd",
+      "subject": "feat(core): event bus and the sync job queue"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_6dcd19a841dc",
+      "authorDate": "2026-06-05T10:00:00Z",
+      "date": "2026-06-05T10:00:00Z",
+      "files": [
+        [
+          "src/api/routes/users.ts",
+          20,
+          0,
+          0
+        ],
+        [
+          "src/api/schema/users.ts",
+          15,
+          0,
+          0
+        ],
+        [
+          "src/api/server.ts",
+          20,
+          0,
+          0
+        ]
+      ],
+      "seq": 2,
+      "sha": "578e476eaa57cdd04695b99d3b0871195e8ea3f0",
+      "subject": "feat(api): users route and schema"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_2402d3b4c57d",
+      "authorDate": "2026-06-08T11:00:00Z",
+      "date": "2026-06-08T11:00:00Z",
+      "files": [
+        [
+          "src/billing/invoice.test.ts",
+          9,
+          0,
+          0
+        ],
+        [
+          "src/billing/invoice.ts",
+          80,
+          0,
+          0
+        ],
+        [
+          "src/billing/tax.ts",
+          60,
+          0,
+          0
+        ]
+      ],
+      "seq": 3,
+      "sha": "57cd732a155de8d098a17f7788a386d0a291b32c",
+      "subject": "feat(billing): invoices and tax rates"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_13896572004f",
+      "authorDate": "2026-06-10T14:00:00Z",
+      "date": "2026-06-10T14:00:00Z",
+      "files": [
+        [
+          "src/legacy/export.ts",
+          62,
+          0,
+          0
+        ],
+        [
+          "src/legacy/importer.ts",
+          72,
+          0,
+          0
+        ]
+      ],
+      "seq": 4,
+      "sha": "1ab5d03c9e09bc52a64ffa6658b20bc0cc7e0718",
+      "subject": "feat(legacy): port the old importer and exporter"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_22c0ac0ea593",
+      "authorDate": "2026-06-12T13:00:00Z",
+      "date": "2026-06-12T13:00:00Z",
+      "files": [
+        [
+          "src/ui/components/button.ts",
+          20,
+          0,
+          0
+        ],
+        [
+          "src/ui/components/modal.ts",
+          20,
+          0,
+          0
+        ],
+        [
+          "src/ui/theme.ts",
+          15,
+          0,
+          0
+        ]
+      ],
+      "seq": 5,
+      "sha": "c8716f7a631cbfb3094d6bf53c8f9b70a425f1ee",
+      "subject": "feat(ui): theme, button and modal"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-06-15T09:30:00Z",
+      "date": "2026-06-15T09:30:00Z",
+      "files": [
+        [
+          "src/api/routes/login.ts",
+          15,
+          0,
+          0
+        ],
+        [
+          "src/auth/session.test.ts",
+          6,
+          0,
+          0
+        ],
+        [
+          "src/auth/session.ts",
+          20,
+          0,
+          0
+        ]
+      ],
+      "seq": 6,
+      "sha": "ea56ff4d8e918450d6fb80220e3ef80bca5de64a",
+      "subject": "feat(auth): sessions and the login route"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_700f3911cf39",
+      "authorDate": "2026-06-18T15:00:00Z",
+      "date": "2026-06-18T15:00:00Z",
+      "files": [
+        [
+          "docs/architecture.md",
+          12,
+          0,
+          0
+        ],
+        [
+          "docs/guide.md",
+          12,
+          0,
+          0
+        ]
+      ],
+      "seq": 7,
+      "sha": "f55b7a6017cace9ec4059fc65fd11fc480eefc5b",
+      "subject": "docs: user guide and architecture notes"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_6dcd19a841dc",
+      "authorDate": "2026-06-20T10:00:00Z",
+      "date": "2026-06-20T10:00:00Z",
+      "files": [
+        [
+          "src/api/routes/users.test.ts",
+          6,
+          0,
+          0
+        ],
+        [
+          "src/api/routes/users.ts",
+          10,
+          0,
+          0
+        ],
+        [
+          "src/api/schema/users.ts",
+          5,
+          0,
+          0
+        ]
+      ],
+      "seq": 8,
+      "sha": "9b8deb25555c0a51c4da0bb54497ef9124ad37f5",
+      "subject": "feat(api): paging for users"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_22c0ac0ea593",
+      "authorDate": "2026-06-24T13:00:00Z",
+      "date": "2026-06-24T13:00:00Z",
+      "files": [
+        [
+          "src/ui/components/table.ts",
+          30,
+          0,
+          0
+        ],
+        [
+          "src/ui/pages/home.ts",
+          25,
+          0,
+          0
+        ]
+      ],
+      "seq": 9,
+      "sha": "c38c6c835567efbf85d65f91c3e8a3c90635fa06",
+      "subject": "feat(ui): table and the home page"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_13896572004f",
+      "authorDate": "2026-06-27T14:00:00Z",
+      "date": "2026-06-27T14:00:00Z",
+      "files": [
+        [
+          "src/legacy/importer.ts",
+          5,
+          0,
+          0
+        ],
+        [
+          "src/legacy/xml.ts",
+          51,
+          0,
+          0
+        ]
+      ],
+      "seq": 10,
+      "sha": "78996a7e6ad55a7714b9d301ef26cc5c2137612b",
+      "subject": "feat(legacy): xml import"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-07-01T09:00:00Z",
+      "date": "2026-07-01T09:00:00Z",
+      "files": [
+        [
+          "src/auth/session.ts",
+          5,
+          0,
+          0
+        ],
+        [
+          "src/auth/tokens.test.ts",
+          9,
+          0,
+          0
+        ],
+        [
+          "src/auth/tokens.ts",
+          20,
+          0,
+          0
+        ]
+      ],
+      "seq": 11,
+      "sha": "e66674adc2664da3f1650468ffb5fb4034107004",
+      "subject": "feat(auth): refresh tokens"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_2402d3b4c57d",
+      "authorDate": "2026-07-03T11:00:00Z",
+      "date": "2026-07-03T11:00:00Z",
+      "files": [
+        [
+          "src/billing/invoice.ts",
+          10,
+          0,
+          0
+        ],
+        [
+          "src/billing/refunds.ts",
+          70,
+          0,
+          0
+        ],
+        [
+          "src/billing/tax.ts",
+          10,
+          0,
+          0
+        ]
+      ],
+      "seq": 12,
+      "sha": "755bafdd47700438f36280eb6da02c9ae156b8ce",
+      "subject": "feat(billing): refunds"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-07-07T09:00:00Z",
+      "date": "2026-07-07T09:00:00Z",
+      "files": [
+        [
+          "src/core/events.ts",
+          5,
+          0,
+          0
+        ],
+        [
+          "src/sync/conflict.ts",
+          31,
+          0,
+          0
+        ],
+        [
+          "src/sync/queue.ts",
+          10,
+          0,
+          0
+        ]
+      ],
+      "seq": 13,
+      "sha": "48f68fe5414132dca43264d7780a94483bf56c55",
+      "subject": "feat(sync): conflict handling"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_700f3911cf39",
+      "authorDate": "2026-07-10T15:00:00Z",
+      "date": "2026-07-10T15:00:00Z",
+      "files": [
+        [
+          "docs/changelog.md",
+          9,
+          0,
+          0
+        ],
+        [
+          "scripts/release.ts",
+          15,
+          0,
+          0
+        ],
+        [
+          "scripts/seed.ts",
+          10,
+          0,
+          0
+        ]
+      ],
+      "seq": 14,
+      "sha": "0acf92c8b1d45404b6821fd2873634acf077a49d",
+      "subject": "chore: release and seed scripts"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_6dcd19a841dc",
+      "authorDate": "2026-07-14T10:00:00Z",
+      "date": "2026-07-14T10:00:00Z",
+      "files": [
+        [
+          "src/api/routes/orders.ts",
+          25,
+          0,
+          0
+        ],
+        [
+          "src/api/schema/orders.ts",
+          15,
+          0,
+          0
+        ],
+        [
+          "test/fixtures/orders.json",
+          4,
+          0,
+          0
+        ]
+      ],
+      "seq": 15,
+      "sha": "948c2a0f314430272b64b9402a5e39dcf987270c",
+      "subject": "feat(api): orders"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-07-16T09:00:00Z",
+      "date": "2026-07-16T09:00:00Z",
+      "files": [
+        [
+          "src/auth/password.test.ts",
+          6,
+          0,
+          0
+        ],
+        [
+          "src/auth/password.ts",
+          20,
+          0,
+          0
+        ],
+        [
+          "src/auth/roles.test.ts",
+          6,
+          0,
+          0
+        ],
+        [
+          "src/auth/roles.ts",
+          15,
+          0,
+          0
+        ]
+      ],
+      "seq": 16,
+      "sha": "50212f87d82214aaa72418b798aaf3ac80107dd4",
+      "subject": "feat(auth): passwords and roles, with tests"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_22c0ac0ea593",
+      "authorDate": "2026-07-20T13:00:00Z",
+      "date": "2026-07-20T13:00:00Z",
+      "files": [
+        [
+          "src/ui/components/table.test.ts",
+          6,
+          0,
+          0
+        ],
+        [
+          "src/ui/pages/settings.ts",
+          25,
+          0,
+          0
+        ]
+      ],
+      "seq": 17,
+      "sha": "5040c103aea53713635f4b71db6a40c1d31b6e1e",
+      "subject": "feat(ui): settings page"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_13896572004f",
+      "authorDate": "2026-07-24T14:00:00Z",
+      "date": "2026-07-24T14:00:00Z",
+      "files": [
+        [
+          "src/legacy/export.ts",
+          11,
+          0,
+          0
+        ],
+        [
+          "src/legacy/xml.ts",
+          5,
+          0,
+          0
+        ]
+      ],
+      "seq": 18,
+      "sha": "cdd832d00ec7ad222f58e97226cbe0bd2e9bb5b1",
+      "subject": "fix(legacy): fixed-width rows for the old reader"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-07-30T09:00:00Z",
+      "date": "2026-07-30T09:00:00Z",
+      "files": [
+        [
+          "src/core/events.ts",
+          5,
+          0,
+          0
+        ],
+        [
+          "src/sync/offline.ts",
+          30,
+          0,
+          0
+        ],
+        [
+          "src/sync/queue.ts",
+          10,
+          0,
+          0
+        ]
+      ],
+      "seq": 19,
+      "sha": "ba8e71b2a516bf053ea38cc785d632e7a01287e9",
+      "subject": "feat(sync): offline outbox"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_2402d3b4c57d",
+      "authorDate": "2026-08-04T11:00:00Z",
+      "date": "2026-08-04T11:00:00Z",
+      "files": [
+        [
+          "src/billing/invoice.test.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "test/fixtures/users.json",
+          4,
+          0,
+          0
+        ]
+      ],
+      "seq": 20,
+      "sha": "2d6294c3c8898ed9f7c521eaea01925485bf773b",
+      "subject": "test(billing): invoice cases and user fixtures"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-08-10T09:00:00Z",
+      "date": "2026-08-10T09:00:00Z",
+      "files": [
+        [
+          "src/api/routes/login.ts",
+          5,
+          0,
+          0
+        ],
+        [
+          "src/auth/session.ts",
+          5,
+          0,
+          0
+        ]
+      ],
+      "seq": 21,
+      "sha": "5df4c4595e364c701b11b390dfadfb9372900a4f",
+      "subject": "feat(auth): remember me"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_700f3911cf39",
+      "authorDate": "2026-08-15T15:00:00Z",
+      "date": "2026-08-15T15:00:00Z",
+      "files": [
+        [
+          "README.md",
+          4,
+          0,
+          0
+        ],
+        [
+          "docs/architecture.md",
+          6,
+          0,
+          0
+        ]
+      ],
+      "seq": 22,
+      "sha": "34f05a42277002a42d5638e88bd72e45175b9afb",
+      "subject": "docs: layout overview"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_6dcd19a841dc",
+      "authorDate": "2026-08-20T10:00:00Z",
+      "date": "2026-08-20T10:00:00Z",
+      "files": [
+        [
+          "src/api/routes/orders.ts",
+          5,
+          0,
+          0
+        ],
+        [
+          "src/api/server.ts",
+          5,
+          0,
+          0
+        ]
+      ],
+      "seq": 23,
+      "sha": "0b4b8a6ac45e575b8bd54b62b01ac4e6fc4360e9",
+      "subject": "feat(api): order totals"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-08-27T09:00:00Z",
+      "date": "2026-08-27T09:00:00Z",
+      "files": [
+        [
+          "test/e2e/smoke.test.ts",
+          6,
+          0,
+          0
+        ]
+      ],
+      "seq": 24,
+      "sha": "560d45f50e0efa57140f3aeee29d78e18f6087ef",
+      "subject": "test: end-to-end smoke test"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_6dcd19a841dc",
+      "authorDate": "2026-09-10T10:00:00Z",
+      "date": "2026-09-10T10:00:00Z",
+      "files": [
+        [
+          "src/api/routes/users.test.ts",
+          3,
+          0,
+          0
+        ],
+        [
+          "src/api/routes/users.ts",
+          5,
+          0,
+          0
+        ],
+        [
+          "src/api/schema/users.ts",
+          5,
+          0,
+          0
+        ]
+      ],
+      "seq": 25,
+      "sha": "d3377161f4ef9456617313761bae76ca99455f07",
+      "subject": "feat(api): user avatars"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_2402d3b4c57d",
+      "authorDate": "2026-09-18T11:00:00Z",
+      "date": "2026-09-18T11:00:00Z",
+      "files": [
+        [
+          "src/billing/invoice.ts",
+          5,
+          0,
+          0
+        ],
+        [
+          "src/billing/tax.ts",
+          6,
+          0,
+          0
+        ]
+      ],
+      "seq": 26,
+      "sha": "1210e52a35c2b7cb11f63a14dfaff3f091f5b422",
+      "subject": "fix(billing): tax rounding"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_22c0ac0ea593",
+      "authorDate": "2026-10-02T13:00:00Z",
+      "date": "2026-10-02T13:00:00Z",
+      "files": [
+        [
+          "src/ui/components/button.ts",
+          5,
+          0,
+          0
+        ],
+        [
+          "src/ui/theme.ts",
+          5,
+          0,
+          0
+        ]
+      ],
+      "seq": 27,
+      "sha": "78c294a5962f5bcea6a770ebc9887926dcb46be6",
+      "subject": "feat(ui): dark theme buttons"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 1000,
+        "class": "agent",
+        "evidence": [
+          {
+            "detail": "verbatim",
+            "kind": "transcript_match"
+          }
+        ],
+        "selfCommittedAgentWritten": true,
+        "sessions": [
+          {
+            "lines": 20,
+            "sessionKey": "s_b035a87d0a32f8"
+          },
+          {
+            "lines": 3,
+            "sessionKey": "s_368a86c40335f1"
+          }
+        ],
+        "tier": "high"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-10-06T10:40:00Z",
+      "date": "2026-10-06T10:40:00Z",
+      "files": [
+        [
+          "src/api/routes/orders.ts",
+          15,
+          0,
+          15
+        ],
+        [
+          "src/api/routes/users.test.ts",
+          3,
+          0,
+          3
+        ],
+        [
+          "src/api/schema/orders.ts",
+          5,
+          0,
+          5
+        ]
+      ],
+      "seq": 28,
+      "sha": "156af810a0ecc6f51f48ef7e2c3fbd2959853ea5",
+      "subject": "feat(api): order status filters"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "human",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "high"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-10-06T11:00:00Z",
+      "date": "2026-10-06T11:00:00Z",
+      "files": [
+        [
+          "src/api/routes/login.ts",
+          5,
+          0,
+          0
+        ]
+      ],
+      "seq": 29,
+      "sha": "cf04d73584ed32eb84df218a60ef27b496390992",
+      "subject": "fix(api): login rate limit"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 1000,
+        "class": "agent",
+        "evidence": [
+          {
+            "detail": "verbatim",
+            "kind": "transcript_match"
+          }
+        ],
+        "selfCommittedAgentWritten": true,
+        "sessions": [
+          {
+            "lines": 25,
+            "sessionKey": "s_516f839b0ff6e9"
+          }
+        ],
+        "tier": "high"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-10-14T15:00:00Z",
+      "date": "2026-10-14T15:00:00Z",
+      "files": [
+        [
+          "src/sync/offline.ts",
+          10,
+          0,
+          10
+        ],
+        [
+          "src/sync/queue.ts",
+          15,
+          0,
+          15
+        ]
+      ],
+      "seq": 30,
+      "sha": "55085d94294838c72e612154f8454256966a3175",
+      "subject": "feat(sync): retry with backoff"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 1000,
+        "class": "agent",
+        "evidence": [
+          {
+            "detail": "verbatim",
+            "kind": "transcript_match"
+          }
+        ],
+        "selfCommittedAgentWritten": true,
+        "sessions": [
+          {
+            "lines": 23,
+            "sessionKey": "s_9acd284cecc27a"
+          }
+        ],
+        "tier": "high"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-10-22T11:30:00Z",
+      "date": "2026-10-22T11:30:00Z",
+      "files": [
+        [
+          "src/ui/components/table.test.ts",
+          3,
+          0,
+          3
+        ],
+        [
+          "src/ui/components/table.ts",
+          15,
+          0,
+          15
+        ],
+        [
+          "src/ui/pages/settings.ts",
+          5,
+          0,
+          5
+        ]
+      ],
+      "seq": 31,
+      "sha": "9f6a29a49d6c448e511e1acaafd42ee611e32091",
+      "subject": "feat(ui): sortable tables"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_13896572004f",
+      "authorDate": "2026-10-28T14:00:00Z",
+      "date": "2026-10-28T14:00:00Z",
+      "files": [
+        [
+          "src/legacy/export.ts",
+          6,
+          0,
+          0
+        ]
+      ],
+      "seq": 32,
+      "sha": "2c02ca6f9ca258789ed23c4af70e3b2e03cd55c8",
+      "subject": "fix(legacy): hotfix the export for the old reader"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 1000,
+        "class": "agent",
+        "evidence": [
+          {
+            "detail": "verbatim",
+            "kind": "transcript_match"
+          }
+        ],
+        "selfCommittedAgentWritten": true,
+        "sessions": [
+          {
+            "lines": 21,
+            "sessionKey": "s_4b181c5aedd9a8"
+          }
+        ],
+        "tier": "high"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-11-03T12:00:00Z",
+      "date": "2026-11-03T12:00:00Z",
+      "files": [
+        [
+          "src/auth/session.ts",
+          5,
+          0,
+          5
+        ],
+        [
+          "src/auth/tokens.test.ts",
+          6,
+          0,
+          6
+        ],
+        [
+          "src/auth/tokens.ts",
+          10,
+          0,
+          10
+        ]
+      ],
+      "seq": 33,
+      "sha": "0907f39979a09aa02c6268a4d114b784dc6f3af2",
+      "subject": "feat(auth): rotate refresh tokens"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_700f3911cf39",
+      "authorDate": "2026-11-05T15:00:00Z",
+      "date": "2026-11-05T15:00:00Z",
+      "files": [
+        [
+          "docs/changelog.md",
+          3,
+          0,
+          0
+        ],
+        [
+          "docs/guide.md",
+          3,
+          0,
+          0
+        ]
+      ],
+      "seq": 34,
+      "sha": "e691d6070d451253783c4aa6ca89336f7b3ded51",
+      "subject": "docs: offline mode in the guide"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 1000,
+        "class": "agent",
+        "evidence": [
+          {
+            "detail": "verbatim",
+            "kind": "transcript_match"
+          }
+        ],
+        "selfCommittedAgentWritten": true,
+        "sessions": [
+          {
+            "lines": 8,
+            "sessionKey": "s_0295f07886d79d"
+          }
+        ],
+        "tier": "high"
+      },
+      "author": "p_f2f3041fac62",
+      "authorDate": "2026-11-10T16:50:00Z",
+      "date": "2026-11-10T16:50:00Z",
+      "files": [
+        [
+          "README.md",
+          4,
+          0,
+          2
+        ],
+        [
+          "package.json",
+          1,
+          0,
+          1
+        ],
+        [
+          "src/index.ts",
+          5,
+          0,
+          5
+        ]
+      ],
+      "seq": 35,
+      "sha": "499a58b1c304231af441509b59e7cdb23eddf73f",
+      "subject": "chore: lint script and offline notes"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_6dcd19a841dc",
+      "authorDate": "2026-11-12T10:00:00Z",
+      "date": "2026-11-12T10:00:00Z",
+      "files": [
+        [
+          "src/api/routes/users.ts",
+          5,
+          0,
+          0
+        ]
+      ],
+      "seq": 36,
+      "sha": "3de54447dbd9d8893807ac06b102af79b98afec3",
+      "subject": "feat(api): user search"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_5d23b86d08e5",
+      "authorDate": "2026-11-14T08:00:00Z",
+      "date": "2026-11-14T08:00:00Z",
+      "files": [
+        [
+          "package.json",
+          1,
+          1,
+          0
+        ]
+      ],
+      "seq": 37,
+      "sha": "6c4cea8e749c257c4de2a21dcfed8d375a2c1c4a",
+      "subject": "chore(release): 0.2.0"
+    },
+    {
+      "attribution": {
+        "agentLineShareMilli": 0,
+        "class": "unknown",
+        "evidence": [],
+        "selfCommittedAgentWritten": false,
+        "sessions": [],
+        "tier": "none"
+      },
+      "author": "p_22c0ac0ea593",
+      "authorDate": "2026-11-18T13:00:00Z",
+      "date": "2026-11-18T13:00:00Z",
+      "files": [
+        [
+          "src/ui/pages/home.ts",
+          5,
+          0,
+          0
+        ]
+      ],
+      "seq": 38,
+      "sha": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+      "subject": "feat(ui): home page activity card"
+    }
+  ],
+  "coverage": [
+    {
+      "from": "2026-09-20T09:55:00Z",
+      "to": "2026-09-20T11:15:00Z",
+      "tool": "claude-code"
+    },
+    {
+      "from": "2026-10-06T08:55:00Z",
+      "to": "2026-10-06T11:35:00Z",
+      "tool": "claude-code"
+    },
+    {
+      "from": "2026-10-14T12:55:00Z",
+      "to": "2026-10-14T15:45:00Z",
+      "tool": "claude-code"
+    },
+    {
+      "from": "2026-10-22T08:55:00Z",
+      "to": "2026-10-22T12:05:00Z",
+      "tool": "claude-code"
+    },
+    {
+      "from": "2026-11-03T09:55:00Z",
+      "to": "2026-11-03T12:35:00Z",
+      "tool": "claude-code"
+    },
+    {
+      "from": "2026-11-10T15:55:00Z",
+      "to": "2026-11-10T17:05:00Z",
+      "tool": "claude-code"
+    }
+  ],
+  "dirs": [
+    {
+      "bornDate": "2026-06-18T15:00:00Z",
+      "bornSeq": 7,
+      "depth": 1,
+      "id": "d_00178f31922e",
+      "parent": null,
+      "partner": null,
+      "path": "docs"
+    },
+    {
+      "bornDate": "2026-07-10T15:00:00Z",
+      "bornSeq": 14,
+      "depth": 1,
+      "id": "d_bba907628fb5",
+      "parent": null,
+      "partner": "d_00178f31922e",
+      "path": "scripts"
+    },
+    {
+      "bornDate": "2026-06-01T09:00:00Z",
+      "bornSeq": 0,
+      "depth": 1,
+      "id": "d_3b82254b3c87",
+      "parent": null,
+      "partner": null,
+      "path": "src"
+    },
+    {
+      "bornDate": "2026-06-05T10:00:00Z",
+      "bornSeq": 2,
+      "depth": 2,
+      "id": "d_3588a76b7da8",
+      "parent": "d_3b82254b3c87",
+      "path": "src/api"
+    },
+    {
+      "bornDate": "2026-06-05T10:00:00Z",
+      "bornSeq": 2,
+      "depth": 3,
+      "id": "d_36e8975fc4c7",
+      "parent": "d_3588a76b7da8",
+      "path": "src/api/routes"
+    },
+    {
+      "bornDate": "2026-06-05T10:00:00Z",
+      "bornSeq": 2,
+      "depth": 3,
+      "id": "d_eb3d3e4d791c",
+      "parent": "d_3588a76b7da8",
+      "path": "src/api/schema"
+    },
+    {
+      "bornDate": "2026-06-15T09:30:00Z",
+      "bornSeq": 6,
+      "depth": 2,
+      "id": "d_ac56211a9387",
+      "parent": "d_3b82254b3c87",
+      "path": "src/auth"
+    },
+    {
+      "bornDate": "2026-06-08T11:00:00Z",
+      "bornSeq": 3,
+      "depth": 2,
+      "id": "d_bf025371b7a3",
+      "parent": "d_3b82254b3c87",
+      "path": "src/billing"
+    },
+    {
+      "bornDate": "2026-06-01T09:00:00Z",
+      "bornSeq": 0,
+      "depth": 2,
+      "id": "d_959196e6c98c",
+      "parent": "d_3b82254b3c87",
+      "path": "src/core"
+    },
+    {
+      "bornDate": "2026-06-10T14:00:00Z",
+      "bornSeq": 4,
+      "depth": 2,
+      "id": "d_11fd764c8e55",
+      "parent": "d_3b82254b3c87",
+      "path": "src/legacy"
+    },
+    {
+      "bornDate": "2026-06-03T09:00:00Z",
+      "bornSeq": 1,
+      "depth": 2,
+      "id": "d_dc81d89a0568",
+      "parent": "d_3b82254b3c87",
+      "path": "src/sync"
+    },
+    {
+      "bornDate": "2026-06-12T13:00:00Z",
+      "bornSeq": 5,
+      "depth": 2,
+      "id": "d_c21415684b81",
+      "parent": "d_3b82254b3c87",
+      "path": "src/ui"
+    },
+    {
+      "bornDate": "2026-06-12T13:00:00Z",
+      "bornSeq": 5,
+      "depth": 3,
+      "id": "d_0a984bad6c97",
+      "parent": "d_c21415684b81",
+      "path": "src/ui/components"
+    },
+    {
+      "bornDate": "2026-06-24T13:00:00Z",
+      "bornSeq": 9,
+      "depth": 3,
+      "id": "d_d425447b10d0",
+      "parent": "d_c21415684b81",
+      "path": "src/ui/pages"
+    },
+    {
+      "bornDate": "2026-07-14T10:00:00Z",
+      "bornSeq": 15,
+      "depth": 1,
+      "id": "d_3fa607052550",
+      "parent": null,
+      "partner": "d_3b82254b3c87",
+      "path": "test"
+    },
+    {
+      "bornDate": "2026-08-27T09:00:00Z",
+      "bornSeq": 24,
+      "depth": 2,
+      "id": "d_158a0a9b65e9",
+      "parent": "d_3fa607052550",
+      "path": "test/e2e"
+    },
+    {
+      "bornDate": "2026-07-14T10:00:00Z",
+      "bornSeq": 15,
+      "depth": 2,
+      "id": "d_45694b7586eb",
+      "parent": "d_3fa607052550",
+      "path": "test/fixtures"
+    }
+  ],
+  "exclusions": {
+    "counts": {},
+    "rules": [
+      {
+        "id": "lockfile",
+        "kind": "glob",
+        "pattern": "**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lockb,bun.lock,Cargo.lock,Gemfile.lock,poetry.lock,composer.lock,go.sum,uv.lock}"
+      },
+      {
+        "id": "node_modules",
+        "kind": "glob",
+        "pattern": "**/node_modules/**"
+      },
+      {
+        "id": "dist",
+        "kind": "glob",
+        "pattern": "**/dist/**"
+      },
+      {
+        "id": "vendor",
+        "kind": "glob",
+        "pattern": "**/vendor/**"
+      },
+      {
+        "id": "minified",
+        "kind": "glob",
+        "pattern": "**/*.min.{js,css}"
+      },
+      {
+        "id": "binary",
+        "kind": "binary",
+        "pattern": "numstat:-"
+      }
+    ],
+    "rulesetVersion": "builtin-0.1"
+  },
+  "files": [
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_cfe707d77468",
+      "isTest": false,
+      "loc": 1,
+      "path": ".mailmap",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_b33563055168",
+      "isTest": false,
+      "loc": 16,
+      "path": "README.md",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_140eef3ba41b",
+      "isTest": false,
+      "loc": 18,
+      "path": "docs/architecture.md",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_77f023b99d3d",
+      "isTest": false,
+      "loc": 12,
+      "path": "docs/changelog.md",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_07fdd026b11c",
+      "isTest": false,
+      "loc": 15,
+      "path": "docs/guide.md",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_7ae45ad102ea",
+      "isTest": false,
+      "loc": 11,
+      "path": "package.json",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_21f9896491d7",
+      "isTest": false,
+      "loc": 15,
+      "path": "scripts/release.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_dc31c45b12f0",
+      "isTest": false,
+      "loc": 10,
+      "path": "scripts/seed.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_5355663a9861",
+      "isTest": false,
+      "loc": 25,
+      "path": "src/api/routes/login.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_e493eb049f9f",
+      "isTest": false,
+      "loc": 45,
+      "path": "src/api/routes/orders.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_c97cf5d4896a",
+      "isTest": true,
+      "loc": 12,
+      "path": "src/api/routes/users.test.ts",
+      "qodo": null,
+      "testOf": "f_593d80a0699a"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_593d80a0699a",
+      "isTest": false,
+      "loc": 40,
+      "path": "src/api/routes/users.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_bdd3e6d94214",
+      "isTest": false,
+      "loc": 20,
+      "path": "src/api/schema/orders.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_044e16a3d231",
+      "isTest": false,
+      "loc": 25,
+      "path": "src/api/schema/users.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_4f5348f6211c",
+      "isTest": false,
+      "loc": 25,
+      "path": "src/api/server.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_f16db3a38a73",
+      "isTest": true,
+      "loc": 6,
+      "path": "src/auth/password.test.ts",
+      "qodo": null,
+      "testOf": "f_421fedcf0738"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_421fedcf0738",
+      "isTest": false,
+      "loc": 20,
+      "path": "src/auth/password.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_ede861bc6f91",
+      "isTest": true,
+      "loc": 6,
+      "path": "src/auth/roles.test.ts",
+      "qodo": null,
+      "testOf": "f_33286ea64642"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_33286ea64642",
+      "isTest": false,
+      "loc": 15,
+      "path": "src/auth/roles.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_4a5dcf6c9fd4",
+      "isTest": true,
+      "loc": 6,
+      "path": "src/auth/session.test.ts",
+      "qodo": null,
+      "testOf": "f_947e1ee9f63e"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_947e1ee9f63e",
+      "isTest": false,
+      "loc": 35,
+      "path": "src/auth/session.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_596fa4315bc0",
+      "isTest": true,
+      "loc": 15,
+      "path": "src/auth/tokens.test.ts",
+      "qodo": null,
+      "testOf": "f_a04ae49e1a85"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_a04ae49e1a85",
+      "isTest": false,
+      "loc": 30,
+      "path": "src/auth/tokens.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_421498fcee17",
+      "isTest": true,
+      "loc": 12,
+      "path": "src/billing/invoice.test.ts",
+      "qodo": null,
+      "testOf": "f_aa2833cd23c2"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_aa2833cd23c2",
+      "isTest": false,
+      "loc": 95,
+      "path": "src/billing/invoice.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_0b4afe7d4e0f",
+      "isTest": false,
+      "loc": 70,
+      "path": "src/billing/refunds.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 1,
+        "xxx": 0
+      },
+      "id": "f_0ef1938598db",
+      "isTest": false,
+      "loc": 76,
+      "path": "src/billing/tax.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_980d3ba91f4d",
+      "isTest": false,
+      "loc": 15,
+      "path": "src/core/config.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_210b2012c980",
+      "isTest": false,
+      "loc": 10,
+      "path": "src/core/errors.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_aa6b223a20e7",
+      "isTest": true,
+      "loc": 6,
+      "path": "src/core/events.test.ts",
+      "qodo": null,
+      "testOf": "f_0ae3ab276502"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_0ae3ab276502",
+      "isTest": false,
+      "loc": 25,
+      "path": "src/core/events.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_a2a171449d86",
+      "isTest": false,
+      "loc": 15,
+      "path": "src/index.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 2,
+        "todo": 1,
+        "xxx": 1
+      },
+      "id": "f_394a5bdfe331",
+      "isTest": false,
+      "loc": 79,
+      "path": "src/legacy/export.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 1,
+        "hack": 1,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_e861b5a2e81f",
+      "isTest": false,
+      "loc": 77,
+      "path": "src/legacy/importer.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 1,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_aa17e0ec638b",
+      "isTest": false,
+      "loc": 56,
+      "path": "src/legacy/xml.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 1,
+        "xxx": 0
+      },
+      "id": "f_765c97cf2342",
+      "isTest": false,
+      "loc": 31,
+      "path": "src/sync/conflict.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_3485ef5adba8",
+      "isTest": false,
+      "loc": 40,
+      "path": "src/sync/offline.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_25664083d8d6",
+      "isTest": false,
+      "loc": 60,
+      "path": "src/sync/queue.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_3b35d7c818c8",
+      "isTest": false,
+      "loc": 25,
+      "path": "src/ui/components/button.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_c959dec5dbe2",
+      "isTest": false,
+      "loc": 20,
+      "path": "src/ui/components/modal.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_a22dbe4e69ac",
+      "isTest": true,
+      "loc": 9,
+      "path": "src/ui/components/table.test.ts",
+      "qodo": null,
+      "testOf": "f_cc1ff6b04e25"
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_cc1ff6b04e25",
+      "isTest": false,
+      "loc": 45,
+      "path": "src/ui/components/table.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_dc203112eb44",
+      "isTest": false,
+      "loc": 30,
+      "path": "src/ui/pages/home.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_8c2b8d96568b",
+      "isTest": false,
+      "loc": 30,
+      "path": "src/ui/pages/settings.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_303b341066c8",
+      "isTest": false,
+      "loc": 20,
+      "path": "src/ui/theme.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_4c98aa80b676",
+      "isTest": true,
+      "loc": 6,
+      "path": "test/e2e/smoke.test.ts",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_0994d8a8c169",
+      "isTest": false,
+      "loc": 4,
+      "path": "test/fixtures/orders.json",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_9129d0dd215f",
+      "isTest": false,
+      "loc": 4,
+      "path": "test/fixtures/users.json",
+      "qodo": null,
+      "testOf": null
+    },
+    {
+      "debt": {
+        "fixme": 0,
+        "hack": 0,
+        "todo": 0,
+        "xxx": 0
+      },
+      "id": "f_b55cdbef4907",
+      "isTest": false,
+      "loc": 8,
+      "path": "tsconfig.json",
+      "qodo": null,
+      "testOf": null
+    }
+  ],
+  "generator": {
+    "name": "commet",
+    "version": "0.0.0"
+  },
+  "people": [
+    {
+      "displayName": "Felix Moreau",
+      "id": "p_13896572004f",
+      "isBot": false,
+      "isSelf": false
+    },
+    {
+      "displayName": "Iris Calloway",
+      "id": "p_22c0ac0ea593",
+      "isBot": false,
+      "isSelf": false
+    },
+    {
+      "displayName": "Juno Abara",
+      "id": "p_2402d3b4c57d",
+      "isBot": false,
+      "isSelf": false
+    },
+    {
+      "displayName": "release-bot[bot]",
+      "id": "p_5d23b86d08e5",
+      "isBot": true,
+      "isSelf": false
+    },
+    {
+      "displayName": "Theo Park",
+      "id": "p_6dcd19a841dc",
+      "isBot": false,
+      "isSelf": false
+    },
+    {
+      "displayName": "Sana Whitlock",
+      "id": "p_700f3911cf39",
+      "isBot": false,
+      "isSelf": false
+    },
+    {
+      "displayName": "Mara Lindqvist",
+      "id": "p_f2f3041fac62",
+      "isBot": false,
+      "isSelf": true
+    }
+  ],
+  "qodo": {
+    "status": "none"
+  },
+  "repo": {
+    "branch": "main",
+    "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+    "headDate": "2026-11-18T13:00:00Z",
+    "repoId": "dcecfb0fde85c20a",
+    "selfPersonIds": [
+      "p_f2f3041fac62"
+    ]
+  },
+  "schemaVersion": "0.2",
+  "sessions": [
+    {
+      "branch": "claude/legacy-cleanup",
+      "commits": [],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "editSpanMs": 2700000,
+      "editsOutside": 2,
+      "endedAt": "2026-09-20T10:50:00Z",
+      "fileEdits": [
+        {
+          "id": "f_aa17e0ec638b",
+          "n": 1
+        }
+      ],
+      "files": [
+        "f_aa17e0ec638b"
+      ],
+      "filesOutside": 1,
+      "filesTouched": 2,
+      "inferred": false,
+      "key": "s_530c0fb9dd8be2",
+      "kind": "main",
+      "linesAdded": 35,
+      "linesRemoved": 0,
+      "model": "claude-sonnet-4-5",
+      "seed": 2330568330,
+      "startedAt": "2026-09-20T10:05:00Z",
+      "tool": "claude-code",
+      "toolVersion": "2.1.31"
+    },
+    {
+      "branch": "main",
+      "commits": [
+        "156af810a0ecc6f51f48ef7e2c3fbd2959853ea5"
+      ],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "editSpanMs": 4080000,
+      "editsOutside": 0,
+      "endedAt": "2026-10-06T10:20:00Z",
+      "fileEdits": [
+        {
+          "id": "f_bdd3e6d94214",
+          "n": 1
+        },
+        {
+          "id": "f_e493eb049f9f",
+          "n": 2
+        }
+      ],
+      "files": [
+        "f_bdd3e6d94214",
+        "f_e493eb049f9f"
+      ],
+      "filesOutside": 0,
+      "filesTouched": 2,
+      "inferred": false,
+      "key": "s_b035a87d0a32f8",
+      "kind": "main",
+      "linesAdded": 20,
+      "linesRemoved": 0,
+      "model": "claude-opus-4-5",
+      "seed": 3238491595,
+      "startedAt": "2026-10-06T09:12:00Z",
+      "tool": "claude-code",
+      "toolVersion": "2.1.31"
+    },
+    {
+      "agentType": "general-purpose",
+      "branch": "main",
+      "commits": [
+        "156af810a0ecc6f51f48ef7e2c3fbd2959853ea5"
+      ],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editSpanMs": 0,
+      "editsOutside": 0,
+      "endedAt": "2026-10-06T09:55:00Z",
+      "fileEdits": [
+        {
+          "id": "f_c97cf5d4896a",
+          "n": 1
+        }
+      ],
+      "files": [
+        "f_c97cf5d4896a"
+      ],
+      "filesOutside": 0,
+      "filesTouched": 1,
+      "inferred": false,
+      "key": "s_368a86c40335f1",
+      "kind": "subagent",
+      "linesAdded": 3,
+      "linesRemoved": 0,
+      "model": "claude-haiku-4-5",
+      "parentKey": "s_b035a87d0a32f8",
+      "seed": 3014508623,
+      "startedAt": "2026-10-06T09:55:00Z",
+      "tool": "claude-code",
+      "toolVersion": "2.1.31"
+    },
+    {
+      "branch": "main",
+      "commits": [
+        "55085d94294838c72e612154f8454256966a3175"
+      ],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "editSpanMs": 5400000,
+      "editsOutside": 0,
+      "endedAt": "2026-10-14T14:50:00Z",
+      "fileEdits": [
+        {
+          "id": "f_25664083d8d6",
+          "n": 2
+        },
+        {
+          "id": "f_3485ef5adba8",
+          "n": 1
+        }
+      ],
+      "files": [
+        "f_25664083d8d6",
+        "f_3485ef5adba8"
+      ],
+      "filesOutside": 0,
+      "filesTouched": 2,
+      "inferred": false,
+      "key": "s_516f839b0ff6e9",
+      "kind": "main",
+      "linesAdded": 25,
+      "linesRemoved": 0,
+      "model": "claude-sonnet-4-5",
+      "seed": 269524952,
+      "startedAt": "2026-10-14T13:20:00Z",
+      "tool": "claude-code",
+      "toolVersion": "2.1.31"
+    },
+    {
+      "branch": "main",
+      "commits": [
+        "9f6a29a49d6c448e511e1acaafd42ee611e32091"
+      ],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "editSpanMs": 6300000,
+      "editsOutside": 0,
+      "endedAt": "2026-10-22T11:15:00Z",
+      "fileEdits": [
+        {
+          "id": "f_8c2b8d96568b",
+          "n": 1
+        },
+        {
+          "id": "f_a22dbe4e69ac",
+          "n": 1
+        },
+        {
+          "id": "f_cc1ff6b04e25",
+          "n": 2
+        }
+      ],
+      "files": [
+        "f_8c2b8d96568b",
+        "f_a22dbe4e69ac",
+        "f_cc1ff6b04e25"
+      ],
+      "filesOutside": 0,
+      "filesTouched": 3,
+      "inferred": false,
+      "key": "s_9acd284cecc27a",
+      "kind": "main",
+      "linesAdded": 23,
+      "linesRemoved": 0,
+      "model": "claude-opus-4-5",
+      "seed": 889305775,
+      "startedAt": "2026-10-22T09:30:00Z",
+      "tool": "claude-code",
+      "toolVersion": "2.1.31"
+    },
+    {
+      "branch": "main",
+      "commits": [
+        "0907f39979a09aa02c6268a4d114b784dc6f3af2"
+      ],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "editSpanMs": 4500000,
+      "editsOutside": 0,
+      "endedAt": "2026-11-03T11:30:00Z",
+      "fileEdits": [
+        {
+          "id": "f_596fa4315bc0",
+          "n": 1
+        },
+        {
+          "id": "f_947e1ee9f63e",
+          "n": 1
+        },
+        {
+          "id": "f_a04ae49e1a85",
+          "n": 1
+        }
+      ],
+      "files": [
+        "f_596fa4315bc0",
+        "f_947e1ee9f63e",
+        "f_a04ae49e1a85"
+      ],
+      "filesOutside": 0,
+      "filesTouched": 3,
+      "inferred": false,
+      "key": "s_4b181c5aedd9a8",
+      "kind": "main",
+      "linesAdded": 21,
+      "linesRemoved": 0,
+      "model": "claude-sonnet-4-5",
+      "seed": 2714085748,
+      "startedAt": "2026-11-03T10:15:00Z",
+      "tool": "claude-code",
+      "toolVersion": "2.1.31"
+    },
+    {
+      "branch": "main",
+      "commits": [
+        "499a58b1c304231af441509b59e7cdb23eddf73f"
+      ],
+      "editBuckets": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "editSpanMs": 1500000,
+      "editsOutside": 0,
+      "endedAt": "2026-11-10T16:35:00Z",
+      "fileEdits": [
+        {
+          "id": "f_7ae45ad102ea",
+          "n": 1
+        },
+        {
+          "id": "f_a2a171449d86",
+          "n": 1
+        },
+        {
+          "id": "f_b33563055168",
+          "n": 1
+        }
+      ],
+      "files": [
+        "f_7ae45ad102ea",
+        "f_a2a171449d86",
+        "f_b33563055168"
+      ],
+      "filesOutside": 0,
+      "filesTouched": 3,
+      "inferred": false,
+      "key": "s_0295f07886d79d",
+      "kind": "main",
+      "linesAdded": 10,
+      "linesRemoved": 0,
+      "model": "claude-haiku-4-5",
+      "seed": 2790045459,
+      "startedAt": "2026-11-10T16:10:00Z",
+      "tool": "claude-code",
+      "toolVersion": "2.1.31"
+    }
+  ],
+  "unreadable": {
+    "branches": 0,
+    "bulkCommits": 0,
+    "dirs": 0,
+    "files": 0
+  },
+  "window": {
+    "firstParent": true,
+    "months": 24,
+    "since": "2024-11-18T13:00:00Z",
+    "until": "2026-11-18T13:00:00Z"
+  }
+}

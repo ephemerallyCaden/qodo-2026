@@ -1,0 +1,55 @@
+{
+  "ok": true,
+  "schemaVersion": "drone-detail.1",
+  "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "key": "s_4b181c5aedd9a8",
+  "startedAt": "2026-11-03T10:15:00Z",
+  "endedAt": "2026-11-03T11:30:00Z",
+  "files": [
+    {
+      "fileId": "f_947e1ee9f63e",
+      "path": "src/auth/session.ts",
+      "edits": 1
+    },
+    {
+      "fileId": "f_596fa4315bc0",
+      "path": "src/auth/tokens.test.ts",
+      "edits": 1
+    },
+    {
+      "fileId": "f_a04ae49e1a85",
+      "path": "src/auth/tokens.ts",
+      "edits": 1
+    }
+  ],
+  "otherFiles": 0,
+  "otherEdits": 0,
+  "buckets": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "spanMs": 4500000,
+  "needsRescan": false
+}

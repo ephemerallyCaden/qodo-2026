@@ -1,0 +1,61 @@
+{
+  "ok": true,
+  "schemaVersion": "crew-detail.1",
+  "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "person": "p_22c0ac0ea593",
+  "displayName": "Iris Calloway",
+  "captain": false,
+  "lastActive": "2026-11-18T13:00:00Z",
+  "planets": [
+    {
+      "home": "d_c21415684b81",
+      "touches": 5
+    }
+  ],
+  "files": [
+    {
+      "fileId": "f_303b341066c8",
+      "path": "src/ui/theme.ts",
+      "home": "d_c21415684b81",
+      "touches": 2
+    },
+    {
+      "fileId": "f_3b35d7c818c8",
+      "path": "src/ui/components/button.ts",
+      "home": "d_c21415684b81",
+      "touches": 2
+    },
+    {
+      "fileId": "f_c959dec5dbe2",
+      "path": "src/ui/components/modal.ts",
+      "home": "d_c21415684b81",
+      "touches": 1
+    },
+    {
+      "fileId": "f_a22dbe4e69ac",
+      "path": "src/ui/components/table.test.ts",
+      "home": "d_c21415684b81",
+      "touches": 1
+    },
+    {
+      "fileId": "f_cc1ff6b04e25",
+      "path": "src/ui/components/table.ts",
+      "home": "d_c21415684b81",
+      "touches": 1
+    },
+    {
+      "fileId": "f_dc203112eb44",
+      "path": "src/ui/pages/home.ts",
+      "home": "d_c21415684b81",
+      "touches": 2
+    },
+    {
+      "fileId": "f_8c2b8d96568b",
+      "path": "src/ui/pages/settings.ts",
+      "home": "d_c21415684b81",
+      "touches": 1
+    }
+  ],
+  "otherFiles": 0,
+  "needsRescan": false
+}

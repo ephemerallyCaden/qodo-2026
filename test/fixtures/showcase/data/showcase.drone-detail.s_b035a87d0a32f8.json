@@ -1,0 +1,50 @@
+{
+  "ok": true,
+  "schemaVersion": "drone-detail.1",
+  "head": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "key": "s_b035a87d0a32f8",
+  "startedAt": "2026-10-06T09:12:00Z",
+  "endedAt": "2026-10-06T10:20:00Z",
+  "files": [
+    {
+      "fileId": "f_e493eb049f9f",
+      "path": "src/api/routes/orders.ts",
+      "edits": 2
+    },
+    {
+      "fileId": "f_bdd3e6d94214",
+      "path": "src/api/schema/orders.ts",
+      "edits": 1
+    }
+  ],
+  "otherFiles": 0,
+  "otherEdits": 0,
+  "buckets": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1
+  ],
+  "spanMs": 4080000,
+  "needsRescan": false
+}

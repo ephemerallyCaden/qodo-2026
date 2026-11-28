@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "fileId": "f_394a5bdfe331",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "2c02ca6f9ca258789ed23c4af70e3b2e03cd55c8",
+  "base": "9f6a29a49d6c448e511e1acaafd42ee611e32091",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/legacy/export.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -71,3 +71,9 @@ export function loadExportRowExpired(id: string): ExportRowExpired | undefined {",
+          "lines": [
+            " export function saveExportRowExpired(item: ExportRowExpired): void { exportRowExpiredStore.set(item.id, item); }",
+            " export const exportRowExpiredLimit = 11;",
+            " // HACK: pads every row to 80 columns for the old reader",
+            "+export interface ExportRowPrimary { id: string; label: string }",
+            "+const exportRowPrimaryStore = new Map<string, ExportRowPrimary>();",
+            "+export function loadExportRowPrimary(id: string): ExportRowPrimary | undefined { return exportRowPrimaryStore.get(id); }",
+            "+export function saveExportRowPrimary(item: ExportRowPrimary): void { exportRowPrimaryStore.set(item.id, item); }",
+            "+export const exportRowPrimaryLimit = 18;",
+            "+// HACK: skips rows the old reader rejects instead of fixing them"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 9
+}

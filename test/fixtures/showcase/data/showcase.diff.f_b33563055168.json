@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "fileId": "f_b33563055168",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "499a58b1c304231af441509b59e7cdb23eddf73f",
+  "base": "e691d6070d451253783c4aa6ca89336f7b3ded51",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "README.md",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -10,3 +10,7 @@ An invented app for the Commet live demo: accounts, orders, billing and offline",
+          "lines": [
+            " ## Layout",
+            " ",
+            " - `src/` holds one folder per area; `docs/` the guides.",
+            "+",
+            "+## Offline mode",
+            "+",
+            "+Changes made offline wait in the outbox and sync when the app reconnects."
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 7
+}

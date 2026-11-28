@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "fileId": "f_bdd3e6d94214",
+  "at": "492f19ddb083793eb8675ea2c13e0eb21c11ad36",
+  "since": "156af810a0ecc6f51f48ef7e2c3fbd2959853ea5",
+  "base": "78c294a5962f5bcea6a770ebc9887926dcb46be6",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/api/schema/orders.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -13,3 +13,8 @@ const orderShapeActiveStore = new Map<string, OrderShapeActive>();",
+          "lines": [
+            " export function loadOrderShapeActive(id: string): OrderShapeActive | undefined { return orderShapeActiveStore.get(id); }",
+            " export function saveOrderShapeActive(item: OrderShapeActive): void { orderShapeActiveStore.set(item.id, item); }",
+            " export const orderShapeActiveLimit = 24;",
+            "+export interface OrderShapeArchived { id: string; label: string }",
+            "+const orderShapeArchivedStore = new Map<string, OrderShapeArchived>();",
+            "+export function loadOrderShapeArchived(id: string): OrderShapeArchived | undefined { return orderShapeArchivedStore.get(id); }",
+            "+export function saveOrderShapeArchived(item: OrderShapeArchived): void { orderShapeArchivedStore.set(item.id, item); }",
+            "+export const orderShapeArchivedLimit = 31;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 8
+}
