@@ -6,6 +6,7 @@ import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bundleHits, tokenRuns, type Hit } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 import { API } from '../../src/core/contract/api.js';
+import { palette } from '../../src/core/palette.js';
 import { checkManifest, MANIFEST_SCHEMA, type DemoManifest } from '../src/demo/source.js';
 
 export const ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/[\\/]$/, '');
@@ -85,3 +86,26 @@ export function siteHits(dir: string): Hit[] {
   // bundleHits names the product's folder in each hit's place; this scan is of the demo's
   return bundleHits('demo', siteFiles(dir), { literals, library: libraryRuns() }).map((h) => ({ ...h, where: h.where.replace("build's dist/web", `build's ${DEMO_DIST}`) }));
 }
+
+/**
+ * The site's icon (favicon.svg): a small lit ocean planet with a green continent, whole pixels in the
+ * world palette's own colours (art-direction §4), so the tab doesn't ask Pages for a favicon.ico it lacks.
+ */
+export function faviconSvg(): string {
+  const { ocean, land, space } = palette.world;
+  const n = 16, r = 6.6, light = [-0.55, 0.6, 0.58].map((v, _, a) => v / Math.hypot(...a));
+  const rects: string[] = [];
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const dx = (x + 0.5 - n / 2) / r, dy = (n / 2 - y - 0.5) / r, d2 = dx * dx + dy * dy;
+      if (d2 > 1) continue;
+      const lit = dx * light[0]! + dy * light[1]! + Math.sqrt(1 - d2) * light[2]!;
+      const band = lit > 0.62 ? 2 : lit > 0.12 ? 1 : 0;
+      const isLand = (x - 6) ** 2 / 9 + (y - 6) ** 2 / 5 <= 1 || (x - 10) ** 2 / 4 + (y - 11) ** 2 / 2 <= 1;
+      const colour = isLand ? [land[1], land[2], land[3]][band]! : [ocean[0], ocean[2], ocean[3]][band]!;
+      rects.push(`<rect x="${x}" y="${y}" width="1" height="1" fill="${colour}"/>`);
+    }
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges"><rect width="${n}" height="${n}" rx="3" fill="${space}"/>${rects.join('')}</svg>\n`;
+}
+

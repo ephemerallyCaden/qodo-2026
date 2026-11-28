@@ -16,7 +16,7 @@ import { BLANK } from './thresholds.js';
 
 const ORIGIN = 'http://demo.commet.test';
 const SITE = join(ROOT, DEMO_DIST);
-const MIME: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
+const MIME: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
 
 /** A route's baked answer, as the site serves it, or null when the dataset doesn't have it. */
 function baked<T>(route: string): T | null {
@@ -130,7 +130,7 @@ test.describe('demo site', () => {
     expect(csp, 'the CSP comes before any script or stylesheet').toBeLessThan(head.search(/<script|<link/));
     expect(head).toMatch(/content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self';/);
     for (const r of [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]!)) {
-      expect(r).toMatch(new RegExp(`^(?:${DEFAULT_BASE}assets/[\\w.-]+\\.(?:js|css)|https://github\\.com/ephemerallyCaden/qodo-2026)$`));
+      expect(r).toMatch(new RegExp(`^(?:${DEFAULT_BASE}assets/[\\w.-]+\\.(?:js|css)|\\./favicon\\.svg|https://github\\.com/ephemerallyCaden/qodo-2026)$`));
     }
     expect(html).not.toMatch(/<script>|<script [^>]*>[^<]|<style|\sstyle="|\son[a-z]+="/);
   });

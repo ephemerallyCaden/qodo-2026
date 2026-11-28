@@ -11,9 +11,9 @@ import { join } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import { MANIFEST_FILE } from './src/demo/source.js';
 import { paletteCss } from './vite.config.js';
-import { dataFile, dataset, DEMO_DIST, ROOT, siteBase, siteHits, type Dataset } from './demo/site.js';
+import { dataFile, dataset, DEMO_DIST, faviconSvg, ROOT, siteBase, siteHits, type Dataset } from './demo/site.js';
 
-/** Serves (dev) and emits (build) the dataset under `<base>data/`, plus `.nojekyll` so Pages serves the site as built. */
+/** Serves (dev) and emits (build) the dataset under `<base>data/` and the site's icon, plus `.nojekyll` so Pages serves the site as built. */
 function demoData(d: Dataset, base: string): Plugin {
   const files = new Map<string, string>([[MANIFEST_FILE, `${JSON.stringify(d.manifest, null, 2)}\n`]]);
   for (const file of new Set(Object.values(d.manifest.routes))) files.set(file, dataFile(d, file));
@@ -23,6 +23,10 @@ function demoData(d: Dataset, base: string): Plugin {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const path = (req.url ?? '').split('?', 1)[0]!;
+        if (path === `${base}favicon.svg`) {
+          res.setHeader('content-type', 'image/svg+xml');
+          return void res.end(faviconSvg());
+        }
         const text = path.startsWith(prefix) ? files.get(path.slice(prefix.length)) : undefined;
         if (text === undefined) return next();
         res.setHeader('content-type', 'application/json');
@@ -31,6 +35,7 @@ function demoData(d: Dataset, base: string): Plugin {
     },
     generateBundle() {
       for (const [file, text] of files) this.emitFile({ type: 'asset', fileName: `data/${file}`, source: text });
+      this.emitFile({ type: 'asset', fileName: 'favicon.svg', source: faviconSvg() });
       this.emitFile({ type: 'asset', fileName: '.nojekyll', source: '' });
     },
   };
