@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "fileId": "f_dc203112eb44",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "base": "7b018b087dfa6cec6f83165c0580125635244a4d",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/ui/pages/home.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -2,7 +2,7 @@ export interface HomeCardDraft { id: string; label: string }",
+          "lines": [
+            " const homeCardDraftStore = new Map<string, HomeCardDraft>();",
+            " export function loadHomeCardDraft(id: string): HomeCardDraft | undefined { return homeCardDraftStore.get(id); }",
+            " export function saveHomeCardDraft(item: HomeCardDraft): void { homeCardDraftStore.set(item.id, item); }",
+            "-export const homeCardDraftLimit = 10;",
+            "+export const homeCardDraftLimit = 12;",
+            " export interface HomeCardPending { id: string; label: string }",
+            " const homeCardPendingStore = new Map<string, HomeCardPending>();",
+            " export function loadHomeCardPending(id: string): HomeCardPending | undefined { return homeCardPendingStore.get(id); }"
+          ]
+        },
+        {
+          "header": "@@ -23,3 +23,8 @@ const homeCardSharedStore = new Map<string, HomeCardShared>();",
+          "lines": [
+            " export function loadHomeCardShared(id: string): HomeCardShared | undefined { return homeCardSharedStore.get(id); }",
+            " export function saveHomeCardShared(item: HomeCardShared): void { homeCardSharedStore.set(item.id, item); }",
+            " export const homeCardSharedLimit = 38;",
+            "+export interface HomeCardCached { id: string; label: string }",
+            "+const homeCardCachedStore = new Map<string, HomeCardCached>();",
+            "+export function loadHomeCardCached(id: string): HomeCardCached | undefined { return homeCardCachedStore.get(id); }",
+            "+export function saveHomeCardCached(item: HomeCardCached): void { homeCardCachedStore.set(item.id, item); }",
+            "+export const homeCardCachedLimit = 45;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 16
+}

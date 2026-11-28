@@ -1,0 +1,63 @@
+{
+  "ok": true,
+  "schemaVersion": "crew-detail.1",
+  "head": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "person": "p_700f3911cf39",
+  "displayName": "Sana Whitlock",
+  "captain": false,
+  "lastActive": "2026-11-05T15:00:00Z",
+  "planets": [
+    {
+      "home": "d_00178f31922e",
+      "touches": 4
+    },
+    {
+      "home": "d_bba907628fb5",
+      "touches": 1
+    },
+    {
+      "home": "star",
+      "touches": 1
+    }
+  ],
+  "files": [
+    {
+      "fileId": "f_b33563055168",
+      "path": "README.md",
+      "home": "star",
+      "touches": 1
+    },
+    {
+      "fileId": "f_140eef3ba41b",
+      "path": "docs/architecture.md",
+      "home": "d_00178f31922e",
+      "touches": 2
+    },
+    {
+      "fileId": "f_77f023b99d3d",
+      "path": "docs/changelog.md",
+      "home": "d_00178f31922e",
+      "touches": 2
+    },
+    {
+      "fileId": "f_07fdd026b11c",
+      "path": "docs/guide.md",
+      "home": "d_00178f31922e",
+      "touches": 2
+    },
+    {
+      "fileId": "f_21f9896491d7",
+      "path": "scripts/release.ts",
+      "home": "d_bba907628fb5",
+      "touches": 1
+    },
+    {
+      "fileId": "f_dc31c45b12f0",
+      "path": "scripts/seed.ts",
+      "home": "d_bba907628fb5",
+      "touches": 1
+    }
+  ],
+  "otherFiles": 0,
+  "needsRescan": false
+}

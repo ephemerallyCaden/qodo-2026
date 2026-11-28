@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "fileId": "f_a22dbe4e69ac",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "8be7dd76529499f12cfab58dfcfcc826bc31d8df",
+  "base": "74053f59176ef0531d4a2584ce326c3f4ad549f4",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/ui/components/table.test.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -4,3 +4,6 @@ test('table draft has a positive limit', () => { expect(tableDraftLimit).toBeGre",
+          "lines": [
+            " test('table pending is empty for a missing id', () => { expect(loadTablePending('missing')).toBeUndefined(); });",
+            " test('table pending saves and loads', () => { saveTablePending({ id: 'a', label: 'A' }); expect(loadTablePending('a')?.label).toBe('A'); });",
+            " test('table pending has a positive limit', () => { expect(tablePendingLimit).toBeGreaterThan(0); });",
+            "+test('table active is empty for a missing id', () => { expect(loadTableActive('missing')).toBeUndefined(); });",
+            "+test('table active saves and loads', () => { saveTableActive({ id: 'a', label: 'A' }); expect(loadTableActive('a')?.label).toBe('A'); });",
+            "+test('table active has a positive limit', () => { expect(tableActiveLimit).toBeGreaterThan(0); });"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 6
+}

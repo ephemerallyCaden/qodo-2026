@@ -1,0 +1,46 @@
+{
+  "ok": true,
+  "fileId": "f_394a5bdfe331",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "e50efce88b51b2e74afaab344cd6097426cb87c6",
+  "base": "8be7dd76529499f12cfab58dfcfcc826bc31d8df",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/legacy/export.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -17,7 +17,7 @@ export interface ExportRowArchived { id: string; label: string }",
+          "lines": [
+            " const exportRowArchivedStore = new Map<string, ExportRowArchived>();",
+            " export function loadExportRowArchived(id: string): ExportRowArchived | undefined { return exportRowArchivedStore.get(id); }",
+            " export function saveExportRowArchived(item: ExportRowArchived): void { exportRowArchivedStore.set(item.id, item); }",
+            "-export const exportRowArchivedLimit = 31;",
+            "+export const exportRowArchivedLimit = 80;",
+            " export interface ExportRowShared { id: string; label: string }",
+            " const exportRowSharedStore = new Map<string, ExportRowShared>();",
+            " export function loadExportRowShared(id: string): ExportRowShared | undefined { return exportRowSharedStore.get(id); }"
+          ]
+        },
+        {
+          "header": "@@ -71,3 +71,9 @@ export function loadExportRowExpired(id: string): ExportRowExpired | undefined {",
+          "lines": [
+            " export function saveExportRowExpired(item: ExportRowExpired): void { exportRowExpiredStore.set(item.id, item); }",
+            " export const exportRowExpiredLimit = 11;",
+            " // HACK: pads every row to 80 columns for the old reader",
+            "+export interface ExportRowPrimary { id: string; label: string }",
+            "+const exportRowPrimaryStore = new Map<string, ExportRowPrimary>();",
+            "+export function loadExportRowPrimary(id: string): ExportRowPrimary | undefined { return exportRowPrimaryStore.get(id); }",
+            "+export function saveExportRowPrimary(item: ExportRowPrimary): void { exportRowPrimaryStore.set(item.id, item); }",
+            "+export const exportRowPrimaryLimit = 18;",
+            "+// HACK: skips rows the old reader rejects instead of fixing them"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 17
+}

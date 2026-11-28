@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "fileId": "f_3b35d7c818c8",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "d29225b8cfc5db6a66b49ab9ed5523b231de97ec",
+  "base": "60a7e827de6987cd8c9b43d36bcb1e5e5ef3f261",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/ui/components/button.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -7,7 +7,7 @@ export interface ButtonPending { id: string; label: string }",
+          "lines": [
+            " const buttonPendingStore = new Map<string, ButtonPending>();",
+            " export function loadButtonPending(id: string): ButtonPending | undefined { return buttonPendingStore.get(id); }",
+            " export function saveButtonPending(item: ButtonPending): void { buttonPendingStore.set(item.id, item); }",
+            "-export const buttonPendingLimit = 17;",
+            "+export const buttonPendingLimit = 32;",
+            " export interface ButtonActive { id: string; label: string }",
+            " const buttonActiveStore = new Map<string, ButtonActive>();",
+            " export function loadButtonActive(id: string): ButtonActive | undefined { return buttonActiveStore.get(id); }"
+          ]
+        },
+        {
+          "header": "@@ -18,3 +18,8 @@ const buttonArchivedStore = new Map<string, ButtonArchived>();",
+          "lines": [
+            " export function loadButtonArchived(id: string): ButtonArchived | undefined { return buttonArchivedStore.get(id); }",
+            " export function saveButtonArchived(item: ButtonArchived): void { buttonArchivedStore.set(item.id, item); }",
+            " export const buttonArchivedLimit = 31;",
+            "+export interface ButtonShared { id: string; label: string }",
+            "+const buttonSharedStore = new Map<string, ButtonShared>();",
+            "+export function loadButtonShared(id: string): ButtonShared | undefined { return buttonSharedStore.get(id); }",
+            "+export function saveButtonShared(item: ButtonShared): void { buttonSharedStore.set(item.id, item); }",
+            "+export const buttonSharedLimit = 38;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 16
+}

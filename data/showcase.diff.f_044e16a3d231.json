@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "fileId": "f_044e16a3d231",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "cd86cf45eea6fbdab74a1ea00710e6602faef315",
+  "base": "560d45f50e0efa57140f3aeee29d78e18f6087ef",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/api/schema/users.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -18,3 +18,8 @@ const userShapeArchivedStore = new Map<string, UserShapeArchived>();",
+          "lines": [
+            " export function loadUserShapeArchived(id: string): UserShapeArchived | undefined { return userShapeArchivedStore.get(id); }",
+            " export function saveUserShapeArchived(item: UserShapeArchived): void { userShapeArchivedStore.set(item.id, item); }",
+            " export const userShapeArchivedLimit = 31;",
+            "+export interface UserShapeShared { id: string; label: string }",
+            "+const userShapeSharedStore = new Map<string, UserShapeShared>();",
+            "+export function loadUserShapeShared(id: string): UserShapeShared | undefined { return userShapeSharedStore.get(id); }",
+            "+export function saveUserShapeShared(item: UserShapeShared): void { userShapeSharedStore.set(item.id, item); }",
+            "+export const userShapeSharedLimit = 38;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 8
+}

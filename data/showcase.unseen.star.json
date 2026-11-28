@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "home": null,
+  "files": [
+    {
+      "fileId": "f_b33563055168",
+      "path": "README.md",
+      "since": "eb298f00f67882b5c6c1c641ce910c4c143d975a",
+      "reasons": [
+        "agent",
+        "self-committed-agent-written"
+      ]
+    },
+    {
+      "fileId": "f_7ae45ad102ea",
+      "path": "package.json",
+      "since": "eb298f00f67882b5c6c1c641ce910c4c143d975a",
+      "reasons": [
+        "agent",
+        "self-committed-agent-written",
+        "unknown"
+      ]
+    },
+    {
+      "fileId": "f_a2a171449d86",
+      "path": "src/index.ts",
+      "since": "eb298f00f67882b5c6c1c641ce910c4c143d975a",
+      "reasons": [
+        "agent",
+        "self-committed-agent-written"
+      ]
+    }
+  ]
+}

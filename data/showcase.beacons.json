@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "beacons.1",
+  "head": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "beacons": [
+    {
+      "fileId": "f_947e1ee9f63e",
+      "path": "src/auth/session.ts",
+      "home": "d_ac56211a9387",
+      "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+      "text": "Token refresh lives here, not in the client."
+    },
+    {
+      "fileId": "f_0ef1938598db",
+      "path": "src/billing/tax.ts",
+      "home": "d_bf025371b7a3",
+      "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+      "text": "Ask Juno before changing the rounding rules."
+    },
+    {
+      "fileId": "f_e861b5a2e81f",
+      "path": "src/legacy/importer.ts",
+      "home": "d_11fd764c8e55",
+      "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+      "text": "Frozen: the sync planet replaces this next quarter."
+    }
+  ],
+  "unplaced": 0
+}

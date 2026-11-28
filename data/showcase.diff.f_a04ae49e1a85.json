@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "fileId": "f_a04ae49e1a85",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "60a74273ef3c21b1765e49f173b2df130fe662ed",
+  "base": "e50efce88b51b2e74afaab344cd6097426cb87c6",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/auth/tokens.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -18,3 +18,13 @@ const tokenArchivedStore = new Map<string, TokenArchived>();",
+          "lines": [
+            " export function loadTokenArchived(id: string): TokenArchived | undefined { return tokenArchivedStore.get(id); }",
+            " export function saveTokenArchived(item: TokenArchived): void { tokenArchivedStore.set(item.id, item); }",
+            " export const tokenArchivedLimit = 31;",
+            "+export interface TokenShared { id: string; label: string }",
+            "+const tokenSharedStore = new Map<string, TokenShared>();",
+            "+export function loadTokenShared(id: string): TokenShared | undefined { return tokenSharedStore.get(id); }",
+            "+export function saveTokenShared(item: TokenShared): void { tokenSharedStore.set(item.id, item); }",
+            "+export const tokenSharedLimit = 38;",
+            "+export interface TokenCached { id: string; label: string }",
+            "+const tokenCachedStore = new Map<string, TokenCached>();",
+            "+export function loadTokenCached(id: string): TokenCached | undefined { return tokenCachedStore.get(id); }",
+            "+export function saveTokenCached(item: TokenCached): void { tokenCachedStore.set(item.id, item); }",
+            "+export const tokenCachedLimit = 45;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 13
+}

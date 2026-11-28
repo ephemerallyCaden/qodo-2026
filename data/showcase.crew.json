@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "crew.1",
+  "head": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "members": [
+    {
+      "person": "p_13896572004f",
+      "displayName": "Felix Moreau",
+      "seed": 428451840,
+      "captain": false
+    },
+    {
+      "person": "p_22c0ac0ea593",
+      "displayName": "Iris Calloway",
+      "seed": 1623639993,
+      "captain": false
+    },
+    {
+      "person": "p_2402d3b4c57d",
+      "displayName": "Juno Abara",
+      "seed": 4118582355,
+      "captain": false
+    },
+    {
+      "person": "p_6dcd19a841dc",
+      "displayName": "Theo Park",
+      "seed": 1392987406,
+      "captain": false
+    },
+    {
+      "person": "p_700f3911cf39",
+      "displayName": "Sana Whitlock",
+      "seed": 2801928563,
+      "captain": false
+    },
+    {
+      "person": "p_f2f3041fac62",
+      "displayName": "Mara Lindqvist",
+      "seed": 426992983,
+      "captain": true
+    }
+  ],
+  "total": 6,
+  "bots": 1,
+  "needsRescan": false
+}

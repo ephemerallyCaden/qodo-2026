@@ -1,0 +1,42 @@
+{
+  "ok": true,
+  "fileId": "f_cc1ff6b04e25",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "8be7dd76529499f12cfab58dfcfcc826bc31d8df",
+  "base": "74053f59176ef0531d4a2584ce326c3f4ad549f4",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/ui/components/table.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -28,3 +28,18 @@ const tableCachedStore = new Map<string, TableCached>();",
+          "lines": [
+            " export function loadTableCached(id: string): TableCached | undefined { return tableCachedStore.get(id); }",
+            " export function saveTableCached(item: TableCached): void { tableCachedStore.set(item.id, item); }",
+            " export const tableCachedLimit = 45;",
+            "+export interface TableBatch { id: string; label: string }",
+            "+const tableBatchStore = new Map<string, TableBatch>();",
+            "+export function loadTableBatch(id: string): TableBatch | undefined { return tableBatchStore.get(id); }",
+            "+export function saveTableBatch(item: TableBatch): void { tableBatchStore.set(item.id, item); }",
+            "+export const tableBatchLimit = 52;",
+            "+export interface TableRemote { id: string; label: string }",
+            "+const tableRemoteStore = new Map<string, TableRemote>();",
+            "+export function loadTableRemote(id: string): TableRemote | undefined { return tableRemoteStore.get(id); }",
+            "+export function saveTableRemote(item: TableRemote): void { tableRemoteStore.set(item.id, item); }",
+            "+export const tableRemoteLimit = 59;",
+            "+export interface TableLocal { id: string; label: string }",
+            "+const tableLocalStore = new Map<string, TableLocal>();",
+            "+export function loadTableLocal(id: string): TableLocal | undefined { return tableLocalStore.get(id); }",
+            "+export function saveTableLocal(item: TableLocal): void { tableLocalStore.set(item.id, item); }",
+            "+export const tableLocalLimit = 66;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 18
+}

@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "fileId": "f_07fdd026b11c",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "281f81132df0a24488f5b2f6b8b331e1a9fae567",
+  "base": "60a74273ef3c21b1765e49f173b2df130fe662ed",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "docs/guide.md",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -10,3 +10,6 @@ The active guide flow runs before every release.",
+          "lines": [
+            " ## Archived guides",
+            " The archived guide flow runs before every release.",
+            " - Check the archived guide list with the team that owns it.",
+            "+## Shared guides",
+            "+The shared guide flow runs before every release.",
+            "+- Check the shared guide list with the team that owns it."
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 6
+}

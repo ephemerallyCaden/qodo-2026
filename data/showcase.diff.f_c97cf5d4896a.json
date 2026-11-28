@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "fileId": "f_c97cf5d4896a",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "cd86cf45eea6fbdab74a1ea00710e6602faef315",
+  "base": "560d45f50e0efa57140f3aeee29d78e18f6087ef",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/api/routes/users.test.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -4,3 +4,9 @@ test('userRoute draft has a positive limit', () => { expect(userRouteDraftLimit)",
+          "lines": [
+            " test('userRoute pending is empty for a missing id', () => { expect(loadUserRoutePending('missing')).toBeUndefined(); });",
+            " test('userRoute pending saves and loads', () => { saveUserRoutePending({ id: 'a', label: 'A' }); expect(loadUserRoutePending('a')?.label).toBe('A'); });",
+            " test('userRoute pending has a positive limit', () => { expect(userRoutePendingLimit).toBeGreaterThan(0); });",
+            "+test('userRoute active is empty for a missing id', () => { expect(loadUserRouteActive('missing')).toBeUndefined(); });",
+            "+test('userRoute active saves and loads', () => { saveUserRouteActive({ id: 'a', label: 'A' }); expect(loadUserRouteActive('a')?.label).toBe('A'); });",
+            "+test('userRoute active has a positive limit', () => { expect(userRouteActiveLimit).toBeGreaterThan(0); });",
+            "+test('userRoute archived is empty for a missing id', () => { expect(loadUserRouteArchived('missing')).toBeUndefined(); });",
+            "+test('userRoute archived saves and loads', () => { saveUserRouteArchived({ id: 'a', label: 'A' }); expect(loadUserRouteArchived('a')?.label).toBe('A'); });",
+            "+test('userRoute archived has a positive limit', () => { expect(userRouteArchivedLimit).toBeGreaterThan(0); });"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 9
+}

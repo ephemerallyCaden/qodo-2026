@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "fileId": "f_aa2833cd23c2",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "60a7e827de6987cd8c9b43d36bcb1e5e5ef3f261",
+  "base": "cd86cf45eea6fbdab74a1ea00710e6602faef315",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/billing/invoice.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -12,7 +12,7 @@ export interface InvoiceActive { id: string; label: string }",
+          "lines": [
+            " const invoiceActiveStore = new Map<string, InvoiceActive>();",
+            " export function loadInvoiceActive(id: string): InvoiceActive | undefined { return invoiceActiveStore.get(id); }",
+            " export function saveInvoiceActive(item: InvoiceActive): void { invoiceActiveStore.set(item.id, item); }",
+            "-export const invoiceActiveLimit = 24;",
+            "+export const invoiceActiveLimit = 60;",
+            " export interface InvoiceArchived { id: string; label: string }",
+            " const invoiceArchivedStore = new Map<string, InvoiceArchived>();",
+            " export function loadInvoiceArchived(id: string): InvoiceArchived | undefined { return invoiceArchivedStore.get(id); }"
+          ]
+        },
+        {
+          "header": "@@ -88,3 +88,8 @@ const invoiceWeeklyStore = new Map<string, InvoiceWeekly>();",
+          "lines": [
+            " export function loadInvoiceWeekly(id: string): InvoiceWeekly | undefined { return invoiceWeeklyStore.get(id); }",
+            " export function saveInvoiceWeekly(item: InvoiceWeekly): void { invoiceWeeklyStore.set(item.id, item); }",
+            " export const invoiceWeeklyLimit = 39;",
+            "+export interface InvoiceManual { id: string; label: string }",
+            "+const invoiceManualStore = new Map<string, InvoiceManual>();",
+            "+export function loadInvoiceManual(id: string): InvoiceManual | undefined { return invoiceManualStore.get(id); }",
+            "+export function saveInvoiceManual(item: InvoiceManual): void { invoiceManualStore.set(item.id, item); }",
+            "+export const invoiceManualLimit = 46;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 16
+}

@@ -1,0 +1,209 @@
+{
+  "schemaVersion": "cochange.1",
+  "head": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "needsRescan": false,
+  "links": [
+    {
+      "a": "f_044e16a3d231",
+      "b": "f_593d80a0699a",
+      "strengthMilli": 750
+    },
+    {
+      "a": "f_044e16a3d231",
+      "b": "f_c97cf5d4896a",
+      "strengthMilli": 500
+    },
+    {
+      "a": "f_0ae3ab276502",
+      "b": "f_25664083d8d6",
+      "strengthMilli": 750
+    },
+    {
+      "a": "f_0ef1938598db",
+      "b": "f_aa2833cd23c2",
+      "strengthMilli": 1000
+    },
+    {
+      "a": "f_25664083d8d6",
+      "b": "f_3485ef5adba8",
+      "strengthMilli": 500
+    },
+    {
+      "a": "f_303b341066c8",
+      "b": "f_3b35d7c818c8",
+      "strengthMilli": 1000
+    },
+    {
+      "a": "f_5355663a9861",
+      "b": "f_947e1ee9f63e",
+      "strengthMilli": 400
+    },
+    {
+      "a": "f_593d80a0699a",
+      "b": "f_c97cf5d4896a",
+      "strengthMilli": 400
+    },
+    {
+      "a": "f_596fa4315bc0",
+      "b": "f_947e1ee9f63e",
+      "strengthMilli": 500
+    },
+    {
+      "a": "f_596fa4315bc0",
+      "b": "f_a04ae49e1a85",
+      "strengthMilli": 1000
+    },
+    {
+      "a": "f_7ae45ad102ea",
+      "b": "f_a2a171449d86",
+      "strengthMilli": 666
+    },
+    {
+      "a": "f_7ae45ad102ea",
+      "b": "f_b33563055168",
+      "strengthMilli": 500
+    },
+    {
+      "a": "f_8c2b8d96568b",
+      "b": "f_a22dbe4e69ac",
+      "strengthMilli": 1000
+    },
+    {
+      "a": "f_947e1ee9f63e",
+      "b": "f_a04ae49e1a85",
+      "strengthMilli": 500
+    },
+    {
+      "a": "f_a2a171449d86",
+      "b": "f_b33563055168",
+      "strengthMilli": 666
+    },
+    {
+      "a": "f_bdd3e6d94214",
+      "b": "f_e493eb049f9f",
+      "strengthMilli": 666
+    }
+  ],
+  "flags": [
+    {
+      "fileId": "f_044e16a3d231",
+      "with": "f_593d80a0699a",
+      "strengthMilli": 750,
+      "at": "9c83f099b837e2d3b2332c1abd277f0f9330b4e7"
+    },
+    {
+      "fileId": "f_0ae3ab276502",
+      "with": "f_25664083d8d6",
+      "strengthMilli": 750,
+      "at": "74053f59176ef0531d4a2584ce326c3f4ad549f4"
+    }
+  ],
+  "dismissed": 0,
+  "files": [
+    {
+      "fileId": "f_044e16a3d231",
+      "path": "src/api/schema/users.ts",
+      "home": "d_3588a76b7da8"
+    },
+    {
+      "fileId": "f_0ae3ab276502",
+      "path": "src/core/events.ts",
+      "home": "d_959196e6c98c"
+    },
+    {
+      "fileId": "f_0ef1938598db",
+      "path": "src/billing/tax.ts",
+      "home": "d_bf025371b7a3"
+    },
+    {
+      "fileId": "f_25664083d8d6",
+      "path": "src/sync/queue.ts",
+      "home": "d_dc81d89a0568"
+    },
+    {
+      "fileId": "f_303b341066c8",
+      "path": "src/ui/theme.ts",
+      "home": "d_c21415684b81"
+    },
+    {
+      "fileId": "f_3485ef5adba8",
+      "path": "src/sync/offline.ts",
+      "home": "d_dc81d89a0568"
+    },
+    {
+      "fileId": "f_3b35d7c818c8",
+      "path": "src/ui/components/button.ts",
+      "home": "d_c21415684b81"
+    },
+    {
+      "fileId": "f_5355663a9861",
+      "path": "src/api/routes/login.ts",
+      "home": "d_3588a76b7da8"
+    },
+    {
+      "fileId": "f_593d80a0699a",
+      "path": "src/api/routes/users.ts",
+      "home": "d_3588a76b7da8"
+    },
+    {
+      "fileId": "f_596fa4315bc0",
+      "path": "src/auth/tokens.test.ts",
+      "home": "d_ac56211a9387"
+    },
+    {
+      "fileId": "f_7ae45ad102ea",
+      "path": "package.json",
+      "home": "star"
+    },
+    {
+      "fileId": "f_8c2b8d96568b",
+      "path": "src/ui/pages/settings.ts",
+      "home": "d_c21415684b81"
+    },
+    {
+      "fileId": "f_947e1ee9f63e",
+      "path": "src/auth/session.ts",
+      "home": "d_ac56211a9387"
+    },
+    {
+      "fileId": "f_a04ae49e1a85",
+      "path": "src/auth/tokens.ts",
+      "home": "d_ac56211a9387"
+    },
+    {
+      "fileId": "f_a22dbe4e69ac",
+      "path": "src/ui/components/table.test.ts",
+      "home": "d_c21415684b81"
+    },
+    {
+      "fileId": "f_a2a171449d86",
+      "path": "src/index.ts",
+      "home": "star"
+    },
+    {
+      "fileId": "f_aa2833cd23c2",
+      "path": "src/billing/invoice.ts",
+      "home": "d_bf025371b7a3"
+    },
+    {
+      "fileId": "f_b33563055168",
+      "path": "README.md",
+      "home": "star"
+    },
+    {
+      "fileId": "f_bdd3e6d94214",
+      "path": "src/api/schema/orders.ts",
+      "home": "d_3588a76b7da8"
+    },
+    {
+      "fileId": "f_c97cf5d4896a",
+      "path": "src/api/routes/users.test.ts",
+      "home": "d_3588a76b7da8"
+    },
+    {
+      "fileId": "f_e493eb049f9f",
+      "path": "src/api/routes/orders.ts",
+      "home": "d_3588a76b7da8"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "ok": true,
+  "schemaVersion": "crew-detail.1",
+  "head": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "person": "p_2402d3b4c57d",
+  "displayName": "Juno Abara",
+  "captain": false,
+  "lastActive": "2026-09-18T11:00:00Z",
+  "planets": [
+    {
+      "home": "d_bf025371b7a3",
+      "touches": 4
+    },
+    {
+      "home": "star",
+      "touches": 1
+    }
+  ],
+  "files": [
+    {
+      "fileId": "f_421498fcee17",
+      "path": "src/billing/invoice.test.ts",
+      "home": "d_bf025371b7a3",
+      "touches": 2
+    },
+    {
+      "fileId": "f_aa2833cd23c2",
+      "path": "src/billing/invoice.ts",
+      "home": "d_bf025371b7a3",
+      "touches": 3
+    },
+    {
+      "fileId": "f_0b4afe7d4e0f",
+      "path": "src/billing/refunds.ts",
+      "home": "d_bf025371b7a3",
+      "touches": 1
+    },
+    {
+      "fileId": "f_0ef1938598db",
+      "path": "src/billing/tax.ts",
+      "home": "d_bf025371b7a3",
+      "touches": 3
+    },
+    {
+      "fileId": "f_9129d0dd215f",
+      "path": "test/fixtures/users.json",
+      "home": "star",
+      "touches": 1
+    }
+  ],
+  "otherFiles": 0,
+  "needsRescan": false
+}

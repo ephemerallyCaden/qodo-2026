@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "fileId": "f_0ef1938598db",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "60a7e827de6987cd8c9b43d36bcb1e5e5ef3f261",
+  "base": "cd86cf45eea6fbdab74a1ea00710e6602faef315",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/billing/tax.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -68,3 +68,9 @@ const taxRateExpiredStore = new Map<string, TaxRateExpired>();",
+          "lines": [
+            " export function loadTaxRateExpired(id: string): TaxRateExpired | undefined { return taxRateExpiredStore.get(id); }",
+            " export function saveTaxRateExpired(item: TaxRateExpired): void { taxRateExpiredStore.set(item.id, item); }",
+            " export const taxRateExpiredLimit = 11;",
+            "+export interface TaxRatePrimary { id: string; label: string }",
+            "+const taxRatePrimaryStore = new Map<string, TaxRatePrimary>();",
+            "+export function loadTaxRatePrimary(id: string): TaxRatePrimary | undefined { return taxRatePrimaryStore.get(id); }",
+            "+export function saveTaxRatePrimary(item: TaxRatePrimary): void { taxRatePrimaryStore.set(item.id, item); }",
+            "+export const taxRatePrimaryLimit = 18;",
+            "+// TODO: round per line, not per invoice, for the new tax rules"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 9
+}

@@ -1,0 +1,42 @@
+{
+  "ok": true,
+  "fileId": "f_e493eb049f9f",
+  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "since": "f29fd87db568c442e05536b7211a016a853e1b9b",
+  "base": "d29225b8cfc5db6a66b49ab9ed5523b231de97ec",
+  "sections": [
+    {
+      "status": "modified",
+      "path": "src/api/routes/orders.ts",
+      "oldPath": null,
+      "binary": false,
+      "hunks": [
+        {
+          "header": "@@ -28,3 +28,18 @@ const orderRouteCachedStore = new Map<string, OrderRouteCached>();",
+          "lines": [
+            " export function loadOrderRouteCached(id: string): OrderRouteCached | undefined { return orderRouteCachedStore.get(id); }",
+            " export function saveOrderRouteCached(item: OrderRouteCached): void { orderRouteCachedStore.set(item.id, item); }",
+            " export const orderRouteCachedLimit = 45;",
+            "+export interface OrderRouteBatch { id: string; label: string }",
+            "+const orderRouteBatchStore = new Map<string, OrderRouteBatch>();",
+            "+export function loadOrderRouteBatch(id: string): OrderRouteBatch | undefined { return orderRouteBatchStore.get(id); }",
+            "+export function saveOrderRouteBatch(item: OrderRouteBatch): void { orderRouteBatchStore.set(item.id, item); }",
+            "+export const orderRouteBatchLimit = 52;",
+            "+export interface OrderRouteRemote { id: string; label: string }",
+            "+const orderRouteRemoteStore = new Map<string, OrderRouteRemote>();",
+            "+export function loadOrderRouteRemote(id: string): OrderRouteRemote | undefined { return orderRouteRemoteStore.get(id); }",
+            "+export function saveOrderRouteRemote(item: OrderRouteRemote): void { orderRouteRemoteStore.set(item.id, item); }",
+            "+export const orderRouteRemoteLimit = 59;",
+            "+export interface OrderRouteLocal { id: string; label: string }",
+            "+const orderRouteLocalStore = new Map<string, OrderRouteLocal>();",
+            "+export function loadOrderRouteLocal(id: string): OrderRouteLocal | undefined { return orderRouteLocalStore.get(id); }",
+            "+export function saveOrderRouteLocal(item: OrderRouteLocal): void { orderRouteLocalStore.set(item.id, item); }",
+            "+export const orderRouteLocalLimit = 66;"
+          ]
+        }
+      ]
+    }
+  ],
+  "truncated": false,
+  "shownLines": 18
+}
