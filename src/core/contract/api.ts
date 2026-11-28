@@ -4,6 +4,7 @@ import type { DirId, FileId, Sha } from '../snapshot/types.js';
 import type { BeaconView } from './beacons.js';
 import type { CoChangeView } from './cochange.js';
 import type { CrewView } from './crew.js';
+import type { DebrisView } from './debris.js';
 import type { DroneView } from './drones.js';
 import type { ChartUnknownHead, FogReason, FogView } from './fog.js';
 import type { LayoutV1 } from './layout.js';
@@ -15,7 +16,8 @@ import type { LayoutV1 } from './layout.js';
  * travels in a header, never in a URL. `unseen` and `diff` (#75) take query parameters: see
  * UnseenQuery and DiffQuery. So does `droneDetail` (#148): see DroneDetailQuery. `cochange` (#211, R9) is
  * the co-change view (GET). `crew` (#207) is the crew view (GET) and `crewDetail` one member's panel: see
- * CrewDetailQuery.
+ * CrewDetailQuery. `debris` (R13) is the debris view (GET) and `debrisDetail` one piece's panel: see
+ * DebrisDetailQuery.
  */
 export const API = {
   snapshot: '/api/snapshot',
@@ -29,6 +31,8 @@ export const API = {
   cochange: '/api/cochange',
   crew: '/api/crew',
   crewDetail: '/api/crew-detail',
+  debris: '/api/debris',
+  debrisDetail: '/api/debris-detail',
   events: '/api/events',
   unseen: '/api/unseen',
   diff: '/api/diff',
@@ -147,6 +151,11 @@ export interface RenderInput {
    * teammates by person id, the rest counted in a "+N" label. Default: none, and no ship.
    */
   crew?: CrewView | null;
+  /**
+   * The debris to draw (R13), of the same scan as the layout: each placed piece near its home, at most 12 a
+   * body (biggest first), the rest counted in a "+N" label. Default: none.
+   */
+  debris?: DebrisView | null;
   /** The beacons to draw (#79), of the same scan as the layout. Default: none. */
   beacons?: BeaconView | null;
   /** The co-change view (#211), of the same scan as the layout: its missing-pair flags, and the lines of `focus`. Default: none. */

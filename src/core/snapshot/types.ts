@@ -213,6 +213,69 @@ export interface Person {
   isBot?: boolean;
 }
 
+/** R13: an item's id, `'x_' + sha256(key)[:12]`, its key the item's full refname (`refs/heads/x`, `refs/remotes/o/x`), or `HEAD <sha>` for a detached worktree. Stable across scans. */
+export type DebrisId = `x_${string}`;
+
+/**
+ * R13 classes: `branch` abandoned (unmerged, `abandonedDays` old), `merged` (merged into HEAD, or rebased
+ * and merged, and still there), `agent` (an orphaned agent branch or worktree), `pr` (a stale PR; never
+ * produced in v1: PRs aren't read).
+ */
+export type DebrisClass = 'pr' | 'branch' | 'merged' | 'agent';
+
+/**
+ * R13: one stale item, from local git only. A local branch with its remote-tracking copies (its upstream,
+ * or `<remote>/<name>`) is one item, as in `branches[]`; a worktree folds into its branch's item. No path,
+ * email or lock reason is stored.
+ */
+export interface DebrisItem {
+  id: DebrisId;
+  cls: Exclude<DebrisClass, 'pr'>;
+  /** The full refname (`refs/heads/x`, or `refs/remotes/origin/x` for a remote-only one); null for a detached worktree's HEAD. */
+  ref: string | null;
+  /** A remote copy a cleanup may delete: its remote's name and its refname there (`refs/heads/x`). Null when none, or the remote isn't configured. */
+  remote: { name: string; ref: string } | null;
+  tip: Sha;
+  /** The tip's committer date. */
+  lastCommitDate: IsoUtc;
+  /** `max(0, floor((HEAD's committer time − the tip's) / 1 day))`. */
+  ageDays: number;
+  /** Commits on it HEAD doesn't have (0 when merged). */
+  aheadCount: number;
+  /** Added plus removed lines over those commits (no merges, no binaries, no excluded paths); 0 when merged. */
+  lines: number;
+  /** Sorted ids of the snapshot files its own commits change (a merged item: its tip's first-parent change). */
+  files: FileId[];
+  /** Those changed paths with no snapshot file (deleted since, new on the branch). Excluded paths aren't counted. */
+  filesOutside: number;
+  /** The tip's subject, paths redacted as `Commit.subject`. */
+  subject: string;
+  /** The mailmapped author of its oldest commit HEAD lacks, else of the tip; `self`: one of your emails; `agent`: `isAgentAuthor`. */
+  creator: { name: string; self: boolean; agent: boolean };
+  /** Sorted keys of the sessions whose `branch` is this local branch. */
+  sessions: SessionKey[];
+  /**
+   * The worktree it is checked out in: `prunable` (its folder is gone), `locked`, and `folder`, its path's
+   * last component when no other worktree's is the same (git accepts it in `git worktree remove`), else null.
+   */
+  worktree: { prunable: boolean; locked: boolean; folder: string | null } | null;
+  /** Not an ancestor of HEAD, but `git cherry HEAD <tip>` marks every commit `-` (its upstream is gone). */
+  rebased: boolean;
+  /** uint32 of sha256(id). */
+  seed: number;
+}
+
+/** R13: the stale work, its settings recorded beside it (contract `DEBRIS`). Absent in a snapshot scanned before R13. */
+export interface Debris {
+  settings: { abandonedDays: number; mergedGraceDays: number; agentDays: number };
+  /** The default branch names never counted (the remotes' HEADs, else `init.defaultBranch`, else `main` and `master`), sorted. */
+  defaults: string[];
+  /** Sorted by id. */
+  items: DebrisItem[];
+  /** Refs or worktrees whose reads failed, left out and counted (Rule 1). */
+  unreadable: number;
+}
+
 export interface SnapshotV02 {
   schemaVersion: '0.2';
   generator: { name: 'commet'; version: string };
@@ -230,4 +293,6 @@ export interface SnapshotV02 {
   sessions: Session[];
   /** #211: absent in a snapshot scanned before it. */
   cochange?: CoChange;
+  /** R13: absent in a snapshot scanned before it. */
+  debris?: Debris;
 }
