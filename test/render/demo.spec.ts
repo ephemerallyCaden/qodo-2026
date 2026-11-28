@@ -7,6 +7,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { expect, test, type Page } from '@playwright/test';
+import type { DiffView, UnseenFile, UnseenList } from '../../src/core/contract/api.js';
+import type { FogCounts, FogView } from '../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { DEFAULT_BASE, DEMO_DIST, ROOT, siteHits } from '../../web/demo/site.js';
 import { coverage, type Frame } from './frame.js';
@@ -16,10 +18,28 @@ const ORIGIN = 'http://demo.commet.test';
 const SITE = join(ROOT, DEMO_DIST);
 const MIME: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
 
-/** The dataset's layout, as the site bakes it: what the info panel must say about a planet. */
-function bakedLayout(): LayoutV1 {
+/** A route's baked answer, as the site serves it, or null when the dataset doesn't have it. */
+function baked<T>(route: string): T | null {
   const manifest = JSON.parse(readFileSync(join(SITE, 'data/manifest.json'), 'utf8')) as { routes: Record<string, string> };
-  return JSON.parse(readFileSync(join(SITE, 'data', manifest.routes['/api/layout']!), 'utf8')) as LayoutV1;
+  const file = manifest.routes[route];
+  return file === undefined ? null : JSON.parse(readFileSync(join(SITE, 'data', file), 'utf8')) as T;
+}
+/** The dataset's layout: what the info panel must say about a planet. */
+const bakedLayout = () => baked<LayoutV1>('/api/layout')!;
+
+/** The first planet the dataset can be reviewed on: a fogged file in its unseen list with a whole text diff (opening it charts it). */
+function reviewable(): { index: number; path: string; dirId: string; file: UnseenFile; counts: FogCounts } | null {
+  const layout = bakedLayout(), fog = baked<FogView>('/api/fog')!;
+  for (const [index, p] of layout.planets.entries()) {
+    const list = baked<UnseenList>(`/api/unseen?home=${p.dirId}`);
+    const file = list?.files[0];
+    const diff = file ? baked<DiffView>(`/api/diff?fileId=${file.fileId}`) : null;
+    const counts = fog.planets.find((c) => c.dirId === p.dirId);
+    if (file && diff && counts && !diff.truncated && diff.sections.length > 0 && diff.sections.every((x) => !x.binary && x.hunks.length > 0)) {
+      return { index, path: p.path, dirId: p.dirId, file, counts };
+    }
+  }
+  return null;
 }
 
 interface Visit { page: Page; offsite: string[]; requests: { method: string; path: string }[]; errors: string[] }
@@ -167,5 +187,38 @@ test.describe('demo site', () => {
     await expect(page.locator('#status')).toContainText(`focused ${p.path}`);
     expect(v.offsite).toEqual([]);
     expect(v.errors).toEqual([]);
+  });
+
+  test('reviewing a file charts it: the fog over its planet thins, and a note becomes a beacon, all in the page', async ({ page }) => {
+    const r = reviewable();
+    test.skip(r === null, 'the dataset has no planet with an unseen file and its diff');
+    const v = await visit(page);
+    await play(v);
+    await page.keyboard.press('Escape'); // the legend
+    const files = (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`;
+    const fogLine = (fogged: number, haze: number) => `uncharted: ${fogged} of ${files(r!.counts.total)}; ${haze} misted (read)`;
+    for (let i = 0; i <= r!.index; i++) await page.locator('#view').press(']');
+    await expect(page.locator('#status')).toContainText(`focused ${r!.path}`);
+    await expect(page.locator('#summary')).toContainText(fogLine(r!.counts.fogged, r!.counts.haze));
+    // the review panel lists the planet's unseen files; opening one shows its diff and marks it read
+    const panel = page.locator('#panel');
+    await panel.locator(`button[data-key="file:${r!.file.fileId}"]`).click();
+    await expect(panel.locator('pre.diff')).toBeVisible();
+    await expect(page.locator('#summary')).toContainText(fogLine(r!.counts.fogged - 1, r!.counts.haze + 1));
+    // Chart with a captain's log note: the note is left as a beacon
+    await panel.locator('input[data-key="note"]').fill('the entry point');
+    await panel.locator('button[data-key="chart"]').click();
+    await expect(page.locator('#status')).toContainText(`left a beacon: the entry point`);
+    await expect(panel.locator(`button[data-key="file:${r!.file.fileId}"]`)).toHaveCount(0);
+    // Nothing was sent: every request was a GET of the site's own files
+    expect(v.requests.filter((q) => q.method !== 'GET' || !q.path.startsWith(DEFAULT_BASE))).toEqual([]);
+    expect(v.offsite).toEqual([]);
+    expect(v.errors).toEqual([]);
+    // and a reload starts from the dataset again
+    await page.reload();
+    await play(v);
+    await page.keyboard.press('Escape');
+    for (let i = 0; i <= r!.index; i++) await page.locator('#view').press(']');
+    await expect(page.locator('#summary')).toContainText(fogLine(r!.counts.fogged, r!.counts.haze));
   });
 });

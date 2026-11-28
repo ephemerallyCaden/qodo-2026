@@ -170,7 +170,10 @@ export class Legend {
       dt.append(name, pics);
       const dd = document.createElement('dd');
       dd.textContent = e.text;
-      list.append(dt, dd);
+      const entry = document.createElement('div'); // a name-value group, which a <dl> may hold
+      entry.className = 'entry';
+      entry.append(dt, dd);
+      list.append(entry);
     }
     const how = document.createElement('p');
     how.className = 'how';

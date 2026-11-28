@@ -82,5 +82,6 @@ export function libraryRuns(): Set<string> {
  */
 export function siteHits(dir: string): Hit[] {
   const literals = [{ name: 'home folder', value: homedir() }, { name: 'checkout path', value: ROOT }].filter((l) => l.value.length > 1);
-  return bundleHits('demo', siteFiles(dir), { literals, library: libraryRuns() });
+  // bundleHits names the product's folder in each hit's place; this scan is of the demo's
+  return bundleHits('demo', siteFiles(dir), { literals, library: libraryRuns() }).map((h) => ({ ...h, where: h.where.replace("build's dist/web", `build's ${DEMO_DIST}`) }));
 }

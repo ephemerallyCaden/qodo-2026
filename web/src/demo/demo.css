@@ -32,7 +32,7 @@
 #demo-badge a { line-height: 0; padding: 2px 0; }
 
 /* The legend: bottom centre above the badge, so the star stays in view; it scrolls on a short screen. */
-#demo-legend { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); box-sizing: border-box; width: min(88ch, calc(100vw - 16px));
+#demo-legend { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); box-sizing: border-box; width: min(118ch, calc(100vw - 16px));
   max-height: min(62vh, calc(100vh - 96px)); overflow: auto; padding: 10px 12px; background: var(--space); border: 1px solid var(--rule); color: var(--ink); z-index: 1; }
 #demo-legend[hidden] { display: none; }
 #demo-legend:focus-visible { outline: 2px solid var(--accent); }
@@ -40,8 +40,9 @@
 #demo-legend h2 { margin: 0; }
 #demo-legend .top button { background: var(--space); border: 1px solid var(--rule); padding: 2px 5px; cursor: pointer; line-height: 0; }
 #demo-legend .top button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-#demo-legend dl { display: grid; grid-template-columns: minmax(16ch, max-content) 1fr; gap: 8px 14px; margin: 0; align-items: start; }
-#demo-legend dt { display: flex; flex-direction: column; gap: 4px; }
+#demo-legend dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(34ch, 100%), 1fr)); gap: 10px 18px; margin: 0; }
+#demo-legend .entry { display: flex; flex-direction: column; gap: 4px; }
+#demo-legend dt { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 4px 10px; }
 #demo-legend dd { margin: 0; color: var(--ink); }
 #demo-legend .pics { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; }
 #demo-legend .pic { display: flex; flex-direction: column; align-items: center; gap: 2px; }
@@ -49,6 +50,5 @@
 #demo-legend .cap { color: var(--dim); font-size: 10px; line-height: 1; }
 #demo-legend .how { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--rule); color: var(--dim); }
 @media (max-width: 720px) {
-  #demo-legend dl { grid-template-columns: 1fr; }
-  #demo-legend { bottom: 40px; max-height: 50vh; }
+  #demo-legend { max-height: 50vh; }
 }
