@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { bundleHits, tokenRuns, type Hit } from '../../.claude/skills/visual-proof/scripts/privacy.js';
 import { API } from '../../src/core/contract/api.js';
 import { palette } from '../../src/core/palette.js';
-import { checkManifest, MANIFEST_SCHEMA, type DemoManifest } from '../src/demo/source.js';
+import { checkManifest, MANIFEST_SCHEMA, routeKey, type DemoManifest } from '../src/demo/source.js';
 
 export const ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/[\\/]$/, '');
 /** Where `npm run build:demo` writes the site: the folder the lead publishes to the gh-pages branch. */
@@ -18,7 +18,7 @@ export const DEFAULT_BASE = '/qodo-2026/';
 /** A dataset: a folder of JSON files and the manifest naming which route each one answers. */
 export interface Dataset { name: string; dir: string; manifest: DemoManifest }
 
-/** The contract's `mini` fixture, until the showcase fixture lands: what every view route it has answers. */
+/** The contract's `mini` fixture: the dataset when the showcase fixture isn't in the tree. */
 export const MINI: Dataset = {
   name: 'mini',
   dir: join(ROOT, 'test/fixtures/contract'),
@@ -27,9 +27,56 @@ export const MINI: Dataset = {
   } },
 };
 
-/** The dataset in `dir` (its `manifest.json`), or `mini` when none is given. Throws on a bad manifest or file. */
+/** The showcase fixture's data (live-demo L1, test/fixtures/showcase): the demo's dataset whenever it's in the tree. */
+export const SHOWCASE_DIR = 'test/fixtures/showcase/data';
+/** Its index (`ShowcaseManifest`, test/fixtures/showcase/manifest.ts). */
+export const SHOWCASE_INDEX = 'showcase.manifest.json';
+
+/**
+ * A showcase index (`showcase.1`: the plain routes, then one map per item route, id → file) as the demo's
+ * manifest, each item keyed as the client asks for it. Throws on anything else.
+ */
+export function fromShowcase(v: unknown): { head: string; manifest: DemoManifest } {
+  const o = v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+  if (o['schemaVersion'] !== 'showcase.1') throw new Error('demo data: the showcase index must be "showcase.1"');
+  if (typeof o['head'] !== 'string') throw new Error('demo data: the showcase index has no head');
+  const map = (key: string): Record<string, unknown> => {
+    const m = o[key];
+    if (m === null || typeof m !== 'object' || Array.isArray(m)) throw new Error(`demo data: the showcase index's ${key} must be an object`);
+    return m as Record<string, unknown>;
+  };
+  const routes: Record<string, unknown> = { ...map('routes') };
+  for (const [key, path] of [['droneDetail', API.droneDetail], ['crewDetail', API.crewDetail], ['unseen', API.unseen], ['diff', API.diff]] as const) {
+    for (const [id, file] of Object.entries(map(key))) routes[routeKey(path, id)] = file;
+  }
+  return { head: o['head'], manifest: checkManifest({ schemaVersion: MANIFEST_SCHEMA, routes }) };
+}
+
+/**
+ * The dataset in `dir`: a demo manifest (`manifest.json`) or a showcase index (`showcase.manifest.json`, in
+ * it or in its `data/`). With none given, the showcase fixture when it's in the tree, else `mini`. Every
+ * file it names is read and checked here, so a bad dataset stops the build. A showcase's files must all be
+ * of its head.
+ */
 export function dataset(dir?: string): Dataset {
-  const d = dir ? { name: relative(ROOT, resolve(ROOT, dir)), dir: resolve(ROOT, dir), manifest: checkManifest(JSON.parse(readFileSync(join(resolve(ROOT, dir), 'manifest.json'), 'utf8'))) } : MINI;
+  const showcase = (at: string): Dataset => {
+    const { head, manifest } = fromShowcase(JSON.parse(readFileSync(join(at, SHOWCASE_INDEX), 'utf8')));
+    const d = { name: relative(ROOT, at) || at, dir: at, manifest };
+    const fogHead = (JSON.parse(dataFile(d, manifest.routes[API.fog]!)) as { head?: unknown }).head;
+    if (fogHead !== head) throw new Error(`demo data: the showcase's fog is of ${String(fogHead)}, but its index says ${head}`);
+    return d;
+  };
+  let d: Dataset;
+  if (dir === undefined || dir === '') {
+    const at = join(ROOT, SHOWCASE_DIR);
+    d = existsSync(join(at, SHOWCASE_INDEX)) ? showcase(at) : MINI;
+  } else {
+    const at = resolve(ROOT, dir);
+    if (existsSync(join(at, 'manifest.json'))) d = { name: relative(ROOT, at) || at, dir: at, manifest: checkManifest(JSON.parse(readFileSync(join(at, 'manifest.json'), 'utf8'))) };
+    else if (existsSync(join(at, SHOWCASE_INDEX))) d = showcase(at);
+    else if (existsSync(join(at, 'data', SHOWCASE_INDEX))) d = showcase(join(at, 'data'));
+    else throw new Error(`demo data: ${dir} has no manifest.json or ${SHOWCASE_INDEX}`);
+  }
   for (const file of new Set(Object.values(d.manifest.routes))) dataFile(d, file);
   return d;
 }

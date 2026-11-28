@@ -4,8 +4,9 @@
 // `data/`: the files its manifest names and nothing else. The build ends with the visual-proof privacy
 // scan over everything it wrote and removes the site on any hit, so a site that exists passed it.
 //
-//   DEMO_DATA=<folder with manifest.json>   the dataset (default: the contract's mini fixture)
-//   DEMO_BASE=/qodo-2026/                    the path Pages serves it at
+//   DEMO_DATA=<folder>       the dataset: a manifest.json or a showcase index (default: the showcase
+//                            fixture, test/fixtures/showcase, when it's in the tree; else the mini fixture)
+//   DEMO_BASE=/qodo-2026/    the path Pages serves it at
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';

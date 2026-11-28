@@ -12,7 +12,7 @@ import type { FogCounts, FogView } from '../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { DEFAULT_BASE, DEMO_DIST, ROOT, siteHits } from '../../web/demo/site.js';
 import { coverage, type Frame } from './frame.js';
-import { BLANK } from './thresholds.js';
+import { BLANK, OVERVIEW } from './thresholds.js';
 
 const ORIGIN = 'http://demo.commet.test';
 const SITE = join(ROOT, DEMO_DIST);
@@ -104,10 +104,11 @@ function screenshotPixels(png: Buffer): Frame {
 async function shot(page: Page): Promise<Frame> {
   return screenshotPixels(await page.locator('#view').screenshot({ animations: 'disabled' }));
 }
+/** A whole system from its start pose isn't blank: the overview floor (system-design §10; the 5% one is for the golden fixtures), and 12 colours. */
 const notBlank = (f: Frame) => {
   const { colours, nonSpace } = coverage(f);
   expect(colours, 'unique colours in the view').toBeGreaterThanOrEqual(BLANK.minColours);
-  expect(nonSpace / (f.width * f.height), 'share of the view off the space colour').toBeGreaterThanOrEqual(BLANK.minNonSpaceFraction);
+  expect(nonSpace / (f.width * f.height), 'share of the view off the space colour').toBeGreaterThanOrEqual(OVERVIEW.minNonSpaceFraction);
 };
 const same = (a: Frame, b: Frame) => a.width === b.width && a.height === b.height && Buffer.from(a.rgba).equals(Buffer.from(b.rgba));
 

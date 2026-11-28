@@ -2,7 +2,7 @@
 // writes kept in memory with the answers the real server would give after them, and nothing fetched for
 // a write or from another origin. Plus the build's boundaries: the product never imports the demo, and
 // the demo page carries every element the view needs.
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { API, type DiffView, type LiveEvent, type UnseenList } from '../../src/core/contract/api.js';
@@ -12,6 +12,7 @@ import type { FogView } from '../../src/core/contract/fog.js';
 import { ViewError } from '../../web/src/data/client.js';
 import { demoClient } from '../../web/src/demo/client.js';
 import { checkManifest, MANIFEST_SCHEMA, memorySource, routeKey, staticSource, unseenKey, type DemoManifest } from '../../web/src/demo/source.js';
+import { dataset as siteDataset, SHOWCASE_DIR, SHOWCASE_INDEX } from '../../web/demo/site.js';
 import { miniCrew, miniDrones, miniFog, miniLayout } from '../fixtures/contract/mini.js';
 
 const ROOT = join(import.meta.dirname, '../..');
@@ -280,3 +281,38 @@ describe('demo build boundaries', () => {
     expect(product.filter((id) => !demo.has(id))).toEqual([]);
   });
 });
+
+// The dataset the site bakes by default (DEMO_DATA, as the build takes it, points it elsewhere): every route
+// its manifest names answers through the client, and every fogged file can be reviewed and charted.
+const SHOWCASE = process.env['DEMO_DATA'] ?? (existsSync(join(ROOT, SHOWCASE_DIR, SHOWCASE_INDEX)) ? SHOWCASE_DIR : undefined);
+describe.skipIf(SHOWCASE === undefined)('the showcase dataset, through the demo client', () => {
+  it('answers every route it names, and can chart every fogged file', async () => {
+    const d = siteDataset(SHOWCASE);
+    const files = Object.fromEntries([...new Set(Object.values(d.manifest.routes))].map((f) => [f, readFileSync(join(d.dir, f), 'utf8')]));
+    const c = demoClient(memorySource(d.manifest, files));
+    const [layout, fog] = await Promise.all([c.layout(), c.fog()]);
+    expect(fog.head).toBe(layout.source.head);
+    for (const v of await Promise.all([c.drones(), c.crew(), c.beacons(), c.cochange(), c.files()])) expect(v.head).toBe(fog.head);
+    const item = (path: string) => Object.keys(d.manifest.routes).filter((k) => k.startsWith(`${path}?`)).map((k) => [...new URLSearchParams(k.slice(path.length + 1)).values()][0]!);
+    for (const key of item(API.droneDetail)) expect(await c.droneDetail(key as `s_${string}`, fog.head), key).toMatchObject({ ok: true });
+    for (const person of item(API.crewDetail)) expect(await c.crewDetail(person as `p_${string}`, fog.head), person).toMatchObject({ ok: true });
+    for (const fileId of item(API.diff)) expect(await c.diff(fileId as `f_${string}`, fog.head), fileId).toMatchObject({ ok: true });
+    const unseen = new Set<string>();
+    for (const home of [null, ...fog.planets.map((p) => p.dirId)]) {
+      const r = await c.unseen(home, fog.head);
+      expect(r.ok, String(home)).toBe(true);
+      for (const f of (r as UnseenList).files) unseen.add(f.fileId);
+    }
+    expect([...unseen].sort()).toEqual(fog.files.filter((f) => f.state === 'fogged').map((f) => f.fileId).sort());
+    // charting every fogged file leaves nothing fogged, and every count where the server would put it
+    for (const fileId of unseen) expect(await c.chart({ kind: 'chart', fileId: fileId as `f_${string}`, at: fog.head }), fileId).toMatchObject({ ok: true });
+    const after = await c.fog();
+    expect(after.files.filter((f) => f.state === 'fogged')).toEqual([]);
+    expect([...after.planets.map((p) => p.fogged), after.star.fogged]).toEqual([...fog.planets.map(() => 0), 0]);
+    expect(after.planets.map((p) => p.haze + p.clear)).toEqual(fog.planets.map((p) => p.total));
+    // a flag stands until its own file is charted (one of them is on a misted file, never fogged)
+    for (const f of (await c.cochange()).flags) expect(await c.chart({ kind: 'chart', fileId: f.fileId, at: fog.head })).toMatchObject({ ok: true });
+    expect((await c.cochange()).flags).toEqual([]);
+  });
+});
+
