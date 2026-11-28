@@ -106,6 +106,52 @@ describe('monitoring/checkly/scripts/checkly.sh', () => {
     }
   });
 
+  /**
+   * A copy of the monitor's folder (its package.json and the script) with, as asked, a fake installed CLI
+   * that reports `version` and records how it was run, and a fake `npx` on PATH that records any call.
+   */
+  const project = (cli: string | null) => {
+    const dir = tempDir('commet-checkly-project-');
+    mkdirSync(join(dir, 'scripts'));
+    writeFileSync(join(dir, 'scripts/checkly.sh'), readFileSync(SCRIPT));
+    writeFileSync(join(dir, 'package.json'), readFileSync(join(MONITORING, 'checkly/package.json')));
+    const record = join(dir, 'ran.txt');
+    const bin = join(dir, 'fake-bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'npx'), `#!/bin/sh\necho "npx $*" >> "${record}"\n`);
+    chmodSync(join(bin, 'npx'), 0o755);
+    if (cli !== null) {
+      mkdirSync(join(dir, 'node_modules/.bin'), { recursive: true });
+      writeFileSync(join(dir, 'node_modules/.bin/checkly'), `#!/bin/sh\nif [ "$1" = --version ]; then echo "checkly/${cli} linux-x64 node-v22.13.0"; exit 0; fi\n` +
+        `echo "checkly $* drill=\${CHECKLY_FAIL_DRILL:-} key=\${#CHECKLY_API_KEY}" >> "${record}"\n`);
+      chmodSync(join(dir, 'node_modules/.bin/checkly'), 0o755);
+    }
+    const go = (cmd: string) => spawnSync('sh', [join(dir, 'scripts/checkly.sh'), cmd], { encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}:${process.env['PATH'] ?? ''}`, CHECKLY_ENV_FILE: keyFile(0o600) } });
+    return { go, ran: () => (existsSync(record) ? readFileSync(record, 'utf8') : '') };
+  };
+  const pinned = (JSON.parse(readFileSync(join(MONITORING, 'checkly/package.json'), 'utf8')) as { devDependencies: Record<string, string> }).devDependencies['checkly']!;
+
+  it('deploys only with the folder\'s own pinned CLI, never one npx would fetch (Qodo PR256 59c5ca8d)', () => {
+    // not installed: refused before the key is read, and npx is never asked
+    const bare = project(null);
+    for (const cmd of ['deploy', 'drill', 'restore']) {
+      const r = bare.go(cmd);
+      expect(r.status, cmd).toBe(2);
+      expect(r.stderr, cmd).toMatch(/npm ci/);
+    }
+    expect(bare.ran()).toBe('');
+    // installed at another version: refused too
+    const other = project('9.9.9');
+    expect(other.go('deploy').status).toBe(2);
+    expect(other.ran()).toBe('');
+    // the pinned one: run with the key in its environment, the drill flag only for the drill
+    const ok = project(pinned);
+    for (const cmd of ['deploy', 'drill', 'restore']) expect(ok.go(cmd).status, cmd).toBe(0);
+    expect(ok.ran().trim().split('\n')).toEqual([
+      `checkly deploy --force drill= key=${secret.length}`, `checkly deploy --force drill=1 key=${secret.length}`, `checkly deploy --force drill= key=${secret.length}`]);
+  });
+
   it('takes a 0600 key file and names what it sets, never printing a value', () => {
     const r = run(keyFile(0o600));
     expect(r.status, r.stderr).toBe(0);

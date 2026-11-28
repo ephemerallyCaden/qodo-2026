@@ -12,7 +12,7 @@ A Checkly browser check, as code, of the public demo at https://ephemerallycaden
 2. Play starts the live view: the screen-reader summary describes the system, and the badge says `Demo: invented data`;
 3. the canvas isn't blank: at least 12 colours, and at least 0.5% of it off the space colour (the render tests' floors);
 4. `]` focuses the first planet: the status line says `focused <path>`, and the summary gives its path and its exact `N files on the surface`. Both values come from the site's own baked data (`data/manifest.json`, then the layout it names), never from numbers written here;
-5. no page or console errors, and no request to any origin but the site's own.
+5. no page or console errors, and no request to any origin but the site's own: one is stopped before it leaves the browser, and fails the check. The data it reads is only the site's own `data/*.json`.
 
 **Schedule:** hourly, from one location (`us-east-1`). That's about 730 browser-check runs a month. Check it against the browser-run quota of the Checkly plan in use; the Hobby plan was the target. Checkly's runtime `2025.04` fixes the Playwright and browser versions it runs with.
 
@@ -31,7 +31,7 @@ touch ~/.config/commet/checkly.env && chmod 600 ~/.config/commet/checkly.env
 #   CHECKLY_ALERT_EMAIL=<where the alerts go>
 ```
 
-`scripts/checkly.sh` refuses to run unless the file is a plain file (not a symlink) of mode `600`. It reads it as `KEY=value` lines for those three keys only, so the file is never sourced or run. It never prints a value. `npm run env-check` confirms the file is right without deploying anything.
+`scripts/checkly.sh` refuses to run unless the file is a plain file (not a symlink) of mode `600`. It reads it as `KEY=value` lines for those three keys only, so the file is never sourced or run. It never prints a value. `deploy`, `drill` and `restore` run only this folder's own `node_modules/.bin/checkly`, at the version pinned in `package.json`; they refuse, before reading the key, when it isn't installed (`npm ci` here first), so the key never reaches a CLI that npx fetched. `npm run env-check` confirms the file is right without deploying anything.
 
 ## Commands
 

@@ -6,7 +6,8 @@
 #   sh scripts/checkly.sh restore     a normal deploy again, which removes the drill check
 # The file is ~/.config/commet/checkly.env (CHECKLY_ENV_FILE moves it). It must be a plain file of mode
 # 0600, and is read as KEY=value lines for three keys only; it is never sourced or run, and no value is
-# ever printed. Exit 2: refused (usage, or the file).
+# ever printed. deploy, drill and restore run only this folder's own CLI at its pinned version (npm ci here
+# first). Exit 2: refused (usage, the CLI, or the file).
 set -eu
 
 KEYS='CHECKLY_API_KEY CHECKLY_ACCOUNT_ID CHECKLY_ALERT_EMAIL'
@@ -17,6 +18,18 @@ case ${1:-} in
   env-check|deploy|drill|restore) cmd=$1 ;;
   *) refuse "usage: sh scripts/checkly.sh env-check|deploy|drill|restore" ;;
 esac
+
+cd "$(dirname "$0")/.."
+
+# Only this folder's own CLI, at its pinned version, ever gets the key (Qodo PR256 59c5ca8d): never one that
+# npx would fetch because nothing is installed here. Checked before the key file is read.
+CLI=node_modules/.bin/checkly
+if [ "$cmd" != env-check ]; then
+  [ -x "$CLI" ] || refuse "the checkly CLI isn't installed here: run npm ci in monitoring/checkly first"
+  want=$(node -p 'require("./package.json").devDependencies.checkly')
+  have=$("$CLI" --version 2>/dev/null | sed -n 's|^checkly/\([^ ]*\).*|\1|p' | head -n 1)
+  [ "$have" = "$want" ] || refuse "the installed checkly CLI is ${have:-unknown}, not the pinned $want: run npm ci in monitoring/checkly"
+fi
 
 [ -L "$FILE" ] && refuse "the key file is a symlink; it must be a plain file"
 [ -f "$FILE" ] || refuse "no key file at $FILE: create it (mode 0600) with $KEYS"
@@ -43,9 +56,8 @@ for k in $KEYS; do
 done
 [ -z "$missing" ] || refuse "the key file doesn't set:$missing"
 
-cd "$(dirname "$0")/.."
 case $cmd in
   env-check) echo "checkly.sh: $FILE is mode 600 and sets $KEYS" ;;
-  deploy|restore) unset CHECKLY_FAIL_DRILL; exec npx checkly deploy --force ;;
-  drill) CHECKLY_FAIL_DRILL=1 exec npx checkly deploy --force ;;
+  deploy|restore) unset CHECKLY_FAIL_DRILL; exec "$CLI" deploy --force ;;
+  drill) CHECKLY_FAIL_DRILL=1 exec "$CLI" deploy --force ;;
 esac
