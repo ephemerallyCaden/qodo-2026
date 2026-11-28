@@ -29,13 +29,50 @@ const committed = (): Map<string, string> =>
   new Map(readdirSync(DATA).filter((n) => n.endsWith('.json')).sort().map((n) => [n, readFileSync(join(DATA, n), 'utf8')]));
 const read = <T>(name: string): T => JSON.parse(readFileSync(join(DATA, name), 'utf8')) as T;
 
+const REAL_HOME = homedir();
+const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).split('\n').filter(Boolean);
+/** What a build could change in a repo: its refs, its local config and its index. */
+const repoState = (dir: string) => [git(dir, 'for-each-ref'), git(dir, 'config', '--local', '--list'), git(dir, 'ls-files', '--stage')];
+
+/**
+ * A hostile environment (Qodo PR #247 c45b5bc3, ea0b7d05): GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE point at a
+ * decoy repo, and HOME at a git config (the real ones included, so their hooks still run) whose new repos default
+ * to SHA-256. The build must leave the decoy alone and still produce the committed bytes.
+ */
+function hostileEnv(decoy: string, home: string): Record<string, string> {
+  const xdg = process.env['XDG_CONFIG_HOME'] || join(REAL_HOME, '.config');
+  writeFileSync(join(home, '.gitconfig'),
+    `[include]\n\tpath = ${join(REAL_HOME, '.gitconfig')}\n\tpath = ${join(xdg, 'git', 'config')}\n[init]\n\tdefaultObjectFormat = sha256\n`);
+  return { GIT_DIR: join(decoy, '.git'), GIT_WORK_TREE: decoy, GIT_INDEX_FILE: join(decoy, '.git', 'index'), HOME: home };
+}
+
 describe('showcase fixture build', () => {
   let fresh: Map<string, string>;
   let work: string;
+  let home: string;
   let repoDir: string;
+  let decoy: string;
+  let decoyBefore: string[][];
   beforeAll(async () => {
+    decoy = realTempDir('commet-showcase-decoy-');
+    git(decoy, 'init', '-q', '-b', 'main');
+    writeFileSync(join(decoy, 'keep.txt'), 'the decoy repo\n');
+    git(decoy, 'add', 'keep.txt');
+    git(decoy, '-c', 'user.name=Decoy', '-c', 'user.email=decoy@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'decoy');
+    decoyBefore = repoState(decoy);
+    home = realTempDir('commet-showcase-home-');
     work = realTempDir('commet-showcase-');
-    ({ files: fresh, repoDir } = await buildShowcase(work));
+    const env = hostileEnv(decoy, home);
+    const saved = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, env);
+    try {
+      ({ files: fresh, repoDir } = await buildShowcase(work));
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
     if (process.env['UPDATE_GOLDEN']) {
       mkdirSync(DATA, { recursive: true });
       for (const name of committed().keys()) rmSync(join(DATA, name));
@@ -49,15 +86,22 @@ describe('showcase fixture build', () => {
     for (const [name, text] of fresh) expect(text, name).toBe(want.get(name));
   });
 
+  it('leaves the repo that GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE point at untouched', () => {
+    expect(repoState(decoy)).toEqual(decoyBefore);
+  });
+
+  it('makes SHA-1 commits whatever init.defaultObjectFormat says', () => {
+    expect(git(repoDir, 'rev-parse', '--show-object-format')).toEqual(['sha1']);
+  });
+
   it('never names the temp dir it was built in, nor HOME', () => {
-    const literals = [{ name: 'build dir', value: work }, { name: 'HOME', value: homedir() }];
+    const literals = [{ name: 'build dir', value: work }, { name: 'HOME', value: REAL_HOME }, { name: 'build HOME', value: home }];
     expect(privacyHits([...fresh].map(([where, text]) => ({ where, text })), { literals })).toEqual([]);
   });
 
   it('has the three stale branches debris will draw: abandoned, merged but not deleted, an orphaned agent branch', () => {
-    const git = (...args: string[]) => execFileSync('git', args, { cwd: repoDir, encoding: 'utf8' }).split('\n').filter(Boolean);
-    expect(git('for-each-ref', '--format=%(refname:short)', '--no-merged=main', 'refs/heads')).toEqual(['claude/legacy-cleanup', 'feature/csv-export']);
-    expect(git('for-each-ref', '--format=%(refname:short)', '--merged=main', 'refs/heads')).toEqual(['fix/tax-rounding', 'main']);
+    expect(git(repoDir, 'for-each-ref', '--format=%(refname:short)', '--no-merged=main', 'refs/heads')).toEqual(['claude/legacy-cleanup', 'feature/csv-export']);
+    expect(git(repoDir, 'for-each-ref', '--format=%(refname:short)', '--merged=main', 'refs/heads')).toEqual(['fix/tax-rounding', 'main']);
   });
 });
 

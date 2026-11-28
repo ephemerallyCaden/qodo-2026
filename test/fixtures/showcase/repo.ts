@@ -127,9 +127,12 @@ export async function buildShowcaseRepo(work: string): Promise<ShowcaseRepo> {
   const dir = join(work, 'repo');
   const claudeDir = join(work, 'claude');
   mkdirSync(dir);
+  // No inherited GIT_* variable: GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE would point these commands at
+  // another repo (Qodo PR #247 c45b5bc3). SHA-1 whatever the machine's init.defaultObjectFormat (ea0b7d05).
+  const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
   const git = async (args: string[], env: Record<string, string> = {}) =>
-    (await run('git', args, { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env } })).stdout.trim();
-  await git(['init', '-q', '-b', 'main']);
+    (await run('git', args, { cwd: dir, encoding: 'utf8', env: { ...clean, ...env } })).stdout.trim();
+  await git(['init', '-q', '-b', 'main', '--object-format=sha1']);
   for (const [k, v] of [['user.name', MARA.name], ['user.email', MARA.email], ['commit.gpgsign', 'false'], ['tag.gpgsign', 'false'],
     ['core.autocrlf', 'false']] as const) await git(['config', k, v]);
 

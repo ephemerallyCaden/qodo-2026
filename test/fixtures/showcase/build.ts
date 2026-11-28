@@ -48,7 +48,26 @@ const okOrThrow = <T extends { ok: boolean }>(what: string, r: T): Extract<T, { 
  * files, name → text, and the scanned repo's folder. Never reads this machine's agent logs: the scan's
  * `CLAUDE_CONFIG_DIR` is the fixture's own.
  */
-export async function buildShowcase(work: string): Promise<{ files: Map<string, string>; repoDir: string }> {
+export function buildShowcase(work: string): Promise<{ files: Map<string, string>; repoDir: string }> {
+  return withoutGitEnv(() => build(work));
+}
+
+/**
+ * Runs `fn` with every GIT_* variable out of process.env, then puts them back. The scan and the state readers
+ * run in this process and hand process.env to git, so GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE would point
+ * them at another repo (Qodo PR #247 c45b5bc3).
+ */
+async function withoutGitEnv<T>(fn: () => Promise<T>): Promise<T> {
+  const saved = Object.entries(process.env).filter(([k]) => k.startsWith('GIT_'));
+  for (const [k] of saved) delete process.env[k];
+  try {
+    return await fn();
+  } finally {
+    for (const [k, v] of saved) process.env[k] = v;
+  }
+}
+
+async function build(work: string): Promise<{ files: Map<string, string>; repoDir: string }> {
   const repo = await buildShowcaseRepo(work);
   writeFileSync(join(stateDir(join(repo.dir, '.git')), 'key'), KEY, { mode: 0o600, flag: 'wx' });
   let err = '';
