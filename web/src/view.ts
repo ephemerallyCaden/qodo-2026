@@ -23,9 +23,11 @@ import { PixelPass } from './render/pixel.js';
 import { DroneFleet, type FleetEntry } from './render/drone-fleet.js';
 import { CrewShip, type Rider } from './render/ship.js';
 import type { ShipSpec } from './render/ship-spec.js';
-import { belowShip, hullOccluders, placeShip, portholes, shipCorners } from './crew/place.js';
+import { belowShip, hullOccluders, placeShip, portholes } from './crew/place.js';
 import { capLabels } from './drones/select.js';
 import { SystemScene } from './render/scene.js';
+import { DebrisState } from './debris/state.js';
+import type { Drawable, Piece } from './debris/place.js';
 import { starOccluders } from './render/corona.js';
 
 import { UI_COLOURS } from './ui/colours.js';
@@ -62,6 +64,11 @@ export class View {
   private readonly fogs = new FogLedger();
   private lastFrame = 0;
   private reduced = false;
+  /**
+   * R13: the bodies drawing debris changed (a body's first piece came, or its last one was swept), so the start pose
+   * that frames their shells moved: a camera still at Home should go there again.
+   */
+  onHomeMoved?: () => void;
   /** Called once each time a fog is applied (applyFog, or load()'s own fog when it wins), never for a stale one. */
   onFog?: (fog: FogView | null) => void;
   /** The drones drawn (#80), kept across layout reloads, and the selected one's session key. */
@@ -79,6 +86,8 @@ export class View {
   /** The selected crew member's person id, and the name shown under their porthole while selected. */
   selectedPerson: string | null = null;
   selectedName = '';
+  /** The debris drawn (R13), kept across layout reloads of the same scan, its sweeps and the selected piece. */
+  readonly debris = new DebrisState();
   /** The beacons drawn (#79), kept across layout reloads of the same scan, and the head they belong to. */
   private beaconView: BeaconView | null = null;
   private beaconHead: string | null = null;
@@ -130,6 +139,7 @@ export class View {
   set reducedMotion(on: boolean) {
     this.reduced = on;
     if (on && this.fogs.settle()) this.pushFog();
+    if (on) this.debris.settle(this.system, this.layoutHead); // a sweep cuts to its end
   }
 
   /** Take one before sending any request whose answer carries a FogView (GET /api/fog, POST /api/chart's ChartResult.fog). */
@@ -170,6 +180,7 @@ export class View {
       next.fleet.set(this.dronesHead === layout.source.head ? this.drones : []);
       next.setCrew(this.crewHead === layout.source.head ? this.crewSeats : []);
       next.beacons.set(this.beaconHead === layout.source.head ? beaconSpots(this.beaconView, next.model).spots : []);
+      this.debris.attach(next, layout.source.head); // R13: this scan's pieces, and its sweeps still running
       next.pose(0, startPose(next.model), this.pass.height);
       // Compile every program up front, hidden ones (small planets' cloud shadows) included, and force
       // three's error check, which it otherwise defers to a program's first draw.
@@ -264,6 +275,18 @@ export class View {
   }
 
   /**
+   * Draws the debris of the scan `head` (R13; debris/state.ts). Over a layout of that scan, a piece drawn before and
+   * gone now breaks apart from the last frame drawn (D6), unless `animate` is off or reduced motion is on. Returns
+   * false, changing nothing, when the drawn layout is of another scan; the debris shader is built with the scene.
+   */
+  setDebris(items: readonly Drawable[], head: string, opts: { animate?: boolean } = {}): boolean {
+    const before = this.system?.model;
+    const ok = this.debris.set(this.system, this.layoutHead, items, head, this.lastFrame, opts.animate !== false && !this.reduced);
+    if (ok && this.system && this.system.model !== before) this.onHomeMoved?.();
+    return ok;
+  }
+
+  /**
    * Draws these beacons (#79; null: none), which belong to the scan `head`. Returns false, changing
    * nothing, when the drawn layout is of another scan (the answer is stale); before any layout they're
    * kept for the first load of that head. The marker's shader is built with the scene, so nothing compiles here.
@@ -334,6 +357,7 @@ export class View {
     SHARED.uDepthOn.value = this.depthFade;
     this.lastFrame = frame;
     if (this.fogs.prune(frame)) this.pushFog();
+    if (this.debris.prepare(s, this.layoutHead!, frame)) this.onHomeMoved?.(); // a body's last piece swept: its shell went
     s.pose(frame, pose, this.pass.height);
     // #211: the constellation's geometry first (its labels go with the others), then the scene, then the
     // overlay fitted around what the scene drew and every label, then the labels.
@@ -376,6 +400,7 @@ export class View {
     const plain = (l: Label & { arrow?: number }): Label => ({ text: l.text, x: l.x, y: l.y, align: l.align, colour: l.colour });
     out.push(...co.slice(0, Math.max(0, MAX_LABELS - out.length - drones.length)).map(plain), ...drones);
     out.push(...this.crewLabels(s, frame, pose, W, H, px).map((l) => this.clear([l], covers, W, H)[0]!));
+    out.push(...this.debris.labels(s, frame, pose, W, H, px).slice(0, Math.max(0, MAX_LABELS - out.length)).map((l) => this.clear([l], covers, W, H)[0]!));
     // the arrows' click boxes (#211): the glyph and its name
     const scale = this.pass.scale;
     this.arrows = plan.arrows.map((a, k) => {
@@ -522,11 +547,12 @@ export class View {
 
   /**
    * The start pose of the system drawn, at `frame` (startPoseAt), with the crew's ship fitted in when one is
-   * drawn (#207: Home always frames it); exactly the layout's own start pose without one. Null before a layout.
+   * drawn (#207: Home always frames it), and every debris shell (R13); exactly the layout's own start pose without
+   * either. Null before a layout.
    */
   homePose(frame = 0): OrbitPose | null {
     const s = this.system;
-    return s ? startPoseAt(s.model, frame, shipCorners(s.model, s.crew.spec)) : null;
+    return s ? startPoseAt(s.model, frame, s.startExtras()) : null; // R13: and every debris shell
   }
 
   /** The ship drawn (#207), or null when nobody is aboard. */
@@ -580,6 +606,20 @@ export class View {
     const drawn = at.flatMap((d, i) => (d ? [i] : []));
     const hit = pick(pose, ndc, drawn.map((i) => at[i]!), [...starBlockers(s, frame), ...s.spheres(frame), ...s.smallBodies(frame), ...hullBlockers(s, frame)], DRONE_MIN_NDC);
     return hit === null ? null : s.fleet.entries[drawn[hit]!]!.key;
+  }
+
+  /** The piece of debris drawn at rest with this id, or null (gone, sweeping, or not on this layout). */
+  debrisPiece(id: string | null): Piece | null {
+    return this.system?.debris.entries.find((e) => e.piece.id === id && e.sweep === null)?.piece ?? null;
+  }
+
+  /** The id of the piece of debris under a point of the view canvas, or null; everything drawn in front hides it, as for drones. */
+  pickDebrisAt(cssX: number, cssY: number, pose: OrbitPose, frame: number): string | null {
+    const s = this.system;
+    if (!s || s.debris.entries.length === 0) return null;
+    const c = this.pass.canvas.getBoundingClientRect();
+    const ndc = { x: (cssX / c.width) * 2 - 1, y: 1 - (cssY / c.height) * 2 };
+    return this.debris.pickAt(s, pose, ndc, frame, [...starBlockers(s, frame), ...s.spheres(frame), ...s.smallBodies(frame), ...hullBlockers(s, frame)]);
   }
 
   /** What focusing planet i targets: its sphere at this frame (the hero framing fills 45% of the frame with it). */

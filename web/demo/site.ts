@@ -8,7 +8,8 @@ import { bundleHits, privacyHits, servedTexts, tokenRuns, type Hit } from '../..
 import { API } from '../../src/core/contract/api.js';
 import { palette } from '../../src/core/palette.js';
 import { checkCrewDetail } from '../src/crew/check.js';
-import { parseBeacons, parseChecked, parseCoChange, parseCrew, parseDrones, parseFog, parseLayout, parseTreeSource } from '../src/data/client.js';
+import { parseBeacons, parseChecked, parseCoChange, parseCrew, parseDebris, parseDrones, parseFog, parseLayout, parseTreeSource } from '../src/data/client.js';
+import { checkDebrisDetail } from '../src/debris/check.js';
 import { checkManifest, MANIFEST_SCHEMA, routeKey, type DemoManifest } from '../src/demo/source.js';
 import { checkDroneDetail } from '../src/drones/check.js';
 import { checkDiff, checkUnseen } from '../src/model/validate.js';
@@ -28,6 +29,7 @@ export const MINI: Dataset = {
   dir: join(ROOT, 'test/fixtures/contract'),
   manifest: { schemaVersion: MANIFEST_SCHEMA, routes: {
     [API.layout]: 'mini.layout.json', [API.fog]: 'mini.fog.json', [API.drones]: 'mini.drones.json', [API.crew]: 'mini.crew.json',
+    [API.debris]: 'mini.debris.json',
   } },
 };
 
@@ -53,6 +55,8 @@ export function fromShowcase(v: unknown): { head: string; manifest: DemoManifest
   for (const [key, path] of [['droneDetail', API.droneDetail], ['crewDetail', API.crewDetail], ['unseen', API.unseen], ['diff', API.diff]] as const) {
     for (const [id, file] of Object.entries(map(key))) routes[routeKey(path, id)] = file;
   }
+  // R13, added to showcase.1 later: an index from before debris has none
+  if (o['debrisDetail'] !== undefined) for (const [id, file] of Object.entries(map('debrisDetail'))) routes[routeKey(API.debrisDetail, id)] = file;
   return { head: o['head'], manifest: checkManifest({ schemaVersion: MANIFEST_SCHEMA, routes }) };
 }
 
@@ -117,6 +121,7 @@ export function datasetProblems(d: Dataset): string[] {
     else if (path === API.beacons) same(route, read(route, (t) => parseBeacons(t, SOURCE))?.head);
     else if (path === API.cochange) same(route, read(route, (t) => parseCoChange(t, SOURCE))?.head);
     else if (path === API.snapshot) same(route, read(route, (t) => parseTreeSource(t, SOURCE))?.head);
+    else if (path === API.debris) same(route, read(route, (t) => parseDebris(t, SOURCE))?.head);
     else if (path === API.unseen) {
       const v = read(route, (t) => parseChecked(t, 'unseen list', SOURCE, checkUnseen));
       success(route, 'unseen list', v);
@@ -132,6 +137,10 @@ export function datasetProblems(d: Dataset): string[] {
     } else if (path === API.crewDetail) {
       const v = read(route, (t) => parseChecked(t, 'crew detail', SOURCE, checkCrewDetail));
       success(route, 'crew detail', v);
+      if (v?.ok) same(route, v.head);
+    } else if (path === API.debrisDetail) {
+      const v = read(route, (t) => parseChecked(t, 'debris detail', SOURCE, checkDebrisDetail));
+      success(route, 'debris detail', v);
       if (v?.ok) same(route, v.head);
     }
   }
@@ -266,7 +275,9 @@ export function siteHits(dir: string): Hit[] {
   // API answer (servedTexts). Placed by the file's name, which the scan above has passed.
   const parsed = files.filter((f) => f.path.endsWith('.json')).flatMap((f) => servedTexts({ path: f.path, body: f.text })
     .map((t) => ({ where: `${place}/${t.where.replace(/^GET /, '')} (as read)`.replace(' (keys) (as read)', ' (as read) (keys)'), text: t.text })));
-  return [...raw, ...privacyHits(parsed, ctx)];
+  // The data gets no library exemption (Qodo PR249 40218c65): three.js's own text is only ever in the bundle, so a
+  // data value that matches a run of it is a token-like string like any other.
+  return [...raw, ...privacyHits(parsed, { literals })];
 }
 
 /**

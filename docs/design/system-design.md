@@ -383,7 +383,7 @@ The default mode is `ortho-snapped` until the human picks. The other two are reg
 | Drones | 1 |
 | Beacons | 1 |
 | Constellations (`LineSegments`) | 1 |
-| Belt and debris | 2 |
+| Belt and debris (R13: one merged body mesh, its outline shell and the nav-light points, whatever the count) | 3 |
 | Stars | 1 |
 | Astronaut (focus only) | 1 |
 

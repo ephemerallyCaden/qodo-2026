@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "schemaVersion": "debris-detail.1",
+  "head": "bfc296837450a831c2704205437ecc4406e1e3b3",
+  "id": "x_d7bcf879dd1d",
+  "cls": "branch",
+  "name": "spike/remote-config",
+  "remoteOnly": false,
+  "ageDays": 190,
+  "lastCommit": {
+    "sha": "617b8bdc3e3dbd87feef21846beb144b75d9ec0e",
+    "short": "617b8bd",
+    "subject": "spike: cache remote settings",
+    "date": "2026-05-12T10:00:00Z"
+  },
+  "aheadCount": 2,
+  "lines": 35,
+  "creator": {
+    "displayName": "Theo Park",
+    "captain": false,
+    "agent": false
+  },
+  "sessions": [],
+  "planets": [
+    "d_959196e6c98c"
+  ],
+  "home": "d_959196e6c98c",
+  "filesOutside": 1,
+  "worktree": {
+    "prunable": true,
+    "locked": false
+  },
+  "rebased": false,
+  "cleanup": "git worktree remove -- 'harbor-spike' && git branch -d -- 'spike/remote-config'",
+  "inspect": "git log --oneline HEAD..'refs/heads/spike/remote-config' --",
+  "warning": "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first"
+}

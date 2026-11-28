@@ -1,0 +1,116 @@
+{
+  "head": "1111111111111111111111111111111111111111",
+  "mass": 13120,
+  "needsRescan": false,
+  "pieces": [
+    {
+      "ageStep": 0,
+      "cls": "branch",
+      "home": "d_00000000000a",
+      "id": "x_05d1a7c3e902",
+      "lines": 2400,
+      "seed": 1828307911
+    },
+    {
+      "ageStep": 1,
+      "cls": "agent",
+      "home": "d_00000000000a",
+      "id": "x_1b7e2f40c6a1",
+      "lines": 860,
+      "seed": 3061195318
+    },
+    {
+      "ageStep": 0,
+      "cls": "merged",
+      "home": "d_00000000000a",
+      "id": "x_24c9e0b18d37",
+      "lines": 0,
+      "seed": 694522017
+    },
+    {
+      "ageStep": 2,
+      "cls": "branch",
+      "home": "d_00000000000a",
+      "id": "x_3f60a2d9b415",
+      "lines": 5200,
+      "seed": 2747130981
+    },
+    {
+      "ageStep": 0,
+      "cls": "agent",
+      "home": "d_00000000000a",
+      "id": "x_4a2c81e7f053",
+      "lines": 140,
+      "seed": 412887360
+    },
+    {
+      "ageStep": 2,
+      "cls": "merged",
+      "home": "d_00000000000a",
+      "id": "x_58e3b6014ca9",
+      "lines": 0,
+      "seed": 3989130475
+    },
+    {
+      "ageStep": 1,
+      "cls": "branch",
+      "home": "d_00000000000c",
+      "id": "x_6c04d97a2e18",
+      "lines": 980,
+      "seed": 1540286223
+    },
+    {
+      "ageStep": 1,
+      "cls": "merged",
+      "home": "d_00000000000c",
+      "id": "x_7d15e3c08b62",
+      "lines": 0,
+      "seed": 2216935562
+    },
+    {
+      "ageStep": 2,
+      "cls": "agent",
+      "home": "d_00000000000c",
+      "id": "x_8e27f1a49c30",
+      "lines": 3100,
+      "seed": 872315496
+    },
+    {
+      "ageStep": 0,
+      "cls": "branch",
+      "home": "d_00000000000d",
+      "id": "x_9f38a2b5d071",
+      "lines": 45,
+      "seed": 3356418209
+    },
+    {
+      "ageStep": 0,
+      "cls": "merged",
+      "home": "d_00000000000d",
+      "id": "x_a049b3c6e182",
+      "lines": 0,
+      "seed": 1167254803
+    },
+    {
+      "ageStep": 1,
+      "cls": "agent",
+      "home": "star",
+      "id": "x_b15ac4d7f293",
+      "lines": 320,
+      "seed": 2590331754
+    },
+    {
+      "ageStep": 2,
+      "cls": "branch",
+      "home": null,
+      "id": "x_c26bd5e803a4",
+      "lines": 75,
+      "seed": 4012678195
+    }
+  ],
+  "placed": 12,
+  "prs": "not-read",
+  "schemaVersion": "debris.1",
+  "total": 13,
+  "unreadable": 0
+}

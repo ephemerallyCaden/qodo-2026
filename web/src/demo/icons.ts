@@ -84,7 +84,7 @@ export const FOG_ICONS: Readonly<Record<'fogged' | 'misted' | 'clear', PixelIcon
 };
 
 /** The other things on the map: an agent drone, the crew's ship, a co-change line and its flag, a beacon, a test moon. */
-export const THING_ICONS: Readonly<Record<'drone' | 'ship' | 'cochange' | 'flag' | 'beacon' | 'moon', PixelIcon>> = {
+export const THING_ICONS: Readonly<Record<'drone' | 'ship' | 'cochange' | 'flag' | 'beacon' | 'moon' | 'debris', PixelIcon>> = {
   drone: {
     rows: ['.....ss.....', '...ssttss...', '..sddddddss.', '.sdveevvedss', '.sdvvvvvvdss', '..sddddddss.', '...ssssss...', '....s..s....', '...m....m...'],
     colours: { s: palette.drone.claude.shell[1], t: palette.drone.claude.shell[3], d: palette.drone.claude.shell[2], v: palette.crew.visor[0], e: palette.accent.teal[3], m: palette.drone.claude.smoke[0] },
@@ -105,6 +105,11 @@ export const THING_ICONS: Readonly<Record<'drone' | 'ship' | 'cochange' | 'flag'
   moon: {
     rows: ['..aab..', '.abbcc.', 'abbccc.', 'abbbcc.', '.aabb..'],
     colours: { a: W.moonBody[0], b: W.moonBody[1], c: W.moonBody[2] },
+  },
+  // R13's stale PR, a comms satellite: a grey bus and dish between two solar wings, the red outline, a nav light
+  debris: {
+    rows: ['.....rr.....', '....rGGr....', 'rrrrrGGrrrrr', 'rdmdrGmrdmdl', 'rdmdrmmrdmdr', 'rrrrrmmrrrrr', '....rrrr....'],
+    colours: { r: palette.debris.outline.bright, G: palette.debris.metal[3], m: palette.debris.metal[2], d: palette.debris.metal[0], l: palette.debris.light },
   },
 };
 

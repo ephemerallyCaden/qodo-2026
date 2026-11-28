@@ -1,0 +1,41 @@
+{
+  "ok": true,
+  "schemaVersion": "debris-detail.1",
+  "head": "bfc296837450a831c2704205437ecc4406e1e3b3",
+  "id": "x_5d1ecd3693e7",
+  "cls": "agent",
+  "name": "claude/legacy-cleanup",
+  "remoteOnly": false,
+  "ageDays": 59,
+  "lastCommit": {
+    "sha": "17224aab26e2b4b8168bc62cd3a6ea94e4cb3154",
+    "short": "17224aa",
+    "subject": "refactor(legacy): chunked reads",
+    "date": "2026-09-20T11:00:00Z"
+  },
+  "aheadCount": 2,
+  "lines": 35,
+  "creator": {
+    "displayName": "Mara Lindqvist",
+    "captain": true,
+    "agent": false
+  },
+  "sessions": [
+    {
+      "key": "s_530c0fb9dd8be2",
+      "model": "claude-sonnet-4-5",
+      "startedAt": "2026-09-20T10:05:00Z",
+      "endedAt": "2026-09-20T10:50:00Z"
+    }
+  ],
+  "planets": [
+    "d_11fd764c8e55"
+  ],
+  "home": "d_11fd764c8e55",
+  "filesOutside": 1,
+  "worktree": null,
+  "rebased": false,
+  "cleanup": "git branch -d -- 'claude/legacy-cleanup'",
+  "inspect": "git log --oneline HEAD..'refs/heads/claude/legacy-cleanup' --",
+  "warning": "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first"
+}

@@ -8,6 +8,7 @@ import { PARKED_POSE, type OrbitPose } from './camera/pose.js';
 import { FreeFlightRig, GLIDE_MS } from './camera/rig.js';
 import { ViewError, type DataClient } from './data/client.js';
 import { Crew } from './crew/controller.js';
+import { Debris } from './debris/controller.js';
 import { Drones } from './drones/controller.js';
 import { coveredBy } from './labels/overlay.js';
 import { startLoop } from './loop.js';
@@ -162,7 +163,13 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     others: () => [byId('panel'), byId('tree')],
     // the ship changed: a camera still where Home put it frames the new ship (#207)
     reframe: () => { if (atHome !== null && rig.pose() === atHome && !rig.focused() && !rig.moving()) { goHome(); redraw(); } } });
-  const deselect = () => { drones.deselect(); crew.deselect(); };
+  // R13: the stale work drifting round its planets, refetched with every layout load and snapshot event; one
+  // selection at a time with the drones and the crew.
+  const debris = new Debris({ view, client, announce: (t) => hud.announce(t), redraw: () => redraw(), release: () => view.pass.canvas.focus({ preventScroll: true }),
+    others: () => [byId('panel'), byId('tree')] });
+  // the bodies drawing debris changed (a first piece came, a last one was swept): a camera still at Home follows
+  view.onHomeMoved = () => { if (atHome !== null && rig.pose() === atHome && !rig.focused() && !rig.moving()) { goHome(); redraw(); } };
+  const deselect = () => { drones.deselect(); crew.deselect(); debris.deselect(); };
 
   const fetchFog = (): Promise<Fetched> => client.fog().then((fog) => ({ fog }), (error: unknown) => ({ error }));
   const loadOnce = async () => {
@@ -199,6 +206,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       if (rescanFailed) hud.announce(rescanFailed); // still true after a reload (#95): the drawn scan is the last good one
       void drones.refresh(drawnHead);
       void crew.refresh(drawnHead);
+      void debris.refresh(drawnHead);
       void beacons.refresh(drawnHead);
       void cochange.refresh(drawnHead);
       redraw();
@@ -243,8 +251,9 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
       // #211: an edge arrow focuses the partner it points at (the star's: free flight, where the panel lists the star's files)
       const to = view.arrowAt(x, y);
       if (to !== null) { deselect(); setFocus(to < 0 ? null : to); return; }
-      if (drones.pick(x, y, rig.pose(), shown())) { crew.deselect(); return; }
-      if (crew.pick(x, y, rig.pose(), shown())) { drones.deselect(); return; }
+      if (drones.pick(x, y, rig.pose(), shown())) { crew.deselect(); debris.deselect(); return; }
+      if (crew.pick(x, y, rig.pose(), shown())) { drones.deselect(); debris.deselect(); return; }
+      if (debris.pick(x, y, rig.pose(), shown())) { drones.deselect(); crew.deselect(); return; }
       const i = view.pickAt(x, y, rig.pose(), shown());
       if (i !== null) { deselect(); setFocus(i); }
     },
@@ -292,6 +301,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     if (!changed && !dirty && now === lastFrame) return;
     drones.dock(now, rig.pose(), focus); // #189: before the labels, which move out from under the panel where it docks (#169)
     crew.dock(now, rig.pose(), focus); // #207: the crew panel docks the same way
+    debris.dock(now, rig.pose(), focus); // R13: and the debris panel
     view.draw(now, rig.pose(), focus);
     lastFrame = now;
     dirty = false;
@@ -313,7 +323,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
   // #169: the review and drone panels are DOM laid over the label canvas, so the note and drone labels
   // move out from under the open ones. A panel that opens, closes or grows (a list that loaded) redraws,
   // which reduced motion's still frame would otherwise not.
-  const panels = [byId('panel'), byId('drone-panel'), byId('crew-panel'), byId('tree')];
+  const panels = [byId('panel'), byId('drone-panel'), byId('crew-panel'), byId('debris-panel'), byId('tree')];
   view.covered = () => coveredBy(view.labels.canvas, panels);
   const watch = new ResizeObserver(redraw);
   for (const p of panels) watch.observe(p);
@@ -329,7 +339,7 @@ export async function runLive(view: View, hud: Hud, client: DataClient): Promise
     } else if (ev.type === 'layout' || ev.type === 'fog') {
       void update(ev.type);
       if (ev.type === 'fog') void cochange.refresh(drawnHead); // #211: a chart may have dismissed a flag
-    } else if (ev.type === 'snapshot' && ev.head === drawnHead) { void drones.refresh(drawnHead); void crew.refresh(drawnHead); void beacons.refresh(drawnHead); void cochange.refresh(drawnHead); } // a new head's layout event refetches for itself
+    } else if (ev.type === 'snapshot' && ev.head === drawnHead) { void drones.refresh(drawnHead); void crew.refresh(drawnHead); void debris.refresh(drawnHead); void beacons.refresh(drawnHead); void cochange.refresh(drawnHead); } // a new head's layout event refetches for itself
     else if (ev.type === 'beacons') void beacons.refresh(drawnHead); // #79: a note left here or by `commet beacon`
   }, (status) => {
     // The server keeps no backlog, so a change made while the stream was down (or before it first

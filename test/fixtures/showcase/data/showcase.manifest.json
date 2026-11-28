@@ -1,6 +1,6 @@
 {
   "schemaVersion": "showcase.1",
-  "head": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "head": "bfc296837450a831c2704205437ecc4406e1e3b3",
   "routes": {
     "/api/snapshot": "showcase.snapshot.json",
     "/api/layout": "showcase.layout.json",
@@ -8,7 +8,8 @@
     "/api/drones": "showcase.drones.json",
     "/api/crew": "showcase.crew.json",
     "/api/cochange": "showcase.cochange.json",
-    "/api/beacons": "showcase.beacons.json"
+    "/api/beacons": "showcase.beacons.json",
+    "/api/debris": "showcase.debris.json"
   },
   "droneDetail": {
     "s_0295f07886d79d": "showcase.drone-detail.s_0295f07886d79d.json",
@@ -61,5 +62,11 @@
     "f_b33563055168": "showcase.diff.f_b33563055168.json",
     "f_7ae45ad102ea": "showcase.diff.f_7ae45ad102ea.json",
     "f_a2a171449d86": "showcase.diff.f_a2a171449d86.json"
+  },
+  "debrisDetail": {
+    "x_3b8ba8162dd0": "showcase.debris-detail.x_3b8ba8162dd0.json",
+    "x_54cb4eccd535": "showcase.debris-detail.x_54cb4eccd535.json",
+    "x_5d1ecd3693e7": "showcase.debris-detail.x_5d1ecd3693e7.json",
+    "x_d7bcf879dd1d": "showcase.debris-detail.x_d7bcf879dd1d.json"
   }
 }

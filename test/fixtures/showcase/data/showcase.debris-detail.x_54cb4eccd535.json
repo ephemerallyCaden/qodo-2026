@@ -1,0 +1,34 @@
+{
+  "ok": true,
+  "schemaVersion": "debris-detail.1",
+  "head": "bfc296837450a831c2704205437ecc4406e1e3b3",
+  "id": "x_54cb4eccd535",
+  "cls": "merged",
+  "name": "fix/tax-rounding",
+  "remoteOnly": false,
+  "ageDays": 61,
+  "lastCommit": {
+    "sha": "03587843dc72a341cec1d47c4fc2767194bd75e8",
+    "short": "0358784",
+    "subject": "fix(billing): tax rounding",
+    "date": "2026-09-18T11:00:00Z"
+  },
+  "aheadCount": 0,
+  "lines": 0,
+  "creator": {
+    "displayName": "Juno Abara",
+    "captain": false,
+    "agent": false
+  },
+  "sessions": [],
+  "planets": [
+    "d_bf025371b7a3"
+  ],
+  "home": "d_bf025371b7a3",
+  "filesOutside": 0,
+  "worktree": null,
+  "rebased": false,
+  "cleanup": "git branch -d -- 'fix/tax-rounding'",
+  "inspect": null,
+  "warning": null
+}

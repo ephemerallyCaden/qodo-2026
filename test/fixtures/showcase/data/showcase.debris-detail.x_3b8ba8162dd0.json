@@ -1,0 +1,34 @@
+{
+  "ok": true,
+  "schemaVersion": "debris-detail.1",
+  "head": "bfc296837450a831c2704205437ecc4406e1e3b3",
+  "id": "x_3b8ba8162dd0",
+  "cls": "branch",
+  "name": "feature/csv-export",
+  "remoteOnly": false,
+  "ageDays": 112,
+  "lastCommit": {
+    "sha": "e2a026672d5e9909c8fecf83492cd7147eec59b4",
+    "short": "e2a0266",
+    "subject": "wip: csv quoting",
+    "date": "2026-07-28T14:00:00Z"
+  },
+  "aheadCount": 2,
+  "lines": 36,
+  "creator": {
+    "displayName": "Felix Moreau",
+    "captain": false,
+    "agent": false
+  },
+  "sessions": [],
+  "planets": [
+    "d_11fd764c8e55"
+  ],
+  "home": "d_11fd764c8e55",
+  "filesOutside": 1,
+  "worktree": null,
+  "rebased": false,
+  "cleanup": "git branch -d -- 'feature/csv-export'",
+  "inspect": "git log --oneline HEAD..'refs/heads/feature/csv-export' --",
+  "warning": "HEAD doesn't have this work: git branch -d refuses it unless HEAD or its upstream has every commit; inspect it first"
+}

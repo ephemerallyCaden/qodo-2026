@@ -16,6 +16,8 @@ import { add, scale, sub, type Sphere, type Vec3 } from '../model/vec.js';
 import { LIGHT_VIEW, orbitingSpheres, placeSpheres, ramp, shaderMaterial, SHARED, toonMaterial } from './materials.js';
 import { moonFogAttribute, setMoonFog } from './fog.js';
 import { BeaconMarkers } from './beacons.js';
+import { DebrisField, type DebrisEntry } from './debris.js';
+import { shellPoints, withDebrisHomes } from '../debris/place.js';
 import { DroneFleet } from './drone-fleet.js';
 import { CrewShip, type Rider } from './ship.js';
 import { MOON_GEO, makePlanet, type PlanetObject } from './planet.js';
@@ -59,6 +61,10 @@ export class SystemScene {
   readonly beacons = new BeaconMarkers();
   /** The crew's ship (#207): at most 1 hull + 16 astronauts + 1 cap, one draw call each; none when nobody is aboard. */
   readonly crew = new CrewShip();
+  /** The stale work drifting round its bodies (R13): 3 draw calls for every piece, none when there is no debris. */
+  readonly debris = new DebrisField();
+  /** The selected piece of debris (its id), drawn with a teal lit band, or null. */
+  debrisSelected: string | null = null;
   private readonly starfield = makeStarfield();
   private readonly starMat: THREE.ShaderMaterial;
   private readonly star: THREE.Mesh;
@@ -73,12 +79,18 @@ export class SystemScene {
   /** The depth fade's later steps, scaled to this system (#59) as the start pose sees it, the crew's ship included (#207). */
   private depth: DepthStretch;
 
-  constructor(readonly model: SystemModel) {
+  /** The layout's bodies, and which of them draw debris (SystemModel.debrisHomes, set by setDebris). */
+  private current: SystemModel;
+  get model(): SystemModel { return this.current; }
+
+  constructor(model: SystemModel) {
+    this.current = model;
     this.depth = systemDepth(model);
     this.scene.add(this.starfield);
     this.scene.add(this.fleet.group);
     this.scene.add(this.beacons.points);
     this.scene.add(this.crew.group);
+    this.scene.add(this.debris.group);
     this.disposables.push(this.starfield.geometry, this.starfield.material as THREE.Material);
 
     // The Day 1 sun (star-art.md): one draw, disc and corona, on the inside of a sphere that holds both.
@@ -117,7 +129,33 @@ export class SystemScene {
    */
   setCrew(seats: readonly (Rider | null)[]): void {
     this.crew.set(seats);
-    this.depth = systemDepth(this.model, startPose(this.model, shipCorners(this.model, this.crew.spec)));
+    this.refit();
+  }
+
+  /**
+   * What the start pose fits in besides the bodies: the crew's ship when one is drawn (#207), and every debris shell
+   * (R13), so Home frames them. None: the layout's own start pose.
+   */
+  startExtras(): Vec3[] {
+    return [...shipCorners(this.model, this.crew.spec), ...shellPoints(this.model)];
+  }
+
+  /** The depth fade, measured again from the start pose that frames what is drawn. */
+  private refit(): void {
+    this.depth = systemDepth(this.model, startPose(this.model, this.startExtras()));
+  }
+
+  /**
+   * Replaces the debris drawn (R13; debris/place.ts plans it, a sweeping piece carries the frame its sweep began).
+   * The bodies drawing it get a debris shell: their drones and the ship move out past it, and the start pose and the
+   * depth fade measured from it frame it; a body whose last piece is gone gets its drones back.
+   */
+  setDebris(entries: readonly DebrisEntry[]): void {
+    this.debris.set(entries);
+    const next = withDebrisHomes(this.current, entries.map((e) => e.piece.home));
+    if (next === this.current) return;
+    this.current = next;
+    this.refit();
   }
 
   /** Every file this scene draws (settlements, test moons, moonlets): what fog events are about. */
@@ -197,6 +235,7 @@ export class SystemScene {
     });
     this.fleet.pose(this.model, frame, fovOf(view), pixelHeight, origin);
     this.crew.pose(this.model, frame, origin);
+    this.debris.pose(this.model, frame, pixelHeight, origin, this.debrisSelected);
     this.beacons.pose(this.model, frame, pixelHeight, origin);
     const churn = turnAngle(frame, TURNS.starChurn), spin = turnAngle(frame, TURNS.starSpin);
     (this.starMat.uniforms['uChurn']!.value as THREE.Vector2).set(Math.cos(churn), Math.sin(churn));
@@ -210,6 +249,7 @@ export class SystemScene {
   dispose(): void {
     this.fleet.dispose();
     this.crew.dispose();
+    this.debris.dispose();
     this.beacons.dispose();
     for (const p of this.planets) p.dispose();
     for (const d of this.disposables) d.dispose();

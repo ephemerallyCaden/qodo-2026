@@ -4,7 +4,7 @@
 // Identities, dates and contents are fixed, so its SHAs and the scan come out the same on every machine.
 // README.md beside it says what each planet, person, session and branch is for.
 import { execFile } from 'node:child_process';
-import { mkdirSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -130,8 +130,8 @@ export async function buildShowcaseRepo(work: string): Promise<ShowcaseRepo> {
   // No inherited GIT_* variable: GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE would point these commands at
   // another repo (Qodo PR #247 c45b5bc3). SHA-1 whatever the machine's init.defaultObjectFormat (ea0b7d05).
   const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
-  const git = async (args: string[], env: Record<string, string> = {}) =>
-    (await run('git', args, { cwd: dir, encoding: 'utf8', env: { ...clean, ...env } })).stdout.trim();
+  const git = async (args: string[], env: Record<string, string> = {}, cwd = dir) =>
+    (await run('git', args, { cwd, encoding: 'utf8', env: { ...clean, ...env } })).stdout.trim();
   await git(['init', '-q', '-b', 'main', '--object-format=sha1']);
   for (const [k, v] of [['user.name', MARA.name], ['user.email', MARA.email], ['commit.gpgsign', 'false'], ['tag.gpgsign', 'false'],
     ['core.autocrlf', 'false']] as const) await git(['config', k, v]);
@@ -176,13 +176,13 @@ export async function buildShowcaseRepo(work: string): Promise<ShowcaseRepo> {
   };
 
   const shas: string[] = [];
-  const commit = async (who: Who, date: string, subject: string) => {
-    await git(['add', '-A']);
+  const commit = async (who: Who, date: string, subject: string, cwd = dir) => {
+    await git(['add', '-A'], {}, cwd);
     await git(['commit', '-q', '-m', subject], {
       GIT_AUTHOR_NAME: who.name, GIT_AUTHOR_EMAIL: who.email, GIT_AUTHOR_DATE: date,
       GIT_COMMITTER_NAME: who.name, GIT_COMMITTER_EMAIL: who.email, GIT_COMMITTER_DATE: date,
-    });
-    const sha = await git(['rev-parse', 'HEAD']);
+    }, cwd);
+    const sha = await git(['rev-parse', 'HEAD'], {}, cwd);
     shas.push(sha);
     return sha;
   };
@@ -239,7 +239,7 @@ export async function buildShowcaseRepo(work: string): Promise<ShowcaseRepo> {
       message: { role: 'user', content: 'invented follow-up' } });
   };
 
-  // ---- Before the baseline (June to August 2026): the app takes shape ----
+  // ---- Before the baseline (May to August 2026): the app takes shape ----
   set('.mailmap', MAILMAP.trimEnd().split('\n'));
   set('README.md', ['# harbor', '', 'An invented app for the Commet live demo: accounts, orders, billing and offline sync.', '',
     '## Getting started', '', '- `npm ci`', '- `npm test`']);
@@ -250,7 +250,19 @@ export async function buildShowcaseRepo(work: string): Promise<ShowcaseRepo> {
   grow('src/index.ts', 2);
   grow('src/core/config.ts', 3);
   grow('src/core/errors.ts', 2);
-  await commit(MARA, '2026-06-01T09:00:00Z', 'chore: scaffold harbor');
+  await commit(MARA, '2026-05-04T09:00:00Z', 'chore: scaffold harbor');
+  // An abandoned spike, broken with age (180+ days), worked on in its own worktree, whose folder was later
+  // deleted without `git worktree remove`: a prunable worktree on an abandoned branch.
+  const spike = join(work, 'harbor-spike');
+  await git(['worktree', 'add', '-q', '-b', 'spike/remote-config', spike]);
+  const spikeLines = (from: number, n: number) => Array.from({ length: n }, (_, i) => block('ts', 'RemoteSetting', WORDS[from + i]!, from + i)).flat();
+  writeFileSync(join(spike, 'src/core/config.ts'), [...files.get('src/core/config.ts')!, ...spikeLines(0, 2)].join('\n') + '\n');
+  mkdirSync(join(spike, 'src/core'), { recursive: true });
+  writeFileSync(join(spike, 'src/core/remote.ts'), spikeLines(2, 3).join('\n') + '\n');
+  await commit(THEO, '2026-05-08T10:00:00Z', 'spike: load settings from a remote store', spike);
+  writeFileSync(join(spike, 'src/core/remote.ts'), spikeLines(2, 5).join('\n') + '\n');
+  await commit(THEO, '2026-05-12T10:00:00Z', 'spike: cache remote settings', spike);
+  rmSync(spike, { recursive: true, force: true });
   grow('src/core/events.ts', 3);
   grow('src/core/events.test.ts', 2);
   grow('src/sync/queue.ts', 5);

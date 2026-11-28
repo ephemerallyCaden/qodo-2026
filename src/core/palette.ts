@@ -24,6 +24,7 @@ interface PaletteShape {
   readonly accent: { readonly teal: Ramp };
   readonly drone: { readonly [look: string]: { readonly [role: string]: Ramp } };
   readonly ship: { readonly [part: string]: { readonly [role: string]: Ramp } };
+  readonly debris: { readonly metal: Ramp; readonly outline: { readonly bright: Hex; readonly dim: Hex }; readonly light: Hex };
 }
 
 const PALETTE = {
@@ -136,6 +137,20 @@ const PALETTE = {
       shell: ['#12173d', '#293268', '#354ab2', '#4185d8'],
       gold: ['#872a38', '#cc5250', '#ff965f', '#ffe091'],
     },
+  },
+  /**
+   * Space debris (R13, art-direction §6 "Debris", docs/features/space-debris.md A3; human, 2026-11-10): grey
+   * satellite parts lit in four bands, a 1 px red outline and two blinking red nav lights per piece. The metal
+   * is the one debris-only exception to BLK 36 ("more grey and less blue, it's ok to not use the palette
+   * exactly"): neutral, a touch warm in the light, each step at least 0.046 OKLab from every planet colour; its
+   * darkest step is also the solar cells and the scorch of an old piece. The outline (bright, then dim with
+   * age; a debris-only exception to "no outlines") and the lights are BLK 36 reds. The sweep's flash and a
+   * selected piece are `accent.teal`, never a piece at rest.
+   */
+  debris: {
+    metal: ['#3d3d3d', '#616161', '#8e8c8a', '#b4b2b0'],
+    outline: { bright: '#d83843', dim: '#872a38' },
+    light: '#ff6866',
   },
   /** [OIII] teal: code-layer events only (reveals, HUD marks), under ~10% of the frame. */
   accent: {

@@ -2,7 +2,7 @@
 // parse-and-check path and error messages as the real server, so the view can be developed before
 // #32 lands. main.ts imports this behind `import.meta.env.DEV`, so it and the fixtures never reach dist/web.
 import { API } from '../../../src/core/contract/api.js';
-import { httpError, parseCrew, parseDrones, parseFog, parseLayout, ViewError, type DataClient } from './client.js';
+import { httpError, parseCrew, parseDebris, parseDrones, parseFog, parseLayout, ViewError, type DataClient } from './client.js';
 
 const RAW = import.meta.glob<string>('../../../test/fixtures/contract/*.json', { query: '?raw', import: 'default' });
 const file = async (name: string): Promise<string> => {
@@ -36,6 +36,9 @@ export function fixtureClient(name: string): DataClient {
     // The invented crew of test/fixtures/crew, on the mini layout's head (#207).
     crew: async () => parseCrew(await file('mini.crew.json'), `fixture ${name}`),
     crewDetail: () => Promise.reject(new ViewError("A crew member's files need `commet open`: the dev fixtures have no paths.")),
+    // Invented stale work on the mini layout's head (R13): every class git finds, all three ages.
+    debris: async () => parseDebris(await file('mini.debris.json'), `fixture ${name}`),
+    debrisDetail: () => Promise.reject(new ViewError("A piece's branch and commands need `commet open`: the dev fixtures have no branches.")),
     follow: (_onEvent, onStatus) => { onStatus(`dev fixture ${name}`); return () => {}; },
     // Reviewing needs a repository: the fixtures have no paths or diffs (#75).
     unseen: () => Promise.reject(new ViewError('Reviewing needs `commet open`: the dev fixtures have no diffs.')),

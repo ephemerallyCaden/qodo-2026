@@ -5,10 +5,10 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../src/core/canonical-json.js';
 import { fibonacciCell } from '../src/core/contract/layout.js';
-import { miniCrew, miniDrones, miniFog, miniLayout } from './fixtures/contract/mini.js';
+import { miniCrew, miniDebris, miniDrones, miniFog, miniLayout } from './fixtures/contract/mini.js';
 
 const DIR = join(import.meta.dirname, 'fixtures/contract');
-const twins = [['mini.layout.json', miniLayout], ['mini.fog.json', miniFog], ['mini.drones.json', miniDrones], ['mini.crew.json', miniCrew]] as const;
+const twins = [['mini.layout.json', miniLayout], ['mini.fog.json', miniFog], ['mini.drones.json', miniDrones], ['mini.crew.json', miniCrew], ['mini.debris.json', miniDebris]] as const;
 
 describe('Phase 2 contract fixtures', () => {
   for (const [name, value] of twins) {

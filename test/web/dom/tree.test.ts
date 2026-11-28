@@ -6,6 +6,7 @@
 // settlement, a folder's to its continent, and a root file goes home to the star, cutting under reduced
 // motion and gliding otherwise. Vitest has no DOM, so the fake records what is built and fires events,
 // bubbling to the ancestors as a page does.
+import { DebrisState } from '../../../web/src/debris/state.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FogView } from '../../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
@@ -27,6 +28,8 @@ import { miniTree } from '../../fixtures/tree.js';
 // The review and drone panels have their own tests; here they only need to exist.
 const selected = vi.hoisted(() => [] as (string | null)[]);
 vi.mock('../../../web/src/ui/panel.js', () => ({ Panel: class { setFog() {} select(id: string | null) { selected.push(id); } scale() {} } }));
+// The debris panel (R13) needs a DOM: a no-op here.
+vi.mock('../../../web/src/debris/panel.js', () => ({ DebrisPanel: class { onClose = () => {}; onCopy = () => {}; open = false; show() {} hide() {} showDetail() {} } }));
 vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} } }));
 
 interface FakeEvent { key: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; defaultPrevented: boolean; stopped: boolean; preventDefault(): void; stopPropagation(): void }
@@ -436,7 +439,7 @@ async function live(reduced: boolean) {
     reducedMotion: reduced, fogChange: { cleared: 0, refogged: 0 }, fogTicket: () => 1,
     applyFog(f: FogView | null) { view.fog = f; view.onFog?.(f); return true; },
     async load(layout: LayoutV1, fog: FogView | null) { model = systemModel(layout); view.applyFog(fog); },
-    selectedDrone: null, setDrones: async () => true, selectedPerson: null, selectedName: '', setCrew: async () => true, pickCrewAt: () => null, crewSpec: null, crewSeat: () => null, homePose: (frame = 0) => (model ? startPoseAt(model, frame) : null), setBeacons: () => true, pickDroneAt: () => null, pickAt: () => null, resize: () => {},
+    selectedDrone: null, setDrones: async () => true, selectedPerson: null, selectedName: '', setCrew: async () => true, pickCrewAt: () => null, crewSpec: null, crewSeat: () => null, homePose: (frame = 0) => (model ? startPoseAt(model, frame) : null), setBeacons: () => true, pickDroneAt: () => null, debris: new DebrisState(), setDebris: () => true, pickDebrisAt: () => null, debrisPiece: () => null, pickAt: () => null, resize: () => {},
     setCoChange: () => true, coChangeLines: () => [], arrowAt: () => null, focusFile: null, focusSince: 0, // #211, as orbits.test.ts
     draw: (frame: number, pose: OrbitPose, focus: number | null) => { drawn.push({ frame, pose: structuredClone(pose), focus }); return {}; },
     focusTarget: (i: number, frame: number) => (model ? { centre: planetCentre(model.planets[i]!, frame), radius: model.planets[i]!.radius } : null),
@@ -444,7 +447,7 @@ async function live(reduced: boolean) {
   const client: DataClient = {
     layout: async () => miniLayout, fog: async () => miniFog, follow: () => () => {}, drones: async () => droneView(miniLayout.source.head, []),
     droneDetail: async () => ({ ok: false, error: 'no-such-session' }),
-    crew: async () => { throw new Error('no crew here'); }, crewDetail: async () => ({ ok: false, error: 'no-such-person' }), unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
+    crew: async () => { throw new Error('no crew here'); }, crewDetail: async () => ({ ok: false, error: 'no-such-person' }), debris: async () => ({ schemaVersion: 'debris.1', head: miniLayout.source.head, pieces: [], total: 0, placed: 0, mass: 0, unreadable: 0, prs: 'not-read', needsRescan: false }), debrisDetail: async () => ({ ok: false, error: 'no-such-item' }), unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }), chart: async () => ({ ok: false, error: 'not used' }),
     beacons: async () => ({ schemaVersion: 'beacons.1', head: miniLayout.source.head, beacons: [], unplaced: 0 }),
     beacon: async () => ({ ok: false, error: 'not used' }), files: async () => miniTree,

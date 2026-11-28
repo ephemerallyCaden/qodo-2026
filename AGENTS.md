@@ -188,6 +188,7 @@ Source of truth: `docs/design/art-direction.md`. These rules summarise it and ch
   - Drawn lines, such as cracks, fissures and crevasses, are at least 2 internal px wide; stars and ring dots are exactly 1 internal px.
   - Every animated layer completes a whole number of cycles per loop (48 s, human, 2026-11-19, #174), so the loop has no seam. **Exception:** the planets' orbits round the star, one turn per 12 minutes (15 loops), off the loop (human, 2026-11-10, #60; #174).
   - **Exception:** the per-pixel depth fade toward the depth tint is the one gradient.
+  - **Exception:** debris (R13) has a 1 px red silhouette outline (`#d83843`, dimming to `#872a38` with age), although outlines are banned everywhere else: an inverted-hull shell, back faces only, in the z-buffer, debris only (human, 2026-11-10; art-direction §6 "Debris", `docs/features/space-debris.md` A3).
   - **Exception:** labels and UI render outside the pixel pass, in the bitmap font, never into the low-resolution target (no `TextGeometry` or font-rendered canvas text in the scene).
 - **Why:** three.js defaults and polish passes give smooth gradients and soft edges, which is a blurry 3D render, not pixel art.
 - **Checked by:** asset-viewer render tests (line width, depth, loop seam); `test/render/orbits.spec.ts` (orbits); in review, any AA, filtering, stock material, planetary easing, post-pass or in-pass text.
@@ -204,6 +205,7 @@ Source of truth: `docs/design/art-direction.md`. These rules summarise it and ch
   - Nothing is pure black: no `#000000`, `0x000000`, `rgb(0, 0, 0)` or `black`, including `setClearColor`, `scene.background` and the page background; space is `#0d0b16`.
   - Code-layer glitch cells only reuse the colour they cover (a darker or lighter step, inverted lightness, a channel slip, a posterise), and the only colour they may add is teal.
   - **Exception:** lava glow is unlit, but its colours still come from the v2 lava ramp.
+  - **Exception:** debris (R13) metal is a neutral grey off BLK 36 (`#3d3d3d` `#616161` `#8e8c8a` `#b4b2b0`, `palette.debris.metal`), debris only; its outline and nav-light reds are BLK 36 (human, 2026-11-10; art-direction §6 "Debris", `docs/features/space-debris.md` A3).
   - **Exception:** the depth fade is the only off-palette output.
 - **Why:** Qodo can't see renders, but it can see a colour literal in a diff. One stray magenta reads as pasted on.
 - **Checked by:** in review, any colour literal outside palette modules, a new palette, or `#000000` / `0x000000`.

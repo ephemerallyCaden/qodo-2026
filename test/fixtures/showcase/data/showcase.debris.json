@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "debris.1",
+  "head": "bfc296837450a831c2704205437ecc4406e1e3b3",
+  "pieces": [
+    {
+      "id": "x_3b8ba8162dd0",
+      "cls": "branch",
+      "home": "d_11fd764c8e55",
+      "ageStep": 1,
+      "lines": 36,
+      "seed": 3072658344
+    },
+    {
+      "id": "x_54cb4eccd535",
+      "cls": "merged",
+      "home": "d_bf025371b7a3",
+      "ageStep": 1,
+      "lines": 0,
+      "seed": 3319552741
+    },
+    {
+      "id": "x_5d1ecd3693e7",
+      "cls": "agent",
+      "home": "d_11fd764c8e55",
+      "ageStep": 0,
+      "lines": 35,
+      "seed": 1436259269
+    },
+    {
+      "id": "x_d7bcf879dd1d",
+      "cls": "branch",
+      "home": "d_959196e6c98c",
+      "ageStep": 2,
+      "lines": 35,
+      "seed": 4106862001
+    }
+  ],
+  "total": 4,
+  "placed": 4,
+  "mass": 106,
+  "unreadable": 0,
+  "prs": "not-read",
+  "needsRescan": false
+}

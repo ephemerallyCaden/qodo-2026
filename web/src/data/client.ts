@@ -5,11 +5,13 @@ import type { BeaconAction, BeaconResult, BeaconView } from '../../../src/core/c
 import type { CoChangeView } from '../../../src/core/contract/cochange.js';
 import type { ChartAction, FogView } from '../../../src/core/contract/fog.js';
 import type { CrewDetailResult, CrewView } from '../../../src/core/contract/crew.js';
+import type { DebrisDetailResult, DebrisId, DebrisView } from '../../../src/core/contract/debris.js';
 import type { DroneDetailResult, DroneView } from '../../../src/core/contract/drones.js';
 import type { LayoutV1 } from '../../../src/core/contract/layout.js';
 import type { DirId, FileId, PersonId, SessionKey, Sha } from '../../../src/core/snapshot/types.js';
 import { checkCoChange } from '../cochange/check.js';
 import { checkCrew, checkCrewDetail } from '../crew/check.js';
+import { checkDebris, checkDebrisDetail } from '../debris/check.js';
 import { checkDroneDetail, checkDrones } from '../drones/check.js';
 import { checkBeaconResult, checkBeacons } from '../model/beacons.js';
 import { checkChartResult, checkDiff, checkFog, checkLayout, checkTreeSource, checkUnseen, type Checked } from '../model/validate.js';
@@ -37,6 +39,10 @@ export interface DataClient {
   crew(): Promise<CrewView>;
   /** #207: one crew member's planets and files at the head the view shows; a refusal comes back, not thrown. */
   crewDetail(person: PersonId, at: Sha): Promise<CrewDetailResult>;
+  /** R13: the repo's stale work, one piece per item, by id. A failure is announced, not fatal. */
+  debris(): Promise<DebrisView>;
+  /** R13: one piece's panel at the head the view shows; a refusal comes back, not thrown. */
+  debrisDetail(id: DebrisId, at: Sha): Promise<DebrisDetailResult>;
   /** #75: the fogged files of a planet (null: the star) at the head the view shows; a refusal comes back, not thrown. */
   unseen(home: DirId | null, at: Sha): Promise<UnseenResult>;
   /** #75: a file's unseen diff at the head the view shows. Held in memory only, never stored. */
@@ -92,6 +98,7 @@ export const parseFog = (text: string, source: string): FogView => parseChecked(
 export const parseDrones = (text: string, source: string): DroneView => parseChecked(text, 'drone view', source, checkDrones);
 export const parseCrew = (text: string, source: string): CrewView => parseChecked(text, 'crew view', source, checkCrew);
 export const parseBeacons = (text: string, source: string): BeaconView => parseChecked(text, 'beacon view', source, checkBeacons);
+export const parseDebris = (text: string, source: string): DebrisView => parseChecked(text, 'debris view', source, checkDebris);
 export const parseCoChange = (text: string, source: string): CoChangeView => parseChecked(text, 'co-change view', source, checkCoChange);
 export const parseTreeSource = (text: string, source: string): TreeSource => parseChecked(text, 'file list', source, checkTreeSource);
 
@@ -135,6 +142,8 @@ export function serverClient(token: string): DataClient {
     droneDetail: (key, at) => answer(`${API.droneDetail}?${new URLSearchParams({ key, at })}`, API.droneDetail, 'session detail', checkDroneDetail),
     crew: async () => parseCrew(await get(API.crew), API.crew),
     crewDetail: (person, at) => answer(`${API.crewDetail}?${new URLSearchParams({ person, at })}`, API.crewDetail, 'crew detail', checkCrewDetail),
+    debris: async () => parseDebris(await get(API.debris), API.debris),
+    debrisDetail: (id, at) => answer(`${API.debrisDetail}?${new URLSearchParams({ id, at })}`, API.debrisDetail, 'debris detail', checkDebrisDetail),
     unseen: (home, at) => answer(`${API.unseen}?${new URLSearchParams({ home: home ?? STAR_HOME, at })}`, API.unseen, 'unseen list', checkUnseen),
     diff: (fileId, at) => answer(`${API.diff}?${new URLSearchParams({ fileId, at })}`, API.diff, 'diff', checkDiff),
     chart: (action) => answer(API.chart, API.chart, 'chart answer', checkChartResult, JSON.stringify(action)),

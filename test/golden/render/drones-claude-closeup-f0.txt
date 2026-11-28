@@ -30,7 +30,7 @@ colours  64 (30 palette, 34 off-palette: 336 px)
    661    1.14%  #12173d  121,73-178,105   crew.visor[0], ship.cap.shell[0]
    639    1.10%  #29174c  122,68-177,106   crew.visor[1]
    329    0.57%  #3f233c  124,52-190,124   crew.contributors.coral[0], drone.claude.shell[0], drone.claude.trim[0], drone.claude.accent[0], drone.claude.trimB[0], ship.hull.trim[0]
-   331    0.57%  #872a38  118,53-190,124   crew.contributors.coral[1], drone.claude.shell[1], drone.claude.trim[1], drone.claude.accent[1], drone.claude.trimB[1], drone.claude.trimC[0], ship.hull.trim[1], ship.hull.gold[0], ship.cap.gold[0]
+   331    0.57%  #872a38  118,53-190,124   crew.contributors.coral[1], drone.claude.shell[1], drone.claude.trim[1], drone.claude.accent[1], drone.claude.trimB[1], drone.claude.trimC[0], ship.hull.trim[1], ship.hull.gold[0], ship.cap.gold[0], debris.outline.dim
    669    1.16%  #cc5250  117,54-189,123   crew.contributors.coral[2], drone.claude.shell[2], drone.claude.trim[2], drone.claude.accent[2], drone.claude.trimB[2], drone.claude.trimC[1], ship.hull.gold[1], ship.cap.gold[1]
    931    1.61%  #ff965f  119,56-183,110   drone.claude.shell[3], drone.claude.accent[3], drone.claude.smoke[0], drone.claude.trimB[3], drone.claude.trimC[2], ship.hull.gold[2], ship.hull.flame[1], ship.cap.gold[2]
     12    0.02%  #ffe091  157,112-163,114  drone.claude.smoke[1], drone.claude.trimC[3], ship.hull.gold[3], ship.hull.flame[2], ship.cap.gold[3]

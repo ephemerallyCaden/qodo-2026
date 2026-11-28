@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { build } from 'vite';
-import { siteHits, siteOut } from '../../web/demo/site.js';
+import { libraryRuns, siteHits, siteOut } from '../../web/demo/site.js';
 import { tempDir } from '../fixtures/tmp.js';
 
 const ROOT = join(import.meta.dirname, '../..');
@@ -123,6 +123,16 @@ describe('demo build', () => {
     expect(hits.filter((h) => h.where.includes('data/beacons.json')).map((h) => h.rule)).toContain('absolute path');
     expect(hits.filter((h) => h.where.includes('data/crew.json')).map((h) => h.rule)).toContain('agent-log field');
     expect(hits.every((h) => !h.excerpt.includes('someone/notes'))).toBe(true); // masked, as every hit
+  });
+
+  it("holds the data to the token rule with no library exemption: a value that matches three.js's own text is still a hit (Qodo PR249 40218c65)", () => {
+    const run = [...libraryRuns()].sort()[0];
+    expect(run, 'three.js has token-like runs to exempt in the bundle').toBeDefined();
+    const site = tempDir('commet-demo-site-');
+    mkdirSync(join(site, 'data'));
+    writeFileSync(join(site, 'index.html'), '<!doctype html><title>demo</title>');
+    writeFileSync(join(site, 'data', 'beacons.json'), JSON.stringify({ beacons: [{ text: run }] }));
+    expect(siteHits(site).filter((h) => h.where.includes('data/beacons.json')).map((h) => h.rule)).toContain('token-like string');
   });
 });
 

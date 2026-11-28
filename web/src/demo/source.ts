@@ -21,12 +21,12 @@ export interface DemoSource {
 }
 
 /** The GET routes a dataset may bake: everything but the writes (chart, beacon) and the event stream. */
-const BAKED: readonly string[] = [API.snapshot, API.layout, API.fog, API.drones, API.crew, API.beacons, API.cochange];
+const BAKED: readonly string[] = [API.snapshot, API.layout, API.fog, API.drones, API.crew, API.beacons, API.cochange, API.debris];
 /** The per-item routes, by the one query parameter that names the item (`at` is checked by the client, never baked). */
-const ITEMS: Readonly<Record<string, string>> = { [API.unseen]: 'home', [API.diff]: 'fileId', [API.droneDetail]: 'key', [API.crewDetail]: 'person' };
+const ITEMS: Readonly<Record<string, string>> = { [API.unseen]: 'home', [API.diff]: 'fileId', [API.droneDetail]: 'key', [API.crewDetail]: 'person', [API.debrisDetail]: 'id' };
 /** A data file: a plain name in the data folder, so a manifest can't point outside it. */
 const FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$/;
-/** An item id as the contract writes them (f_…, d_…, s_…, p_…), or the star's home. */
+/** An item id as the contract writes them (f_…, d_…, s_…, p_…, x_…), or the star's home. */
 const ITEM = /^(?:[a-z]_[A-Za-z0-9_-]{1,128}|star)$/;
 
 /** The key of a route: its path, plus `?<param>=<id>` for a per-item route. */

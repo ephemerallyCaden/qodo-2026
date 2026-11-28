@@ -3,6 +3,7 @@
 // flight where the camera is, Home turns with the orbits, and under reduced motion the orbits hold
 // still (frame 0 from the start, or the frame where it was switched on) and focus cuts. Driven through runLive and the real free-flight rig, with a fake view that
 // records what each frame draws and a requestAnimationFrame the test steps by hand.
+import { DebrisState } from '../../../web/src/debris/state.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DataClient } from '../../../web/src/data/client.js';
 import { focusPose, project, startPose, startPoseAt, type OrbitPose } from '../../../web/src/camera/pose.js';
@@ -20,6 +21,8 @@ vi.mock('../../../web/src/ui/panel.js', () => ({ Panel: class { setFog() {} sele
 vi.mock('../../../web/src/drones/panel.js', () => ({ DronePanel: class { onClose = () => {}; show() {} hide() {} } }));
 // The crew panel (#207) has its own DOM test (crew-panel.test.ts).
 vi.mock('../../../web/src/crew/panel.js', () => ({ CrewPanel: class { onClose = () => {}; open = false; show() {} hide() {} showDetail() {} } }));
+// The debris panel (R13) needs a DOM: a no-op here.
+vi.mock('../../../web/src/debris/panel.js', () => ({ DebrisPanel: class { onClose = () => {}; onCopy = () => {}; open = false; show() {} hide() {} showDetail() {} } }));
 // The directory view (#209) has its own DOM test (tree.test.ts).
 vi.mock('../../../web/src/tree/panel.js', () => ({ TreePanel: class { scale() {} setLayout() {} setFog() {} } }));
 
@@ -77,7 +80,7 @@ async function live(reduced = false) {
     arrowAt: () => null,
     focusFile: null,
     focusSince: 0,
-    pickDroneAt: () => null,
+    pickDroneAt: () => null, debris: new DebrisState(), setDebris: () => true, pickDebrisAt: () => null, debrisPiece: () => null,
     planetAt: null as number | null,
     pickAt: () => view.planetAt,
     resize: () => {},
@@ -91,7 +94,7 @@ async function live(reduced = false) {
     drones: async () => droneView(miniLayout.source.head, []),
     droneDetail: async () => ({ ok: false, error: 'no-such-session' }),
     crew: async () => { throw new Error('no crew here'); },
-    crewDetail: async () => ({ ok: false, error: 'no-such-person' }),
+    crewDetail: async () => ({ ok: false, error: 'no-such-person' }), debris: async () => ({ schemaVersion: 'debris.1', head: miniLayout.source.head, pieces: [], total: 0, placed: 0, mass: 0, unreadable: 0, prs: 'not-read', needsRescan: false }), debrisDetail: async () => ({ ok: false, error: 'no-such-item' }),
     unseen: async (home, at) => ({ ok: true, at, home, files: [] }),
     diff: async () => ({ ok: false, error: 'no-such-file' }),
     chart: async () => ({ ok: false, error: 'not used' }),

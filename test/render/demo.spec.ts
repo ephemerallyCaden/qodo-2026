@@ -11,6 +11,15 @@ import type { DiffView, UnseenFile, UnseenList } from '../../src/core/contract/a
 import type { FogCounts, FogView } from '../../src/core/contract/fog.js';
 import type { LayoutV1 } from '../../src/core/contract/layout.js';
 import { DEFAULT_BASE, DEMO_DIST, ROOT, siteHits } from '../../web/demo/site.js';
+import type { CrewView } from '../../src/core/contract/crew.js';
+import type { DebrisDetail, DebrisView } from '../../src/core/contract/debris.js';
+import { focusPose, project, projectedRadius, startPose } from '../../web/src/camera/pose.js';
+import { shipCorners } from '../../web/src/crew/place.js';
+import { seatCrew } from '../../web/src/crew/select.js';
+import { orbitPoint, planDebris, shellPoints, withDebrisHomes } from '../../web/src/debris/place.js';
+import { drawables } from '../../web/src/debris/select.js';
+import { planetCentre, systemModel } from '../../web/src/model/system.js';
+import { buildShip } from '../../web/src/render/ship-spec.js';
 import { coverage, type Frame } from './frame.js';
 import { BLANK, OVERVIEW } from './thresholds.js';
 
@@ -120,6 +129,37 @@ async function play(v: Visit): Promise<void> {
   await expect(v.page.locator('#summary')).toContainText('planets:', { timeout: 60_000 }); // SwiftShader compiles every shader first
 }
 
+/**
+ * R13: a piece of the dataset's debris to click, under reduced motion (the clock at frame 0, focus a cut): the
+ * planet to focus with `]` (its index), and where the piece is in the view canvas (CSS px of a w×h canvas), worked
+ * out with the view's own code from the camera the presses leave. That starts at Home, which frames the crew's ship
+ * and every debris shell. The piece is in front of its planet or beside its disc, clear of every other piece, and in the view's left
+ * half, away from the review panel the focus opens at the top right. Null when no piece is.
+ */
+function debrisTarget(w: number, h: number): { index: number; id: string; x: number; y: number } | null {
+  const debris = baked<DebrisView>('/api/debris'), crew = baked<CrewView>('/api/crew');
+  if (!debris) return null;
+  const base = systemModel(bakedLayout()), items = drawables(debris);
+  const model = withDebrisHomes(base, planDebris(base, items).pieces.map((p) => p.home));
+  const pieces = planDebris(model, items).pieces;
+  const seats = crew ? seatCrew(crew).seats.length : 0;
+  let pose = startPose(model, [...shipCorners(model, seats > 0 ? buildShip(seats) : null), ...shellPoints(model)]);
+  for (const [index, p] of model.planets.entries()) {
+    const c = planetCentre(p, 0);
+    pose = focusPose(pose, c, p.radius);
+    const body = project(pose, c)!, bx = ((body.x + 1) / 2) * w, by = ((1 - body.y) / 2) * h, disc = projectedRadius(p.radius, body.depth) * (h / 2);
+    const at = pieces.filter((q) => q.home === p.dirId).map((q) => {
+      const o = orbitPoint(q.orbit, 0), s = project(pose, [c[0] + o[0], c[1] + o[1], c[2] + o[2]]);
+      if (!s) return null;
+      const x = ((s.x + 1) / 2) * w, y = ((1 - s.y) / 2) * h, r = projectedRadius(q.bound, s.depth) * (h / 2);
+      return { id: q.id, x, y, r, clear: s.depth < body.depth || Math.hypot(x - bx, y - by) > disc + r }; // in front of its planet, or beside it
+    }).filter((a) => a !== null);
+    const pick = at.find((a) => a.clear && a.x > 60 && a.x < w * 0.5 && a.y > h * 0.15 && a.y < h * 0.85 && at.every((b) => b === a || Math.hypot(b.x - a.x, b.y - a.y) > a.r + b.r));
+    if (pick) return { index, id: pick.id, x: pick.x, y: pick.y };
+  }
+  return null;
+}
+
 test.describe('demo site', () => {
   test('is a static site that passes the privacy scan, with a strict CSP and nothing inline', () => {
     expect(existsSync(join(SITE, 'index.html')), 'global-setup builds dist/demo').toBe(true);
@@ -222,6 +262,34 @@ test.describe('demo site', () => {
     await page.keyboard.press('Escape');
     for (let i = 0; i <= r!.index; i++) await page.locator('#view').press(']');
     await expect(page.locator('#summary')).toContainText(fogLine(r!.counts.fogged, r!.counts.haze));
+  });
+
+  test("clicking a piece of debris opens its panel: its branch, its kind and the commands to copy, none of them run (R13)", async ({ page }) => {
+    test.skip(baked<DebrisView>('/api/debris') === null, 'the dataset has no debris');
+    await page.emulateMedia({ reducedMotion: 'reduce' }); // the view's clock holds at frame 0 and focus cuts
+    const v = await visit(page);
+    await play(v);
+    await page.keyboard.press('Escape'); // the legend
+    await expect(page.locator('#debris-hud')).toContainText('debris: ');
+    await expect(page.locator('#crew-hud')).toContainText('crew:'); // the ship is drawn, so Home framed it
+    const box = (await page.locator('#view').boundingBox())!;
+    const t = debrisTarget(box.width, box.height);
+    expect(t, 'a piece of debris in clear view at some planet\'s focus').not.toBeNull();
+    for (let i = 0; i <= t!.index; i++) await page.locator('#view').press(']');
+    await expect(page.locator('#status')).toContainText(`focused ${bakedLayout().planets[t!.index]!.path}`);
+    await page.locator('#view').click({ position: { x: t!.x, y: t!.y } });
+    const panel = page.locator('#debris-panel');
+    await expect(panel).toBeVisible();
+    const d = baked<DebrisDetail>(`/api/debris-detail?id=${t!.id}`)!;
+    await expect(panel).toContainText(d.name ?? 'a detached worktree');
+    for (const command of [d.cleanup, d.inspect]) if (command) await expect(panel.locator('code', { hasText: command })).toHaveCount(1);
+    await expect(panel).toContainText('Commet never runs a command');
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+    // nothing was sent: the panel's answer is the site's own baked file
+    expect(v.requests.filter((q) => q.method !== 'GET' || !q.path.startsWith(DEFAULT_BASE))).toEqual([]);
+    expect(v.offsite).toEqual([]);
+    expect(v.errors).toEqual([]);
   });
 
   test('a fog file that fails to load still plays: the still and the live view draw it all fogged, and say so (Qodo PR249 b8b8d925)', async ({ page }) => {
