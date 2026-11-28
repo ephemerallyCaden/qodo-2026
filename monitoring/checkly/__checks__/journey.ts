@@ -45,10 +45,23 @@ function pixels(png: Buffer): { width: number; height: number; at: (i: number) =
   return { width, height, at: (i) => [out[i * 3]!, out[i * 3 + 1]!, out[i * 3 + 2]!] };
 }
 
+/**
+ * The address of one of the site's own data files: a plain `.json` name in its `data/` folder, as the demo's
+ * manifest names them, and never anything off the site (Qodo PR256 2c6b344c).
+ */
+export function dataUrl(file: string, site: string = DEMO_URL): string {
+  const base = new URL('data/', site);
+  const url = new URL(file, base);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(file) || url.origin !== base.origin || url.href !== `${base.href}${file}`) {
+    throw new Error(`${JSON.stringify(file)} is not a plain .json file of the site's data`);
+  }
+  return url.href;
+}
+
 /** The planet a visitor reaches with one `]` from the start: the layout's first, its path and its surface file count. */
 export async function firstPlanet(page: Page): Promise<{ path: string; files: number }> {
   const get = async (file: string) => {
-    const res = await page.request.get(new URL(`data/${file}`, DEMO_URL).href);
+    const res = await page.request.get(dataUrl(file));
     expect(res.status(), `data/${file}`).toBe(200);
     return res.json() as Promise<unknown>;
   };
@@ -66,14 +79,23 @@ export const NO_SUCH_PLANET = { path: 'drill/no-such-planet', files: 404 } as co
 
 export interface Visit { offsite: string[]; errors: string[] }
 
-/** Opens the demo, recording page errors, console errors and every request that leaves the site's origin. */
-export async function open(page: Page): Promise<Visit> {
-  const origin = new URL(DEMO_URL).origin;
+/**
+ * Opens the demo (`url`: the site), recording page errors and console errors. Every request the page makes
+ * to another origin is stopped before it leaves the browser and recorded, so the check fails on it and
+ * nothing was sent (Qodo PR256 2c6b344c); the site's own requests go on as they would.
+ */
+export async function open(page: Page, url: string = DEMO_URL): Promise<Visit> {
+  const origin = new URL(url).origin;
   const v: Visit = { offsite: [], errors: [] };
   page.on('pageerror', (e) => v.errors.push(`page error: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') v.errors.push(`console.error: ${m.text()}`); });
-  page.on('request', (r) => { const o = new URL(r.url()).origin; if (o !== origin) v.offsite.push(o); });
-  const res = await page.goto(DEMO_URL);
+  await page.route('**/*', async (r) => {
+    const o = new URL(r.request().url()).origin;
+    if (o === origin) return r.fallback();
+    v.offsite.push(o);
+    return r.abort('blockedbyclient');
+  });
+  const res = await page.goto(url);
   expect(res?.status(), 'the demo page').toBe(200);
   return v;
 }
