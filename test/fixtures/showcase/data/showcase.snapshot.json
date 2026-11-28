@@ -19,6 +19,16 @@
       "lastCommitDate": "2026-07-28T14:00:00Z",
       "name": "feature/csv-export",
       "remote": false
+    },
+    {
+      "aheadCount": 2,
+      "alsoRemote": false,
+      "dirIds": [
+        "d_3b82254b3c87"
+      ],
+      "lastCommitDate": "2026-05-12T10:00:00Z",
+      "name": "spike/remote-config",
+      "remote": false
     }
   ],
   "cochange": {
@@ -26,13 +36,13 @@
     "commits": 39,
     "missing": [
       {
-        "at": "9c83f099b837e2d3b2332c1abd277f0f9330b4e7",
+        "at": "ed786432e87468feabf596aae4026392a3a5dacf",
         "fileId": "f_044e16a3d231",
         "strengthMilli": 750,
         "with": "f_593d80a0699a"
       },
       {
-        "at": "74053f59176ef0531d4a2584ce326c3f4ad549f4",
+        "at": "e16fc9ce0f7f1c012d9d1349e7a1be0cd06b24ed",
         "fileId": "f_0ae3ab276502",
         "strengthMilli": 750,
         "with": "f_25664083d8d6"
@@ -157,8 +167,8 @@
         "tier": "none"
       },
       "author": "p_f2f3041fac62",
-      "authorDate": "2026-06-01T09:00:00Z",
-      "date": "2026-06-01T09:00:00Z",
+      "authorDate": "2026-05-04T09:00:00Z",
+      "date": "2026-05-04T09:00:00Z",
       "files": [
         [
           ".mailmap",
@@ -204,7 +214,7 @@
         ]
       ],
       "seq": 0,
-      "sha": "552f9c1d942bf3f620c70725389923110c61760d",
+      "sha": "4a594ca5c144d447370798a7a62f46886ff5ff51",
       "subject": "chore: scaffold harbor"
     },
     {
@@ -240,7 +250,7 @@
         ]
       ],
       "seq": 1,
-      "sha": "3c5a6b0441813ab98608d545969522a3ce6697cd",
+      "sha": "c0ec29e5e7eb0a4ee61f0fae05f58808642a8393",
       "subject": "feat(core): event bus and the sync job queue"
     },
     {
@@ -276,7 +286,7 @@
         ]
       ],
       "seq": 2,
-      "sha": "578e476eaa57cdd04695b99d3b0871195e8ea3f0",
+      "sha": "a6dbc4cc775f665dd0eb84c116f8ef124d79557e",
       "subject": "feat(api): users route and schema"
     },
     {
@@ -312,7 +322,7 @@
         ]
       ],
       "seq": 3,
-      "sha": "57cd732a155de8d098a17f7788a386d0a291b32c",
+      "sha": "401f78fe6450871826b359b1ce9053054a6a1bfd",
       "subject": "feat(billing): invoices and tax rates"
     },
     {
@@ -342,7 +352,7 @@
         ]
       ],
       "seq": 4,
-      "sha": "1ab5d03c9e09bc52a64ffa6658b20bc0cc7e0718",
+      "sha": "69be735a7fdd1ca97ec710f0827831ed60bfa770",
       "subject": "feat(legacy): port the old importer and exporter"
     },
     {
@@ -378,7 +388,7 @@
         ]
       ],
       "seq": 5,
-      "sha": "c8716f7a631cbfb3094d6bf53c8f9b70a425f1ee",
+      "sha": "a3375d4c50eea35ff1ca5ce2d3819c5b6b6bf611",
       "subject": "feat(ui): theme, button and modal"
     },
     {
@@ -414,7 +424,7 @@
         ]
       ],
       "seq": 6,
-      "sha": "ea56ff4d8e918450d6fb80220e3ef80bca5de64a",
+      "sha": "f30f64dae809e082dd98cca78a84a99ca83c8658",
       "subject": "feat(auth): sessions and the login route"
     },
     {
@@ -444,7 +454,7 @@
         ]
       ],
       "seq": 7,
-      "sha": "f55b7a6017cace9ec4059fc65fd11fc480eefc5b",
+      "sha": "706aabe45c63e1b3e85747066add3226335d0bf7",
       "subject": "docs: user guide and architecture notes"
     },
     {
@@ -480,7 +490,7 @@
         ]
       ],
       "seq": 8,
-      "sha": "9b8deb25555c0a51c4da0bb54497ef9124ad37f5",
+      "sha": "41ce2a7dd800207403b3426a084f5d1b8c67690d",
       "subject": "feat(api): paging for users"
     },
     {
@@ -510,7 +520,7 @@
         ]
       ],
       "seq": 9,
-      "sha": "c38c6c835567efbf85d65f91c3e8a3c90635fa06",
+      "sha": "4adc8da362789b3baf53a72eaef1d61b958083af",
       "subject": "feat(ui): table and the home page"
     },
     {
@@ -540,7 +550,7 @@
         ]
       ],
       "seq": 10,
-      "sha": "78996a7e6ad55a7714b9d301ef26cc5c2137612b",
+      "sha": "d27befc86db07fae94ccf106df078c9542f3634a",
       "subject": "feat(legacy): xml import"
     },
     {
@@ -576,7 +586,7 @@
         ]
       ],
       "seq": 11,
-      "sha": "e66674adc2664da3f1650468ffb5fb4034107004",
+      "sha": "efc57d2392646863763b91cd316a78abdc788db2",
       "subject": "feat(auth): refresh tokens"
     },
     {
@@ -612,7 +622,7 @@
         ]
       ],
       "seq": 12,
-      "sha": "755bafdd47700438f36280eb6da02c9ae156b8ce",
+      "sha": "575c25b1acbde950c1bc9414edc803e9de6f0a5e",
       "subject": "feat(billing): refunds"
     },
     {
@@ -648,7 +658,7 @@
         ]
       ],
       "seq": 13,
-      "sha": "48f68fe5414132dca43264d7780a94483bf56c55",
+      "sha": "8c8f4d9d3806d67f955f0a85fe210bd7161847ea",
       "subject": "feat(sync): conflict handling"
     },
     {
@@ -684,7 +694,7 @@
         ]
       ],
       "seq": 14,
-      "sha": "0acf92c8b1d45404b6821fd2873634acf077a49d",
+      "sha": "d5044963f44d40eb1aacf831be49cabcb5927a02",
       "subject": "chore: release and seed scripts"
     },
     {
@@ -720,7 +730,7 @@
         ]
       ],
       "seq": 15,
-      "sha": "948c2a0f314430272b64b9402a5e39dcf987270c",
+      "sha": "ea0446d62475bd0e62649c8afff2e909a4839e8c",
       "subject": "feat(api): orders"
     },
     {
@@ -762,7 +772,7 @@
         ]
       ],
       "seq": 16,
-      "sha": "50212f87d82214aaa72418b798aaf3ac80107dd4",
+      "sha": "7f8ae0f3c58efbc34157d7d22e2dd1fb55f6767b",
       "subject": "feat(auth): passwords and roles, with tests"
     },
     {
@@ -792,7 +802,7 @@
         ]
       ],
       "seq": 17,
-      "sha": "5040c103aea53713635f4b71db6a40c1d31b6e1e",
+      "sha": "0edc0e35d5052e1818cbe224b6224e4a463790f9",
       "subject": "feat(ui): settings page"
     },
     {
@@ -822,7 +832,7 @@
         ]
       ],
       "seq": 18,
-      "sha": "cdd832d00ec7ad222f58e97226cbe0bd2e9bb5b1",
+      "sha": "c469069d7dad71bd518d480865cc115b81834f8c",
       "subject": "fix(legacy): fixed-width rows for the old reader"
     },
     {
@@ -858,7 +868,7 @@
         ]
       ],
       "seq": 19,
-      "sha": "ba8e71b2a516bf053ea38cc785d632e7a01287e9",
+      "sha": "9e23192171d22b37868e29af799ec977ac4888f4",
       "subject": "feat(sync): offline outbox"
     },
     {
@@ -888,7 +898,7 @@
         ]
       ],
       "seq": 20,
-      "sha": "2d6294c3c8898ed9f7c521eaea01925485bf773b",
+      "sha": "0c453216166d3c089b4a7e6f06c2842e706916fb",
       "subject": "test(billing): invoice cases and user fixtures"
     },
     {
@@ -918,7 +928,7 @@
         ]
       ],
       "seq": 21,
-      "sha": "5df4c4595e364c701b11b390dfadfb9372900a4f",
+      "sha": "3d77bd18ce730a86ee4bfad083bef705c22de63c",
       "subject": "feat(auth): remember me"
     },
     {
@@ -948,7 +958,7 @@
         ]
       ],
       "seq": 22,
-      "sha": "34f05a42277002a42d5638e88bd72e45175b9afb",
+      "sha": "4dc5de4ff517968ec5c8db13d3a7615e4096e8a5",
       "subject": "docs: layout overview"
     },
     {
@@ -978,7 +988,7 @@
         ]
       ],
       "seq": 23,
-      "sha": "0b4b8a6ac45e575b8bd54b62b01ac4e6fc4360e9",
+      "sha": "57e5224c80133687ebc7c10c8c0b2f46fe67a240",
       "subject": "feat(api): order totals"
     },
     {
@@ -1002,7 +1012,7 @@
         ]
       ],
       "seq": 24,
-      "sha": "560d45f50e0efa57140f3aeee29d78e18f6087ef",
+      "sha": "34a08469fd567ddfd3b611d0c677fc98e7e69422",
       "subject": "test: end-to-end smoke test"
     },
     {
@@ -1038,7 +1048,7 @@
         ]
       ],
       "seq": 25,
-      "sha": "cd86cf45eea6fbdab74a1ea00710e6602faef315",
+      "sha": "de838d22a969a498a707f495eb09899a392306e2",
       "subject": "feat(api): user avatars"
     },
     {
@@ -1068,7 +1078,7 @@
         ]
       ],
       "seq": 26,
-      "sha": "60a7e827de6987cd8c9b43d36bcb1e5e5ef3f261",
+      "sha": "03587843dc72a341cec1d47c4fc2767194bd75e8",
       "subject": "fix(billing): tax rounding"
     },
     {
@@ -1098,7 +1108,7 @@
         ]
       ],
       "seq": 27,
-      "sha": "d29225b8cfc5db6a66b49ab9ed5523b231de97ec",
+      "sha": "d646a904be5620602a6370586736bb0bbef3406b",
       "subject": "feat(ui): dark theme buttons"
     },
     {
@@ -1148,7 +1158,7 @@
         ]
       ],
       "seq": 28,
-      "sha": "f29fd87db568c442e05536b7211a016a853e1b9b",
+      "sha": "0a0190379d315f8ac37dd2af80877dbb405efafa",
       "subject": "feat(api): order status filters"
     },
     {
@@ -1172,7 +1182,7 @@
         ]
       ],
       "seq": 29,
-      "sha": "97552b1522e7c7fe6f1b3138076cb94f4beb40f4",
+      "sha": "3473cdf62d630a105d40efc9daae9003f59b9440",
       "subject": "fix(api): login rate limit"
     },
     {
@@ -1212,7 +1222,7 @@
         ]
       ],
       "seq": 30,
-      "sha": "74053f59176ef0531d4a2584ce326c3f4ad549f4",
+      "sha": "e16fc9ce0f7f1c012d9d1349e7a1be0cd06b24ed",
       "subject": "feat(sync): retry with backoff"
     },
     {
@@ -1258,7 +1268,7 @@
         ]
       ],
       "seq": 31,
-      "sha": "8be7dd76529499f12cfab58dfcfcc826bc31d8df",
+      "sha": "10f9b94c7dc3103261527ed91a131f27b24ba21c",
       "subject": "feat(ui): sortable tables"
     },
     {
@@ -1282,7 +1292,7 @@
         ]
       ],
       "seq": 32,
-      "sha": "e50efce88b51b2e74afaab344cd6097426cb87c6",
+      "sha": "6d53661f65a14ef9348d73c46f0978cc61ca1ef6",
       "subject": "fix(legacy): hotfix the export for the old reader"
     },
     {
@@ -1328,7 +1338,7 @@
         ]
       ],
       "seq": 33,
-      "sha": "60a74273ef3c21b1765e49f173b2df130fe662ed",
+      "sha": "08846a79dca4aaac5dc94750f56c32acfd85c7f0",
       "subject": "feat(auth): rotate refresh tokens"
     },
     {
@@ -1358,7 +1368,7 @@
         ]
       ],
       "seq": 34,
-      "sha": "281f81132df0a24488f5b2f6b8b331e1a9fae567",
+      "sha": "f09002173034bde0e3a2408d664f70a9b389949a",
       "subject": "docs: offline mode in the guide"
     },
     {
@@ -1404,7 +1414,7 @@
         ]
       ],
       "seq": 35,
-      "sha": "eb298f00f67882b5c6c1c641ce910c4c143d975a",
+      "sha": "962d7de2fd547de1f187411cd552df38ae1530a1",
       "subject": "chore: lint script and offline notes"
     },
     {
@@ -1428,7 +1438,7 @@
         ]
       ],
       "seq": 36,
-      "sha": "9c83f099b837e2d3b2332c1abd277f0f9330b4e7",
+      "sha": "ed786432e87468feabf596aae4026392a3a5dacf",
       "subject": "feat(api): user search"
     },
     {
@@ -1452,7 +1462,7 @@
         ]
       ],
       "seq": 37,
-      "sha": "7b018b087dfa6cec6f83165c0580125635244a4d",
+      "sha": "75b09c64aede4cf1275d224a30d4797dbec8aacf",
       "subject": "chore(release): 0.2.0"
     },
     {
@@ -1476,7 +1486,7 @@
         ]
       ],
       "seq": 38,
-      "sha": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+      "sha": "bfc296837450a831c2704205437ecc4406e1e3b3",
       "subject": "feat(ui): home page activity card"
     }
   ],
@@ -1540,7 +1550,7 @@
         "seed": 3072658344,
         "sessions": [],
         "subject": "wip: csv quoting",
-        "tip": "23fbd44d90a5191e67cd15dac604ce632cf79a4e",
+        "tip": "e2a026672d5e9909c8fecf83492cd7147eec59b4",
         "worktree": null,
         "worktreeOnly": false
       },
@@ -1567,7 +1577,7 @@
         "seed": 3319552741,
         "sessions": [],
         "subject": "fix(billing): tax rounding",
-        "tip": "60a7e827de6987cd8c9b43d36bcb1e5e5ef3f261",
+        "tip": "03587843dc72a341cec1d47c4fc2767194bd75e8",
         "worktree": null,
         "worktreeOnly": false
       },
@@ -1595,8 +1605,38 @@
           "s_530c0fb9dd8be2"
         ],
         "subject": "refactor(legacy): chunked reads",
-        "tip": "f97f050fd2e76b46882bc963932b025ae9b2ce10",
+        "tip": "17224aab26e2b4b8168bc62cd3a6ea94e4cb3154",
         "worktree": null,
+        "worktreeOnly": false
+      },
+      {
+        "ageDays": 190,
+        "aheadCount": 2,
+        "cls": "branch",
+        "creator": {
+          "agent": false,
+          "name": "Theo Park",
+          "self": false
+        },
+        "files": [
+          "f_980d3ba91f4d"
+        ],
+        "filesOutside": 1,
+        "id": "x_d7bcf879dd1d",
+        "lastCommitDate": "2026-05-12T10:00:00Z",
+        "lines": 35,
+        "rebased": false,
+        "ref": "refs/heads/spike/remote-config",
+        "remotes": [],
+        "seed": 4106862001,
+        "sessions": [],
+        "subject": "spike: cache remote settings",
+        "tip": "617b8bdc3e3dbd87feef21846beb144b75d9ec0e",
+        "worktree": {
+          "folder": "harbor-spike",
+          "locked": false,
+          "prunable": true
+        },
         "worktreeOnly": false
       }
     ],
@@ -1627,7 +1667,7 @@
       "path": "scripts"
     },
     {
-      "bornDate": "2026-06-01T09:00:00Z",
+      "bornDate": "2026-05-04T09:00:00Z",
       "bornSeq": 0,
       "depth": 1,
       "id": "d_3b82254b3c87",
@@ -1676,7 +1716,7 @@
       "path": "src/billing"
     },
     {
-      "bornDate": "2026-06-01T09:00:00Z",
+      "bornDate": "2026-05-04T09:00:00Z",
       "bornSeq": 0,
       "depth": 2,
       "id": "d_959196e6c98c",
@@ -2526,9 +2566,9 @@
   },
   "repo": {
     "branch": "main",
-    "head": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+    "head": "bfc296837450a831c2704205437ecc4406e1e3b3",
     "headDate": "2026-11-18T13:00:00Z",
-    "repoId": "dcecfb0fde85c20a",
+    "repoId": "e6b8e35ac522b01d",
     "selfPersonIds": [
       "p_f2f3041fac62"
     ]
@@ -2592,7 +2632,7 @@
     {
       "branch": "main",
       "commits": [
-        "f29fd87db568c442e05536b7211a016a853e1b9b"
+        "0a0190379d315f8ac37dd2af80877dbb405efafa"
       ],
       "editBuckets": [
         1,
@@ -2654,7 +2694,7 @@
       "agentType": "general-purpose",
       "branch": "main",
       "commits": [
-        "f29fd87db568c442e05536b7211a016a853e1b9b"
+        "0a0190379d315f8ac37dd2af80877dbb405efafa"
       ],
       "editBuckets": [
         1,
@@ -2711,7 +2751,7 @@
     {
       "branch": "main",
       "commits": [
-        "74053f59176ef0531d4a2584ce326c3f4ad549f4"
+        "e16fc9ce0f7f1c012d9d1349e7a1be0cd06b24ed"
       ],
       "editBuckets": [
         1,
@@ -2772,7 +2812,7 @@
     {
       "branch": "main",
       "commits": [
-        "8be7dd76529499f12cfab58dfcfcc826bc31d8df"
+        "10f9b94c7dc3103261527ed91a131f27b24ba21c"
       ],
       "editBuckets": [
         1,
@@ -2838,7 +2878,7 @@
     {
       "branch": "main",
       "commits": [
-        "60a74273ef3c21b1765e49f173b2df130fe662ed"
+        "08846a79dca4aaac5dc94750f56c32acfd85c7f0"
       ],
       "editBuckets": [
         1,
@@ -2904,7 +2944,7 @@
     {
       "branch": "main",
       "commits": [
-        "eb298f00f67882b5c6c1c641ce910c4c143d975a"
+        "962d7de2fd547de1f187411cd552df38ae1530a1"
       ],
       "editBuckets": [
         1,

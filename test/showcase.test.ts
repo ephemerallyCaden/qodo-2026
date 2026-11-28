@@ -13,10 +13,13 @@ import type { CoChangeView } from '../src/core/contract/cochange.js';
 import type { CrewDetail, CrewView } from '../src/core/contract/crew.js';
 import type { DroneDetail, DroneView } from '../src/core/contract/drones.js';
 import type { BeaconView } from '../src/core/contract/beacons.js';
+import type { DebrisDetail, DebrisView } from '../src/core/contract/debris.js';
 import type { FogView } from '../src/core/contract/fog.js';
 import type { LayoutV1 } from '../src/core/contract/layout.js';
 import type { DiffView, UnseenList } from '../src/core/contract/api.js';
 import type { DirId, FileId, PersonId, SessionKey, SnapshotV02 } from '../src/core/snapshot/types.js';
+import { debrisDetail, debrisProblem, debrisView } from '../src/core/debris.js';
+import { homes } from '../src/core/fog/index.js';
 import { serverClient } from '../web/src/data/client.js';
 import { HEALTHY_LOOKS, lookOf, type Look } from '../web/src/model/system.js';
 import { BEACONS, buildShowcase, CHARTED, CLEARED } from './fixtures/showcase/build.js';
@@ -99,9 +102,12 @@ describe('showcase fixture build', () => {
     expect(privacyHits([...fresh].map(([where, text]) => ({ where, text })), { literals })).toEqual([]);
   });
 
-  it('has the three stale branches debris will draw: abandoned, merged but not deleted, an orphaned agent branch', () => {
-    expect(git(repoDir, 'for-each-ref', '--format=%(refname:short)', '--no-merged=main', 'refs/heads')).toEqual(['claude/legacy-cleanup', 'feature/csv-export']);
+  it('has the stale branches debris draws: abandoned (one in a prunable worktree), merged but not deleted, an orphaned agent branch', () => {
+    expect(git(repoDir, 'for-each-ref', '--format=%(refname:short)', '--no-merged=main', 'refs/heads'))
+      .toEqual(['claude/legacy-cleanup', 'feature/csv-export', 'spike/remote-config']);
     expect(git(repoDir, 'for-each-ref', '--format=%(refname:short)', '--merged=main', 'refs/heads')).toEqual(['fix/tax-rounding', 'main']);
+    expect(git(repoDir, 'worktree', 'list', '--porcelain').filter((l) => l.startsWith('branch ') || l.startsWith('prunable')))
+      .toEqual(['branch refs/heads/main', 'branch refs/heads/spike/remote-config', expect.stringMatching(/^prunable/)]);
   });
 });
 
@@ -120,7 +126,7 @@ describe('showcase fixture data', () => {
 
   it('the manifest names every file once, and every file answers at its head', () => {
     const named = [...Object.values(manifest.routes), ...Object.values(manifest.droneDetail), ...Object.values(manifest.crewDetail),
-      ...Object.values(manifest.unseen), ...Object.values(manifest.diff), SHOWCASE_MANIFEST].sort();
+      ...Object.values(manifest.unseen), ...Object.values(manifest.diff), ...Object.values(manifest.debrisDetail), SHOWCASE_MANIFEST].sort();
     expect(named).toEqual([...committed().keys()]);
     expect(layout.source.head).toBe(manifest.head);
     for (const name of named.filter((n) => n !== SHOWCASE_MANIFEST && n !== manifest.routes['/api/layout'] && n !== manifest.routes['/api/snapshot'])) {
@@ -144,8 +150,10 @@ describe('showcase fixture data', () => {
       const q = (k: string) => url.searchParams.get(k) ?? '';
       const byKey: Record<string, Record<string, string>> = {
         '/api/drone-detail': manifest.droneDetail, '/api/crew-detail': manifest.crewDetail, '/api/unseen': manifest.unseen, '/api/diff': manifest.diff,
+        '/api/debris-detail': manifest.debrisDetail,
       };
-      const key = { '/api/drone-detail': q('key'), '/api/crew-detail': q('person'), '/api/unseen': q('home'), '/api/diff': q('fileId') }[url.pathname];
+      const key = { '/api/drone-detail': q('key'), '/api/crew-detail': q('person'), '/api/unseen': q('home'), '/api/diff': q('fileId'),
+        '/api/debris-detail': q('id') }[url.pathname];
       const file = (manifest.routes as Record<string, string>)[url.pathname] ?? (key !== undefined && q('at') === manifest.head ? byKey[url.pathname]?.[key] : undefined);
       return file ? new Response(readFileSync(join(DATA, file), 'utf8'), { status: 200 }) : new Response('{}', { status: 404 });
     });
@@ -160,6 +168,14 @@ describe('showcase fixture data', () => {
       expect((await c.beacons()).beacons.length).toBeGreaterThan(0);
       expect((await c.cochange()).links.length).toBeGreaterThan(0);
       expect((await c.files()).files.length).toBe(snapshot.files.length);
+      // The view has no debris client yet (debris-render adds it): the routes answer through the same stand-in.
+      const debris = await (await fetch('/api/debris')).json() as DebrisView;
+      expect(debris.total).toBeGreaterThan(0);
+      for (const p of debris.pieces) {
+        const res = await fetch(`/api/debris-detail?${new URLSearchParams({ id: p.id, at: manifest.head })}`);
+        expect(res.status, p.id).toBe(200);
+        expect((await res.json() as DebrisDetail).id).toBe(p.id);
+      }
       for (const key of Object.keys(manifest.droneDetail)) expect((await c.droneDetail(key as SessionKey, manifest.head)).ok, key).toBe(true);
       for (const person of Object.keys(manifest.crewDetail)) expect((await c.crewDetail(person as PersonId, manifest.head)).ok, person).toBe(true);
       for (const home of Object.keys(manifest.unseen)) expect((await c.unseen(home === 'star' ? null : home as DirId, manifest.head)).ok, home).toBe(true);
@@ -247,7 +263,29 @@ describe('showcase fixture data', () => {
 
   it('has the unmerged stale branches in the snapshot, with old dates', () => {
     expect(snapshot.branches.map((b) => [b.name, b.lastCommitDate])).toEqual([
-      ['claude/legacy-cleanup', '2026-09-20T11:00:00Z'], ['feature/csv-export', '2026-07-28T14:00:00Z']]);
+      ['claude/legacy-cleanup', '2026-09-20T11:00:00Z'], ['feature/csv-export', '2026-07-28T14:00:00Z'], ['spike/remote-config', '2026-05-12T10:00:00Z']]);
+  });
+
+  it('debris: the view and every panel are what the snapshot they ship with says', () => {
+    expect(debrisProblem(snapshot)).toBeNull();
+    const home = homes(snapshot, layout.source.roots);
+    expect(read<DebrisView>(manifest.routes['/api/debris'])).toEqual(debrisView(snapshot, home));
+    const ids = read<DebrisView>(manifest.routes['/api/debris']).pieces.map((p) => p.id);
+    expect(Object.keys(manifest.debrisDetail).sort()).toEqual([...ids].sort());
+    for (const id of ids) expect(read<DebrisDetail>(manifest.debrisDetail[id]!), id).toEqual(debrisDetail(snapshot, home, id));
+  });
+
+  it('has debris on three planets, in three classes and all three decay steps, with a prunable worktree and an agent session', () => {
+    const v = read<DebrisView>(manifest.routes['/api/debris']);
+    expect(v.placed).toBe(v.total);
+    expect(new Set(v.pieces.map((p) => p.cls))).toEqual(new Set(['branch', 'merged', 'agent']));
+    expect(new Set(v.pieces.map((p) => p.home)).size).toBeGreaterThanOrEqual(3);
+    expect(new Set(v.pieces.map((p) => p.ageStep))).toEqual(new Set([0, 1, 2]));
+    const details = v.pieces.map((p) => read<DebrisDetail>(manifest.debrisDetail[p.id]!));
+    expect(details.map((d) => d.name).sort()).toEqual(['claude/legacy-cleanup', 'feature/csv-export', 'fix/tax-rounding', 'spike/remote-config']);
+    expect(details.filter((d) => d.worktree?.prunable).map((d) => d.name)).toEqual(['spike/remote-config']);
+    expect(details.find((d) => d.cls === 'agent')!.sessions.length).toBeGreaterThan(0);
+    expect(details.every((d) => d.cleanup !== null)).toBe(true);
   });
 
   it('diffs are short (the folder stays small)', () => {

@@ -1,12 +1,12 @@
 {
   "ok": true,
-  "at": "4db97c9c8622e2bb3b4e9943b42cf3c3f558e602",
+  "at": "bfc296837450a831c2704205437ecc4406e1e3b3",
   "home": "d_dc81d89a0568",
   "files": [
     {
       "fileId": "f_3485ef5adba8",
       "path": "src/sync/offline.ts",
-      "since": "74053f59176ef0531d4a2584ce326c3f4ad549f4",
+      "since": "e16fc9ce0f7f1c012d9d1349e7a1be0cd06b24ed",
       "reasons": [
         "agent",
         "self-committed-agent-written"
@@ -15,7 +15,7 @@
     {
       "fileId": "f_25664083d8d6",
       "path": "src/sync/queue.ts",
-      "since": "74053f59176ef0531d4a2584ce326c3f4ad549f4",
+      "since": "e16fc9ce0f7f1c012d9d1349e7a1be0cd06b24ed",
       "reasons": [
         "agent",
         "self-committed-agent-written"

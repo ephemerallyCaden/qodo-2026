@@ -8,7 +8,7 @@ Rebuild it (byte-identical on any machine):
 - `npm run fixture:showcase` rewrites `data/`;
 - `test/showcase.test.ts` builds it fresh and fails if it differs from `data/`; `UPDATE_GOLDEN=1` rewrites it there too. Commit a change with a `Golden-Update: <reason>` line.
 
-Files: `repo.ts` scripts the repo and its agent logs, `build.ts` scans it, writes chart state and reads every route, `make.ts` is the npm script, `manifest.ts` the index's type and file names.
+Files: `repo.ts` scripts the repo, its branches and worktree and its agent logs, `build.ts` scans it, writes chart state and reads every route, `make.ts` is the npm script, `manifest.ts` the index's type and file names.
 
 ## The system (`--root src`)
 
@@ -59,10 +59,15 @@ Fog: a first-run baseline at the 2026-08-27 commit (everything before it is seen
 
 `src/auth/session.ts`, `src/billing/tax.ts` and `src/legacy/importer.ts` (`build.ts` `BEACONS`).
 
-## Stale branches (for debris, R13)
+## Debris (R13)
 
-- `feature/csv-export`: abandoned, unmerged, last commit 2026-07-28.
-- `fix/tax-rounding`: merged but not deleted (points at a commit on main).
-- `claude/legacy-cleanup`: an orphaned agent branch, unmerged, last commit 2026-09-20.
+Four stale items, all placed, read from the repo by the scan (`/api/debris`, one panel each at `/api/debris-detail`):
 
-The snapshot lists the two unmerged ones (`branches`); the merged one exists only in the repo until R13 reads it.
+| Branch | Class | Home | Age (decay) | Case |
+|---|---|---|---|---|
+| `spike/remote-config` | branch (abandoned) | `src/core` | 190 days (broken) | Theo's May spike, in a worktree whose folder was deleted: a prunable worktree, so its cleanup is `git worktree remove` then `git branch -d` |
+| `feature/csv-export` | branch (abandoned) | `src/legacy` | 112 days (weathered) | Felix's unmerged July work |
+| `fix/tax-rounding` | merged | `src/billing` | 61 days (weathered) | merged but never deleted (it points at a commit on main) |
+| `claude/legacy-cleanup` | agent | `src/legacy` | 59 days (intact) | an orphaned agent branch: the 2026-09-20 session ran on it |
+
+The snapshot's `branches` lists the three unmerged ones; `debris` has all four.

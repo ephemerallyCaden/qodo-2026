@@ -12,6 +12,7 @@ import { applyBeacon, readBeacons } from '../../../src/state/beacons.js';
 import { applyChart, openFogSource, readDroneDetail, readDrones, readFog, writeQuizPass } from '../../../src/state/chart.js';
 import { readCoChange } from '../../../src/state/cochange.js';
 import { readCrew, readCrewDetail } from '../../../src/state/crew.js';
+import { readDebrisDetail, readDebrisView } from '../../../src/state/debris.js';
 import { readDiff, readUnseen } from '../../../src/state/diff.js';
 import { readStateBytes, stateDir } from '../../../src/state/io.js';
 import { SHOWCASE_MANIFEST, showcaseFile, type ShowcaseManifest } from './manifest.js';
@@ -98,6 +99,7 @@ async function build(work: string): Promise<{ files: Map<string, string>; repoDi
   };
   const drones = await readDrones(repo.dir);
   const crew = await readCrew(repo.dir);
+  const debris = await readDebrisView(repo.dir);
   const manifest: ShowcaseManifest = {
     schemaVersion: 'showcase.1',
     head,
@@ -109,11 +111,13 @@ async function build(work: string): Promise<{ files: Map<string, string>; repoDi
       [API.crew]: put(showcaseFile('crew'), crew),
       [API.cochange]: put(showcaseFile('cochange'), await readCoChange(repo.dir)),
       [API.beacons]: put(showcaseFile('beacons'), await readBeacons(repo.dir)),
+      [API.debris]: put(showcaseFile('debris'), debris),
     },
     droneDetail: {},
     crewDetail: {},
     unseen: {} as ShowcaseManifest['unseen'],
     diff: {},
+    debrisDetail: {},
   };
   for (const s of drones.sessions) {
     if (s.inferred) continue;
@@ -126,6 +130,9 @@ async function build(work: string): Promise<{ files: Map<string, string>; repoDi
     const list = okOrThrow(`unseen ${home ?? STAR_HOME}`, await readUnseen(repo.dir, { home, at: head }));
     manifest.unseen[home ?? STAR_HOME] = put(showcaseFile('unseen', home ?? STAR_HOME), list);
     for (const f of list.files) manifest.diff[f.fileId] = put(showcaseFile('diff', f.fileId), okOrThrow(`diff ${f.path}`, await readDiff(repo.dir, { fileId: f.fileId, at: head })));
+  }
+  for (const p of debris.pieces) {
+    manifest.debrisDetail[p.id] = put(showcaseFile('debris-detail', p.id), okOrThrow(`debris ${p.id}`, await readDebrisDetail(repo.dir, { id: p.id, at: head })));
   }
   out.set(SHOWCASE_MANIFEST, text(manifest));
   return { files: out, repoDir: repo.dir };
