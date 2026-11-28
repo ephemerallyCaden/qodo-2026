@@ -13,7 +13,8 @@ import { ViewError } from '../../web/src/data/client.js';
 import { demoClient } from '../../web/src/demo/client.js';
 import { checkManifest, MANIFEST_SCHEMA, memorySource, routeKey, staticSource, unseenKey, type DemoManifest } from '../../web/src/demo/source.js';
 import { dataset as siteDataset, SHOWCASE_DIR, SHOWCASE_INDEX } from '../../web/demo/site.js';
-import { miniCrew, miniDrones, miniFog, miniLayout } from '../fixtures/contract/mini.js';
+import { miniCrew, miniDebris, miniDrones, miniFog, miniLayout } from '../fixtures/contract/mini.js';
+import { DEBRIS_WARNINGS, type DebrisDetail } from '../../src/core/contract/debris.js';
 
 const ROOT = join(import.meta.dirname, '../..');
 const HEAD = miniLayout.source.head;
@@ -28,6 +29,14 @@ const diffWeb: DiffView = { ok: true, fileId: WEB_FILE, at: HEAD, since: '2'.rep
 const cochange: CoChangeView = { schemaVersion: 'cochange.1', head: HEAD, needsRescan: false, links: [{ a: 'f_00000000000a', b: WEB_FILE, strengthMilli: 600 }],
   flags: [{ fileId: WEB_FILE, with: 'f_00000000000a', strengthMilli: 600, at: HEAD }], dismissed: 0,
   files: [{ fileId: 'f_00000000000a', path: 'src/main.ts', home: 'd_00000000000a' }, { fileId: WEB_FILE, path: 'web/app.ts', home: WEB }] };
+/** One piece of mini's debris, its panel as the server would build it. */
+const DEBRIS_ID = miniDebris.pieces[0]!.id;
+const debrisDetail: DebrisDetail = {
+  ok: true, schemaVersion: 'debris-detail.1', head: HEAD, id: DEBRIS_ID, cls: 'branch', name: 'feature/old-idea', remoteOnly: false, ageDays: 40,
+  lastCommit: { sha: 'abcdef1234567890abcdef1234567890abcdef12', short: 'abcdef1', subject: 'try a thing', date: '2026-09-14T10:00:00Z' },
+  aheadCount: 3, lines: 2400, creator: { displayName: 'Ada Quill', captain: false, agent: false }, sessions: [], planets: ['d_00000000000a'], home: 'd_00000000000a',
+  filesOutside: 0, worktree: null, rebased: false, cleanup: null, inspect: "git log --oneline HEAD..'refs/heads/feature/old-idea' --", warning: DEBRIS_WARNINGS.unmerged,
+};
 const droneDetail: DroneDetail = { ok: true, schemaVersion: 'drone-detail.1', head: HEAD, key: 's_aaaaaaaaaaaa', startedAt: '2026-11-10T09:00:00Z', endedAt: '2026-11-10T10:00:00Z',
   files: [], otherFiles: 0, otherEdits: 0, buckets: new Array<number>(DETAIL_BUCKETS).fill(0), spanMs: 3_600_000, needsRescan: false };
 
@@ -71,6 +80,8 @@ describe('demo manifest', () => {
     expect(routeKey(API.unseen, 'star')).toBe('/api/unseen?home=star');
     expect(unseenKey(null)).toBe('/api/unseen?home=star');
     expect(routeKey(API.diff, 'f_1')).toBe('/api/diff?fileId=f_1');
+    expect(() => checkManifest(dataset({ [API.debris]: {}, [routeKey(API.debrisDetail, 'x_0123456789ab')]: {} }).manifest)).not.toThrow(); // R13
+    expect(routeKey(API.debrisDetail, 'x_0123456789ab')).toBe('/api/debris-detail?id=x_0123456789ab');
   });
 
   it('refuses writes, the event stream, unknown routes, odd queries and files outside its folder', () => {
@@ -113,7 +124,7 @@ describe('static source', () => {
 
 describe('demo client', () => {
   it('answers every read route from the dataset, checked like the server\'s answers', async () => {
-    const c = client({ [routeKey(API.droneDetail, 's_aaaaaaaaaaaa')]: droneDetail });
+    const c = client({ [routeKey(API.droneDetail, 's_aaaaaaaaaaaa')]: droneDetail, [API.debris]: miniDebris, [routeKey(API.debrisDetail, DEBRIS_ID)]: debrisDetail });
     expect(await c.layout()).toEqual(miniLayout);
     expect(await c.fog()).toEqual(miniFog);
     expect(await c.drones()).toEqual(miniDrones);
@@ -123,6 +134,10 @@ describe('demo client', () => {
     expect(await c.unseen(WEB, HEAD)).toEqual(unseenWeb);
     expect(await c.diff(WEB_FILE, HEAD)).toEqual(diffWeb);
     expect(await c.droneDetail('s_aaaaaaaaaaaa', HEAD)).toEqual(droneDetail);
+    expect(await c.debris()).toEqual(miniDebris); // R13
+    expect(await c.debrisDetail(DEBRIS_ID, HEAD)).toEqual(debrisDetail);
+    expect(await c.debrisDetail(DEBRIS_ID, OTHER)).toEqual({ ok: false, error: 'unknown-head', head: HEAD });
+    expect(await c.debrisDetail(miniDebris.pieces[1]!.id, HEAD)).toEqual({ ok: false, error: 'no-such-item' });
     expect(await c.beacons()).toEqual({ schemaVersion: 'beacons.1', head: HEAD, beacons: [], unplaced: 0 });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -139,6 +154,8 @@ describe('demo client', () => {
     await expect(c.files()).rejects.toThrow(/no file list/);
     expect(await c.droneDetail('s_x', HEAD)).toEqual({ ok: false, error: 'no-such-session' });
     expect(await c.crewDetail('p_x', HEAD)).toEqual({ ok: false, error: 'no-such-person' });
+    await expect(c.debris()).rejects.toThrow(/no debris/); // R13: said, never an empty view
+    expect(await c.debrisDetail('x_000000000000', HEAD)).toEqual({ ok: false, error: 'no-such-item' });
     // and a broken file is refused with what's wrong with it
     const bad = demoClient(memorySource(checkManifest({ schemaVersion: MANIFEST_SCHEMA, routes: { [API.layout]: 'l.json', [API.fog]: 'f.json' } }), { 'l.json': '{}', 'f.json': 'nope' }));
     await expect(bad.layout()).rejects.toThrow(/layout from the demo data is invalid/);
@@ -314,10 +331,14 @@ describe.skipIf(SHOWCASE === undefined)('the showcase dataset, through the demo 
     const c = demoClient(memorySource(d.manifest, files));
     const [layout, fog] = await Promise.all([c.layout(), c.fog()]);
     expect(fog.head).toBe(layout.source.head);
-    for (const v of await Promise.all([c.drones(), c.crew(), c.beacons(), c.cochange(), c.files()])) expect(v.head).toBe(fog.head);
+    for (const v of await Promise.all([c.drones(), c.crew(), c.beacons(), c.cochange(), c.files(), c.debris()])) expect(v.head).toBe(fog.head);
     const item = (path: string) => Object.keys(d.manifest.routes).filter((k) => k.startsWith(`${path}?`)).map((k) => [...new URLSearchParams(k.slice(path.length + 1)).values()][0]!);
     for (const key of item(API.droneDetail)) expect(await c.droneDetail(key as `s_${string}`, fog.head), key).toMatchObject({ ok: true });
     for (const person of item(API.crewDetail)) expect(await c.crewDetail(person as `p_${string}`, fog.head), person).toMatchObject({ ok: true });
+    // R13: every piece of the showcase's debris has its panel
+    const pieces = (await c.debris()).pieces.map((p) => p.id);
+    expect(item(API.debrisDetail).sort()).toEqual([...pieces].sort());
+    for (const id of pieces) expect(await c.debrisDetail(id, fog.head), id).toMatchObject({ ok: true, id });
     for (const fileId of item(API.diff)) expect(await c.diff(fileId as `f_${string}`, fog.head), fileId).toMatchObject({ ok: true });
     const unseen = new Set<string>();
     for (const home of [null, ...fog.planets.map((p) => p.dirId)]) {

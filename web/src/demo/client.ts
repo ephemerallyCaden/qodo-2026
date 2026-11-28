@@ -10,10 +10,12 @@ import type { Beacon, BeaconAction, BeaconResult, BeaconView } from '../../../sr
 import type { CoChangeView } from '../../../src/core/contract/cochange.js';
 import type { ChartAction, FogCounts, FogView } from '../../../src/core/contract/fog.js';
 import type { CrewDetailResult } from '../../../src/core/contract/crew.js';
+import type { DebrisDetailResult } from '../../../src/core/contract/debris.js';
 import type { DroneDetailResult } from '../../../src/core/contract/drones.js';
 import type { DirId, FileId, Sha } from '../../../src/core/snapshot/types.js';
 import { checkCrewDetail } from '../crew/check.js';
-import { parseBeacons, parseChecked, parseCoChange, parseCrew, parseDrones, parseFog, parseLayout, parseTreeSource, ViewError, type DataClient } from '../data/client.js';
+import { parseBeacons, parseChecked, parseCoChange, parseCrew, parseDebris, parseDrones, parseFog, parseLayout, parseTreeSource, ViewError, type DataClient } from '../data/client.js';
+import { checkDebrisDetail } from '../debris/check.js';
 import { checkDroneDetail } from '../drones/check.js';
 import { checkDiff, checkUnseen } from '../model/validate.js';
 import { routeKey, unseenKey, type DemoSource } from './source.js';
@@ -240,6 +242,18 @@ export function demoClient(source: DemoSource): DemoClient {
       const route = routeKey(API.crewDetail, person);
       if (!has(route)) return { ok: false, error: 'no-such-person' };
       return baked(route, (t) => parseChecked(t, 'crew detail', SOURCE, checkCrewDetail));
+    },
+    // R13: the dataset's stale work, and one piece's panel (its commands are only ever shown, never run)
+    debris: async () => {
+      if (!has(API.debris)) throw missing('debris');
+      return baked(API.debris, (t) => parseDebris(t, SOURCE));
+    },
+    debrisDetail: async (id, at): Promise<DebrisDetailResult> => {
+      const head = await headNow();
+      if (at !== head) return unknownHead(head);
+      const route = routeKey(API.debrisDetail, id);
+      if (!has(route)) return { ok: false, error: 'no-such-item' };
+      return baked(route, (t) => parseChecked(t, 'debris detail', SOURCE, checkDebrisDetail));
     },
     unseen,
     diff,

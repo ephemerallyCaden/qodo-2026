@@ -78,6 +78,10 @@ const ENTRIES: readonly Entry[] = [
     text: 'Focus a planet to see starlight lines to files that usually change with it. A teal flag marks a file whose usual partner changed lately without it.',
   },
   {
+    title: 'debris', icons: [{ icon: THING_ICONS.debris }],
+    text: 'Stale work drifts round the planet it touches as satellite junk: an abandoned branch, a merged branch never deleted, an agent\'s orphaned branch, each its own shape. Older pieces weather, then break apart. Click one for its branch, age and the command to clean it up, which you run yourself.',
+  },
+  {
     title: 'beacons', icons: [{ icon: THING_ICONS.beacon }],
     text: 'A note from the captain\'s log, left on a file when you chart it.',
   },

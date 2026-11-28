@@ -168,13 +168,13 @@ describe('showcase fixture data', () => {
       expect((await c.beacons()).beacons.length).toBeGreaterThan(0);
       expect((await c.cochange()).links.length).toBeGreaterThan(0);
       expect((await c.files()).files.length).toBe(snapshot.files.length);
-      // The view has no debris client yet (debris-render adds it): the routes answer through the same stand-in.
-      const debris = await (await fetch('/api/debris')).json() as DebrisView;
+      // R13: the debris and every piece's panel, through the view's own client and checks
+      const debris = await c.debris();
       expect(debris.total).toBeGreaterThan(0);
+      expect(debris.pieces.map((p) => p.id).sort()).toEqual(Object.keys(manifest.debrisDetail).sort());
       for (const p of debris.pieces) {
-        const res = await fetch(`/api/debris-detail?${new URLSearchParams({ id: p.id, at: manifest.head })}`);
-        expect(res.status, p.id).toBe(200);
-        expect((await res.json() as DebrisDetail).id).toBe(p.id);
+        const d = await c.debrisDetail(p.id, manifest.head);
+        expect(d.ok && d.id === p.id, p.id).toBe(true);
       }
       for (const key of Object.keys(manifest.droneDetail)) expect((await c.droneDetail(key as SessionKey, manifest.head)).ok, key).toBe(true);
       for (const person of Object.keys(manifest.crewDetail)) expect((await c.crewDetail(person as PersonId, manifest.head)).ok, person).toBe(true);
