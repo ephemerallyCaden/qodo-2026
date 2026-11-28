@@ -133,8 +133,9 @@ export function demoClient(source: DemoSource): DemoClient {
   const filesOf = () => baked(API.snapshot, (t) => parseTreeSource(t, SOURCE));
 
   const beaconsNow = async (): Promise<BeaconView> => {
-    const head = await headNow();
-    const base = has(API.beacons) ? await beaconsBase() : { schemaVersion: 'beacons.1' as const, head, beacons: [], unplaced: 0 };
+    // No beacons in the dataset is said, never answered as a complete view with none in it (Rule 1; Qodo PR249 8f5d05e6)
+    if (!has(API.beacons)) throw missing('beacons');
+    const base = await beaconsBase();
     return { ...base, beacons: [...base.beacons.filter((b) => !replaced.has(b.fileId)), ...notes] };
   };
 
@@ -163,6 +164,7 @@ export function demoClient(source: DemoSource): DemoClient {
   };
 
   const beacon = async (action: BeaconAction): Promise<BeaconResult> => {
+    if (!has(API.beacons)) throw missing('beacons'); // its answer is the beacon view, which the dataset can't give
     const head = await headNow();
     if (action.at !== head) return unknownHead(head);
     const problem = beaconTextProblem(action.text);

@@ -40,15 +40,15 @@ const debrisDetail: DebrisDetail = {
 const droneDetail: DroneDetail = { ok: true, schemaVersion: 'drone-detail.1', head: HEAD, key: 's_aaaaaaaaaaaa', startedAt: '2026-11-10T09:00:00Z', endedAt: '2026-11-10T10:00:00Z',
   files: [], otherFiles: 0, otherEdits: 0, buckets: new Array<number>(DETAIL_BUCKETS).fill(0), spanMs: 3_600_000, needsRescan: false };
 
-/** A dataset over mini: its four contract files, plus the review, co-change and detail routes the demo serves. */
+/** A dataset over mini: its four contract files, plus the review, co-change, beacon and detail routes the demo serves. */
 function dataset(extra: Record<string, unknown> = {}): { manifest: DemoManifest; files: Record<string, string> } {
   const routes: Record<string, string> = {
     [API.layout]: 'layout.json', [API.fog]: 'fog.json', [API.drones]: 'drones.json', [API.crew]: 'crew.json', [API.cochange]: 'cochange.json',
-    [unseenKey(null)]: 'unseen-star.json', [unseenKey(WEB)]: 'unseen-web.json', [routeKey(API.diff, WEB_FILE)]: 'diff-web.json',
+    [API.beacons]: 'beacons.json', [unseenKey(null)]: 'unseen-star.json', [unseenKey(WEB)]: 'unseen-web.json', [routeKey(API.diff, WEB_FILE)]: 'diff-web.json',
   };
   const files: Record<string, string> = {
     'layout.json': JSON.stringify(miniLayout), 'fog.json': JSON.stringify(miniFog), 'drones.json': JSON.stringify(miniDrones), 'crew.json': JSON.stringify(miniCrew),
-    'cochange.json': JSON.stringify(cochange), 'unseen-star.json': JSON.stringify(unseenStar), 'unseen-web.json': JSON.stringify(unseenWeb), 'diff-web.json': JSON.stringify(diffWeb),
+    'cochange.json': JSON.stringify(cochange), 'beacons.json': JSON.stringify({ schemaVersion: 'beacons.1', head: HEAD, beacons: [], unplaced: 0 }), 'unseen-star.json': JSON.stringify(unseenStar), 'unseen-web.json': JSON.stringify(unseenWeb), 'diff-web.json': JSON.stringify(diffWeb),
   };
   for (const [route, body] of Object.entries(extra)) {
     const file = `extra-${Object.keys(files).length}.json`;
@@ -244,6 +244,15 @@ describe('demo client', () => {
     const routes = Object.fromEntries(Object.entries(d.manifest.routes).filter(([k]) => k !== API.cochange));
     const c = demoClient(memorySource(checkManifest({ schemaVersion: MANIFEST_SCHEMA, routes }), d.files));
     await expect(c.cochange()).rejects.toThrow(/no co-change data/);
+  });
+
+  it('says the dataset has no beacons, rather than answering an empty, complete view, and takes no note there (Qodo PR249 8f5d05e6)', async () => {
+    const d = dataset();
+    const routes = Object.fromEntries(Object.entries(d.manifest.routes).filter(([k]) => k !== API.beacons));
+    const c = demoClient(memorySource(checkManifest({ schemaVersion: MANIFEST_SCHEMA, routes }), d.files));
+    await expect(c.beacons()).rejects.toThrow(/no beacons/);
+    await expect(c.beacon({ fileId: WEB_FILE, at: HEAD, text: 'a note' })).rejects.toThrow(/no beacons/);
+    expect(c.wrote()).toBe(false);
   });
 
   it('leaves a beacon in memory, one per file, with its path and body; refuses a bad note', async () => {
