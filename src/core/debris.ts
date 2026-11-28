@@ -72,7 +72,7 @@ export interface DebrisGroup {
   ageDays: number;
   /** A local branch whose upstream is set but isn't among the refs (`[gone]`): `git cherry` may find it merged. */
   upstreamGone: boolean;
-  remotes: { name: string; ref: string }[];
+  remotes: { name: string; ref: string; sha: string }[];
 }
 
 export interface DebrisPlan {
@@ -169,16 +169,16 @@ export function planDebris(g: DebrisGit, settings: Debris['settings'] = { ...DEB
 }
 
 /** Where each remote-tracking member lives on its remote, when that can be known. */
-function remoteCopies(members: readonly RefRow[], local: RefRow | undefined, remotes: readonly RemoteRow[]): { name: string; ref: string }[] {
-  const out = new Map<string, { name: string; ref: string }>();
+function remoteCopies(members: readonly RefRow[], local: RefRow | undefined, remotes: readonly RemoteRow[]): DebrisGroup['remotes'] {
+  const out = new Map<string, DebrisGroup['remotes'][number]>();
   for (const m of members) {
     if (!m.ref.startsWith(REMOTES)) continue;
     if (local && m.ref === local.upstream && local.upstreamRemote && local.upstreamRemoteRef.startsWith(HEADS)) {
-      out.set(m.ref, { name: local.upstreamRemote, ref: local.upstreamRemoteRef });
+      out.set(m.ref, { name: local.upstreamRemote, ref: local.upstreamRemoteRef, sha: m.sha });
       continue;
     }
     const { remote, branch } = splitRemote(m.ref, remotes);
-    if (remote?.standard) out.set(m.ref, { name: remote.name, ref: `${HEADS}${branch}` });
+    if (remote?.standard) out.set(m.ref, { name: remote.name, ref: `${HEADS}${branch}`, sha: m.sha });
   }
   return [...out.values()].sort((a, b) => byCodepoint(a.name, b.name) || byCodepoint(a.ref, b.ref));
 }
@@ -208,6 +208,11 @@ export interface DebrisContext {
   sessions: readonly Pick<Session, 'key' | 'branch' | 'endedAt'>[];
   /** Snapshot file ids by path. */
   fileIds: ReadonlyMap<string, FileId>;
+  /**
+   * The file at HEAD a path is an older name of (the fog's path history: renames followed), or null when none
+   * or more than one is (Rule 1: never guessed). Absent: no history, so only HEAD's own paths are known.
+   */
+  formerFile?: (path: string) => FileId | null;
   /** Your emails, as commit authors are canonicalised. Held in memory only. */
   selfEmails: ReadonlySet<string>;
 }
@@ -234,7 +239,8 @@ export function buildDebris(plan: DebrisPlan, reads: ReadonlyMap<string, DebrisR
     const ids = new Set<FileId>();
     let outside = 0;
     for (const p of new Set(paths)) {
-      const id = ctx.fileIds.get(p);
+      // A branch's change to a file HEAD renamed since is on the file it is now (Qodo PR248 3815eaf8).
+      const id = ctx.fileIds.get(p) ?? ctx.formerFile?.(p) ?? null;
       if (id) ids.add(id);
       else outside++;
     }
@@ -348,7 +354,11 @@ export function debrisCommands(item: DebrisItem): DebrisCommands {
   if (ref.startsWith(HEADS)) steps.push(`git branch -d -- ${shellQuote(shortRef(ref))}`);
   else if (item.cls !== 'merged') return { cleanup: null, inspect, warning: blocked ?? DEBRIS_WARNINGS.remoteUnmerged };
   if (item.cls === 'merged' && !item.rebased) {
-    for (const r of item.remotes) steps.push(`git push --delete -- ${shellQuote(r.name)} ${shellQuote(r.ref)}`);
+    // Leased: the remote branch is deleted only while it's still the commit the scan saw merged, so work pushed
+    // to it since the last fetch is refused, never wiped (Qodo PR248 81e79d3e).
+    for (const r of item.remotes) {
+      steps.push(`git push --delete ${shellQuote(`--force-with-lease=${r.ref}:${r.sha}`)} -- ${shellQuote(r.name)} ${shellQuote(r.ref)}`);
+    }
   }
   const cleanup = blocked || steps.length === 0 ? null : steps.join(' && ');
   const warning = blocked ?? (item.rebased ? DEBRIS_WARNINGS.rebased : item.cls === 'merged' ? null : DEBRIS_WARNINGS.unmerged);
@@ -375,7 +385,8 @@ function itemProblem(v: unknown): string | null {
     sessions, worktree, rebased, seed } = v;
   if (typeof id !== 'string' || !DEBRIS_ID.test(id) || !CLASSES.has(cls) || typeof worktreeOnly !== 'boolean' || typeof rebased !== 'boolean') return 'an item is damaged';
   if (ref === null ? !worktreeOnly : typeof ref !== 'string' || !(ref.startsWith(HEADS) || ref.startsWith(REMOTES))) return 'an item ref is damaged';
-  if (!Array.isArray(remotes) || !remotes.every((r) => isObject(r) && typeof r['name'] === 'string' && typeof r['ref'] === 'string')) return 'an item remote is damaged';
+  if (!Array.isArray(remotes) || !remotes.every((r) => isObject(r) && typeof r['name'] === 'string' && typeof r['ref'] === 'string'
+    && typeof r['sha'] === 'string' && SHA.test(r['sha']))) return 'an item remote is damaged';
   if (typeof tip !== 'string' || !SHA.test(tip) || typeof lastCommitDate !== 'string' || !ISO_UTC.test(lastCommitDate)) return 'an item tip is damaged';
   if (![ageDays, aheadCount, lines, filesOutside].every(count) || !Number.isSafeInteger(seed) || (seed as number) < 0 || (seed as number) > 0xffffffff) return 'an item count is damaged';
   if (!Array.isArray(files) || !files.every((f) => typeof f === 'string' && FILE_ID.test(f)) || !sortedUnique(files)) return 'an item file is damaged';
@@ -390,11 +401,15 @@ function itemProblem(v: unknown): string | null {
 
 /**
  * Why a stored snapshot's debris can't be served, or null (absent is fine: `needsRescan`). Items must be
- * well-formed, sorted by id and unique. Never quotes the record.
+ * well-formed, sorted by id and unique, and the sessions the panel reads well-formed too (Qodo PR248 6fcfa051).
+ * Never quotes the record.
  */
-export function debrisProblem(s: Pick<SnapshotV02, 'debris'>): string | null {
+export function debrisProblem(s: Pick<SnapshotV02, 'debris' | 'sessions'>): string | null {
   const d: unknown = s.debris;
   if (d === undefined) return null;
+  const sessions: unknown = s.sessions;
+  if (!Array.isArray(sessions) || !sessions.every((x) => isObject(x) && typeof x['key'] === 'string' && typeof x['startedAt'] === 'string'
+    && typeof x['endedAt'] === 'string' && (x['model'] === undefined || x['model'] === null || typeof x['model'] === 'string'))) return 'sessions are damaged';
   if (!isObject(d) || !isObject(d['settings']) || !Array.isArray(d['items']) || !Array.isArray(d['defaults']) || !count(d['unreadable'])) return 'debris is damaged';
   const st = d['settings'];
   if (![st['abandonedDays'], st['mergedGraceDays'], st['agentDays']].every(count)) return 'debris settings are damaged';

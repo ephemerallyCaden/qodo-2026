@@ -25,9 +25,8 @@ export async function readDebrisGit(git: Git, head: string, headCt: number, head
     git(['for-each-ref', '--format=%(refname)%00%(symref)%00%(objectname)%00%(committerdate:unix)%00%(upstream)%00%(upstream:remotename)%00%(upstream:remoteref)',
       HEADS, REMOTES]),
     git(['for-each-ref', `--merged=${head}`, '--format=%(refname)', HEADS, REMOTES]),
-    // Exit 1: no remote has a fetch refspec. Any failure leaves no remote known, so no push command is shown.
-    tryGit(git, ['config', '-z', '--get-regexp', '^remote\\..*\\.fetch$']),
-    tryGit(git, ['config', 'init.defaultBranch']),
+    configRead(git, ['config', '-z', '--get-regexp', '^remote\\..*\\.fetch$']),
+    configRead(git, ['config', 'init.defaultBranch']),
   ]);
   const mergedSet = new Set(merged.split('\n').filter(Boolean));
   const refs: RefRow[] = all.split('\n').filter(Boolean).map((line) => {
@@ -39,6 +38,20 @@ export async function readDebrisGit(git: Git, head: string, headCt: number, head
     return { ref, symref, sha, ct: Number(ct), upstream, upstreamRemote, upstreamRemoteRef, merged: mergedSet.has(ref) };
   });
   return { head, headCt, headRef, refs, remotes: remotesOf(fetch ?? ''), initDefault: initDefault?.trim() || null, worktrees };
+}
+
+/**
+ * A `git config` read: its output, or null when git exits 1 (nothing set). Any other failure fails the scan,
+ * as a failed ref listing does, rather than reading as unset (Qodo PR248 72be58ec): an unread
+ * `init.defaultBranch` could list the default branch as debris.
+ */
+async function configRead(git: Git, args: string[]): Promise<string | null> {
+  try {
+    return await git(args);
+  } catch (e) {
+    if ((e as { code?: unknown }).code === 1) return null;
+    throw e;
+  }
 }
 
 /** Remotes from `git config -z --get-regexp '^remote\..*\.fetch$'` (`<key>\n<value>\0` each), standard or not. */

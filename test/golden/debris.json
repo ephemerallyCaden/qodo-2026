@@ -210,7 +210,7 @@
     {
       "ageDays": 30,
       "aheadCount": 0,
-      "cleanup": "git branch -d -- 'shipped' && git push --delete -- 'origin' 'refs/heads/shipped'",
+      "cleanup": "git branch -d -- 'shipped' && git push --delete '--force-with-lease=refs/heads/shipped:562e65230ffa706af91fb64efb9b8da4d29f3bc4' -- 'origin' 'refs/heads/shipped'",
       "cls": "merged",
       "creator": {
         "agent": false,
@@ -491,7 +491,7 @@
     {
       "ageDays": 45,
       "aheadCount": 0,
-      "cleanup": "git push --delete -- 'origin' 'refs/heads/old-release'",
+      "cleanup": "git push --delete '--force-with-lease=refs/heads/old-release:7015f73d2d913e213b2ce5c07f4de236f1487956' -- 'origin' 'refs/heads/old-release'",
       "cls": "merged",
       "creator": {
         "agent": false,

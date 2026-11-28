@@ -141,7 +141,9 @@ export interface DebrisDetail {
   /**
    * The cleanup, for the user to copy; Commet never runs it. Every name is POSIX single-quoted after `--`:
    * `git worktree remove -- '<folder>'` (one worktree, live or prunable; never the repository-wide `git worktree
-   * prune`), `git branch -d -- '<name>'` (git refuses a branch neither HEAD nor its upstream has; never `-D`), `git push --delete -- '<remote>' '<ref>'` (a merged remote copy only),
+   * prune`), `git branch -d -- '<name>'` (git refuses a branch neither HEAD nor its upstream has; never `-D`),
+   * `git push --delete '--force-with-lease=<ref>:<sha>' -- '<remote>' '<ref>'` (a merged remote copy only,
+   * refused if someone pushed to it since the scan saw it),
    * joined by ` && `. Null when no safe command exists: an unmerged remote-only branch, a detached worktree's
    * own commits, a locked worktree or one whose folder name isn't unique, a hidden character.
    */

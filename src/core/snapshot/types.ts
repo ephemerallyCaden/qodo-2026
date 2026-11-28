@@ -234,11 +234,11 @@ export interface DebrisItem {
   /** The full refname (`refs/heads/x`, or `refs/remotes/origin/x` for a remote-only one); null for a detached worktree's HEAD. */
   ref: string | null;
   /**
-   * Its remote-tracking copies (or, remote-only, itself) as a cleanup may delete them: the remote's name and
-   * the refname there (`refs/heads/x`), sorted. A copy whose remote isn't configured with the standard fetch
+   * Its remote-tracking copies (or, remote-only, itself) as a cleanup may delete them: the remote's name, the
+   * refname there (`refs/heads/x`) and the commit the scan saw it at (the push delete leases it), sorted. A copy whose remote isn't configured with the standard fetch
    * refspec (`+refs/heads/*:refs/remotes/<name>/*`) isn't listed: its refname there can't be known.
    */
-  remotes: { name: string; ref: string }[];
+  remotes: { name: string; ref: string; sha: Sha }[];
   /**
    * The item is a prunable worktree entry itself, not its branch (detached, or on a branch that isn't
    * debris): `ref` is the branch it was on, `aheadCount` the commits HEAD lacks only when detached, `lines` 0.

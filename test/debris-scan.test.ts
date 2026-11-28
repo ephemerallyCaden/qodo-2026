@@ -2,7 +2,7 @@
 // panel through the server's readers, from the same snapshot/layout pair as the fog. Golden (update deliberately
 // with UPDATE_GOLDEN=1 and a Golden-Update: reason).
 import { execFile, execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -103,8 +103,8 @@ describe('the debris of the fixture repo', () => {
     const found = await byName();
     const cmd = (n: string) => { const d = found.get(n)!; return [d.cleanup, d.inspect, d.warning]; };
     const W = DEBRIS_WARNINGS;
-    expect(cmd('shipped')).toEqual(["git branch -d -- 'shipped' && git push --delete -- 'origin' 'refs/heads/shipped'", null, null]);
-    expect(cmd('origin/old-release')).toEqual(["git push --delete -- 'origin' 'refs/heads/old-release'", null, null]);
+    expect(cmd('shipped')).toEqual([`git branch -d -- 'shipped' && git push --delete '--force-with-lease=refs/heads/shipped:${repo.shas['shipped']}' -- 'origin' 'refs/heads/shipped'`, null, null]);
+    expect(cmd('origin/old-release')).toEqual([`git push --delete '--force-with-lease=refs/heads/old-release:${repo.shas['c3']}' -- 'origin' 'refs/heads/old-release'`, null, null]);
     expect(cmd('ancient')).toEqual(["git branch -d -- 'ancient'", "git log --oneline HEAD..'refs/heads/ancient' --", W.unmerged]);
     expect(cmd('rebased')).toEqual(["git branch -d -- 'rebased'", "git cherry -v HEAD 'refs/heads/rebased'", W.rebased]);
     expect(cmd('origin/stale-remote')).toEqual([null, "git log --oneline HEAD..'refs/remotes/origin/stale-remote' --", W.remoteUnmerged]);
@@ -115,7 +115,7 @@ describe('the debris of the fixture repo', () => {
     expect(cmd('locked-old')).toEqual([null, "git log --oneline HEAD..'refs/heads/locked-old' --", W.worktreeLocked]);
     expect(cmd(BIDI)).toEqual([null, null, W.hiddenCharacters]);
     expect(cmd(HOSTILE)[0]).toBe(`git branch -d -- '-x;touch\${IFS}pwned;$(touch\${IFS}pwned2)'\\''q\`touch\${IFS}pwned3\`'`);
-    for (const d of found.values()) expect(`${d.cleanup} ${d.inspect}`).not.toMatch(/\s-D\b|--force|\s-f\b/);
+    for (const d of found.values()) expect(`${d.cleanup} ${d.inspect}`).not.toMatch(/\s-D\b|--force(?!-with-lease=)|\s-f\b/);
   });
 
   it('a hostile name pasted into a shell stays one argument: nothing runs, and git refuses the unmerged branch', async () => {
@@ -154,6 +154,53 @@ describe('the debris of the fixture repo', () => {
     expect(out[1]).not.toMatch(/"(name|creator|displayName|subject|sha|ref|sessions)"/);
   });
 
+  it("refuses a merged remote copy's delete once someone pushed to it since, and deletes it while it's where the scan saw it (Qodo PR248 81e79d3e)", async () => {
+    const d = (await byName()).get('origin/old-release')!;
+    const other = realTempDir('commet-debris-other-');
+    const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+    git(other, 'clone', '-q', join(repo.root, 'origin.git'), 'c');
+    const c = join(other, 'c');
+    git(c, 'checkout', '-q', 'old-release');
+    git(c, '-c', 'user.name=Pip', '-c', 'user.email=pip@debris.test', 'commit', '-q', '--allow-empty', '-m', 'newer work');
+    git(c, 'push', '-q', 'origin', 'old-release');
+    await expect(sh('sh', ['-c', d.cleanup!], { cwd: repo.dir, encoding: 'utf8' })).rejects.toMatchObject({ stderr: expect.stringContaining('stale info') });
+    expect(git(repo.dir, 'ls-remote', 'origin', 'refs/heads/old-release')).not.toBe('');
+    git(c, 'push', '-q', '--force', 'origin', `${repo.shas['c3']}:refs/heads/old-release`);
+    await sh('sh', ['-c', d.cleanup!], { cwd: repo.dir, encoding: 'utf8' });
+    expect(git(repo.dir, 'ls-remote', 'origin', 'refs/heads/old-release')).toBe('');
+    // Put it back as it was, for the tests after this one.
+    git(c, 'push', '-q', 'origin', `${repo.shas['c3']}:refs/heads/old-release`);
+    git(repo.dir, 'update-ref', 'refs/remotes/origin/old-release', repo.shas['c3']!);
+  });
+
+  it("places a branch's change to a file HEAD renamed since on the file it is now (Qodo PR248 3815eaf8)", async () => {
+    const dir = join(realTempDir('commet-debris-rename-'), 'r');
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: 'pipe',
+      env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } });
+    let date = '2026-01-01T10:00:00Z';
+    execFileSync('git', ['init', '-q', '-b', 'main', dir]);
+    for (const [k, v] of [['user.name', 'Pip'], ['user.email', 'pip@debris.test'], ['commit.gpgsign', 'false']]) git('config', k!, v!);
+    mkdirSync(join(dir, 'engine'));
+    writeFileSync(join(dir, 'engine/a.ts'), 'export const a = 1;\nexport const b = 2;\nexport const c = 3;\n');
+    writeFileSync(join(dir, 'engine/keep.ts'), 'export const k = 1;\n');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'start');
+    git('checkout', '-q', '-b', 'old');
+    writeFileSync(join(dir, 'engine/a.ts'), 'export const a = 1;\nexport const b = 2;\nexport const c = 4;\n');
+    date = '2026-02-01T10:00:00Z';
+    git('commit', '-q', '-am', 'old: edit a');
+    git('checkout', '-q', 'main');
+    git('mv', 'engine/a.ts', 'engine/renamed.ts');
+    date = '2026-04-01T10:00:00Z';
+    git('commit', '-q', '-m', 'rename a');
+    expect((await scanIn(dir)).code).toBe(0);
+    const view = await readDebrisView(dir);
+    const d = await readDebrisDetail(dir, { id: debrisId('refs/heads/old'), at: view.head });
+    const s = JSON.parse(snapshotText(dir)) as SnapshotV02;
+    expect(d).toMatchObject({ ok: true, cls: 'branch', filesOutside: 0, home: s.dirs.find((x) => x.path === 'engine')!.id });
+    expect(s.debris!.items[0]!.files).toEqual([fileIdOf('engine/renamed.ts')]);
+  });
+
   it('answers unknown-head for another head and no-such-item for an id it lacks', async () => {
     const id = debrisId('refs/heads/ancient');
     expect(await readDebrisDetail(repo.dir, { id, at: 'f'.repeat(40) })).toEqual({ ok: false, error: 'unknown-head', head: repo.head });
@@ -178,6 +225,9 @@ describe('the debris of the fixture repo', () => {
     const damaged = { ...snap, debris: { ...debris!, items: [{ ...debris!.items[0]!, tip: 'HEAD' }, ...debris!.items.slice(1)] } };
     writeAtomic(path, JSON.stringify(damaged));
     await expect(readDebrisView(repo.dir)).rejects.toMatchObject({ exitCode: EXIT.state, message: expect.stringContaining('run `commet scan`') });
+    await expect(readDebrisDetail(repo.dir, { id: debris!.items[0]!.id, at: repo.head })).rejects.toMatchObject({ exitCode: EXIT.state });
+    // Damaged sessions, which the panel reads, are a state error too, never a generic one (Qodo PR248 6fcfa051).
+    writeAtomic(path, JSON.stringify({ ...snap, sessions: 'damaged' }));
     await expect(readDebrisDetail(repo.dir, { id: debris!.items[0]!.id, at: repo.head })).rejects.toMatchObject({ exitCode: EXIT.state });
     writeAtomic(path, JSON.stringify(snap));
   });

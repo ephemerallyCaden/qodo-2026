@@ -10,7 +10,7 @@ import {
 } from '../src/core/debris.js';
 import { sha256Hex } from '../src/core/hash.js';
 import type { Debris, DebrisItem, DirId, FileId, Session, SnapshotV02 } from '../src/core/snapshot/types.js';
-import { numstatPaths, parseCommits, readDebris, remotesOf } from '../src/scan/debris.js';
+import { numstatPaths, parseCommits, readDebris, readDebrisGit, remotesOf } from '../src/scan/debris.js';
 import type { Git } from '../src/scan/git.js';
 import { realTempDir } from './fixtures/tmp.js';
 import { parseWorktrees } from '../src/scan/repo.js';
@@ -171,7 +171,8 @@ describe('which refs are debris (one row per input)', () => {
       refs: [row('refs/heads/x', { age: 10, merged: true, upstream: 'refs/remotes/a/x', upstreamRemote: 'a', upstreamRemoteRef: 'refs/heads/renamed' }),
         row('refs/remotes/a/x', { age: 10, merged: true }), row('refs/remotes/a/b/y', { age: 10, merged: true }), row('refs/remotes/odd/z', { age: 10, merged: true })] });
     expect(Object.fromEntries(d.items.map((i) => [i.ref, i.remotes]))).toEqual({
-      'refs/heads/x': [{ name: 'a', ref: 'refs/heads/renamed' }], 'refs/remotes/a/b/y': [{ name: 'a/b', ref: 'refs/heads/y' }], 'refs/remotes/odd/z': [] });
+      'refs/heads/x': [{ name: 'a', ref: 'refs/heads/renamed', sha: sha('refs/remotes/a/x') }],
+      'refs/remotes/a/b/y': [{ name: 'a/b', ref: 'refs/heads/y', sha: sha('refs/remotes/a/b/y') }], 'refs/remotes/odd/z': [] });
   });
 
   it('takes the defaults from every remote HEAD, init.defaultBranch, and main and master always, sorted', () => {
@@ -201,17 +202,20 @@ describe('cleanup and inspect commands (shown, never run)', () => {
   });
 
   const W = DEBRIS_WARNINGS;
+  const C = 'c'.repeat(40);
   const rows: [string, Partial<DebrisItem>, [string | null, string | null, string | null]][] = [
     ['unmerged local', {}, ["git branch -d -- 'x'", "git log --oneline HEAD..'refs/heads/x' --", W.unmerged]],
     ['agent local', { cls: 'agent' }, ["git branch -d -- 'x'", "git log --oneline HEAD..'refs/heads/x' --", W.unmerged]],
-    ['merged local with remote copies', { cls: 'merged', aheadCount: 0, remotes: [{ name: 'origin', ref: 'refs/heads/x' }, { name: '-up', ref: 'refs/heads/y' }] },
-      ["git branch -d -- 'x' && git push --delete -- 'origin' 'refs/heads/x' && git push --delete -- '-up' 'refs/heads/y'", null, null]],
-    ['rebased: no push, cherry to inspect', { cls: 'merged', rebased: true, remotes: [{ name: 'origin', ref: 'refs/heads/x' }] },
+    // Each push delete leases the commit Commet saw merged, so newer work pushed since the last fetch is refused (Qodo PR248 81e79d3e).
+    ['merged local with remote copies', { cls: 'merged', aheadCount: 0, remotes: [{ name: 'origin', ref: 'refs/heads/x', sha: C }, { name: '-up', ref: "refs/heads/y'z", sha: C }] },
+      [`git branch -d -- 'x' && git push --delete '--force-with-lease=refs/heads/x:${C}' -- 'origin' 'refs/heads/x'`
+        + ` && git push --delete '--force-with-lease=refs/heads/y'\\''z:${C}' -- '-up' 'refs/heads/y'\\''z'`, null, null]],
+    ['rebased: no push, cherry to inspect', { cls: 'merged', rebased: true, remotes: [{ name: 'origin', ref: 'refs/heads/x', sha: C }] },
       ["git branch -d -- 'x'", "git cherry -v HEAD 'refs/heads/x'", W.rebased]],
-    ['remote-only merged', { cls: 'merged', aheadCount: 0, ref: 'refs/remotes/origin/x', remotes: [{ name: 'origin', ref: 'refs/heads/x' }] },
-      ["git push --delete -- 'origin' 'refs/heads/x'", null, null]],
+    ['remote-only merged', { cls: 'merged', aheadCount: 0, ref: 'refs/remotes/origin/x', remotes: [{ name: 'origin', ref: 'refs/heads/x', sha: C }] },
+      [`git push --delete '--force-with-lease=refs/heads/x:${C}' -- 'origin' 'refs/heads/x'`, null, null]],
     ['remote-only merged, remote unknown', { cls: 'merged', aheadCount: 0, ref: 'refs/remotes/gone/x' }, [null, null, null]],
-    ['remote-only unmerged: no delete at all', { ref: 'refs/remotes/origin/x', remotes: [{ name: 'origin', ref: 'refs/heads/x' }] },
+    ['remote-only unmerged: no delete at all', { ref: 'refs/remotes/origin/x', remotes: [{ name: 'origin', ref: 'refs/heads/x', sha: C }] },
       [null, "git log --oneline HEAD..'refs/remotes/origin/x' --", W.remoteUnmerged]],
     ['live worktree, unique folder (leading dash)', { worktree: { prunable: false, locked: false, folder: '-dir' } },
       ["git worktree remove -- '-dir' && git branch -d -- 'x'", "git log --oneline HEAD..'refs/heads/x' --", W.unmerged]],
@@ -241,7 +245,7 @@ describe('cleanup and inspect commands (shown, never run)', () => {
   it.each(hidden)('builds no command at all for a hidden character in %j (branch, remote or folder)', (s) => {
     const none = { cleanup: null, inspect: null, warning: W.hiddenCharacters };
     expect(debrisCommands(item({ ref: `refs/heads/${s}` }))).toEqual(none);
-    expect(debrisCommands(item({ cls: 'merged', remotes: [{ name: s, ref: 'refs/heads/x' }] }))).toEqual(none);
+    expect(debrisCommands(item({ cls: 'merged', remotes: [{ name: s, ref: 'refs/heads/x', sha: C }] }))).toEqual(none);
     expect(debrisCommands(item({ worktree: { prunable: false, locked: false, folder: s } }))).toEqual(none);
   });
 
@@ -265,7 +269,7 @@ describe('cleanup and inspect commands (shown, never run)', () => {
   it('never offers a forced delete', () => {
     for (const [, o] of rows) {
       const { cleanup, inspect } = debrisCommands(item(o));
-      expect(`${cleanup} ${inspect}`).not.toMatch(/\s-D\b|--force|\s-f\b/);
+      expect(`${cleanup} ${inspect}`).not.toMatch(/\s-D\b|--force(?!-with-lease=)|\s-f\b/);
     }
   });
 });
@@ -330,11 +334,18 @@ describe('the stored-debris check', () => {
     ['a worktree-only item with no worktree', { ...ok, items: [item({ worktreeOnly: true })] }],
     ['a damaged worktree', { ...ok, items: [item({ worktree: { prunable: 'yes' } as never })] }],
     ['a damaged creator', { ...ok, items: [item({ creator: { name: 'n' } as never })] }], ['bad settings', { ...ok, settings: { abandonedDays: '30' } }],
+    ['a remote copy without its sha', { ...ok, items: [item({ remotes: [{ name: 'origin', ref: 'refs/heads/x' }] as never })] }],
   ];
-  it.each(bad)('refuses %s', (_n, d) => expect(debrisProblem({ debris: d as Debris })).not.toBeNull());
+  const sessions = [{ key: 's_0000000000000a', startedAt: '2026-01-01T00:00:00Z', endedAt: '2026-01-02T00:00:00Z' }] as unknown as Session[];
+  it.each(bad)('refuses %s', (_n, d) => expect(debrisProblem({ debris: d as Debris, sessions })).not.toBeNull());
   it('accepts well-formed debris, and none at all', () => {
-    expect(debrisProblem({ debris: ok })).toBeNull();
-    expect(debrisProblem({})).toBeNull();
+    expect(debrisProblem({ debris: ok, sessions })).toBeNull();
+    expect(debrisProblem({ sessions })).toBeNull();
+  });
+  it('refuses damaged sessions, which the panel reads (Qodo PR248 6fcfa051)', () => {
+    for (const s of ['x', [null], [{ key: 1, startedAt: 'a', endedAt: 'b' }], [{ key: 's_0000000000000a', startedAt: 'a', endedAt: 'b', model: 3 }]]) {
+      expect(debrisProblem({ debris: ok, sessions: s as never }), JSON.stringify(s)).not.toBeNull();
+    }
   });
 });
 
@@ -376,6 +387,20 @@ describe("the scan's parsers", () => {
       + 'remote.mirror.fetch\n+refs/heads/*:refs/remotes/mirror/x/*\0remote.two.fetch\n+refs/heads/*:refs/remotes/two/*\0remote.two.fetch\n+refs/tags/*:refs/tags/*\0'))
       .toEqual([{ name: 'a.b', standard: true }, { name: 'mirror', standard: false }, { name: 'origin', standard: true }, { name: 'two', standard: false }]);
     expect(remotesOf('')).toEqual([]);
+  });
+
+  it('tells an unset config value (git exit 1) from a failed read, which fails the scan (Qodo PR248 72be58ec)', async () => {
+    const stub = (fail: number | null) => (async (args: string[]) => {
+      if (args[0] === 'for-each-ref') return '';
+      if (args[0] === 'config') {
+        if (fail !== null) throw Object.assign(new Error(`git config exited with ${fail}`), { code: fail });
+        return args.includes('--get-regexp') ? 'remote.origin.fetch\n+refs/heads/*:refs/remotes/origin/*\0' : 'trunk\n';
+      }
+      throw new Error(`unexpected git ${args.join(' ')}`);
+    }) as Git;
+    await expect(readDebrisGit(stub(null), HEAD, HEAD_CT, '', [])).resolves.toMatchObject({ remotes: [{ name: 'origin', standard: true }], initDefault: 'trunk' });
+    await expect(readDebrisGit(stub(1), HEAD, HEAD_CT, '', [])).resolves.toMatchObject({ remotes: [], initDefault: null });
+    await expect(readDebrisGit(stub(128), HEAD, HEAD_CT, '', [])).rejects.toThrow();
   });
 
   it('sorts remotes by codepoint, as every other order is (Qodo PR248 ec6f9b05)', () => {

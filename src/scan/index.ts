@@ -291,10 +291,16 @@ async function scanUntil(o: ScanOptions, signal: AbortSignal): Promise<ScanResul
   };
   // #211: co-change by file at HEAD, renames followed through the same path history the fog uses.
   const paths = pathHistory(history, 0, lineageExcluded);
-  snapshot.cochange = coChangeOf(fogBase(snapshot, { ...paths, unrowed: unrowedChanges(snapshot, history, 0, lineageExcluded) }));
-  // R13: stale branches and worktrees, classified against HEAD's date and the sessions on them.
+  const base = fogBase(snapshot, { ...paths, unrowed: unrowedChanges(snapshot, history, 0, lineageExcluded) });
+  snapshot.cochange = coChangeOf(base);
+  // R13: stale branches and worktrees, classified against HEAD's date and the sessions on them. A path a branch
+  // changed that HEAD has renamed since is the file it is now, through the fog's names.
+  const formerFile = (path: string) => {
+    const ids = new Set((base.names.get(fileId(path)) ?? []).map((n) => base.files[n.file]!.id));
+    return ids.size === 1 ? [...ids][0]! : null;
+  };
   snapshot.debris = buildDebris(debrisPlan, debrisReads, { headCt: repo.headMs / 1000, sessions: snapshot.sessions,
-    fileIds: new Map(files.map((f) => [f.path, f.id])), selfEmails: mine });
+    fileIds: new Map(files.map((f) => [f.path, f.id])), formerFile, selfEmails: mine });
   const unreadable = ingest?.unreadable.length ?? 0;
   const logs = found && { transcripts: found.transcripts.length - unreadable, tooLarge: found.stats.tooLarge,
     unavailable: found.stats.unavailable + unreadable, dropped: ingest?.dropped ?? 0, unattributed: found.stats.unattributed,
