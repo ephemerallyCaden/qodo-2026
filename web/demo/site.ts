@@ -1,7 +1,7 @@
 // Node side of the demo build (live-demo L2, L5): which dataset the site bakes, and the privacy scan of the
 // built site. Used by web/vite.demo.config.ts (the build refuses to finish on a hit) and by the tests.
-import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bundleHits, tokenRuns, type Hit } from '../../.claude/skills/visual-proof/scripts/privacy.js';
@@ -138,16 +138,28 @@ export function datasetProblems(d: Dataset): string[] {
   return problems;
 }
 
+/** What a built site holds at its top: the only names a folder the build removes may hold. */
+const SITE_ENTRIES = new Set(['index.html', 'assets', 'data', 'favicon.svg', '.nojekyll']);
+
 /**
  * The folder a build writes, `DEMO_OUT` or dist/demo, resolved from the checkout. The build removes it
- * before anything else, so it may never be the checkout, a folder holding it, the home folder or the root.
+ * before anything else, so it's an allowlist (Qodo PR249 31482891): in the checkout, only a folder under
+ * dist/ whose name starts with `demo`; outside it, only one inside the temp folder (the tests'); never a
+ * folder holding the checkout or home. A folder that exists must be a plain folder holding nothing but a
+ * site's own files, so a mistyped path never empties someone's work.
  */
 export function siteOut(raw: string | undefined): string {
   const out = resolve(ROOT, raw ?? DEMO_DIST);
-  const home = homedir();
-  if (out === ROOT || ROOT.startsWith(out + sep) || out === home || home.startsWith(out + sep) || out === resolve('/')) {
-    throw new Error(`DEMO_OUT must be a folder of its own, not ${out === ROOT ? 'the checkout' : 'a folder holding the checkout or your home'}`);
-  }
+  const inside = (dir: string) => out.startsWith(dir + sep);
+  const temps = [...new Set([tmpdir(), realpathSync(tmpdir())])];
+  const allowed = out === ROOT || inside(ROOT)
+    ? inside(join(ROOT, 'dist')) && /^demo[A-Za-z0-9._-]*$/.test(relative(join(ROOT, 'dist'), out).split(sep)[0]!)
+    : temps.some(inside) && !ROOT.startsWith(out + sep) && !homedir().startsWith(out + sep);
+  if (!allowed) throw new Error(`DEMO_OUT must be dist/demo… in the checkout, or a folder inside the temp folder (got ${relative(ROOT, out) || 'the checkout'})`);
+  const st = lstatSync(out, { throwIfNoEntry: false });
+  if (st && !st.isDirectory()) throw new Error('DEMO_OUT must be a folder, not a file or a link');
+  const stray = st ? readdirSync(out).filter((name) => !SITE_ENTRIES.has(name)) : [];
+  if (stray.length) throw new Error(`DEMO_OUT holds files that aren't a demo site (${stray.slice(0, 3).join(', ')}); empty it or pick another folder`);
   return out;
 }
 

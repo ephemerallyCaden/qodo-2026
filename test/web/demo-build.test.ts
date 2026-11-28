@@ -69,9 +69,23 @@ describe('demo build', () => {
     expect(existsSync(out) && existsSync(join(out, 'index.html'))).toBe(false);
   }, 120_000);
 
-  it('never removes the checkout, a folder holding it, the home folder or the root as its output', () => {
-    for (const out of [ROOT, dirname(ROOT), homedir(), '/', '..']) expect(() => siteOut(out), out).toThrow(/DEMO_OUT must be a folder of its own/);
+  it('removes as its output only a site folder in dist/ or the temp folder, never source (Qodo PR249 31482891)', () => {
+    // never the checkout, a folder holding it, home, the root, or a folder of the checkout's own source
+    for (const out of [ROOT, dirname(ROOT), homedir(), '/', '..', 'web', 'src', 'test/fixtures', 'web/demo', 'dist', join(ROOT, 'node_modules'), '.git']) {
+      expect(() => siteOut(out), out).toThrow(/DEMO_OUT must be/);
+    }
+    // nor a temp folder holding something other than a site
+    const notASite = tempDir('commet-demo-out-');
+    writeFileSync(join(notASite, 'notes.txt'), 'mine');
+    expect(() => siteOut(notASite)).toThrow(/holds files that aren't a demo site/);
+    // the default, a fresh temp folder, an empty one, and an earlier site are fine
     expect(siteOut(undefined)).toBe(join(ROOT, 'dist/demo'));
+    expect(siteOut('dist/demo-preview')).toBe(join(ROOT, 'dist/demo-preview'));
+    const empty = tempDir('commet-demo-out-');
+    expect(siteOut(empty)).toBe(empty);
+    expect(siteOut(join(empty, 'site'))).toBe(join(empty, 'site'));
+    const site = staleSite();
+    expect(siteOut(site)).toBe(site);
   });
 });
 
